@@ -1,0 +1,6 @@
+/vendor/
+/uploads/*
+!/uploads/.gitkeep
+!/uploads/.htaccess
+composer.phar
+cacert.pem
