@@ -7,15 +7,25 @@ session_start();
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use RiskAssessment\DashboardRenderer;
+use RiskAssessment\Database\Database;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
+use RiskAssessment\Repositories\AssessmentRepository;
 
 $config = require dirname(__DIR__) . '/config/config.php';
+$dbConfig = require dirname(__DIR__) . '/config/database.php';
+$repository = new AssessmentRepository(Database::connection($dbConfig));
 
 $error = '';
 $dashboardHtml = '';
+$searchQuery = trim((string) ($_GET['q'] ?? ''));
+$searchResults = $searchQuery !== '' || isset($_GET['q'])
+    ? $repository->searchByProjectName($searchQuery)
+    : $repository->listRecent(10);
 
-if (isset($_SESSION['dashboard_html']) && ($_GET['view'] ?? '') === '1') {
+$assessmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
+
+if (isset($_SESSION['dashboard_html']) && ($_GET['view'] ?? '') === '1' && $assessmentId <= 0) {
     $dashboardHtml = (string) $_SESSION['dashboard_html'];
 }
 
@@ -67,8 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $parser = new ExcelParser();
         $assessment = $parser->parse($destination);
+        $savedId = $repository->save($assessment, $destination, $originalName);
 
         $_SESSION['assessment'] = [
+            'id' => $savedId,
             'metadata' => $assessment->metadata,
             'items' => $assessment->items,
             'summary' => $assessment->summary,
@@ -76,26 +88,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'stored_filename' => $storedName,
         ];
 
-        $renderer = new DashboardRenderer();
-        $dashboardHtml = $renderer->render($assessment, $originalName);
-        $_SESSION['dashboard_html'] = $dashboardHtml;
-
-        header('Location: index.php?view=1');
+        header('Location: index.php?view=1&id=' . $savedId);
         exit;
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
 }
 
-if ($dashboardHtml === '' && isset($_SESSION['assessment']) && ($_GET['view'] ?? '') === '1') {
-    $stored = $_SESSION['assessment'];
-    $assessment = Assessment::fromParsedData(
-        $stored['metadata'] ?? [],
-        $stored['items'] ?? []
-    );
-    $renderer = new DashboardRenderer();
-    $dashboardHtml = $renderer->render($assessment, (string) ($stored['source_filename'] ?? ''));
-    $_SESSION['dashboard_html'] = $dashboardHtml;
+if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
+    if ($assessmentId > 0) {
+        $record = $repository->findById($assessmentId);
+        if ($record === null) {
+            $error = 'Assessment not found.';
+        } else {
+            $renderer = new DashboardRenderer();
+            $dashboardHtml = $renderer->render($record['assessment'], $record['source_filename']);
+        }
+    } elseif (isset($_SESSION['assessment'])) {
+        $stored = $_SESSION['assessment'];
+        $assessment = Assessment::fromParsedData(
+            $stored['metadata'] ?? [],
+            $stored['items'] ?? []
+        );
+        $renderer = new DashboardRenderer();
+        $dashboardHtml = $renderer->render($assessment, (string) ($stored['source_filename'] ?? ''));
+    }
 }
 
 if ($dashboardHtml !== '') {
@@ -107,6 +124,7 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
+$totalProjects = $repository->countAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -122,41 +140,67 @@ if (empty($_SESSION['csrf_token'])) {
     <div class="shell upload-page">
         <header class="topbar">
             <div class="brand">
-                <span class="brand-mark">🛡️</span>
+                <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div>
-                    <div class="eyebrow">Architecture risk operations</div>
-                    <h1>Risk assessment control room</h1>
+                    <div class="brand-title">Architecture Risk</div>
+                    <h1>Assessment register</h1>
                 </div>
             </div>
-            <div class="updated">
-                <span class="live-dot"></span>
-                <span>📤 Upload a standardized assessment workbook</span>
-            </div>
+            <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
         </header>
 
         <main>
             <section class="hero">
-                <div>
-                    <div class="eyebrow">Executive view / architecture risk</div>
-                    <h2>Risk<br><em>Dashboard.</em> 📊</h2>
-                    <p>📁 Upload a standardized Architecture Risk Assessment Data Sheet (.xlsx) to generate a live executive dashboard.</p>
+                <div class="hero-copy">
+                    <div class="eyebrow">Architecture risk assessment</div>
+                    <h2>Find any project by <em>name.</em></h2>
+                    <p>Upload a new workbook or search saved assessments stored in the local SQLite database.</p>
                 </div>
-                <div class="hero-art">
-                    <div class="orbit orbit-a"></div>
-                    <div class="orbit orbit-b"></div>
-                    <div class="hero-stat">
-                        <strong>📈</strong>
-                        <span>workbook upload</span>
-                    </div>
-                </div>
+                <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $totalProjects, 'saved projects'); ?>
             </section>
 
             <?php if ($error !== ''): ?>
                 <div class="alert alert-error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
             <?php endif; ?>
 
+            <section class="upload-card search-card">
+                <h2>Search saved projects</h2>
+                <p>Search by project name, vendor, or scope.</p>
+                <form method="get" class="search-form">
+                    <div class="search-wrap search-wrap-wide">
+                        <span>Search</span>
+                        <input
+                            type="search"
+                            name="q"
+                            value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>"
+                            placeholder="Project name, e.g. FibroScan..."
+                        >
+                    </div>
+                    <button type="submit" class="button button-primary">Find project</button>
+                </form>
+
+                <?php if ($searchResults === []): ?>
+                    <p class="empty-results">No saved projects found<?= $searchQuery !== '' ? ' for that search.' : ' yet.' ?></p>
+                <?php else: ?>
+                    <div class="project-list">
+                        <?php foreach ($searchResults as $project): ?>
+                            <a class="project-item" href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
+                                <div>
+                                    <strong><?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                    <span><?= htmlspecialchars((string) $project['vendor'], ENT_QUOTES, 'UTF-8') ?></span>
+                                </div>
+                                <div class="project-meta">
+                                    <span><?= htmlspecialchars((string) ($project['assessment_date'] ?: 'No date'), ENT_QUOTES, 'UTF-8') ?></span>
+                                    <span><?= htmlspecialchars((string) $project['uploaded_at'], ENT_QUOTES, 'UTF-8') ?></span>
+                                </div>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </section>
+
             <section class="upload-card">
-                <h2>📤 Upload assessment</h2>
+                <h2>Upload assessment</h2>
                 <p>Use the same spreadsheet format as the Architecture Risk Assessment Data Sheet:</p>
                 <ul class="format-list">
                     <li>Rows 2–7: solution metadata (Solution Name, Vendor, Scope, Architecture Model, Reviewer, Date)</li>
@@ -167,10 +211,10 @@ if (empty($_SESSION['csrf_token'])) {
                 <form method="post" enctype="multipart/form-data" class="upload-form">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
                     <label class="file-input">
-                        <span>📎 Excel workbook (.xlsx)</span>
+                        <span>Excel workbook (.xlsx)</span>
                         <input type="file" name="assessment_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
                     </label>
-                    <button type="submit" class="button button-primary">🚀 Generate dashboard</button>
+                    <button type="submit" class="button button-primary">Generate dashboard</button>
                 </form>
             </section>
         </main>

@@ -57,12 +57,22 @@ body {
 .brand-mark {
     display: grid;
     place-items: center;
-    width: 42px;
-    height: 42px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #0f766e, #14b8a6);
-    font-size: 20px;
-    box-shadow: var(--shadow);
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+}
+
+.brand-mark svg {
+    width: 44px;
+    height: 44px;
+    display: block;
+}
+
+.brand-title {
+    font: 600 12px "Source Sans 3", sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
 }
 
 .eyebrow {
@@ -96,17 +106,21 @@ body {
 }
 
 .hero {
-    min-height: 270px;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 32px;
     align-items: center;
-    padding: 36px 34px;
+    padding: 48px 40px;
     background: linear-gradient(135deg, #173c4a 0%, #0f766e 100%);
     color: #fff;
     border-radius: 0 0 24px 24px;
-    overflow: hidden;
+    overflow: visible;
     margin-bottom: 18px;
     box-shadow: var(--shadow);
+}
+
+.hero-copy {
+    min-width: 0;
 }
 
 .hero .eyebrow {
@@ -124,6 +138,32 @@ body {
     font-style: normal;
 }
 
+.hero-project {
+    margin: 4px 0 24px;
+    max-width: 640px;
+    padding: 18px 22px;
+    border-left: 3px solid #d4a574;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 0 14px 14px 0;
+}
+
+.hero-project-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #a5cec7;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.hero-project-name {
+    margin: 0;
+    font: 600 clamp(24px, 3vw, 34px) / 1.28 "Cormorant Garamond", Georgia, serif;
+    color: #fff;
+    letter-spacing: -0.01em;
+}
+
 .hero p {
     color: #c0d3d2;
     max-width: 520px;
@@ -138,10 +178,75 @@ body {
 }
 
 .hero-art {
-    width: 360px;
-    height: 210px;
+    width: 260px;
+    height: 260px;
     position: relative;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hero-medallion {
+    position: relative;
+    width: 240px;
+    height: 240px;
+    display: grid;
+    place-items: center;
+}
+
+.hero-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(250, 247, 242, 0.28);
+    pointer-events: none;
+}
+
+.hero-ring-outer {
+    width: 240px;
+    height: 240px;
+}
+
+.hero-ring-mid {
+    width: 188px;
+    height: 188px;
+}
+
+.hero-ring-inner {
+    width: 136px;
+    height: 136px;
+}
+
+.hero-stat {
+    position: relative;
+    z-index: 2;
+    width: 118px;
+    height: 118px;
+    border-radius: 50%;
+    background: #faf7f2;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    padding: 12px;
+    box-shadow: 0 14px 34px rgba(23, 37, 42, 0.18);
+}
+
+.hero-stat strong {
+    display: block;
+    font: 700 44px "Cormorant Garamond", Georgia, serif;
+    color: #2d2926;
+    line-height: 0.95;
+}
+
+.hero-stat span {
+    display: block;
+    margin-top: 6px;
+    font-size: 10px;
+    color: #7a6f63;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    line-height: 1.3;
+    max-width: 90px;
 }
 
 .orbit {
@@ -307,31 +412,10 @@ body {
 }
 
 .donut-wrap-hero {
-    position: absolute;
-    top: 10px;
-    left: 85px;
-    z-index: 2;
-}
-
-.hero-stat {
-    position: absolute;
-    top: 73px;
-    left: 142px;
-    text-align: center;
-    z-index: 1;
-}
-
-.hero-stat strong {
-    display: block;
-    font: 700 42px "Space Grotesk", sans-serif;
-    color: #fff;
-}
-
-.hero-stat span {
-    font-size: 11px;
-    color: #a5cec7;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
+    position: relative;
+    width: 220px;
+    height: 220px;
+    margin: 0 auto;
 }
 
 .donut-chart,
@@ -372,13 +456,25 @@ body {
     font: 700 28px "Space Grotesk", sans-serif;
 }
 
+.donut-wrap-hero .donut-center {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 112px;
+    height: 112px;
+    background: #faf7f2;
+    border-radius: 50%;
+    box-shadow: 0 14px 34px rgba(23, 37, 42, 0.18);
+}
+
 .donut-wrap-hero .donut-center strong {
     font-size: 34px;
-    color: #fff;
+    color: #2d2926;
 }
 
 .donut-wrap-hero .donut-center span {
-    color: #a5cec7;
+    color: #7a6f63;
 }
 
 .donut-center span,
@@ -742,27 +838,92 @@ tbody tr.row-highlight {
     border: 1px solid #f5c4be;
 }
 
+.search-card {
+    margin-bottom: 18px;
+}
+
+.search-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.search-wrap-wide {
+    flex: 1 1 320px;
+    max-width: none;
+}
+
+.empty-results {
+    color: var(--muted);
+    margin: 0;
+}
+
+.project-list {
+    display: grid;
+    gap: 12px;
+}
+
+.project-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #faf7f2;
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.project-item:hover {
+    background: #f0e8da;
+    border-color: #cfc3b2;
+    transform: translateY(-1px);
+}
+
+.project-item strong {
+    display: block;
+    font-size: 18px;
+    margin-bottom: 4px;
+}
+
+.project-item span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.project-meta {
+    display: grid;
+    gap: 4px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+}
+
 @media (max-width: 960px) {
     .shell {
         padding: 0 18px 24px;
     }
 
     .hero {
-        flex-direction: column;
-        align-items: flex-start;
-        min-height: auto;
+        grid-template-columns: 1fr;
+        padding: 36px 24px;
     }
 
     .hero-art {
         width: 100%;
-        max-width: 360px;
-        margin-top: 12px;
-        min-height: 220px;
+        max-width: 260px;
+        height: 240px;
+        margin: 0 auto;
     }
 
     .donut-wrap-hero {
-        left: 50%;
-        transform: translateX(-50%);
+        width: 200px;
+        height: 200px;
     }
 
     .charts-grid {

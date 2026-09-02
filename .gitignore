@@ -2,5 +2,7 @@
 /uploads/*
 !/uploads/.gitkeep
 !/uploads/.htaccess
+/database/*.sqlite
+/database/*.sqlite-journal
 composer.phar
 cacert.pem

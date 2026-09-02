@@ -71,10 +71,10 @@ final class DashboardRenderer
     <div class="shell">
         <header class="topbar">
             <div class="brand">
-                <span class="brand-mark">🛡️</span>
+                <?= $this->brandMark() ?>
                 <div>
-                    <div class="eyebrow">Architecture risk operations</div>
-                    <h1>Risk assessment control room</h1>
+                    <div class="brand-title">Architecture Risk</div>
+                    <h1>Assessment register</h1>
                 </div>
             </div>
             <div class="updated">
@@ -85,17 +85,18 @@ final class DashboardRenderer
 
         <main>
             <section class="hero">
-                <div>
+                <div class="hero-copy">
                     <div class="eyebrow">Executive view / architecture risk</div>
-                    <h2>Risk<br><em>Dashboard.</em> 📊</h2>
-                    <p>🔍 <?= $this->e($solutionName) ?></p>
+                    <h2>Risk<br><em>Dashboard.</em></h2>
+                    <div class="hero-project">
+                        <span class="hero-project-label">Project</span>
+                        <p class="hero-project-name"><?= $this->e($solutionName) ?></p>
+                    </div>
                     <div class="hero-actions">
-                        <a class="button ghost" href="index.php">📤 Upload another file</a>
+                        <a class="button ghost" href="index.php">Upload another file</a>
                     </div>
                 </div>
                 <div class="hero-art">
-                    <div class="orbit orbit-a"></div>
-                    <div class="orbit orbit-b"></div>
                     <?= $this->renderDonutChart($statusSlices, 'hero-donut', (string) $summary['total'], 'checks', true) ?>
                 </div>
             </section>
@@ -545,6 +546,13 @@ final class DashboardRenderer
             'x' => $cx + ($radius * cos($radians)),
             'y' => $cy + ($radius * sin($radians)),
         ];
+    }
+
+    private function brandMark(): string
+    {
+        $path = dirname(__DIR__) . '/public/includes/brand-mark.php';
+
+        return is_readable($path) ? (string) file_get_contents($path) : '';
     }
 
     private function e(string $value): string
