@@ -132,6 +132,7 @@ $totalProjects = $repository->countAll();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($config['app_name'], ENT_QUOTES, 'UTF-8') ?></title>
+    <?php require __DIR__ . '/includes/theme-head.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css">
@@ -146,17 +147,24 @@ $totalProjects = $repository->countAll();
                     <h1>Assessment register</h1>
                 </div>
             </div>
-            <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
+            <div class="topbar-actions">
+                <?php require __DIR__ . '/includes/theme-controls.php'; ?>
+                <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
+            </div>
         </header>
 
         <main>
-            <section class="hero">
-                <div class="hero-copy">
-                    <div class="eyebrow">Architecture risk assessment</div>
-                    <h2>Find any project by <em>name.</em></h2>
-                    <p>Upload a new workbook or search saved assessments stored in the local SQLite database.</p>
+            <section class="hero hero-compact">
+                <div class="hero-main">
+                    <div class="hero-head">
+                        <div class="hero-intro">
+                            <div class="eyebrow">Architecture risk assessment</div>
+                            <h2>Find any project by <em>name.</em></h2>
+                            <p>Upload a workbook or search saved assessments in SQLite.</p>
+                        </div>
+                        <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $totalProjects, 'saved projects'); ?>
+                    </div>
                 </div>
-                <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $totalProjects, 'saved projects'); ?>
             </section>
 
             <?php if ($error !== ''): ?>
@@ -219,5 +227,6 @@ $totalProjects = $repository->countAll();
             </section>
         </main>
     </div>
+    <script src="assets/js/theme.js"></script>
 </body>
 </html>

@@ -63,6 +63,7 @@ final class DashboardRenderer
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $this->e($solutionName) ?></title>
+    <?php require dirname(__DIR__) . '/public/includes/theme-head.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css">
@@ -77,32 +78,40 @@ final class DashboardRenderer
                     <h1>Assessment register</h1>
                 </div>
             </div>
-            <div class="updated">
-                <span class="live-dot"></span>
-                <span>📅 Assessment date <?= $this->e($assessmentDate) ?></span>
+            <div class="topbar-actions">
+                <?php require dirname(__DIR__) . '/public/includes/theme-controls.php'; ?>
+                <div class="updated">
+                    <span class="live-dot"></span>
+                    <span>Assessment date <?= $this->e($assessmentDate) ?></span>
+                </div>
             </div>
         </header>
 
         <main>
-            <section class="hero">
-                <div class="hero-copy">
-                    <div class="eyebrow">Executive view / architecture risk</div>
-                    <h2>Risk<br><em>Dashboard.</em></h2>
+            <section class="hero hero-compact">
+                <div class="hero-main">
+                    <div class="hero-head">
+                        <div class="hero-intro">
+                            <div class="eyebrow">Executive view / architecture risk</div>
+                            <h2>Risk <em>Dashboard</em></h2>
+                        </div>
+                        <div class="hero-art">
+                            <?= $this->renderDonutChart($statusSlices, 'hero-donut', (string) $summary['total'], 'checks', true) ?>
+                        </div>
+                    </div>
                     <div class="hero-project">
                         <span class="hero-project-label">Project</span>
                         <p class="hero-project-name"><?= $this->e($solutionName) ?></p>
                     </div>
                     <div class="hero-actions">
                         <a class="button ghost" href="index.php">Upload another file</a>
+                        <a class="button button-primary" href="#risk-register">View register</a>
                     </div>
-                </div>
-                <div class="hero-art">
-                    <?= $this->renderDonutChart($statusSlices, 'hero-donut', (string) $summary['total'], 'checks', true) ?>
                 </div>
             </section>
 
             <section class="kpis" id="kpi-tiles">
-                <button type="button" class="kpi kpi-clickable is-active" data-filter-type="all" data-filter-value="" aria-pressed="true">
+                <button type="button" class="kpi kpi-clickable tone-all is-active" data-filter-type="all" data-filter-value="" aria-pressed="true">
                     <span class="kpi-emoji">📋</span>
                     <div class="eyebrow">Total checks</div>
                     <strong><?= (int) $summary['total'] ?></strong>
@@ -139,12 +148,12 @@ final class DashboardRenderer
             </section>
 
             <section class="meta-grid">
-                <div class="meta-item"><span class="label">🏢 Vendor</span><strong><?= $this->e($metadata['vendor']) ?></strong></div>
-                <div class="meta-item"><span class="label">📍 Scope</span><strong><?= $this->e($metadata['scope']) ?></strong></div>
-                <div class="meta-item"><span class="label">🏗️ Architecture model</span><strong><?= $this->e($metadata['architecture_model']) ?></strong></div>
-                <div class="meta-item"><span class="label">👤 Reviewer</span><strong><?= $this->e($metadata['reviewer']) ?></strong></div>
+                <div class="meta-item meta-vendor"><span class="label">Vendor</span><strong><?= $this->e($metadata['vendor']) ?></strong></div>
+                <div class="meta-item meta-scope"><span class="label">Scope</span><strong><?= $this->e($metadata['scope']) ?></strong></div>
+                <div class="meta-item meta-arch"><span class="label">Architecture model</span><strong><?= $this->e($metadata['architecture_model']) ?></strong></div>
+                <div class="meta-item meta-reviewer"><span class="label">Reviewer</span><strong><?= $this->e($metadata['reviewer']) ?></strong></div>
                 <?php if ($sourceFilename !== ''): ?>
-                    <div class="meta-item"><span class="label">📁 Source file</span><strong><?= $this->e($sourceFilename) ?></strong></div>
+                    <div class="meta-item meta-file"><span class="label">Source file</span><strong><?= $this->e($sourceFilename) ?></strong></div>
                 <?php endif; ?>
             </section>
 
@@ -302,6 +311,7 @@ final class DashboardRenderer
             </section>
         </main>
     </div>
+    <script src="assets/js/theme.js"></script>
     <script src="assets/js/dashboard.js"></script>
 </body>
 </html>
