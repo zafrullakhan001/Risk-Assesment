@@ -10,6 +10,7 @@ final class AssessmentInsights
 {
     /**
      * @param array<string, array{action?: string, comment?: string}> $responses
+     * @param array<string, string> $findingStatuses
      * @return array{
      *   readiness: array{score: int, band: string, verdict: string, summary: string},
      *   residual: array{high: int, risk: int, tbd: int, gap: int, open_findings: int},
@@ -21,10 +22,10 @@ final class AssessmentInsights
      *   top_risks: list<array<string, string>>
      * }
      */
-    public function build(Assessment $assessment, array $responses = []): array
+    public function build(Assessment $assessment, array $responses = [], array $findingStatuses = []): array
     {
         $items = array_merge($assessment->items, $assessment->dueDiligenceItems);
-        $findings = $this->normalizeFindings($assessment->workbook['findings'] ?? []);
+        $findings = $this->normalizeFindings($assessment->workbook['findings'] ?? [], $findingStatuses);
         $checklist = array_values($assessment->workbook['legend']['checklist'] ?? []);
 
         $high = 0;
@@ -231,8 +232,9 @@ final class AssessmentInsights
     }
 
     /** @param list<array<string, mixed>> $findings */
+    /** @param array<string, string> $findingStatuses */
     /** @return list<array<string, string>> */
-    private function normalizeFindings(array $findings): array
+    private function normalizeFindings(array $findings, array $findingStatuses = []): array
     {
         $normalized = [];
         foreach ($findings as $index => $finding) {
@@ -243,12 +245,14 @@ final class AssessmentInsights
             if ($text === '') {
                 continue;
             }
+            $findingId = (string) ($finding['id'] ?? ('finding-' . $index));
             $status = trim((string) ($finding['status'] ?? 'Open'));
-            if (!in_array($status, ['Open', 'Approved', 'Expired'], true)) {
-                $status = 'Open';
+            if (isset($findingStatuses[$findingId])) {
+                $status = $findingStatuses[$findingId];
             }
+            $status = \RiskAssessment\Repositories\FindingStatusRepository::normalizeStatus($status);
             $normalized[] = [
-                'id' => (string) ($finding['id'] ?? ('finding-' . $index)),
+                'id' => $findingId,
                 'finding' => $text,
                 'policy_reference' => trim((string) ($finding['policy_reference'] ?? '')),
                 'impact' => trim((string) ($finding['impact'] ?? '')),

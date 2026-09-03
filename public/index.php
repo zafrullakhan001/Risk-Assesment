@@ -2,28 +2,28 @@
 
 declare(strict_types=1);
 
-session_start();
-
-require_once dirname(__DIR__) . '/vendor/autoload.php';
+require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\AssessmentComparer;
 use RiskAssessment\DashboardRenderer;
-use RiskAssessment\Database\Database;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
+use RiskAssessment\GoliveGate;
 use RiskAssessment\Repositories\AssessmentRepository;
 use RiskAssessment\Repositories\FinalEvaluationRepository;
+use RiskAssessment\Repositories\FindingStatusRepository;
 use RiskAssessment\Repositories\ItemResponseRepository;
 use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
 
-$config = require dirname(__DIR__) . '/config/config.php';
-$dbConfig = require dirname(__DIR__) . '/config/database.php';
-$repository = new AssessmentRepository(Database::connection($dbConfig));
-$responseRepository = new ItemResponseRepository(Database::connection($dbConfig));
-$evaluationRepository = new FinalEvaluationRepository(Database::connection($dbConfig));
-$projectLinksRepository = new ProjectLinksRepository(Database::connection($dbConfig));
-$projectMermaidRepository = new ProjectMermaidRepository(Database::connection($dbConfig));
+$currentUser = $auth->requireAuth();
+$repository = new AssessmentRepository($pdo);
+$responseRepository = new ItemResponseRepository($pdo);
+$evaluationRepository = new FinalEvaluationRepository($pdo);
+$projectLinksRepository = new ProjectLinksRepository($pdo);
+$projectMermaidRepository = new ProjectMermaidRepository($pdo);
+$findingStatusRepository = new FindingStatusRepository($pdo);
+$goliveGate = new GoliveGate();
 
 $error = '';
 $flash = '';
@@ -34,10 +34,6 @@ $searchResults = $searchQuery !== '' || isset($_GET['q'])
     : $repository->listRecent(50);
 
 $assessmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
-
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
 
 if (isset($_SESSION['dashboard_html']) && ($_GET['view'] ?? '') === '1' && $assessmentId <= 0) {
     $dashboardHtml = (string) $_SESSION['dashboard_html'];
@@ -190,6 +186,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($postedAction === 'save_finding_status') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $findingId = trim((string) ($_POST['finding_id'] ?? ''));
+            $status = (string) ($_POST['status'] ?? 'Open');
+
+            if ($targetId <= 0 || $findingId === '') {
+                throw new RuntimeException('Invalid exception status payload.');
+            }
+
+            if (!$findingStatusRepository->upsert($targetId, $findingId, $status)) {
+                throw new RuntimeException('Unable to save exception status.');
+            }
+
+            $record = $repository->findById($targetId);
+            if ($record === null) {
+                throw new RuntimeException('Assessment not found.');
+            }
+
+            $responses = $responseRepository->listForAssessment($targetId);
+            $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
+            $evaluation = $evaluationRepository->findByAssessmentId($targetId);
+            $notes = (string) ($evaluation['notes'] ?? '');
+            $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+
+            echo json_encode([
+                'ok' => true,
+                'status' => FindingStatusRepository::normalizeStatus($status),
+                'gates' => $gate,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
     if ($postedAction === 'save_final_evaluation') {
         header('Content-Type: application/json; charset=utf-8');
         try {
@@ -208,14 +246,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Open a saved assessment before saving the final evaluation.');
             }
 
+            if ($readyToGolive) {
+                $record = $repository->findById($targetId);
+                if ($record === null) {
+                    throw new RuntimeException('Assessment not found.');
+                }
+                $responses = $responseRepository->listForAssessment($targetId);
+                $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
+                $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+                if (!$gate['ready_allowed']) {
+                    throw new RuntimeException($goliveGate->formatFailureMessage($gate));
+                }
+            }
+
             if (!$evaluationRepository->upsert($targetId, $evaluatorName, $evaluatorEmail, $notes, $readyToGolive)) {
                 throw new RuntimeException('Unable to save final evaluation.');
             }
 
             $saved = $evaluationRepository->findByAssessmentId($targetId);
+            $record = $repository->findById($targetId);
+            $gate = $record !== null
+                ? $goliveGate->evaluate(
+                    $record['assessment'],
+                    $responseRepository->listForAssessment($targetId),
+                    $findingStatusRepository->listForAssessment($targetId),
+                    $notes
+                )
+                : ['ready_allowed' => false, 'rules' => []];
             echo json_encode([
                 'ok' => true,
                 'evaluation' => $saved,
+                'gates' => $gate,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);
@@ -281,59 +342,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('Please choose an Excel file to upload.');
         }
 
-        $file = $_FILES['assessment_file'];
-        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            throw new RuntimeException(match ($file['error'] ?? UPLOAD_ERR_NO_FILE) {
-                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The uploaded file exceeds the allowed size.',
-                UPLOAD_ERR_NO_FILE => 'Please choose an Excel file to upload.',
-                default => 'The file upload failed. Please try again.',
-            });
+        $uploadedFiles = normalize_assessment_uploads($_FILES['assessment_file']);
+        if ($uploadedFiles === []) {
+            throw new RuntimeException('Please choose an Excel file to upload.');
         }
 
-        if (($file['size'] ?? 0) > $config['max_upload_bytes']) {
-            throw new RuntimeException('The uploaded file exceeds the 5 MB limit.');
-        }
-
-        $originalName = (string) ($file['name'] ?? '');
-        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        if (!in_array($extension, $config['allowed_extensions'], true)) {
-            throw new RuntimeException('Only .xlsx files are supported.');
-        }
-
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo->file($file['tmp_name'] ?? '') ?: '';
-        if (!in_array($mimeType, $config['allowed_mime_types'], true)) {
-            throw new RuntimeException('The uploaded file is not a valid Excel workbook.');
+        $maxFiles = max(1, (int) ($config['max_upload_files'] ?? 10));
+        if (count($uploadedFiles) > $maxFiles) {
+            throw new RuntimeException('You can upload up to ' . $maxFiles . ' workbooks at once.');
         }
 
         if (!is_dir($config['upload_dir']) && !mkdir($config['upload_dir'], 0755, true) && !is_dir($config['upload_dir'])) {
             throw new RuntimeException('Unable to prepare the upload directory.');
         }
 
-        $storedName = bin2hex(random_bytes(16)) . '.xlsx';
-        $destination = $config['upload_dir'] . DIRECTORY_SEPARATOR . $storedName;
+        $parser = new ExcelParser();
+        $savedIds = [];
+        $failures = [];
+        $lastAssessment = null;
+        $lastOriginalName = '';
+        $lastStoredName = '';
 
-        if (!move_uploaded_file($file['tmp_name'], $destination)) {
-            throw new RuntimeException('Unable to store the uploaded file.');
+        foreach ($uploadedFiles as $file) {
+            $originalName = (string) ($file['name'] ?? '');
+            $label = $originalName !== '' ? $originalName : 'workbook';
+
+            try {
+                if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                    throw new RuntimeException(match ($file['error'] ?? UPLOAD_ERR_NO_FILE) {
+                        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The uploaded file exceeds the allowed size.',
+                        UPLOAD_ERR_NO_FILE => 'Please choose an Excel file to upload.',
+                        default => 'The file upload failed. Please try again.',
+                    });
+                }
+
+                if (($file['size'] ?? 0) > $config['max_upload_bytes']) {
+                    throw new RuntimeException('The uploaded file exceeds the 5 MB limit.');
+                }
+
+                $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+                if (!in_array($extension, $config['allowed_extensions'], true)) {
+                    throw new RuntimeException('Only .xlsx files are supported.');
+                }
+
+                $tmpName = (string) ($file['tmp_name'] ?? '');
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mimeType = $tmpName !== '' ? ($finfo->file($tmpName) ?: '') : '';
+                if (!in_array($mimeType, $config['allowed_mime_types'], true)) {
+                    throw new RuntimeException('The uploaded file is not a valid Excel workbook.');
+                }
+
+                $storedName = bin2hex(random_bytes(16)) . '.xlsx';
+                $destination = $config['upload_dir'] . DIRECTORY_SEPARATOR . $storedName;
+
+                if (!move_uploaded_file($tmpName, $destination)) {
+                    throw new RuntimeException('Unable to store the uploaded file.');
+                }
+
+                try {
+                    $assessment = $parser->parse($destination);
+                    $savedId = $repository->save($assessment, $destination, $originalName);
+                } catch (Throwable $parseException) {
+                    if (is_file($destination)) {
+                        @unlink($destination);
+                    }
+                    throw $parseException;
+                }
+
+                $savedIds[] = $savedId;
+                $lastAssessment = $assessment;
+                $lastOriginalName = $originalName;
+                $lastStoredName = $storedName;
+            } catch (Throwable $fileException) {
+                $failures[] = $label . ': ' . $fileException->getMessage();
+            }
         }
 
-        $parser = new ExcelParser();
-        $assessment = $parser->parse($destination);
-        $savedId = $repository->save($assessment, $destination, $originalName);
+        if ($savedIds === []) {
+            throw new RuntimeException(implode(' ', $failures) ?: 'Please choose an Excel file to upload.');
+        }
 
-        $_SESSION['assessment'] = [
-            'id' => $savedId,
-            'metadata' => $assessment->metadata,
-            'items' => $assessment->items,
-            'due_diligence_items' => $assessment->dueDiligenceItems,
-            'workbook' => $assessment->workbook,
-            'summary' => $assessment->summary,
-            'source_filename' => $originalName,
-            'stored_filename' => $storedName,
-        ];
+        if ($lastAssessment !== null) {
+            $_SESSION['assessment'] = [
+                'id' => $savedIds[array_key_last($savedIds)],
+                'metadata' => $lastAssessment->metadata,
+                'items' => $lastAssessment->items,
+                'due_diligence_items' => $lastAssessment->dueDiligenceItems,
+                'workbook' => $lastAssessment->workbook,
+                'summary' => $lastAssessment->summary,
+                'source_filename' => $lastOriginalName,
+                'stored_filename' => $lastStoredName,
+            ];
+        }
 
-        header('Location: index.php?view=1&id=' . $savedId);
-        exit;
+        if ($failures !== []) {
+            $error = implode(' ', $failures);
+            $savedCount = count($savedIds);
+            $flash = $savedCount === 1
+                ? '1 workbook was saved. Fix the files that failed and try again.'
+                : $savedCount . ' workbooks were saved. Fix the files that failed and try again.';
+            $searchResults = $searchQuery !== '' || isset($_GET['q'])
+                ? $repository->searchByProjectName($searchQuery)
+                : $repository->listRecent(50);
+        } else {
+            $savedId = $savedIds[array_key_last($savedIds)];
+            $uploadedCount = count($savedIds);
+            $location = 'index.php?view=1&id=' . $savedId;
+            if ($uploadedCount > 1) {
+                $location .= '&uploaded=' . $uploadedCount;
+            }
+            header('Location: ' . $location);
+            exit;
+        }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
@@ -341,6 +461,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if (isset($_GET['deleted'])) {
     $flash = 'Assessment version deleted.';
+}
+
+if (isset($_GET['uploaded']) && $flash === '') {
+    $uploadedCount = max(1, (int) $_GET['uploaded']);
+    $flash = $uploadedCount === 1
+        ? 'Workbook uploaded.'
+        : $uploadedCount . ' workbooks uploaded.';
 }
 
 if (isset($_GET['deleted_older'])) {
@@ -371,6 +498,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $evaluation = $evaluationRepository->findByAssessmentId($assessmentId);
             $projectLinks = $projectLinksRepository->listForAssessment($assessmentId);
             $projectDiagrams = $projectMermaidRepository->listForAssessment($assessmentId);
+            $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -383,7 +511,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $responses,
                 $evaluation,
                 $projectLinks,
-                $projectDiagrams
+                $projectDiagrams,
+                $findingStatuses
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -410,6 +539,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
         $evaluation = $storedId > 0 ? $evaluationRepository->findByAssessmentId($storedId) : null;
         $projectLinks = $storedId > 0 ? $projectLinksRepository->listForAssessment($storedId) : [];
         $projectDiagrams = $storedId > 0 ? $projectMermaidRepository->listForAssessment($storedId) : [];
+        $findingStatuses = $storedId > 0 ? $findingStatusRepository->listForAssessment($storedId) : [];
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render(
             $assessment,
@@ -422,7 +552,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $responses,
             $evaluation,
             $projectLinks,
-            $projectDiagrams
+            $projectDiagrams,
+            $findingStatuses
         );
     }
 }
@@ -457,6 +588,7 @@ $totalProjects = $repository->countAll();
             </a>
             <div class="topbar-actions">
                 <a class="button ghost home-link" href="#find-projects">Find by name</a>
+                <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/theme-controls.php'; ?>
                 <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
             </div>
@@ -505,11 +637,15 @@ $totalProjects = $repository->countAll();
                 <?php else: ?>
                     <div class="project-list">
                         <?php foreach ($searchResults as $project): ?>
+                            <?php $goliveStatus = AssessmentRepository::goliveCardStatus($project); ?>
                             <div class="project-item project-item-row">
                                 <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
                                     <div>
                                         <strong><?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?></strong>
                                         <span><?= htmlspecialchars((string) $project['vendor'], ENT_QUOTES, 'UTF-8') ?> · #<?= (int) $project['id'] ?></span>
+                                        <em class="project-status is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($goliveStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= htmlspecialchars($goliveStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                        </em>
                                     </div>
                                     <div class="project-meta">
                                         <span><?= htmlspecialchars((string) ($project['assessment_date'] ?: 'No date'), ENT_QUOTES, 'UTF-8') ?></span>
@@ -530,24 +666,87 @@ $totalProjects = $repository->countAll();
 
             <section class="upload-card" id="upload">
                 <h2>Upload assessment</h2>
-                <p>Supports the Architecture Risk Assessment workbook, including Due Diligence Extension, Governance Summary, and Scoring Legend tabs.</p>
+                <p>Drop one or more Architecture Risk Assessment workbooks, including Due Diligence Extension, Governance Summary, and Scoring Legend tabs.</p>
                 <ul class="format-list">
                     <li>Architecture sheet: metadata in rows 2–7, headers in row 8, checks from row 9</li>
                     <li>Due Diligence Extension: category items with status, risk, actions, and sources</li>
                     <li>JSON Due Diligence Summary: ratings, recommendations, and exception findings</li>
                 </ul>
 
-                <form method="post" enctype="multipart/form-data" class="upload-form">
+                <form method="post" enctype="multipart/form-data" class="upload-form" id="upload-form">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-                    <label class="file-input">
-                        <span>Excel workbook (.xlsx)</span>
-                        <input type="file" name="assessment_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-                    </label>
+                    <div class="file-drop" id="file-drop" data-max-files="<?= (int) ($config['max_upload_files'] ?? 10) ?>">
+                        <span class="file-drop-caption">Excel workbook (.xlsx)</span>
+                        <div class="file-drop-zone" id="file-drop-zone">
+                            <input
+                                type="file"
+                                name="assessment_file[]"
+                                id="assessment-file"
+                                class="file-drop-input"
+                                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                aria-label="Excel workbooks"
+                                multiple
+                                required
+                            >
+                            <div class="file-drop-copy" id="file-drop-copy">
+                                <strong>Drop workbooks here</strong>
+                                <em>or click to browse — multiple .xlsx files allowed</em>
+                            </div>
+                        </div>
+                        <p class="file-drop-status" id="file-drop-status" hidden></p>
+                        <ul class="file-drop-list" id="file-drop-list" hidden></ul>
+                    </div>
                     <button type="submit" class="button button-primary">Generate dashboard</button>
                 </form>
             </section>
         </main>
     </div>
     <script src="assets/js/theme.js"></script>
+    <script src="assets/js/upload.js?v=<?= filemtime(__DIR__ . '/assets/js/upload.js') ?>"></script>
 </body>
 </html>
+<?php
+
+/**
+ * @param array<string, mixed> $filesField
+ * @return list<array{name: string, type: string, tmp_name: string, error: int, size: int}>
+ */
+function normalize_assessment_uploads(array $filesField): array
+{
+    if (!isset($filesField['name'])) {
+        return [];
+    }
+
+    if (!is_array($filesField['name'])) {
+        $error = (int) ($filesField['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE && (string) $filesField['name'] === '') {
+            return [];
+        }
+
+        return [[
+            'name' => (string) $filesField['name'],
+            'type' => (string) ($filesField['type'] ?? ''),
+            'tmp_name' => (string) ($filesField['tmp_name'] ?? ''),
+            'error' => $error,
+            'size' => (int) ($filesField['size'] ?? 0),
+        ]];
+    }
+
+    $normalized = [];
+    foreach ($filesField['name'] as $index => $name) {
+        $error = (int) ($filesField['error'][$index] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE && (string) $name === '') {
+            continue;
+        }
+
+        $normalized[] = [
+            'name' => (string) $name,
+            'type' => (string) ($filesField['type'][$index] ?? ''),
+            'tmp_name' => (string) ($filesField['tmp_name'][$index] ?? ''),
+            'error' => $error,
+            'size' => (int) ($filesField['size'][$index] ?? 0),
+        ];
+    }
+
+    return $normalized;
+}

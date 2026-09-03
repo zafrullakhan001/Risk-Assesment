@@ -101,7 +101,114 @@ final class Database
             )'
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_project_mermaid_diagrams_assessment_id ON project_mermaid_diagrams (assessment_id)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS finding_statuses (
+                assessment_id INTEGER NOT NULL,
+                finding_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT \'Open\',
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                PRIMARY KEY (assessment_id, finding_id),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_finding_statuses_assessment_id ON finding_statuses (assessment_id)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\'))
+            )'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                is_approved INTEGER NOT NULL DEFAULT 0,
+                is_disabled INTEGER NOT NULL DEFAULT 0,
+                auth_source TEXT NOT NULL DEFAULT \'local\',
+                display_name TEXT NOT NULL DEFAULT \'\',
+                notes TEXT NOT NULL DEFAULT \'\',
+                last_login TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                UNIQUE (username),
+                UNIQUE (email)
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_users_auth_source ON users (auth_source)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS user_audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event TEXT NOT NULL,
+                actor_id INTEGER,
+                actor_username TEXT,
+                target_user_id INTEGER,
+                target_username TEXT,
+                details TEXT NOT NULL DEFAULT \'\',
+                ip_address TEXT NOT NULL DEFAULT \'\',
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\'))
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_user_audit_log_created_at ON user_audit_log (created_at)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_user_audit_log_event ON user_audit_log (event)');
+        self::seedAuthSettings($pdo);
+        self::seedDefaultAdmin($pdo);
         self::migrateLegacyMermaidDiagrams($pdo);
+    }
+
+    private static function seedAuthSettings(PDO $pdo): void
+    {
+        $defaults = [
+            'local_auth_enabled' => '1',
+            'local_registration_enabled' => '0',
+            'ldap_enabled' => '0',
+            'ldap_auto_create_users' => '1',
+            'ldap_auto_update_users' => '1',
+            'ldap_auto_approve' => '1',
+            'ldap_servers' => '[]',
+        ];
+
+        $statement = $pdo->prepare(
+            'INSERT INTO app_settings (key, value, updated_at)
+             SELECT :key, :value, datetime(\'now\')
+             WHERE NOT EXISTS (SELECT 1 FROM app_settings WHERE key = :exists_key)'
+        );
+        foreach ($defaults as $key => $value) {
+            $statement->execute([
+                ':key' => $key,
+                ':value' => $value,
+                ':exists_key' => $key,
+            ]);
+        }
+    }
+
+    private static function seedDefaultAdmin(PDO $pdo): void
+    {
+        $count = $pdo->query('SELECT COUNT(*) FROM users');
+        if ($count !== false && (int) $count->fetchColumn() > 0) {
+            return;
+        }
+
+        $hash = password_hash(\RiskAssessment\Auth::DEFAULT_ADMIN_PASSWORD, PASSWORD_DEFAULT);
+        if ($hash === false) {
+            return;
+        }
+
+        $statement = $pdo->prepare(
+            'INSERT INTO users (username, email, password_hash, is_admin, is_approved, is_disabled,
+                                auth_source, display_name, notes, created_at)
+             VALUES (:username, :email, :password_hash, 1, 1, 0, \'local\', :display_name, :notes, datetime(\'now\'))'
+        );
+        $statement->execute([
+            ':username' => \RiskAssessment\Auth::DEFAULT_ADMIN_USERNAME,
+            ':email' => 'admin@localhost',
+            ':password_hash' => $hash,
+            ':display_name' => 'Administrator',
+            ':notes' => 'Default administrator — change this password after first sign-in.',
+        ]);
     }
 
     private static function migrateLegacyMermaidDiagrams(PDO $pdo): void

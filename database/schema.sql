@@ -46,3 +46,35 @@ CREATE TABLE IF NOT EXISTS assessment_items (
     INDEX idx_status (status),
     INDEX idx_risk_level (risk_level)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS users (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    password_hash TEXT NOT NULL,
+    is_admin TINYINT(1) NOT NULL DEFAULT 0,
+    is_approved TINYINT(1) NOT NULL DEFAULT 0,
+    is_disabled TINYINT(1) NOT NULL DEFAULT 0,
+    auth_source VARCHAR(32) NOT NULL DEFAULT 'local',
+    display_name VARCHAR(255) NOT NULL DEFAULT '',
+    notes TEXT,
+    last_login DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_users_username (username),
+    UNIQUE KEY uq_users_email (email),
+    INDEX idx_users_auth_source (auth_source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_audit_log (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    event VARCHAR(128) NOT NULL,
+    actor_id INT UNSIGNED NULL,
+    actor_username VARCHAR(255) NULL,
+    target_user_id INT UNSIGNED NULL,
+    target_username VARCHAR(255) NULL,
+    details TEXT,
+    ip_address VARCHAR(64) NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_audit_created_at (created_at),
+    INDEX idx_user_audit_event (event)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -4,5 +4,7 @@
 !/uploads/.htaccess
 /database/*.sqlite
 /database/*.sqlite-journal
+/database/.encryption_key
+/database/updater.lock
 composer.phar
 cacert.pem

@@ -43,6 +43,7 @@ final class DashboardRenderer
      * }|null $evaluation
      * @param list<array{id: int, label: string, url: string, sort_order: int}> $projectLinks
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $projectDiagrams
+     * @param array<string, string> $findingStatuses
      */
     public function render(
         Assessment $assessment,
@@ -55,7 +56,8 @@ final class DashboardRenderer
         array $responses = [],
         ?array $evaluation = null,
         array $projectLinks = [],
-        array $projectDiagrams = []
+        array $projectDiagrams = [],
+        array $findingStatuses = []
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -63,7 +65,10 @@ final class DashboardRenderer
         $dueItems = $assessment->dueDiligenceItems;
         $workbook = $assessment->workbook;
         $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
-        $insights = (new AssessmentInsights())->build($assessment, $responses);
+        $insights = (new AssessmentInsights())->build($assessment, $responses, $findingStatuses);
+        $evalNotes = (string) ($evaluation['notes'] ?? '');
+        $goliveGates = (new GoliveGate())->evaluate($assessment, $responses, $findingStatuses, $evalNotes);
+        $goliveGatesJson = json_encode($goliveGates, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
         $decisionViews = new DashboardDecisionViews();
         $projectResources = new DashboardProjectResources();
         $changedKeys = is_array($comparison['changed_keys'] ?? null) ? $comparison['changed_keys'] : [];
@@ -104,6 +109,7 @@ final class DashboardRenderer
     data-assessment-id="<?= (int) $assessmentId ?>"
     data-csrf-token="<?= $this->e($csrfToken) ?>"
     data-progress="<?= $this->e($progressJson) ?>"
+    data-golive-gates="<?= $this->e($goliveGatesJson) ?>"
     class="<?= !empty($evaluation['ready_to_golive']) ? 'is-ready-golive' : '' ?>"
 >
     <div class="shell">
@@ -117,6 +123,7 @@ final class DashboardRenderer
             </a>
             <div class="topbar-actions">
                 <a class="button ghost home-link" href="index.php#find-projects">← Find projects</a>
+                <?php require dirname(__DIR__) . '/public/includes/updates-nav.php'; ?>
                 <?php require dirname(__DIR__) . '/public/includes/theme-controls.php'; ?>
                 <div class="updated">
                     <span class="live-dot"></span>
@@ -247,7 +254,7 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation, $goliveGates) ?>
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>

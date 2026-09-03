@@ -156,6 +156,17 @@ final class DashboardDecisionViews
      *   ready_to_golive?: bool,
      *   updated_at?: string
      * }|null $evaluation
+     * @param array{
+     *   ready_allowed: bool,
+     *   rules: list<array{
+     *     id: string,
+     *     label: string,
+     *     passed: bool,
+     *     detail: string,
+     *     filter_type: string,
+     *     filter_value: string
+     *   }>
+     * } $goliveGates
      */
     public function renderActionsPanel(
         array $insights,
@@ -164,7 +175,8 @@ final class DashboardDecisionViews
         int $currentId = 0,
         string $csrfToken = '',
         array $actionableItems = [],
-        ?array $evaluation = null
+        ?array $evaluation = null,
+        array $goliveGates = []
     ): string {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
@@ -344,6 +356,7 @@ final class DashboardDecisionViews
                         <p class="panel-help">📁 Upload and open a saved assessment to record the final evaluation.</p>
                     <?php else: ?>
                         <p class="panel-help">📝 Capture the evaluator’s notes, identity, and ready-to-go-live decision for this version.</p>
+                        <?= $this->renderGoliveGates($goliveGates) ?>
                         <form id="final-evaluation-form" class="final-evaluation-form" novalidate>
                             <div class="final-eval-grid">
                                 <label>
@@ -361,10 +374,13 @@ final class DashboardDecisionViews
                             </label>
                             <div class="final-eval-footer">
                                 <label class="golive-toggle">
-                                    <input type="checkbox" name="ready_to_golive" id="eval-ready" value="1" <?= $readyToGolive ? 'checked' : '' ?>>
+                                    <input type="checkbox" name="ready_to_golive" id="eval-ready" value="1" <?= $readyToGolive ? 'checked' : '' ?> <?= empty($goliveGates['ready_allowed']) && !$readyToGolive ? 'disabled' : '' ?>>
                                     <span class="golive-toggle-ui" aria-hidden="true"></span>
                                     <span class="golive-toggle-label">🚀 Ready to go-live</span>
                                 </label>
+                                <p class="golive-gate-hint" id="golive-gate-hint" <?= !empty($goliveGates['ready_allowed']) ? 'hidden' : '' ?>>
+                                    Complete all go-live gates before marking ready.
+                                </p>
                                 <div class="final-eval-actions">
                                     <span class="final-eval-status" id="final-eval-status" hidden></span>
                                     <button type="submit" class="button button-primary" id="btn-save-evaluation">💾 Save evaluation</button>
@@ -780,6 +796,79 @@ final class DashboardDecisionViews
                     </li>
                 <?php endforeach; ?>
             </ul>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param array{
+     *   ready_allowed?: bool,
+     *   rules?: list<array{
+     *     id: string,
+     *     label: string,
+     *     passed: bool,
+     *     detail: string,
+     *     filter_type: string,
+     *     filter_value: string
+     *   }>
+     * } $goliveGates
+     */
+    private function renderGoliveGates(array $goliveGates): string
+    {
+        $rules = is_array($goliveGates['rules'] ?? null) ? $goliveGates['rules'] : [];
+        $readyAllowed = !empty($goliveGates['ready_allowed']);
+
+        ob_start();
+        ?>
+        <section
+            class="golive-gates<?= $readyAllowed ? ' is-ready' : ' is-blocked' ?>"
+            id="golive-gates"
+            aria-live="polite"
+        >
+            <div class="golive-gates-head">
+                <span class="golive-gates-icon" aria-hidden="true"><?= $readyAllowed ? '✅' : '🚧' ?></span>
+                <div>
+                    <div class="eyebrow">Go-live gates</div>
+                    <h4><?= $readyAllowed ? 'All gates passed' : 'Gates must pass before sign-off' ?></h4>
+                </div>
+            </div>
+            <ul class="golive-gates-list">
+                <?php foreach ($rules as $rule): ?>
+                    <?php
+                    $passed = !empty($rule['passed']);
+                    $ruleId = (string) ($rule['id'] ?? '');
+                    ?>
+                    <li
+                        class="golive-gate<?= $passed ? ' is-pass' : ' is-fail' ?>"
+                        data-gate-id="<?= $this->e($ruleId) ?>"
+                    >
+                        <span class="golive-gate-status" aria-hidden="true"><?= $passed ? '✅' : '❌' ?></span>
+                        <div class="golive-gate-copy">
+                            <strong><?= $this->e((string) ($rule['label'] ?? '')) ?></strong>
+                            <span class="golive-gate-detail" data-gate-detail="<?= $this->e($ruleId) ?>">
+                                <?= $this->e((string) ($rule['detail'] ?? '')) ?>
+                            </span>
+                        </div>
+                        <?php if (!$passed && ($rule['filter_type'] ?? '') !== ''): ?>
+                            <button
+                                type="button"
+                                class="gate-fix-link"
+                                data-filter-type="<?= $this->e((string) ($rule['filter_type'] ?? '')) ?>"
+                                data-filter-value="<?= $this->e((string) ($rule['filter_value'] ?? '')) ?>"
+                            >
+                                Fix →
+                            </button>
+                        <?php endif; ?>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+            <p class="golive-gates-summary" id="golive-gates-summary">
+                <?= $readyAllowed
+                    ? 'You may mark this version ready to go-live once the evaluation is saved.'
+                    : 'Resolve each failing gate, then save with Ready to go-live checked.' ?>
+            </p>
         </section>
         <?php
 

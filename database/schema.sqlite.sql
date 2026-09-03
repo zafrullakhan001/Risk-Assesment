@@ -87,3 +87,55 @@ CREATE TABLE IF NOT EXISTS project_mermaid_diagrams (
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_mermaid_diagrams_assessment_id ON project_mermaid_diagrams (assessment_id);
+
+CREATE TABLE IF NOT EXISTS finding_statuses (
+    assessment_id INTEGER NOT NULL,
+    finding_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Open',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (assessment_id, finding_id),
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_finding_statuses_assessment_id ON finding_statuses (assessment_id);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    email TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    is_approved INTEGER NOT NULL DEFAULT 0,
+    is_disabled INTEGER NOT NULL DEFAULT 0,
+    auth_source TEXT NOT NULL DEFAULT 'local',
+    display_name TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    last_login TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (username),
+    UNIQUE (email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+CREATE INDEX IF NOT EXISTS idx_users_auth_source ON users (auth_source);
+
+CREATE TABLE IF NOT EXISTS user_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event TEXT NOT NULL,
+    actor_id INTEGER,
+    actor_username TEXT,
+    target_user_id INTEGER,
+    target_username TEXT,
+    details TEXT NOT NULL DEFAULT '',
+    ip_address TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_created_at ON user_audit_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_event ON user_audit_log (event);

@@ -3,6 +3,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabButtons = Array.from(document.querySelectorAll('.dash-tab'));
     const panels = Array.from(document.querySelectorAll('.dash-panel'));
     const assessmentId = document.body.dataset.assessmentId || '0';
+    const csrfToken = document.body.dataset.csrfToken || '';
+
+    let initialGoliveGates = null;
+    try {
+        initialGoliveGates = JSON.parse(document.body.dataset.goliveGates || '{}');
+    } catch (error) {
+        initialGoliveGates = null;
+    }
 
     const activateTab = (tabName, pushState = true) => {
         tabButtons.forEach((button) => {
@@ -385,6 +393,140 @@ document.addEventListener('DOMContentLoaded', () => {
         return parseIntSafe(node.textContent);
     };
 
+    const computeGoliveGatesClient = () => {
+        const highOpen = getOpenMetricValue('high');
+        const openExceptions = Array.from(document.querySelectorAll('.exception-status'))
+            .filter((node) => node.value === 'Open').length;
+        const notesFilled = (document.getElementById('eval-notes')?.value.trim() || '') !== '';
+        const rules = [
+            {
+                id: 'high_risks',
+                label: 'No open High risks',
+                passed: highOpen === 0,
+                detail: highOpen === 0
+                    ? 'All High risks addressed'
+                    : `${highOpen} High risk${highOpen === 1 ? '' : 's'} still open`,
+                filter_type: 'action_tab',
+                filter_value: 'risks',
+            },
+            {
+                id: 'exceptions',
+                label: 'All exceptions approved or expired',
+                passed: openExceptions === 0,
+                detail: openExceptions === 0
+                    ? 'No open governance exceptions'
+                    : `${openExceptions} exception${openExceptions === 1 ? '' : 's'} still open`,
+                filter_type: 'action_tab',
+                filter_value: 'exceptions',
+            },
+            {
+                id: 'notes',
+                label: 'Evaluator notes completed',
+                passed: notesFilled,
+                detail: notesFilled ? 'Notes provided' : 'Add final evaluation notes before sign-off',
+                filter_type: 'action_tab',
+                filter_value: 'signoff',
+            },
+        ];
+        const readyAllowed = rules.every((rule) => rule.passed);
+
+        return {
+            ready_allowed: readyAllowed,
+            rules,
+            residual: { high: highOpen, open_findings: openExceptions },
+        };
+    };
+
+    const applyGoliveGates = (gate) => {
+        if (!gate || !Array.isArray(gate.rules)) {
+            return;
+        }
+
+        const container = document.getElementById('golive-gates');
+        if (container) {
+            container.classList.toggle('is-ready', !!gate.ready_allowed);
+            container.classList.toggle('is-blocked', !gate.ready_allowed);
+            const icon = container.querySelector('.golive-gates-icon');
+            const title = container.querySelector('.golive-gates-head h4');
+            if (icon) {
+                icon.textContent = gate.ready_allowed ? '✅' : '🚧';
+            }
+            if (title) {
+                title.textContent = gate.ready_allowed
+                    ? 'All gates passed'
+                    : 'Gates must pass before sign-off';
+            }
+            gate.rules.forEach((rule) => {
+                const item = container.querySelector(`.golive-gate[data-gate-id="${rule.id}"]`);
+                if (!item) {
+                    return;
+                }
+                item.classList.toggle('is-pass', !!rule.passed);
+                item.classList.toggle('is-fail', !rule.passed);
+                const status = item.querySelector('.golive-gate-status');
+                if (status) {
+                    status.textContent = rule.passed ? '✅' : '❌';
+                }
+                const detail = item.querySelector(`[data-gate-detail="${rule.id}"]`);
+                if (detail) {
+                    detail.textContent = rule.detail || '';
+                }
+                const fixBtn = item.querySelector('.gate-fix-link');
+                if (fixBtn) {
+                    fixBtn.hidden = !!rule.passed;
+                }
+            });
+            const summary = document.getElementById('golive-gates-summary');
+            if (summary) {
+                summary.textContent = gate.ready_allowed
+                    ? 'You may mark this version ready to go-live once the evaluation is saved.'
+                    : 'Resolve each failing gate, then save with Ready to go-live checked.';
+            }
+        }
+
+        const readyCheckbox = document.getElementById('eval-ready');
+        const hint = document.getElementById('golive-gate-hint');
+        if (readyCheckbox && !readyCheckbox.checked) {
+            readyCheckbox.disabled = !gate.ready_allowed;
+        }
+        if (hint) {
+            hint.hidden = !!gate.ready_allowed;
+        }
+
+        try {
+            document.body.dataset.goliveGates = JSON.stringify(gate);
+        } catch (error) {
+            // ignore
+        }
+    };
+
+    const refreshGoliveGates = () => {
+        applyGoliveGates(computeGoliveGatesClient());
+    };
+    window.refreshGoliveGates = refreshGoliveGates;
+
+    const persistFindingStatus = async (findingId, status) => {
+        const body = new URLSearchParams({
+            action: 'save_finding_status',
+            csrf_token: csrfToken,
+            assessment_id: String(assessmentId),
+            finding_id: findingId,
+            status,
+        });
+
+        const response = await fetch('index.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body,
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || 'Save failed');
+        }
+
+        return payload;
+    };
+
     const updateExecSummaryFromExceptions = () => {
         const exceptionSelects = document.querySelectorAll('.exception-status');
         if (!exceptionSelects || exceptionSelects.length === 0) {
@@ -448,12 +590,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('.exception-status').forEach((select) => {
         const findingId = select.dataset.findingId;
-        if (savedExceptions[findingId]) {
+        if (Number(assessmentId) <= 0 && savedExceptions[findingId]) {
             select.value = savedExceptions[findingId];
         }
-        select.addEventListener('change', () => {
-            savedExceptions[findingId] = select.value;
-            localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
+        select.addEventListener('change', async () => {
             const openCount = Array.from(document.querySelectorAll('.exception-status'))
                 .filter((node) => node.value === 'Open').length;
             const label = document.getElementById('exception-open-count');
@@ -462,14 +602,39 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             updateExecSummaryFromExceptions();
+
+            if (Number(assessmentId) > 0) {
+                select.disabled = true;
+                try {
+                    const payload = await persistFindingStatus(findingId, select.value);
+                    if (payload.gates) {
+                        applyGoliveGates(payload.gates);
+                    } else {
+                        refreshGoliveGates();
+                    }
+                } catch (error) {
+                    if (label) {
+                        label.textContent = 'Save failed';
+                    }
+                } finally {
+                    select.disabled = false;
+                }
+                return;
+            }
+
+            savedExceptions[findingId] = select.value;
+            localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
+            refreshGoliveGates();
         });
     });
 
-    // Sync executive summary metrics/logic with what the user selected in the exception tracker.
-    // (Server-side logic treats all workbook findings as "Open"; the dropdown uses localStorage.)
     updateExecSummaryFromExceptions();
+    if (initialGoliveGates && Array.isArray(initialGoliveGates.rules)) {
+        applyGoliveGates(initialGoliveGates);
+    } else {
+        refreshGoliveGates();
+    }
 
-    const csrfToken = document.body.dataset.csrfToken || '';
     const responseStorageKey = `ra-item-responses-${assessmentId || 'local'}`;
     let localResponses = {};
     try {
@@ -699,6 +864,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             // ignore
         }
+
+        refreshGoliveGates();
     };
     window.refreshProgressDisplays = refreshProgressDisplays;
 
@@ -747,6 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveLabel.hidden = true;
                 }, 1200);
             }
+            refreshGoliveGates();
         } catch (error) {
             if (saveLabel) {
                 saveLabel.hidden = false;
@@ -993,6 +1161,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = document.getElementById('golive-status-badge');
         const execSummary = document.querySelector('.exec-summary');
         const saveBtn = document.getElementById('btn-save-evaluation');
+        const readyCheckbox = document.getElementById('eval-ready');
+        const notesField = document.getElementById('eval-notes');
+
+        if (notesField) {
+            notesField.addEventListener('input', () => {
+                refreshGoliveGates();
+            });
+        }
+
+        if (readyCheckbox) {
+            readyCheckbox.addEventListener('change', () => {
+                const gates = computeGoliveGatesClient();
+                if (readyCheckbox.checked && !gates.ready_allowed) {
+                    readyCheckbox.checked = false;
+                    if (statusEl) {
+                        statusEl.hidden = false;
+                        statusEl.textContent = 'Complete all go-live gates before marking ready.';
+                    }
+                }
+            });
+        }
 
         const applyEvaluationUi = (evaluation) => {
             const ready = !!evaluation.ready_to_golive;
@@ -1046,6 +1235,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const email = document.getElementById('eval-email')?.value.trim() || '';
             const notes = document.getElementById('eval-notes')?.value || '';
             const ready = !!document.getElementById('eval-ready')?.checked;
+            const gates = computeGoliveGatesClient();
+
+            if (ready && !gates.ready_allowed) {
+                if (statusEl) {
+                    statusEl.hidden = false;
+                    statusEl.textContent = 'Complete all go-live gates before marking ready to go-live.';
+                }
+                return;
+            }
 
             if (!name || !email) {
                 if (statusEl) {
@@ -1088,6 +1286,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     evaluator_name: name,
                     updated_at: 'just now',
                 });
+                if (payload.gates) {
+                    applyGoliveGates(payload.gates);
+                } else {
+                    refreshGoliveGates();
+                }
                 if (statusEl) {
                     statusEl.textContent = 'Saved';
                     window.setTimeout(() => {

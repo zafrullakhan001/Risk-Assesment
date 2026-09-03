@@ -131,12 +131,12 @@ final class AssessmentRepository
         }
 
         $statement = $this->pdo->prepare(
-            'SELECT id, solution_name, vendor, assessment_date, uploaded_at, original_filename
-             FROM assessments
-             WHERE solution_name LIKE :query
-                OR vendor LIKE :query
-                OR scope LIKE :query
-             ORDER BY uploaded_at DESC
+            'SELECT ' . self::projectListColumns() . '
+             FROM ' . self::projectListFrom() . '
+             WHERE a.solution_name LIKE :query
+                OR a.vendor LIKE :query
+                OR a.scope LIKE :query
+             ORDER BY a.uploaded_at DESC
              LIMIT :limit'
         );
 
@@ -151,9 +151,9 @@ final class AssessmentRepository
     public function listRecent(int $limit = 10): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, solution_name, vendor, assessment_date, uploaded_at, original_filename
-             FROM assessments
-             ORDER BY uploaded_at DESC
+            'SELECT ' . self::projectListColumns() . '
+             FROM ' . self::projectListFrom() . '
+             ORDER BY a.uploaded_at DESC
              LIMIT :limit'
         );
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -209,10 +209,10 @@ final class AssessmentRepository
         }
 
         $statement = $this->pdo->prepare(
-            'SELECT id, solution_name, vendor, assessment_date, uploaded_at, original_filename
-             FROM assessments
-             WHERE solution_name = :solution_name
-             ORDER BY uploaded_at DESC, id DESC
+            'SELECT ' . self::projectListColumns() . '
+             FROM ' . self::projectListFrom() . '
+             WHERE a.solution_name = :solution_name
+             ORDER BY a.uploaded_at DESC, a.id DESC
              LIMIT :limit'
         );
         $statement->bindValue(':solution_name', $solutionName, PDO::PARAM_STR);
@@ -251,6 +251,9 @@ final class AssessmentRepository
 
             $deleteMermaid = $this->pdo->prepare('DELETE FROM project_mermaid_diagrams WHERE assessment_id = :id');
             $deleteMermaid->execute([':id' => $id]);
+
+            $deleteFindingStatuses = $this->pdo->prepare('DELETE FROM finding_statuses WHERE assessment_id = :id');
+            $deleteFindingStatuses->execute([':id' => $id]);
 
             $deleteAssessment = $this->pdo->prepare('DELETE FROM assessments WHERE id = :id');
             $deleteAssessment->execute([':id' => $id]);
@@ -304,6 +307,56 @@ final class AssessmentRepository
         }
 
         return $removed;
+    }
+
+    private static function projectListColumns(): string
+    {
+        return 'a.id, a.solution_name, a.vendor, a.assessment_date, a.uploaded_at, a.original_filename,
+                e.ready_to_golive, e.evaluator_name, e.updated_at AS evaluation_updated_at';
+    }
+
+    private static function projectListFrom(): string
+    {
+        return 'assessments a LEFT JOIN final_evaluations e ON e.assessment_id = a.id';
+    }
+
+    /**
+     * Compact go-live status for project list cards.
+     *
+     * @param array<string, mixed> $project
+     * @return array{key: string, label: string, title: string}
+     */
+    public static function goliveCardStatus(array $project): array
+    {
+        $evaluatedAt = trim((string) ($project['evaluation_updated_at'] ?? ''));
+        $evaluator = trim((string) ($project['evaluator_name'] ?? ''));
+        $ready = ((int) ($project['ready_to_golive'] ?? 0)) === 1 && $evaluatedAt !== '';
+
+        if ($evaluatedAt === '') {
+            return [
+                'key' => 'none',
+                'label' => 'No final assessment',
+                'title' => 'Final go-live assessment has not been saved yet.',
+            ];
+        }
+
+        if ($ready) {
+            return [
+                'key' => 'ready',
+                'label' => 'Ready to go-live',
+                'title' => $evaluator !== ''
+                    ? 'Final assessment: ready to go-live · ' . $evaluator
+                    : 'Final assessment: ready to go-live',
+            ];
+        }
+
+        return [
+                'key' => 'not-ready',
+            'label' => 'Not ready to go-live',
+            'title' => $evaluator !== ''
+                ? 'Final assessment: not ready to go-live · ' . $evaluator
+                : 'Final assessment: not ready to go-live',
+        ];
     }
 
     /** @return list<array<string, string>> */
