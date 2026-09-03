@@ -167,6 +167,133 @@ final class AssessmentRepository
         return (int) $this->pdo->query('SELECT COUNT(*) FROM assessments')->fetchColumn();
     }
 
+    /** @return array{assessment: Assessment, source_filename: string, uploaded_at: string, id: int}|null */
+    public function findPreviousVersion(string $solutionName, int $currentId): ?array
+    {
+        $solutionName = trim($solutionName);
+        if ($solutionName === '' || $currentId <= 0) {
+            return null;
+        }
+
+        $statement = $this->pdo->prepare(
+            'SELECT id FROM assessments
+             WHERE solution_name = :solution_name AND id < :current_id
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $statement->execute([
+            ':solution_name' => $solutionName,
+            ':current_id' => $currentId,
+        ]);
+        $priorId = (int) ($statement->fetchColumn() ?: 0);
+        if ($priorId <= 0) {
+            return null;
+        }
+
+        $record = $this->findById($priorId);
+        if ($record === null) {
+            return null;
+        }
+
+        $record['id'] = $priorId;
+
+        return $record;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function listVersionsBySolutionName(string $solutionName, int $limit = 25): array
+    {
+        $solutionName = trim($solutionName);
+        if ($solutionName === '') {
+            return [];
+        }
+
+        $statement = $this->pdo->prepare(
+            'SELECT id, solution_name, vendor, assessment_date, uploaded_at, original_filename
+             FROM assessments
+             WHERE solution_name = :solution_name
+             ORDER BY uploaded_at DESC, id DESC
+             LIMIT :limit'
+        );
+        $statement->bindValue(':solution_name', $solutionName, PDO::PARAM_STR);
+        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
+    }
+
+    public function deleteById(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        $statement = $this->pdo->prepare('SELECT file_path FROM assessments WHERE id = :id LIMIT 1');
+        $statement->execute([':id' => $id]);
+        $row = $statement->fetch();
+        if ($row === false) {
+            return false;
+        }
+
+        $this->pdo->beginTransaction();
+        try {
+            $deleteItems = $this->pdo->prepare('DELETE FROM assessment_items WHERE assessment_id = :id');
+            $deleteItems->execute([':id' => $id]);
+
+            $deleteAssessment = $this->pdo->prepare('DELETE FROM assessments WHERE id = :id');
+            $deleteAssessment->execute([':id' => $id]);
+
+            $this->pdo->commit();
+        } catch (\Throwable $exception) {
+            $this->pdo->rollBack();
+            throw $exception;
+        }
+
+        $filePath = (string) ($row['file_path'] ?? '');
+        if ($filePath !== '' && is_file($filePath)) {
+            @unlink($filePath);
+        }
+
+        return true;
+    }
+
+    /**
+     * Delete every saved version for a project except the one to keep.
+     *
+     * @return int Number of versions removed
+     */
+    public function deleteOlderVersions(string $solutionName, int $keepId): int
+    {
+        $solutionName = trim($solutionName);
+        if ($solutionName === '' || $keepId <= 0) {
+            return 0;
+        }
+
+        $keep = $this->findById($keepId);
+        if ($keep === null) {
+            return 0;
+        }
+
+        $keepName = trim((string) $keep['assessment']->getMetadata('solution_name'));
+        if ($keepName === '' || strcasecmp($keepName, $solutionName) !== 0) {
+            return 0;
+        }
+
+        $versions = $this->listVersionsBySolutionName($solutionName, 500);
+        $removed = 0;
+        foreach ($versions as $version) {
+            $versionId = (int) ($version['id'] ?? 0);
+            if ($versionId <= 0 || $versionId === $keepId) {
+                continue;
+            }
+            if ($this->deleteById($versionId)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
     /** @return list<array<string, string>> */
     private function fetchItems(int $assessmentId): array
     {

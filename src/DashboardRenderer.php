@@ -29,14 +29,28 @@ final class DashboardRenderer
         '#0e7490', '#0f766e', '#0284c7', '#155e75', '#c2410c', '#be123c', '#64748b', '#0369a1',
     ];
 
-    public function render(Assessment $assessment, string $sourceFilename = ''): string
-    {
+    /**
+     * @param array<string, mixed> $comparison
+     * @param list<array<string, mixed>> $versions
+     */
+    public function render(
+        Assessment $assessment,
+        string $sourceFilename = '',
+        int $assessmentId = 0,
+        array $comparison = [],
+        array $versions = [],
+        string $csrfToken = '',
+        string $flash = ''
+    ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
         $items = $assessment->items;
         $dueItems = $assessment->dueDiligenceItems;
         $workbook = $assessment->workbook;
         $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
+        $insights = (new AssessmentInsights())->build($assessment);
+        $decisionViews = new DashboardDecisionViews();
+        $changedKeys = is_array($comparison['changed_keys'] ?? null) ? $comparison['changed_keys'] : [];
 
         $solutionName = $metadata['solution_name'] ?: 'Risk Assessment Dashboard';
         $assessmentDate = $metadata['date'] ?: date('Y-m-d');
@@ -64,17 +78,18 @@ final class DashboardRenderer
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(dirname(__DIR__) . '/public/assets/css/dashboard.css') ?>">
 </head>
-<body>
+<body data-assessment-id="<?= (int) $assessmentId ?>">
     <div class="shell">
         <header class="topbar">
-            <div class="brand">
+            <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
                 <?= $this->brandMark() ?>
                 <div>
                     <div class="brand-title">Architecture Risk</div>
                     <h1>Assessment register</h1>
                 </div>
-            </div>
+            </a>
             <div class="topbar-actions">
+                <a class="button ghost home-link" href="index.php#find-projects">← Find projects</a>
                 <?php require dirname(__DIR__) . '/public/includes/theme-controls.php'; ?>
                 <div class="updated">
                     <span class="live-dot"></span>
@@ -84,12 +99,16 @@ final class DashboardRenderer
         </header>
 
         <main>
+            <?php if ($flash !== ''): ?>
+                <div class="alert alert-success desk-flash"><?= $this->e($flash) ?></div>
+            <?php endif; ?>
             <section class="hero hero-compact">
                 <div class="hero-main">
                     <div class="hero-head">
                         <div class="hero-intro">
                             <div class="eyebrow">Architecture risk signal desk</div>
                             <h2>Risk <em>posture</em></h2>
+                            <?= $decisionViews->renderTrendChips($comparison) ?>
                         </div>
                         <div class="hero-art">
                             <?= $this->renderDonutChart($statusSlices, 'hero-donut', (string) $summary['total'], 'checks', true) ?>
@@ -101,11 +120,14 @@ final class DashboardRenderer
                         <?= $this->renderRiskSpectrum($summary) ?>
                     </div>
                     <div class="hero-actions">
-                        <a class="button ghost" href="index.php">Upload another file</a>
+                        <a class="button ghost" href="index.php#find-projects">← Home · Find projects</a>
+                        <a class="button ghost" href="index.php#upload">Upload another file</a>
                         <a class="button button-primary" href="#risk-register">View register</a>
                     </div>
                 </div>
             </section>
+
+            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison) ?>
 
             <?= $this->renderKpis($summary, 'architecture') ?>
 
@@ -136,6 +158,7 @@ final class DashboardRenderer
                 <?php if ($hasDueDiligence): ?>
                     <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="due-diligence">Due diligence</button>
                 <?php endif; ?>
+                <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="actions">Actions</button>
                 <?php if ($hasGovernance): ?>
                     <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="governance">Governance summary</button>
                 <?php endif; ?>
@@ -154,7 +177,8 @@ final class DashboardRenderer
                     'Risk register',
                     $items,
                     $summary,
-                    false
+                    false,
+                    $changedKeys
                 ) ?>
             </div>
 
@@ -173,10 +197,15 @@ final class DashboardRenderer
                         'Technology risk template',
                         $dueItems,
                         $ddSummary,
-                        true
+                        true,
+                        $changedKeys
                     ) ?>
                 </div>
             <?php endif; ?>
+
+            <div class="dash-panel" data-panel="actions" hidden>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken) ?>
+            </div>
 
             <?php if ($hasGovernance): ?>
                 <div class="dash-panel" data-panel="governance" hidden>
@@ -192,7 +221,7 @@ final class DashboardRenderer
         </main>
     </div>
     <script src="assets/js/theme.js"></script>
-    <script src="assets/js/dashboard.js"></script>
+    <script src="assets/js/dashboard.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/dashboard.js') ?>"></script>
 </body>
 </html>
         <?php
@@ -351,6 +380,7 @@ final class DashboardRenderer
     /**
      * @param list<array<string, string>> $items
      * @param array<string, mixed> $summary
+     * @param array<string, true> $changedKeys
      */
     private function renderRegister(
         string $scope,
@@ -359,13 +389,15 @@ final class DashboardRenderer
         string $eyebrow,
         array $items,
         array $summary,
-        bool $extendedColumns
+        bool $extendedColumns,
+        array $changedKeys = []
     ): string {
         $tableId = $scope === 'due_diligence' ? 'dd-table' : 'risk-table';
         $prefix = $scope === 'due_diligence' ? 'dd-' : '';
         $checkLabel = $extendedColumns ? 'Assessment item' : 'Check';
         $notesLabel = $extendedColumns ? 'Finding / evidence' : 'Notes';
         $timelineLabel = $extendedColumns ? 'Timeline' : 'Remediation timeline';
+        $itemType = $scope === 'due_diligence' ? 'due_diligence' : 'architecture';
 
         ob_start();
         ?>
@@ -391,6 +423,10 @@ final class DashboardRenderer
                 <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
                     <option value="<?= $this->e($risk) ?>"><?= $this->e($risk) ?></option>
                 <?php endforeach; ?>
+            </select>
+            <select id="<?= $prefix ?>filter-changed">
+                <option value="">All rows</option>
+                <option value="changed">Changed since last upload</option>
             </select>
             <button type="button" class="button ghost" id="<?= $prefix ?>clearFilters">Reset</button>
         </section>
@@ -424,38 +460,56 @@ final class DashboardRenderer
                     <tbody>
                         <?php foreach ($items as $item): ?>
                             <?php
+                            $owner = (string) ($item['owner'] ?? '');
+                            $timeline = (string) ($item['remediation_timeline'] ?? '');
+                            $mitigation = (string) ($item['mitigation'] ?? '');
+                            $notes = (string) ($item['notes'] ?? '');
+                            $key = AssessmentComparer::itemKey(
+                                (string) ($item['item_type'] ?? $itemType),
+                                (string) ($item['section'] ?? ''),
+                                (string) ($item['check'] ?? '')
+                            );
+                            $isChanged = isset($changedKeys[$key]);
                             $searchParts = [
                                 $item['section'] ?? '',
                                 $item['check'] ?? '',
-                                $item['notes'] ?? '',
-                                $item['mitigation'] ?? '',
-                                $item['owner'] ?? '',
+                                $notes,
+                                $mitigation,
+                                $owner,
                                 $item['review_question'] ?? '',
                                 $item['source_reference'] ?? '',
                             ];
+                            $ownersAttr = strtolower(preg_replace('/\s*(?:\+|\/|,|;|\band\b)\s*/i', '|', $owner !== '' ? $owner : 'unassigned') ?? 'unassigned');
+                            $timelineLane = $this->timelineLane($timeline);
                             ?>
                             <tr
-                                class="data-row"
+                                class="data-row<?= $isChanged ? ' row-changed' : '' ?>"
                                 data-section="<?= $this->e($item['section'] ?? '') ?>"
                                 data-status="<?= $this->e($item['status'] ?? '') ?>"
                                 data-risk="<?= $this->e($item['risk_level'] ?? '') ?>"
+                                data-owner="<?= $this->e($ownersAttr) ?>"
+                                data-timeline="<?= $this->e($timelineLane) ?>"
+                                data-changed="<?= $isChanged ? '1' : '0' ?>"
+                                data-missing-owner="<?= $owner === '' ? '1' : '0' ?>"
+                                data-missing-timeline="<?= $timeline === '' ? '1' : '0' ?>"
+                                data-missing-mitigation="<?= $mitigation === '' ? '1' : '0' ?>"
                                 data-search="<?= $this->e(strtolower(implode(' ', $searchParts))) ?>"
                             >
-                                <td><span class="section-name"><?= $this->e($item['section'] ?? '') ?></span></td>
+                                <td><span class="section-name"><?= $this->e($item['section'] ?? '') ?></span><?php if ($isChanged): ?><span class="change-flag">Changed</span><?php endif; ?></td>
                                 <td>
                                     <div class="check-name"><?= $this->e($item['check'] ?? '') ?></div>
-                                    <?php if (($item['owner'] ?? '') !== ''): ?>
-                                        <div class="subtext"><?= $this->e($item['owner'] ?? '') ?></div>
+                                    <?php if ($owner !== ''): ?>
+                                        <div class="subtext"><?= $this->e($owner) ?></div>
                                     <?php endif; ?>
                                 </td>
                                 <td><?= $this->pill($item['status'] ?? '', 'status') ?></td>
                                 <td><?= $this->pill($item['risk_level'] ?? '', 'risk') ?></td>
-                                <td><?= $this->e($item['notes'] ?? '') ?></td>
-                                <td><?= $this->e($item['mitigation'] ?? '') ?></td>
-                                <td><?= $this->e($item['owner'] ?? '') ?></td>
-                                <td><?= $this->e($item['remediation_timeline'] ?? '') ?></td>
+                                <td><div class="clamp-text" data-expandable><?= $this->e($notes) ?></div></td>
+                                <td><div class="clamp-text" data-expandable><?= $this->e($mitigation) ?></div></td>
+                                <td><?= $this->e($owner) ?></td>
+                                <td><?= $this->e($timeline) ?></td>
                                 <?php if ($extendedColumns): ?>
-                                    <td><?= $this->e($item['review_question'] ?? '') ?></td>
+                                    <td><div class="clamp-text" data-expandable><?= $this->e($item['review_question'] ?? '') ?></div></td>
                                     <td><?= $this->e($item['source_reference'] ?? '') ?></td>
                                 <?php endif; ?>
                             </tr>
@@ -467,6 +521,35 @@ final class DashboardRenderer
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    private function timelineLane(string $timeline): string
+    {
+        $value = strtolower($timeline);
+        if ($value === '') {
+            return 'unspecified';
+        }
+        if (str_contains($value, 'go-live') || str_contains($value, 'go live') || str_contains($value, 'before go')) {
+            return 'before_go_live';
+        }
+        if (str_contains($value, '2028') || str_contains($value, 'roadmap') || str_contains($value, 'q1')) {
+            return 'roadmap';
+        }
+        if (
+            str_contains($value, 'ongoing')
+            || str_contains($value, 'quarterly')
+            || str_contains($value, 'monthly')
+            || str_contains($value, 'annual')
+            || str_contains($value, 'renewal')
+            || str_contains($value, 'on change')
+        ) {
+            return 'ongoing';
+        }
+        if (str_contains($value, 'intake') || str_contains($value, 'design')) {
+            return 'intake';
+        }
+
+        return 'ongoing';
     }
 
     /** @param array<string, mixed> $workbook */
