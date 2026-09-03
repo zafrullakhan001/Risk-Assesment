@@ -126,8 +126,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const matchesResponse =
                     responseValue === '' ||
                     (responseValue === 'needs' && actionable && response === 'open') ||
+                    (responseValue === 'addressed' && actionable && response !== 'open') ||
                     (responseValue === 'commented' && hasComment) ||
-                    (responseValue !== 'needs' && responseValue !== 'commented' && response === responseValue);
+                    (responseValue !== 'needs' && responseValue !== 'commented' && responseValue !== 'addressed' && response === responseValue);
 
                 const matches =
                     (sectionValue === '' || section === sectionValue) &&
@@ -232,6 +233,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 riskFilter.value = filterValue;
                 sectionFilter.value = '';
                 statusFilter.value = '';
+            } else if (filterType === 'response') {
+                if (responseFilter) {
+                    responseFilter.value = filterValue;
+                }
+                sectionFilter.value = '';
+                statusFilter.value = '';
+                riskFilter.value = '';
             } else if (filterType === 'owner') {
                 ownerValue = filterValue;
                 sectionFilter.value = '';
@@ -253,15 +261,24 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (filterType === 'tab') {
                 activateTab(filterValue || 'actions');
                 return;
+            } else if (filterType === 'action_tab') {
+                activateTab('actions', true);
+                if (typeof window.activateActionTab === 'function') {
+                    window.activateActionTab(filterValue || 'risks', true);
+                }
+                return;
             }
 
             applyFilters(scrollToTable);
         };
 
         const clickableFilters = Array.from(document.querySelectorAll(
-            '.kpi-clickable, .legend-clickable, .bar-row-clickable, .donut-segment, .pie-segment, .blocker-chip, .owner-row, .timeline-lane'
+            '.kpi-clickable, .legend-clickable, .bar-row-clickable, .donut-segment, .pie-segment, .blocker-chip, .owner-row, .timeline-lane, [data-filter-type="action_tab"]'
         )).filter((element) => {
-            if (element.classList.contains('blocker-chip') || element.classList.contains('owner-row') || element.classList.contains('timeline-lane')) {
+            if (element.dataset.filterType === 'action_tab' || element.classList.contains('blocker-chip')) {
+                return scope === 'architecture';
+            }
+            if (element.classList.contains('owner-row') || element.classList.contains('timeline-lane')) {
                 return scope === 'architecture';
             }
             const host = element.closest('[data-filter-scope], .dash-panel');
@@ -356,6 +373,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const exceptionKey = `ra-exceptions-${assessmentId}`;
     const savedExceptions = JSON.parse(localStorage.getItem(exceptionKey) || '{}');
+
+    const parseIntSafe = (value) => {
+        const n = Number.parseInt(String(value ?? '').trim(), 10);
+        return Number.isFinite(n) ? n : 0;
+    };
+
+    const getOpenMetricValue = (key) => {
+        const node = document.querySelector(`.exec-metrics [data-progress-open="${key}"]`);
+        if (!node) return 0;
+        return parseIntSafe(node.textContent);
+    };
+
+    const updateExecSummaryFromExceptions = () => {
+        const exceptionSelects = document.querySelectorAll('.exception-status');
+        if (!exceptionSelects || exceptionSelects.length === 0) {
+            return;
+        }
+
+        const openExceptions = Array.from(exceptionSelects).filter((node) => node.value === 'Open').length;
+
+        const execSummaryEl = document.querySelector('.exec-summary');
+        const scoreEl = document.querySelector('.exec-score strong');
+        const verdictEl = document.querySelector('.exec-copy h3');
+        const summaryEl = document.querySelector('.exec-copy p');
+
+        const openMetricSpan = Array.from(document.querySelectorAll('.exec-metrics span')).find((span) => span.textContent.trim().endsWith('Open exceptions'));
+        const openMetricBold = openMetricSpan ? openMetricSpan.querySelector('b') : null;
+
+        const currentOpenExceptions = openMetricBold ? parseIntSafe(openMetricBold.textContent) : openExceptions;
+
+        if (openMetricBold) {
+            openMetricBold.textContent = String(openExceptions);
+        }
+
+        const blockerChip = document.querySelector('.blocker-chip[data-filter-value="exceptions"] b');
+        if (blockerChip) {
+            blockerChip.textContent = String(openExceptions);
+        }
+
+        if (!scoreEl || !verdictEl || !summaryEl || !execSummaryEl) {
+            return;
+        }
+
+        const currentScore = parseIntSafe(scoreEl.textContent);
+        const newScore = Math.max(0, Math.min(100, currentScore + (currentOpenExceptions - openExceptions) * 8));
+
+        scoreEl.textContent = String(newScore);
+
+        const highOpen = getOpenMetricValue('high');
+        const riskOpen = getOpenMetricValue('risk');
+        const tbdOpen = getOpenMetricValue('tbd');
+        const gapOpen = getOpenMetricValue('gap');
+
+        let band = 'blocked';
+        let verdict = 'Not ready for go-live';
+        let summary = `Material blockers remain: ${highOpen} High risks, ${riskOpen} Risk items, ${tbdOpen} TBD decisions, and ${openExceptions} open exceptions must be mitigated or formally accepted first.`;
+
+        if (newScore >= 80 && highOpen === 0 && openExceptions === 0) {
+            band = 'ready';
+            verdict = 'Conditional go-live ready';
+            summary = `Residual exposure is limited: ${gapOpen} Gap and ${tbdOpen} TBD items remain, with no open High risks or governance exceptions.`;
+        } else if (newScore >= 55) {
+            band = 'conditional';
+            verdict = 'Proceed only with controls';
+            summary = `Do not treat as clear to go live yet: ${highOpen} High risks, ${riskOpen} Risk-status checks, ${tbdOpen} TBD items, and ${openExceptions} open exceptions need owners and closure dates.`;
+        }
+
+        execSummaryEl.classList.remove('band-ready', 'band-conditional', 'band-blocked');
+        execSummaryEl.classList.add(`band-${band}`);
+        verdictEl.textContent = verdict;
+        summaryEl.textContent = summary;
+    };
+
     document.querySelectorAll('.exception-status').forEach((select) => {
         const findingId = select.dataset.findingId;
         if (savedExceptions[findingId]) {
@@ -370,8 +460,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (label) {
                 label.textContent = `${openCount} open`;
             }
+
+            updateExecSummaryFromExceptions();
         });
     });
+
+    // Sync executive summary metrics/logic with what the user selected in the exception tracker.
+    // (Server-side logic treats all workbook findings as "Open"; the dropdown uses localStorage.)
+    updateExecSummaryFromExceptions();
 
     const csrfToken = document.body.dataset.csrfToken || '';
     const responseStorageKey = `ra-item-responses-${assessmentId || 'local'}`;
@@ -383,11 +479,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const updateOpenResponseCount = () => {
-        const openCount = Array.from(document.querySelectorAll('#response-tracker-table .item-response-action'))
+        const openCount = Array.from(document.querySelectorAll('.actions-workspace .item-response-action'))
             .filter((node) => node.value === 'open').length;
         const label = document.getElementById('response-open-count');
         if (label) {
-            label.textContent = `${openCount} open`;
+            label.textContent = `${openCount} item responses open`;
         }
     };
 
@@ -410,7 +506,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.dataset.hasComment = comment.trim() ? '1' : '0';
             }
         });
+        document.querySelectorAll(`tr[data-item-key]`).forEach((row) => {
+            if (row.dataset.itemKey === itemKey) {
+                row.dataset.response = action;
+                row.dataset.hasComment = comment.trim() ? '1' : '0';
+                const pill = row.querySelector('.response-pill');
+                if (pill) {
+                    const labels = {
+                        open: 'Open',
+                        take_care: 'Taken care',
+                        ignore: 'Ignore',
+                        not_applicable: 'Not applicable',
+                        closed: 'Closed',
+                    };
+                    pill.textContent = labels[action] || 'Open';
+                    pill.className = `response-pill response-${action}`;
+                }
+            }
+        });
         updateOpenResponseCount();
+        refreshProgressDisplays();
         if (refreshFilters) {
             Object.values(filterControllers).forEach((controller) => {
                 if (typeof controller.applyFilters === 'function') {
@@ -419,6 +534,173 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     };
+
+    const refreshProgressDisplays = () => {
+        const computeBuckets = (tableSelector) => {
+            const buckets = {
+                risk: { total: 0, open: 0, addressed: 0 },
+                gap: { total: 0, open: 0, addressed: 0 },
+                tbd: { total: 0, open: 0, addressed: 0 },
+                high: { total: 0, open: 0, addressed: 0 },
+                actionable: { total: 0, open: 0, addressed: 0 },
+            };
+            document.querySelectorAll(tableSelector).forEach((row) => {
+                const status = (row.dataset.status || '').toLowerCase();
+                const risk = (row.dataset.risk || '').toLowerCase();
+                const addressed = (row.dataset.response || 'open') !== 'open';
+                buckets.actionable.total += 1;
+                if (addressed) {
+                    buckets.actionable.addressed += 1;
+                } else {
+                    buckets.actionable.open += 1;
+                }
+                const bump = (name, matches) => {
+                    if (!matches) {
+                        return;
+                    }
+                    buckets[name].total += 1;
+                    if (addressed) {
+                        buckets[name].addressed += 1;
+                    } else {
+                        buckets[name].open += 1;
+                    }
+                };
+                bump('risk', status === 'risk');
+                bump('gap', status === 'gap');
+                bump('tbd', status === 'tbd');
+                bump('high', risk === 'high');
+            });
+            return buckets;
+        };
+
+        const applyBuckets = (root, buckets) => {
+            if (!root) {
+                return;
+            }
+            ['risk', 'gap', 'tbd', 'high'].forEach((key) => {
+                const bucket = buckets[key];
+                const hasResolution = bucket.addressed > 0 && bucket.total > 0;
+                root.querySelectorAll(`[data-progress-display="${key}"]`).forEach((display) => {
+                    display.dataset.progressHasResolution = hasResolution ? '1' : '0';
+                    const openNode = display.querySelector(`[data-progress-open="${key}"]`);
+                    const totalNode = display.querySelector(`[data-progress-total="${key}"]`);
+                    const tail = display.querySelector('.kpi-progress-tail');
+                    if (openNode) {
+                        openNode.textContent = String(hasResolution ? bucket.open : bucket.total);
+                    }
+                    if (totalNode) {
+                        totalNode.textContent = String(bucket.total);
+                    }
+                    if (tail) {
+                        tail.hidden = !hasResolution;
+                    }
+                });
+                root.querySelectorAll(`[data-progress-caption="${key}"]`).forEach((node) => {
+                    node.hidden = !hasResolution;
+                    if (hasResolution) {
+                        node.textContent = `${bucket.addressed} addressed · ${bucket.open} open`;
+                    }
+                });
+            });
+        };
+
+        const archBuckets = computeBuckets('#risk-table tr[data-actionable="1"]');
+        const ddBuckets = computeBuckets('#dd-table tr[data-actionable="1"]');
+        const combined = computeBuckets('#risk-table tr[data-actionable="1"], #dd-table tr[data-actionable="1"]');
+
+        applyBuckets(document.getElementById('kpi-tiles'), archBuckets);
+        applyBuckets(document.getElementById('dd-kpi-tiles'), ddBuckets);
+
+        ['risk', 'gap', 'tbd', 'high', 'actionable'].forEach((key) => {
+            const bucket = combined[key];
+            const hasResolution = bucket.addressed > 0 && bucket.total > 0;
+            document.querySelectorAll(`.exec-metrics [data-progress-open="${key}"]`).forEach((node) => {
+                node.textContent = String(hasResolution ? bucket.open : bucket.total);
+                const tail = node.parentElement?.querySelector('.exec-progress-tail');
+                if (tail) {
+                    tail.hidden = !hasResolution;
+                }
+            });
+            document.querySelectorAll(`.exec-metrics [data-progress-total="${key}"]`).forEach((node) => {
+                node.textContent = String(bucket.total);
+            });
+            document.querySelectorAll(`[data-progress-addressed="${key}"]`).forEach((node) => {
+                node.textContent = String(bucket.addressed);
+            });
+            document.querySelectorAll(`[data-progress-caption="${key}"]`).forEach((node) => {
+                if (node.closest('.kpis')) {
+                    return;
+                }
+                if (key === 'actionable') {
+                    node.textContent = `${bucket.open} still open`;
+                } else {
+                    node.textContent = hasResolution
+                        ? `${bucket.addressed} addressed · ${bucket.open} open`
+                        : 'No resolutions yet';
+                }
+            });
+            document.querySelectorAll(`[data-progress-fraction="${key}"]`).forEach((node) => {
+                node.textContent = hasResolution ? `${bucket.open}/${bucket.total} open` : `${bucket.total} open`;
+            });
+        });
+
+        const actionable = combined.actionable;
+        const bar = document.querySelector('[data-progress-bar="actionable"]');
+        if (bar && actionable.total > 0) {
+            bar.style.width = `${Math.round((actionable.addressed / actionable.total) * 1000) / 10}%`;
+        }
+
+        const setDonut = (id, open, total, addressed, labelWhenOpen, labelWhenPlain, plainValue = null) => {
+            const valueNode = document.querySelector(`[data-donut-value="${id}"]`);
+            const labelNode = document.querySelector(`[data-donut-label="${id}"]`);
+            const wrap = valueNode?.closest('.donut-wrap, .pie-wrap');
+            const showFraction = addressed > 0 && total > 0;
+            if (valueNode) {
+                valueNode.textContent = showFraction
+                    ? `${open}/${total}`
+                    : String(plainValue !== null ? plainValue : total);
+            }
+            if (labelNode) {
+                labelNode.textContent = showFraction ? labelWhenOpen : labelWhenPlain;
+            }
+            if (wrap) {
+                wrap.classList.toggle('has-fraction', showFraction);
+            }
+        };
+        setDonut('hero-donut', actionable.open, actionable.total, actionable.addressed, 'open residual', 'residual');
+        setDonut('status-donut', archBuckets.risk.open, archBuckets.risk.total, archBuckets.risk.addressed, 'open risks', 'risks');
+        setDonut('risk-donut', archBuckets.high.open, archBuckets.high.total, archBuckets.high.addressed, 'open high', 'high risk');
+        setDonut('dd-status-donut', ddBuckets.risk.open, ddBuckets.risk.total, ddBuckets.risk.addressed, 'open risks', 'risks');
+        setDonut('dd-risk-donut', ddBuckets.high.open, ddBuckets.high.total, ddBuckets.high.addressed, 'open high', 'high risk');
+
+        const archChecks = document.querySelectorAll('#risk-table tbody tr').length;
+        const ddChecks = document.querySelectorAll('#dd-table tbody tr').length;
+        setDonut(
+            'section-pie',
+            archBuckets.actionable.open,
+            archBuckets.actionable.total,
+            archBuckets.actionable.addressed,
+            'open residual',
+            'checks',
+            archChecks
+        );
+        setDonut(
+            'dd-section-pie',
+            ddBuckets.actionable.open,
+            ddBuckets.actionable.total,
+            ddBuckets.actionable.addressed,
+            'open residual',
+            'checks',
+            ddChecks
+        );
+
+        try {
+            document.body.dataset.progress = JSON.stringify(combined);
+        } catch (error) {
+            // ignore
+        }
+    };
+    window.refreshProgressDisplays = refreshProgressDisplays;
 
     const persistResponse = async (itemKey, action, comment, saveLabel, sourceWidget, refreshFilters) => {
         localResponses[itemKey] = { action, comment };
@@ -662,6 +944,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     refreshBulkSelectionBars();
 
+    const actionTabButtons = Array.from(document.querySelectorAll('.action-tab'));
+    const actionPanels = Array.from(document.querySelectorAll('.action-panel'));
+    const activateActionTab = (tabName, pushState = true) => {
+        const target = tabName || 'risks';
+        actionTabButtons.forEach((button) => {
+            const isActive = button.dataset.actionTab === target;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        actionPanels.forEach((panel) => {
+            const isActive = panel.dataset.actionPanel === target;
+            panel.classList.toggle('is-active', isActive);
+            panel.hidden = !isActive;
+        });
+        if (pushState) {
+            const next = new URLSearchParams(window.location.search);
+            next.set('tab', 'actions');
+            next.set('action_tab', target);
+            window.history.replaceState({}, '', `${window.location.pathname}?${next.toString()}`);
+        }
+        window.refreshBulkSelectionBars?.();
+    };
+    window.activateActionTab = activateActionTab;
+
+    actionTabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            activateActionTab(button.dataset.actionTab || 'risks');
+        });
+    });
+
+    // Outside architecture filter scope (desk buttons) still need action_tab handlers
+    document.querySelectorAll('[data-filter-type="action_tab"]').forEach((element) => {
+        if (element.closest('[data-filter-scope="architecture"]') || element.closest('.dash-panel[data-panel="architecture"]')) {
+            return;
+        }
+        element.addEventListener('click', () => {
+            activateTab('actions', true);
+            activateActionTab(element.dataset.filterValue || 'risks', true);
+            document.getElementById('actions-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+
     const evaluationForm = document.getElementById('final-evaluation-form');
     if (evaluationForm) {
         const statusEl = document.getElementById('final-eval-status');
@@ -783,17 +1107,34 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (params.get('tab') === 'actions' || window.location.hash === '#version-history' || window.location.hash === '#item-responses') {
+    if (params.get('tab') === 'actions' || window.location.hash === '#version-history' || window.location.hash === '#item-responses' || window.location.hash === '#final-evaluation') {
         activateTab('actions', false);
+        let actionTab = params.get('action_tab') || 'risks';
+        if (window.location.hash === '#version-history') {
+            actionTab = 'versions';
+        } else if (window.location.hash === '#final-evaluation') {
+            actionTab = 'signoff';
+        } else if (window.location.hash === '#item-responses') {
+            actionTab = 'risks';
+        }
+        activateActionTab(actionTab, false);
         if (window.location.hash === '#version-history') {
             document.getElementById('version-history')?.scrollIntoView({ behavior: 'smooth' });
+        }
+        if (window.location.hash === '#final-evaluation') {
+            document.getElementById('final-evaluation')?.scrollIntoView({ behavior: 'smooth' });
         }
         if (window.location.hash === '#item-responses') {
             document.getElementById('item-responses')?.scrollIntoView({ behavior: 'smooth' });
         }
+    } else if (params.get('action_tab')) {
+        activateTab('actions', false);
+        activateActionTab(params.get('action_tab') || 'risks', false);
     }
 
-    if (window.location.hash === '#final-evaluation') {
+    if (window.location.hash === '#final-evaluation' && params.get('tab') !== 'actions') {
+        activateTab('actions', false);
+        activateActionTab('signoff', false);
         document.getElementById('final-evaluation')?.scrollIntoView({ behavior: 'smooth' });
     }
 });

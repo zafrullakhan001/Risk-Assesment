@@ -151,4 +151,9 @@ final class ItemResponseRepository
 
         return in_array($status, ['gap', 'risk', 'tbd'], true) || $riskLevel === 'high';
     }
+
+    public static function isAddressed(string $action): bool
+    {
+        return self::normalizeAction($action) !== 'open';
+    }
 }

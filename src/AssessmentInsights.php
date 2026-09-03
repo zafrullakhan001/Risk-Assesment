@@ -9,6 +9,7 @@ use RiskAssessment\Models\Assessment;
 final class AssessmentInsights
 {
     /**
+     * @param array<string, array{action?: string, comment?: string}> $responses
      * @return array{
      *   readiness: array{score: int, band: string, verdict: string, summary: string},
      *   residual: array{high: int, risk: int, tbd: int, gap: int, open_findings: int},
@@ -20,7 +21,7 @@ final class AssessmentInsights
      *   top_risks: list<array<string, string>>
      * }
      */
-    public function build(Assessment $assessment): array
+    public function build(Assessment $assessment, array $responses = []): array
     {
         $items = array_merge($assessment->items, $assessment->dueDiligenceItems);
         $findings = $this->normalizeFindings($assessment->workbook['findings'] ?? []);
@@ -51,27 +52,40 @@ final class AssessmentInsights
             $owner = trim($item['owner'] ?? '');
             $timeline = trim($item['remediation_timeline'] ?? '');
             $mitigation = trim($item['mitigation'] ?? '');
+            $key = AssessmentComparer::itemKey(
+                (string) ($item['item_type'] ?? 'architecture'),
+                (string) ($item['section'] ?? ''),
+                (string) ($item['check'] ?? '')
+            );
+            $action = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction(
+                (string) ($responses[$key]['action'] ?? 'open')
+            );
+            $addressed = \RiskAssessment\Repositories\ItemResponseRepository::isAddressed($action);
 
-            if ($riskLevel === 'High') {
+            if ($riskLevel === 'High' && !$addressed) {
                 $high++;
             }
-            if ($status === 'Risk') {
+            if ($status === 'Risk' && !$addressed) {
                 $risk++;
             }
-            if ($status === 'TBD') {
+            if ($status === 'TBD' && !$addressed) {
                 $tbd++;
             }
-            if ($status === 'Gap') {
+            if ($status === 'Gap' && !$addressed) {
                 $gap++;
             }
-            if ($owner === '') {
+            if ($owner === '' && !$addressed) {
                 $missingOwner++;
             }
-            if ($timeline === '') {
+            if ($timeline === '' && !$addressed) {
                 $missingTimeline++;
             }
-            if ($mitigation === '' && in_array($status, ['Risk', 'Gap', 'TBD'], true)) {
+            if ($mitigation === '' && in_array($status, ['Risk', 'Gap', 'TBD'], true) && !$addressed) {
                 $missingMitigation++;
+            }
+
+            if ($addressed) {
+                continue;
             }
 
             foreach ($this->splitOwners($owner) as $ownerName) {
@@ -168,23 +182,29 @@ final class AssessmentInsights
         $timelines = array_values(array_filter($timelineMap, static fn(array $row): bool => $row['total'] > 0));
 
         $blockers = [];
+        if ($risk > 0) {
+            $blockers[] = ['type' => 'risk', 'label' => 'Risk items', 'count' => $risk, 'filter_type' => 'action_tab', 'filter_value' => 'risks'];
+        }
+        if ($gap > 0) {
+            $blockers[] = ['type' => 'gap', 'label' => 'Gap items', 'count' => $gap, 'filter_type' => 'action_tab', 'filter_value' => 'gaps'];
+        }
         if ($high > 0) {
-            $blockers[] = ['type' => 'high', 'label' => 'High risk checks', 'count' => $high, 'filter_type' => 'risk', 'filter_value' => 'High'];
+            $blockers[] = ['type' => 'high', 'label' => 'High risk checks', 'count' => $high, 'filter_type' => 'action_tab', 'filter_value' => 'risks'];
         }
         if ($tbd > 0) {
-            $blockers[] = ['type' => 'tbd', 'label' => 'TBD decisions', 'count' => $tbd, 'filter_type' => 'status', 'filter_value' => 'TBD'];
-        }
-        if ($missingOwner > 0) {
-            $blockers[] = ['type' => 'owner', 'label' => 'Missing owner', 'count' => $missingOwner, 'filter_type' => 'gap', 'filter_value' => 'owner'];
-        }
-        if ($missingTimeline > 0) {
-            $blockers[] = ['type' => 'timeline', 'label' => 'Missing timeline', 'count' => $missingTimeline, 'filter_type' => 'gap', 'filter_value' => 'timeline'];
-        }
-        if ($missingMitigation > 0) {
-            $blockers[] = ['type' => 'mitigation', 'label' => 'Missing mitigation', 'count' => $missingMitigation, 'filter_type' => 'gap', 'filter_value' => 'mitigation'];
+            $blockers[] = ['type' => 'tbd', 'label' => 'TBD decisions', 'count' => $tbd, 'filter_type' => 'action_tab', 'filter_value' => 'tbd'];
         }
         if ($openFindings > 0) {
-            $blockers[] = ['type' => 'exception', 'label' => 'Open exceptions', 'count' => $openFindings, 'filter_type' => 'tab', 'filter_value' => 'actions'];
+            $blockers[] = ['type' => 'exception', 'label' => 'Open exceptions', 'count' => $openFindings, 'filter_type' => 'action_tab', 'filter_value' => 'exceptions'];
+        }
+        if ($missingOwner > 0) {
+            $blockers[] = ['type' => 'owner', 'label' => 'Missing owner', 'count' => $missingOwner, 'filter_type' => 'action_tab', 'filter_value' => 'workspace'];
+        }
+        if ($missingTimeline > 0) {
+            $blockers[] = ['type' => 'timeline', 'label' => 'Missing timeline', 'count' => $missingTimeline, 'filter_type' => 'action_tab', 'filter_value' => 'workspace'];
+        }
+        if ($missingMitigation > 0) {
+            $blockers[] = ['type' => 'mitigation', 'label' => 'Missing mitigation', 'count' => $missingMitigation, 'filter_type' => 'action_tab', 'filter_value' => 'workspace'];
         }
 
         return [

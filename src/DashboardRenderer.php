@@ -15,6 +15,7 @@ final class DashboardRenderer
         'Risk' => '#be123c',
         'TBD' => '#64748b',
         'N/A' => '#94a3b8',
+        'Addressed' => '#0e7490',
     ];
 
     /** @var array<string, string> */
@@ -58,10 +59,13 @@ final class DashboardRenderer
         $dueItems = $assessment->dueDiligenceItems;
         $workbook = $assessment->workbook;
         $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
-        $insights = (new AssessmentInsights())->build($assessment);
+        $insights = (new AssessmentInsights())->build($assessment, $responses);
         $decisionViews = new DashboardDecisionViews();
         $changedKeys = is_array($comparison['changed_keys'] ?? null) ? $comparison['changed_keys'] : [];
         $actionableItems = $this->collectActionableItems($items, $dueItems, $responses);
+        $progress = (new ResponseProgress())->compute(array_merge($items, $dueItems), $responses);
+        $archProgress = (new ResponseProgress())->compute($items, $responses);
+        $ddProgress = (new ResponseProgress())->compute($dueItems, $responses);
 
         $solutionName = $metadata['solution_name'] ?: 'Risk Assessment Dashboard';
         $assessmentDate = $metadata['date'] ?: date('Y-m-d');
@@ -69,12 +73,14 @@ final class DashboardRenderer
         $hasGovernance = ($workbook['fields'] ?? []) !== [] || ($workbook['findings'] ?? []) !== [];
         $hasLegend = ($workbook['legend']['statuses'] ?? []) !== [] || ($workbook['legend']['checklist'] ?? []) !== [];
 
-        $statusSlices = $this->buildStatusSlices($summary);
-        $riskSlices = $this->buildRiskSlices($summary);
+        $statusSlices = $this->buildProgressStatusSlices($archProgress);
+        $riskSlices = $this->buildProgressRiskSlices($archProgress, $summary);
         $sectionSlices = $this->buildSectionSlices($summary);
-        $ddStatusSlices = $this->buildStatusSlices($ddSummary);
-        $ddRiskSlices = $this->buildRiskSlices($ddSummary);
+        $ddStatusSlices = $this->buildProgressStatusSlices($ddProgress);
+        $ddRiskSlices = $this->buildProgressRiskSlices($ddProgress, $ddSummary);
         $ddSectionSlices = $this->buildSectionSlices($ddSummary);
+
+        $progressJson = json_encode($progress, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
 
         ob_start();
         ?>
@@ -89,7 +95,12 @@ final class DashboardRenderer
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(dirname(__DIR__) . '/public/assets/css/dashboard.css') ?>">
 </head>
-<body data-assessment-id="<?= (int) $assessmentId ?>" data-csrf-token="<?= $this->e($csrfToken) ?>" class="<?= !empty($evaluation['ready_to_golive']) ? 'is-ready-golive' : '' ?>">
+<body
+    data-assessment-id="<?= (int) $assessmentId ?>"
+    data-csrf-token="<?= $this->e($csrfToken) ?>"
+    data-progress="<?= $this->e($progressJson) ?>"
+    class="<?= !empty($evaluation['ready_to_golive']) ? 'is-ready-golive' : '' ?>"
+>
     <div class="shell">
         <header class="topbar">
             <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
@@ -122,7 +133,13 @@ final class DashboardRenderer
                             <?= $decisionViews->renderTrendChips($comparison) ?>
                         </div>
                         <div class="hero-art">
-                            <?= $this->renderDonutChart($statusSlices, 'hero-donut', (string) $summary['total'], 'checks', true) ?>
+                            <?= $this->renderDonutChart(
+                                $statusSlices,
+                                'hero-donut',
+                                (int) ($progress['actionable']['open'] ?? 0) . '/' . (int) ($progress['actionable']['total'] ?? 0),
+                                'open residual',
+                                true
+                            ) ?>
                         </div>
                     </div>
                     <div class="hero-project">
@@ -131,7 +148,8 @@ final class DashboardRenderer
                         <?php if (!empty($evaluation['ready_to_golive'])): ?>
                             <span class="golive-pill">Ready to go-live</span>
                         <?php endif; ?>
-                        <?= $this->renderRiskSpectrum($summary) ?>
+                        <?= $this->renderProgressMeter($progress) ?>
+                        <?= $this->renderRiskSpectrum($archProgress) ?>
                     </div>
                     <div class="hero-actions">
                         <a class="button ghost" href="index.php#find-projects">← Home · Find projects</a>
@@ -141,9 +159,7 @@ final class DashboardRenderer
                 </div>
             </section>
 
-            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison, $evaluation) ?>
-
-            <?= $this->renderKpis($summary, 'architecture') ?>
+            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison, $evaluation, $progress) ?>
 
             <section class="meta-grid">
                 <div class="meta-item meta-vendor"><span class="label">Vendor</span><strong><?= $this->e($metadata['vendor'] ?? '') ?></strong></div>
@@ -182,7 +198,8 @@ final class DashboardRenderer
             </nav>
 
             <div class="dash-panel is-active" data-panel="architecture">
-                <?= $this->renderChartsBlock($statusSlices, $riskSlices, $sectionSlices, $summary, 'architecture') ?>
+                <?= $this->renderKpis($summary, 'architecture', $archProgress) ?>
+                <?= $this->renderChartsBlock($statusSlices, $riskSlices, $sectionSlices, $summary, 'architecture', $archProgress) ?>
                 <?= $this->renderSectionBars($summary['by_section'] ?? []) ?>
                 <?= $this->renderRegister(
                     'architecture',
@@ -203,8 +220,8 @@ final class DashboardRenderer
                     <?php if (($workbook['context'] ?? '') !== ''): ?>
                         <div class="context-banner"><?= $this->e((string) $workbook['context']) ?></div>
                     <?php endif; ?>
-                    <?= $this->renderKpis($ddSummary, 'due_diligence') ?>
-                    <?= $this->renderChartsBlock($ddStatusSlices, $ddRiskSlices, $ddSectionSlices, $ddSummary, 'due_diligence') ?>
+                    <?= $this->renderKpis($ddSummary, 'due_diligence', $ddProgress) ?>
+                    <?= $this->renderChartsBlock($ddStatusSlices, $ddRiskSlices, $ddSectionSlices, $ddSummary, 'due_diligence', $ddProgress) ?>
                     <?= $this->renderSectionBars($ddSummary['by_section'] ?? []) ?>
                     <?= $this->renderRegister(
                         'due_diligence',
@@ -222,7 +239,7 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <div class="dash-panel" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation) ?>
             </div>
 
             <?php if ($hasGovernance): ?>
@@ -248,7 +265,8 @@ final class DashboardRenderer
     }
 
     /** @param array<string, mixed> $summary */
-    private function renderKpis(array $summary, string $scope): string
+    /** @param array<string, mixed> $progress */
+    private function renderKpis(array $summary, string $scope, array $progress = []): string
     {
         $prefix = $scope === 'due_diligence' ? 'dd-' : '';
         ob_start();
@@ -262,29 +280,68 @@ final class DashboardRenderer
             <?php foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $status): ?>
                 <?php if (!isset($summary['by_status'][$status]) && $status === 'N/A') { continue; } ?>
                 <?php if (($summary['by_status'][$status] ?? 0) === 0 && $status === 'N/A') { continue; } ?>
+                <?php
+                $total = (int) ($summary['by_status'][$status] ?? 0);
+                $bucketKey = strtolower($status);
+                $showProgress = in_array($status, ['Gap', 'Risk', 'TBD'], true) && $total > 0;
+                $open = $showProgress ? (int) ($progress[$bucketKey]['open'] ?? $total) : $total;
+                $addressed = $showProgress ? (int) ($progress[$bucketKey]['addressed'] ?? 0) : 0;
+                ?>
                 <button
                     type="button"
                     class="kpi kpi-clickable tone-<?= strtolower(str_replace('/', '', $status)) ?>"
                     data-filter-type="status"
                     data-filter-value="<?= $this->e($status) ?>"
+                    data-progress-key="<?= $showProgress ? $this->e($bucketKey) : '' ?>"
                     aria-pressed="false"
                 >
                     <div class="eyebrow"><?= $this->e($status) ?></div>
-                    <strong><?= (int) ($summary['by_status'][$status] ?? 0) ?></strong>
-                    <span>Filter <?= $this->e(strtolower($status)) ?> rows</span>
+                    <?php if ($showProgress): ?>
+                        <?php $hasResolution = $addressed > 0; ?>
+                        <strong
+                            class="kpi-progress"
+                            data-progress-display="<?= $this->e($bucketKey) ?>"
+                            data-progress-has-resolution="<?= $hasResolution ? '1' : '0' ?>"
+                        >
+                            <span data-progress-open="<?= $this->e($bucketKey) ?>"><?= $hasResolution ? $open : $total ?></span><span class="kpi-progress-tail"<?= $hasResolution ? '' : ' hidden' ?>>/<span data-progress-total="<?= $this->e($bucketKey) ?>"><?= $total ?></span></span>
+                        </strong>
+                        <span data-progress-caption="<?= $this->e($bucketKey) ?>"<?= $hasResolution ? '' : ' hidden' ?>><?= $addressed ?> addressed · <?= $open ?> open</span>
+                    <?php else: ?>
+                        <strong><?= $total ?></strong>
+                        <span>Filter <?= $this->e(strtolower($status)) ?> rows</span>
+                    <?php endif; ?>
                 </button>
             <?php endforeach; ?>
             <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
+                <?php
+                $total = (int) ($summary['by_risk'][$risk] ?? 0);
+                $showProgress = $risk === 'High' && $total > 0;
+                $open = $showProgress ? (int) ($progress['high']['open'] ?? $total) : $total;
+                $addressed = $showProgress ? (int) ($progress['high']['addressed'] ?? 0) : 0;
+                $hasResolution = $showProgress && $addressed > 0;
+                ?>
                 <button
                     type="button"
                     class="kpi kpi-clickable tone-<?= strtolower($risk) ?>"
                     data-filter-type="risk"
                     data-filter-value="<?= $this->e($risk) ?>"
+                    data-progress-key="<?= $showProgress ? 'high' : '' ?>"
                     aria-pressed="false"
                 >
                     <div class="eyebrow"><?= $this->e($risk) ?> risk</div>
-                    <strong><?= (int) ($summary['by_risk'][$risk] ?? 0) ?></strong>
-                    <span>Filter <?= $this->e(strtolower($risk)) ?> risk rows</span>
+                    <?php if ($showProgress): ?>
+                        <strong
+                            class="kpi-progress"
+                            data-progress-display="high"
+                            data-progress-has-resolution="<?= $hasResolution ? '1' : '0' ?>"
+                        >
+                            <span data-progress-open="high"><?= $hasResolution ? $open : $total ?></span><span class="kpi-progress-tail"<?= $hasResolution ? '' : ' hidden' ?>>/<span data-progress-total="high"><?= $total ?></span></span>
+                        </strong>
+                        <span data-progress-caption="high"<?= $hasResolution ? '' : ' hidden' ?>><?= $addressed ?> addressed · <?= $open ?> open</span>
+                    <?php else: ?>
+                        <strong><?= $total ?></strong>
+                        <span>Filter <?= $this->e(strtolower($risk)) ?> risk rows</span>
+                    <?php endif; ?>
                 </button>
             <?php endforeach; ?>
         </section>
@@ -298,15 +355,37 @@ final class DashboardRenderer
      * @param list<array<string, mixed>> $riskSlices
      * @param list<array<string, mixed>> $sectionSlices
      * @param array<string, mixed> $summary
+     * @param array<string, mixed> $progress
      */
     private function renderChartsBlock(
         array $statusSlices,
         array $riskSlices,
         array $sectionSlices,
         array $summary,
-        string $scope
+        string $scope,
+        array $progress = []
     ): string {
         $idPrefix = $scope === 'due_diligence' ? 'dd-' : '';
+        $riskOpen = (int) ($progress['risk']['open'] ?? ($summary['by_status']['Risk'] ?? 0));
+        $riskTotal = (int) ($progress['risk']['total'] ?? ($summary['by_status']['Risk'] ?? 0));
+        $riskAddressed = (int) ($progress['risk']['addressed'] ?? 0);
+        $highOpen = (int) ($progress['high']['open'] ?? ($summary['by_risk']['High'] ?? 0));
+        $highTotal = (int) ($progress['high']['total'] ?? ($summary['by_risk']['High'] ?? 0));
+        $highAddressed = (int) ($progress['high']['addressed'] ?? 0);
+        $actionableOpen = (int) ($progress['actionable']['open'] ?? 0);
+        $actionableTotal = (int) ($progress['actionable']['total'] ?? 0);
+        $actionableAddressed = (int) ($progress['actionable']['addressed'] ?? 0);
+        $checksTotal = (int) ($summary['total'] ?? 0);
+
+        $riskCenter = $riskAddressed > 0 ? $riskOpen . '/' . $riskTotal : (string) $riskTotal;
+        $riskLabel = $riskAddressed > 0 ? 'open risks' : 'risks';
+        $highCenter = $highAddressed > 0 ? $highOpen . '/' . $highTotal : (string) $highTotal;
+        $highLabel = $highAddressed > 0 ? 'open high' : 'high risk';
+        $sectionCenter = $actionableAddressed > 0
+            ? $actionableOpen . '/' . $actionableTotal
+            : (string) $checksTotal;
+        $sectionLabel = $actionableAddressed > 0 ? 'open residual' : 'checks';
+
         ob_start();
         ?>
         <section class="charts-grid">
@@ -318,7 +397,13 @@ final class DashboardRenderer
                     </div>
                 </div>
                 <div class="chart-panel">
-                    <?= $this->renderDonutChart($statusSlices, $idPrefix . 'status-donut', (string) ($summary['by_status']['Risk'] ?? 0), 'risk items', false) ?>
+                    <?= $this->renderDonutChart(
+                        $statusSlices,
+                        $idPrefix . 'status-donut',
+                        $riskCenter,
+                        $riskLabel,
+                        false
+                    ) ?>
                     <?= $this->renderChartLegend($statusSlices, 'status') ?>
                 </div>
             </div>
@@ -330,7 +415,13 @@ final class DashboardRenderer
                     </div>
                 </div>
                 <div class="chart-panel">
-                    <?= $this->renderDonutChart($riskSlices, $idPrefix . 'risk-donut', (string) ($summary['by_risk']['High'] ?? 0), 'high risk', false) ?>
+                    <?= $this->renderDonutChart(
+                        $riskSlices,
+                        $idPrefix . 'risk-donut',
+                        $highCenter,
+                        $highLabel,
+                        false
+                    ) ?>
                     <?= $this->renderChartLegend($riskSlices, 'risk') ?>
                 </div>
             </div>
@@ -342,7 +433,12 @@ final class DashboardRenderer
                     </div>
                 </div>
                 <div class="chart-panel chart-panel-split">
-                    <?= $this->renderPieChart($sectionSlices, $idPrefix . 'section-pie') ?>
+                    <?= $this->renderPieChart(
+                        $sectionSlices,
+                        $idPrefix . 'section-pie',
+                        $sectionCenter,
+                        $sectionLabel
+                    ) ?>
                     <?= $this->renderChartLegend($sectionSlices, 'section') ?>
                 </div>
             </div>
@@ -461,6 +557,7 @@ final class DashboardRenderer
                 <option value="changed">Changed since last upload</option>
             </select>
             <button type="button" class="button ghost" id="<?= $prefix ?>clearFilters">Reset</button>
+            <button type="button" class="button ghost" data-filter-type="action_tab" data-filter-value="risks">Respond in Actions</button>
         </section>
 
         <section class="table-card" id="<?= $this->e($registerId) ?>" data-filter-scope="<?= $this->e($scope) ?>">
@@ -471,31 +568,16 @@ final class DashboardRenderer
                 </div>
                 <span class="result-count" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
             </div>
-            <div class="bulk-response-bar" data-bulk-scope="<?= $this->e($scope) ?>" data-bulk-table="<?= $this->e($tableId) ?>">
-                <label class="bulk-select-all">
-                    <input type="checkbox" class="bulk-select-all-toggle" title="Select all listed actionable rows">
-                    <span>Select all listed</span>
-                </label>
-                <span class="bulk-selected-count">0 selected</span>
-                <select class="bulk-response-action" aria-label="Bulk response">
-                    <?php foreach ($actionLabels as $value => $label): ?>
-                        <option value="<?= $this->e($value) ?>"><?= $this->e($label) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <input type="text" class="bulk-response-comment" maxlength="2000" placeholder="Comment for selected (optional)">
-                <button type="button" class="button button-primary bulk-response-apply">Update selected</button>
-                <span class="bulk-response-status" hidden></span>
-            </div>
+            <p class="panel-help dashboard-readonly-hint">Dashboard view only. Record Taken care / Ignore / comments in the <strong>Actions</strong> tab.</p>
             <div class="table-scroll">
                 <table id="<?= $this->e($tableId) ?>">
                     <thead>
                         <tr>
-                            <th class="col-select">Sel</th>
                             <th>Section</th>
                             <th><?= $this->e($checkLabel) ?></th>
                             <th>Status</th>
                             <th>Risk level</th>
-                            <th>Our response</th>
+                            <th>Response</th>
                             <th><?= $this->e($notesLabel) ?></th>
                             <th>Mitigation / controls</th>
                             <th>Owner</th>
@@ -525,6 +607,7 @@ final class DashboardRenderer
                             $response = $responses[$key] ?? ['action' => 'open', 'comment' => ''];
                             $responseAction = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open'));
                             $responseComment = (string) ($response['comment'] ?? '');
+                            $responseLabel = $actionLabels[$responseAction] ?? 'Open';
                             $searchParts = [
                                 $item['section'] ?? '',
                                 $item['check'] ?? '',
@@ -534,7 +617,7 @@ final class DashboardRenderer
                                 $item['review_question'] ?? '',
                                 $item['source_reference'] ?? '',
                                 $responseComment,
-                                $actionLabels[$responseAction] ?? '',
+                                $responseLabel,
                             ];
                             $ownersAttr = strtolower(preg_replace('/\s*(?:\+|\/|,|;|\band\b)\s*/i', '|', $owner !== '' ? $owner : 'unassigned') ?? 'unassigned');
                             $timelineLane = $this->timelineLane($timeline);
@@ -556,13 +639,6 @@ final class DashboardRenderer
                                 data-missing-mitigation="<?= $mitigation === '' ? '1' : '0' ?>"
                                 data-search="<?= $this->e(strtolower(implode(' ', $searchParts))) ?>"
                             >
-                                <td class="col-select">
-                                    <?php if ($isActionable): ?>
-                                        <input type="checkbox" class="row-select" value="<?= $this->e($key) ?>" aria-label="Select <?= $this->e($item['check'] ?? '') ?>">
-                                    <?php else: ?>
-                                        <span class="response-na">—</span>
-                                    <?php endif; ?>
-                                </td>
                                 <td><span class="section-name"><?= $this->e($item['section'] ?? '') ?></span><?php if ($isChanged): ?><span class="change-flag">Changed</span><?php endif; ?></td>
                                 <td>
                                     <div class="check-name"><?= $this->e($item['check'] ?? '') ?></div>
@@ -574,21 +650,10 @@ final class DashboardRenderer
                                 <td><?= $this->pill($riskLevel, 'risk') ?></td>
                                 <td class="response-cell">
                                     <?php if ($isActionable): ?>
-                                        <div class="item-response" data-item-key="<?= $this->e($key) ?>">
-                                            <select class="item-response-action" aria-label="Response for <?= $this->e($item['check'] ?? '') ?>">
-                                                <?php foreach ($actionLabels as $value => $label): ?>
-                                                    <option value="<?= $this->e($value) ?>" <?= $responseAction === $value ? 'selected' : '' ?>><?= $this->e($label) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <textarea
-                                                class="item-response-comment"
-                                                rows="2"
-                                                maxlength="2000"
-                                                placeholder="Comment (optional)"
-                                                aria-label="Comment for <?= $this->e($item['check'] ?? '') ?>"
-                                            ><?= $this->e($responseComment) ?></textarea>
-                                            <span class="item-response-save" hidden>Saved</span>
-                                        </div>
+                                        <span class="response-pill response-<?= $this->e($responseAction) ?>"><?= $this->e($responseLabel) ?></span>
+                                        <?php if ($responseComment !== ''): ?>
+                                            <div class="subtext clamp-text" data-expandable><?= $this->e($responseComment) ?></div>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="response-na">—</span>
                                     <?php endif; ?>
@@ -607,7 +672,7 @@ final class DashboardRenderer
                 </table>
             </div>
             <?php if ($assessmentId <= 0): ?>
-                <p class="response-hint">Save this assessment (upload) to persist responses in the database. Until then they stay in this browser only.</p>
+                <p class="response-hint">Save this assessment (upload) so Actions responses can be stored in the database.</p>
             <?php endif; ?>
         </section>
         <?php
@@ -966,21 +1031,126 @@ final class DashboardRenderer
         return $slices;
     }
 
-    /** @param array<string, mixed> $summary */
-    private function renderRiskSpectrum(array $summary): string
+    /** @param array<string, mixed> $progress */
+    /** @return list<array<string, mixed>> */
+    private function buildProgressStatusSlices(array $progress): array
     {
-        $total = max(1, (int) ($summary['total'] ?? 0));
-        $parts = [
-            'pass' => (int) ($summary['by_status']['Pass'] ?? 0),
-            'gap' => (int) ($summary['by_status']['Gap'] ?? 0),
-            'risk' => (int) ($summary['by_status']['Risk'] ?? 0),
-            'tbd' => (int) ($summary['by_status']['TBD'] ?? 0),
-            'na' => (int) ($summary['by_status']['N/A'] ?? 0),
+        $open = is_array($progress['by_status_open'] ?? null) ? $progress['by_status_open'] : [];
+        $slices = [];
+        foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A', 'Addressed'] as $status) {
+            $value = (int) ($open[$status] ?? 0);
+            if ($value <= 0 && in_array($status, ['N/A', 'Addressed'], true)) {
+                continue;
+            }
+            if ($value <= 0 && $status !== 'Pass') {
+                // Keep empty Gap/Risk/TBD out of the chart once cleared
+                continue;
+            }
+            if ($status === 'Pass' && $value <= 0) {
+                continue;
+            }
+            $slices[] = [
+                'label' => $status,
+                'value' => $value,
+                'color' => self::STATUS_COLOR[$status] ?? '#94a3b8',
+                'filterType' => $status === 'Addressed' ? 'response' : 'status',
+                'filterValue' => $status === 'Addressed' ? 'addressed' : $status,
+            ];
+        }
+
+        return $slices;
+    }
+
+    /**
+     * @param array<string, mixed> $progress
+     * @param array<string, mixed> $summary
+     * @return list<array<string, mixed>>
+     */
+    private function buildProgressRiskSlices(array $progress, array $summary): array
+    {
+        $highOpen = (int) ($progress['high']['open'] ?? 0);
+        $highAddressed = (int) ($progress['high']['addressed'] ?? 0);
+        $slices = [
+            [
+                'label' => 'High open',
+                'value' => $highOpen,
+                'color' => self::RISK_COLOR['High'],
+                'filterType' => 'risk',
+                'filterValue' => 'High',
+            ],
         ];
+        if ($highAddressed > 0) {
+            $slices[] = [
+                'label' => 'High addressed',
+                'value' => $highAddressed,
+                'color' => '#0e7490',
+                'filterType' => 'response',
+                'filterValue' => 'addressed',
+            ];
+        }
+        foreach (['Med', 'Low'] as $risk) {
+            $slices[] = [
+                'label' => $risk,
+                'value' => (int) ($summary['by_risk'][$risk] ?? 0),
+                'color' => self::RISK_COLOR[$risk],
+                'filterType' => 'risk',
+                'filterValue' => $risk,
+            ];
+        }
+
+        return array_values(array_filter($slices, static fn(array $slice): bool => (int) $slice['value'] > 0));
+    }
+
+    /** @param array<string, mixed> $progress */
+    private function renderProgressMeter(array $progress): string
+    {
+        $total = (int) ($progress['actionable']['total'] ?? 0);
+        $addressed = (int) ($progress['actionable']['addressed'] ?? 0);
+        $open = (int) ($progress['actionable']['open'] ?? 0);
+        if ($total <= 0) {
+            return '';
+        }
+        $pct = round(($addressed / max(1, $total)) * 100, 1);
 
         ob_start();
         ?>
-        <div class="risk-spectrum" aria-label="Status mix">
+        <div class="residual-progress" id="residual-progress" aria-label="Residual issue progress">
+            <div class="residual-progress-head">
+                <span>Issues addressed</span>
+                <strong>
+                    <span data-progress-addressed="actionable"><?= $addressed ?></span>/<span data-progress-total="actionable"><?= $total ?></span>
+                </strong>
+            </div>
+            <div class="residual-progress-track">
+                <span class="residual-progress-fill" data-progress-bar="actionable" style="width: <?= $pct ?>%"></span>
+            </div>
+            <div class="residual-progress-meta">
+                <span data-progress-caption="actionable"><?= $open ?> still open</span>
+                <span data-progress-fraction="actionable"><?= $open ?>/<?= $total ?> open</span>
+            </div>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /** @param array<string, mixed> $progress */
+    private function renderRiskSpectrum(array $progress): string
+    {
+        $open = is_array($progress['by_status_open'] ?? null) ? $progress['by_status_open'] : [];
+        $parts = [
+            'pass' => (int) ($open['Pass'] ?? 0),
+            'addressed' => (int) ($open['Addressed'] ?? 0),
+            'gap' => (int) ($open['Gap'] ?? 0),
+            'risk' => (int) ($open['Risk'] ?? 0),
+            'tbd' => (int) ($open['TBD'] ?? 0),
+            'na' => (int) ($open['N/A'] ?? 0),
+        ];
+        $total = max(1, array_sum($parts));
+
+        ob_start();
+        ?>
+        <div class="risk-spectrum" aria-label="Open status mix">
             <div class="risk-spectrum-track">
                 <?php foreach ($parts as $key => $count): ?>
                     <?php if ($count <= 0) { continue; } ?>
@@ -988,12 +1158,13 @@ final class DashboardRenderer
                         class="risk-spectrum-seg <?= $this->e($key) ?>"
                         style="width: <?= $this->percent($count, $total) ?>%; animation-delay: <?= array_search($key, array_keys($parts), true) * 0.05 ?>s"
                         title="<?= $this->e(strtoupper($key)) ?>: <?= $count ?>"
+                        data-spectrum-seg="<?= $this->e($key) ?>"
                     ></span>
                 <?php endforeach; ?>
             </div>
             <div class="risk-spectrum-legend">
-                <?php foreach (['Pass' => 'pass', 'Gap' => 'gap', 'Risk' => 'risk', 'TBD' => 'tbd'] as $label => $key): ?>
-                    <span><b><?= (int) ($parts[$key] ?? 0) ?></b> <?= $this->e($label) ?></span>
+                <?php foreach (['Pass' => 'pass', 'Addressed' => 'addressed', 'Gap' => 'gap', 'Risk' => 'risk', 'TBD' => 'tbd'] as $label => $key): ?>
+                    <span><b data-spectrum-count="<?= $this->e($key) ?>"><?= (int) ($parts[$key] ?? 0) ?></b> <?= $this->e($label) ?></span>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -1006,18 +1177,19 @@ final class DashboardRenderer
     private function renderDonutChart(array $slices, string $chartId, string $centerValue, string $centerLabel, bool $hero): string
     {
         $total = max(1, array_sum(array_column($slices, 'value')));
-        $radius = 62;
-        $stroke = 22;
+        $radius = $hero ? 70 : 64;
+        $stroke = $hero ? 16 : 18;
         $circumference = 2 * M_PI * $radius;
         $offset = 0.0;
-        $size = $hero ? 220 : 190;
+        $size = $hero ? 200 : 180;
         $center = $size / 2;
+        $isFraction = str_contains($centerValue, '/');
 
         ob_start();
         ?>
-        <div class="donut-wrap<?= $hero ? ' donut-wrap-hero' : '' ?>" data-chart-id="<?= $this->e($chartId) ?>">
+        <div class="donut-wrap<?= $hero ? ' donut-wrap-hero' : '' ?><?= $isFraction ? ' has-fraction' : '' ?>" data-chart-id="<?= $this->e($chartId) ?>">
             <svg viewBox="0 0 <?= $size ?> <?= $size ?>" class="donut-chart" aria-hidden="true">
-                <circle cx="<?= $center ?>" cy="<?= $center ?>" r="<?= $radius ?>" fill="none" stroke="#edf1ee" stroke-width="<?= $stroke ?>"></circle>
+                <circle cx="<?= $center ?>" cy="<?= $center ?>" r="<?= $radius ?>" fill="none" stroke="rgba(148, 163, 184, 0.28)" stroke-width="<?= $stroke ?>"></circle>
                 <?php foreach ($slices as $index => $slice): ?>
                     <?php
                     $value = (int) $slice['value'];
@@ -1025,7 +1197,7 @@ final class DashboardRenderer
                         continue;
                     }
                     $length = ($value / $total) * $circumference;
-                    $gap = $total > $value ? 2 : 0;
+                    $gap = $total > $value ? 2.5 : 0;
                     ?>
                     <circle
                         class="donut-segment"
@@ -1035,6 +1207,7 @@ final class DashboardRenderer
                         fill="none"
                         stroke="<?= $this->e((string) $slice['color']) ?>"
                         stroke-width="<?= $stroke ?>"
+                        stroke-linecap="butt"
                         stroke-dasharray="<?= round($length - $gap, 2) ?> <?= round($circumference - $length + $gap, 2) ?>"
                         stroke-dashoffset="<?= round(-$offset, 2) ?>"
                         transform="rotate(-90 <?= $center ?> <?= $center ?>)"
@@ -1045,9 +1218,9 @@ final class DashboardRenderer
                     <?php $offset += $length; ?>
                 <?php endforeach; ?>
             </svg>
-            <div class="donut-center">
-                <strong><?= $this->e($centerValue) ?></strong>
-                <span><?= $this->e($centerLabel) ?></span>
+            <div class="donut-center" data-donut-center="<?= $this->e($chartId) ?>">
+                <strong data-donut-value="<?= $this->e($chartId) ?>"><?= $this->e($centerValue) ?></strong>
+                <span data-donut-label="<?= $this->e($chartId) ?>"><?= $this->e($centerLabel) ?></span>
             </div>
         </div>
         <?php
@@ -1056,16 +1229,21 @@ final class DashboardRenderer
     }
 
     /** @param list<array<string, mixed>> $slices */
-    private function renderPieChart(array $slices, string $chartId): string
+    private function renderPieChart(array $slices, string $chartId, string $centerValue = '', string $centerLabel = 'checks'): string
     {
         $total = array_sum(array_column($slices, 'value'));
         $center = 95;
-        $radius = 72;
+        $radius = 74;
+        $hole = 48;
         $angle = -90.0;
+        if ($centerValue === '') {
+            $centerValue = (string) (int) $total;
+        }
+        $isFraction = str_contains($centerValue, '/');
 
         ob_start();
         ?>
-        <div class="pie-wrap" data-chart-id="<?= $this->e($chartId) ?>">
+        <div class="pie-wrap<?= $isFraction ? ' has-fraction' : '' ?>" data-chart-id="<?= $this->e($chartId) ?>">
             <svg viewBox="0 0 190 190" class="pie-chart" aria-hidden="true">
                 <?php if ($total <= 0): ?>
                     <circle cx="<?= $center ?>" cy="<?= $center ?>" r="<?= $radius ?>" fill="#edf1ee"></circle>
@@ -1090,11 +1268,11 @@ final class DashboardRenderer
                         ></path>
                     <?php endforeach; ?>
                 <?php endif; ?>
-                <circle cx="<?= $center ?>" cy="<?= $center ?>" r="34" fill="#fff"></circle>
+                <circle cx="<?= $center ?>" cy="<?= $center ?>" r="<?= $hole ?>" fill="var(--card, #fff)"></circle>
             </svg>
-            <div class="pie-center">
-                <strong><?= (int) $total ?></strong>
-                <span>checks</span>
+            <div class="pie-center" data-donut-center="<?= $this->e($chartId) ?>">
+                <strong data-donut-value="<?= $this->e($chartId) ?>"><?= $this->e($centerValue) ?></strong>
+                <span data-donut-label="<?= $this->e($chartId) ?>"><?= $this->e($centerLabel) ?></span>
             </div>
         </div>
         <?php

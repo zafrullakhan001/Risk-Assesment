@@ -449,8 +449,8 @@ a.brand-link:hover h1 {
 
 .hero-art {
     position: relative;
-    width: 108px;
-    height: 108px;
+    width: 148px;
+    height: 148px;
     flex-shrink: 0;
 }
 
@@ -502,8 +502,8 @@ a.brand-link:hover h1 {
 }
 
 .donut-wrap-hero {
-    width: 108px;
-    height: 108px;
+    width: 148px;
+    height: 148px;
 }
 
 .donut-wrap,
@@ -511,12 +511,13 @@ a.brand-link:hover h1 {
 .donut-wrap-hero {
     position: relative;
     margin: 0 auto;
+    flex-shrink: 0;
 }
 
 .donut-wrap,
 .pie-wrap {
-    width: 92px;
-    height: 92px;
+    width: 118px;
+    height: 118px;
 }
 
 .donut-chart,
@@ -542,52 +543,88 @@ a.brand-link:hover h1 {
     position: absolute;
     inset: 50%;
     translate: -50% -50%;
-    width: 50px;
-    height: 50px;
-    display: grid;
-    place-content: center;
+    width: 68%;
+    height: 68%;
+    max-width: 78px;
+    max-height: 78px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
     text-align: center;
     border-radius: 50%;
     background: var(--card);
     box-shadow: var(--shadow-sm);
+    padding: 6px 4px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .donut-wrap-hero .donut-center {
-    width: 58px;
-    height: 58px;
-    background: rgba(12, 21, 36, 0.7);
+    width: 72%;
+    height: 72%;
+    max-width: 96px;
+    max-height: 96px;
+    background: rgba(8, 18, 32, 0.82);
     color: #fff;
     box-shadow: none;
-    border: 1px solid rgba(103, 232, 249, 0.25);
+    border: 1px solid rgba(103, 232, 249, 0.22);
+    padding: 8px 6px;
+    gap: 3px;
 }
 
 .donut-center strong,
 .pie-center strong {
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: clamp(11px, 2.4vw, 15px);
     font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
     color: var(--ink);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.donut-wrap.has-fraction .donut-center strong,
+.donut-wrap-hero.has-fraction .donut-center strong,
+.pie-wrap.has-fraction .pie-center strong {
+    font-size: clamp(10px, 2.1vw, 14px);
+    letter-spacing: -0.04em;
 }
 
 .donut-wrap-hero .donut-center strong {
     color: #fff;
-    font-size: 18px;
+    font-size: clamp(13px, 1.8vw, 17px);
+}
+
+.donut-wrap-hero.has-fraction .donut-center strong {
+    font-size: clamp(12px, 1.6vw, 15px);
 }
 
 .donut-center span,
-.pie-center span,
-.donut-wrap-hero .donut-center span {
+.pie-center span {
     font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 0.06em;
+    font-size: 8px;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--muted);
+    line-height: 1.15;
+    max-width: 100%;
+    padding: 0 2px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    word-break: break-word;
 }
 
 .donut-wrap-hero .donut-center span {
     color: var(--hero-muted);
+    font-size: 8px;
+    letter-spacing: 0.05em;
 }
 
 /* Buttons */
@@ -925,10 +962,10 @@ a.brand-link:hover h1 {
 .chart-panel,
 .chart-panel-split {
     display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
-    gap: 8px;
-    align-items: start;
-    padding: 0 10px 10px;
+    grid-template-columns: 124px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 0 10px 12px;
 }
 
 .chart-legend {
@@ -1430,9 +1467,10 @@ html.is-compact .topbar h1 { font-size: 14px; }
 html.is-compact .hero-compact { padding: 16px 18px 14px; margin-bottom: 10px; }
 html.is-compact .hero-compact h2 { font-size: clamp(22px, 3vw, 32px); }
 html.is-compact .hero-art,
-html.is-compact .donut-wrap-hero { width: 88px; height: 88px; }
-html.is-compact .donut-wrap-hero .donut-center { width: 48px; height: 48px; }
-html.is-compact .donut-wrap-hero .donut-center strong { font-size: 16px; }
+html.is-compact .donut-wrap-hero { width: 120px; height: 120px; }
+html.is-compact .donut-wrap-hero .donut-center { max-width: 78px; max-height: 78px; }
+html.is-compact .donut-wrap-hero .donut-center strong { font-size: 13px; }
+html.is-compact .donut-wrap-hero.has-fraction .donut-center strong { font-size: 12px; }
 html.is-compact .hero-stat { inset: 18px; }
 html.is-compact .hero-stat strong { font-size: 22px; }
 html.is-compact .kpis { gap: 6px; margin-bottom: 8px; }
@@ -1444,13 +1482,15 @@ html.is-compact .meta-item strong { font-size: 12px; }
 html.is-compact .card-heading { padding: 8px 10px 4px; }
 html.is-compact .card-heading h3 { font-size: 13px; }
 html.is-compact .chart-panel,
-html.is-compact .chart-panel-split { grid-template-columns: 84px minmax(0, 1fr); gap: 6px; padding: 0 8px 8px; }
+html.is-compact .chart-panel-split { grid-template-columns: 108px minmax(0, 1fr); gap: 8px; padding: 0 8px 8px; }
 html.is-compact .donut-wrap,
-html.is-compact .pie-wrap { width: 84px; height: 84px; }
+html.is-compact .pie-wrap { width: 100px; height: 100px; }
 html.is-compact .donut-center,
-html.is-compact .pie-center { width: 46px; height: 46px; }
+html.is-compact .pie-center { max-width: 64px; max-height: 64px; }
 html.is-compact .donut-center strong,
-html.is-compact .pie-center strong { font-size: 14px; }
+html.is-compact .pie-center strong { font-size: 12px; }
+html.is-compact .donut-wrap.has-fraction .donut-center strong,
+html.is-compact .pie-wrap.has-fraction .pie-center strong { font-size: 11px; }
 html.is-compact .legend-item { padding: 4px 7px; }
 html.is-compact .state-bars { padding: 0 8px 8px; gap: 3px; }
 html.is-compact .bar-row { padding: 4px 7px; }
@@ -1700,6 +1740,44 @@ html.is-compact .upload-card { padding: 16px; }
     opacity: 0.92;
 }
 .final-evaluation-card { margin-top: 12px; }
+.actions-workspace { display: grid; gap: 12px; }
+.actions-intro {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 10px;
+    padding: 4px 2px;
+}
+.actions-intro h2 { margin: 0; font-size: 1.35rem; }
+.actions-intro p { margin: 4px 0 0; color: var(--ink-soft); font-size: 13px; max-width: 58ch; }
+.action-tabs {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--card) 88%, var(--primary-soft));
+}
+.action-tab {
+    appearance: none; border: 1px solid transparent; background: transparent; color: var(--ink-soft);
+    height: 34px; padding: 0 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--font-display); font-size: 12px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px;
+}
+.action-tab em {
+    font-style: normal; font-family: var(--font-mono); font-size: 10px;
+    padding: 1px 6px; border-radius: 999px; background: var(--line); color: var(--muted);
+}
+.action-tab.is-active {
+    background: var(--card); color: var(--ink); border-color: var(--line);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.action-tab.is-active em { background: var(--primary-soft); color: var(--primary); }
+.action-panel[hidden] { display: none !important; }
+.dashboard-readonly-hint { margin: 0 12px 10px; }
+.response-pill {
+    display: inline-flex; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; background: var(--line); color: var(--ink-soft);
+}
+.response-pill.response-open { background: color-mix(in srgb, var(--gap) 18%, transparent); color: var(--gap); }
+.response-pill.response-take_care { background: var(--pass-soft); color: var(--pass); }
+.response-pill.response-ignore,
+.response-pill.response-not_applicable { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+.response-pill.response-closed { background: var(--primary-soft); color: var(--primary); }
 .final-evaluation-form { padding: 0 12px 14px; display: grid; gap: 12px; }
 .final-eval-grid {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
@@ -1741,10 +1819,28 @@ html.is-compact .upload-card { padding: 16px; }
 .golive-badge.is-pending {
     background: color-mix(in srgb, var(--gap) 18%, transparent); color: var(--gap);
 }
-.golive-pill {
-    display: inline-flex; margin: 6px 0 2px; padding: 3px 10px; border-radius: 999px;
-    background: var(--pass-soft); color: var(--pass); font-size: 11px; font-weight: 700;
+.residual-progress {
+    margin: 8px 0 10px; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: var(--radius-sm); background: color-mix(in srgb, var(--pass-soft) 40%, var(--card));
 }
+.residual-progress-head {
+    display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+    font-size: 12px; color: var(--ink-soft); margin-bottom: 6px;
+}
+.residual-progress-head strong { font-size: 16px; color: var(--ink); font-family: var(--font-mono); }
+.residual-progress-track {
+    height: 8px; border-radius: 999px; background: var(--line); overflow: hidden;
+}
+.residual-progress-fill {
+    display: block; height: 100%; border-radius: inherit; background: var(--pass);
+    transition: width 0.35s ease;
+}
+.residual-progress-meta {
+    display: flex; justify-content: space-between; gap: 8px; margin-top: 6px;
+    font-size: 11px; color: var(--muted); font-family: var(--font-mono);
+}
+.kpi-progress { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.risk-spectrum-seg.addressed { background: #0e7490; }
 .exec-summary.is-ready-golive {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pass) 35%, transparent);
 }
