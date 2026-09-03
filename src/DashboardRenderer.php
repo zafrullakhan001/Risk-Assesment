@@ -44,6 +44,7 @@ final class DashboardRenderer
      * @param list<array{id: int, label: string, url: string, sort_order: int}> $projectLinks
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $projectDiagrams
      * @param array<string, string> $findingStatuses
+     * @param array{verdict?: string, summary?: string} $executiveOverride
      */
     public function render(
         Assessment $assessment,
@@ -57,7 +58,8 @@ final class DashboardRenderer
         ?array $evaluation = null,
         array $projectLinks = [],
         array $projectDiagrams = [],
-        array $findingStatuses = []
+        array $findingStatuses = [],
+        array $executiveOverride = []
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -65,7 +67,13 @@ final class DashboardRenderer
         $dueItems = $assessment->dueDiligenceItems;
         $workbook = $assessment->workbook;
         $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
-        $insights = (new AssessmentInsights())->build($assessment, $responses, $findingStatuses);
+        $insightBuilder = new AssessmentInsights();
+        $insights = $insightBuilder->build($assessment, $responses, $findingStatuses);
+        $insights = $insightBuilder->applyExecutiveOverride(
+            $insights,
+            (string) ($executiveOverride['verdict'] ?? ''),
+            (string) ($executiveOverride['summary'] ?? '')
+        );
         $evalNotes = (string) ($evaluation['notes'] ?? '');
         $goliveGates = (new GoliveGate())->evaluate($assessment, $responses, $findingStatuses, $evalNotes);
         $goliveGatesJson = json_encode($goliveGates, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';

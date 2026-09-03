@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\AssessmentComparer;
+use RiskAssessment\AssessmentInsights;
 use RiskAssessment\DashboardRenderer;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
@@ -263,20 +264,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Unable to save final evaluation.');
             }
 
+            if (array_key_exists('executive_verdict', $_POST) || array_key_exists('executive_summary', $_POST)) {
+                if (!$repository->saveExecutiveOverride(
+                    $targetId,
+                    (string) ($_POST['executive_verdict'] ?? ''),
+                    (string) ($_POST['executive_summary'] ?? '')
+                )) {
+                    throw new RuntimeException('Unable to save executive summary.');
+                }
+            }
+
             $saved = $evaluationRepository->findByAssessmentId($targetId);
+            $executiveOverride = $repository->findExecutiveOverride($targetId);
             $record = $repository->findById($targetId);
+            $responses = $record !== null ? $responseRepository->listForAssessment($targetId) : [];
+            $findingStatuses = $record !== null ? $findingStatusRepository->listForAssessment($targetId) : [];
             $gate = $record !== null
-                ? $goliveGate->evaluate(
-                    $record['assessment'],
-                    $responseRepository->listForAssessment($targetId),
-                    $findingStatusRepository->listForAssessment($targetId),
-                    $notes
-                )
+                ? $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes)
                 : ['ready_allowed' => false, 'rules' => []];
+            $executive = [
+                'verdict' => $executiveOverride['verdict'],
+                'summary' => $executiveOverride['summary'],
+                'auto_verdict' => '',
+                'auto_summary' => '',
+                'custom_verdict' => $executiveOverride['verdict'],
+                'custom_summary' => $executiveOverride['summary'],
+                'is_custom' => $executiveOverride['verdict'] !== '' || $executiveOverride['summary'] !== '',
+            ];
+            if ($record !== null) {
+                $insightBuilder = new AssessmentInsights();
+                $insights = $insightBuilder->applyExecutiveOverride(
+                    $insightBuilder->build($record['assessment'], $responses, $findingStatuses),
+                    $executiveOverride['verdict'],
+                    $executiveOverride['summary']
+                );
+                $readiness = $insights['readiness'] ?? [];
+                $executive = [
+                    'verdict' => (string) ($readiness['verdict'] ?? $executive['verdict']),
+                    'summary' => (string) ($readiness['summary'] ?? $executive['summary']),
+                    'auto_verdict' => (string) ($readiness['auto_verdict'] ?? ''),
+                    'auto_summary' => (string) ($readiness['auto_summary'] ?? ''),
+                    'custom_verdict' => $executiveOverride['verdict'],
+                    'custom_summary' => $executiveOverride['summary'],
+                    'is_custom' => !empty($readiness['is_custom']),
+                ];
+            }
             echo json_encode([
                 'ok' => true,
                 'evaluation' => $saved,
+                'executive' => $executive,
                 'gates' => $gate,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'save_executive_summary') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before saving the executive summary.');
+            }
+
+            $verdict = (string) ($_POST['executive_verdict'] ?? '');
+            $summary = (string) ($_POST['executive_summary'] ?? '');
+            if (!$repository->saveExecutiveOverride($targetId, $verdict, $summary)) {
+                throw new RuntimeException('Unable to save executive summary.');
+            }
+
+            $saved = $repository->findExecutiveOverride($targetId);
+            $record = $repository->findById($targetId);
+            $readiness = [
+                'verdict' => $saved['verdict'],
+                'summary' => $saved['summary'],
+                'auto_verdict' => '',
+                'auto_summary' => '',
+                'is_custom' => $saved['verdict'] !== '' || $saved['summary'] !== '',
+            ];
+            if ($record !== null) {
+                $insightBuilder = new AssessmentInsights();
+                $insights = $insightBuilder->applyExecutiveOverride(
+                    $insightBuilder->build(
+                        $record['assessment'],
+                        $responseRepository->listForAssessment($targetId),
+                        $findingStatusRepository->listForAssessment($targetId)
+                    ),
+                    $saved['verdict'],
+                    $saved['summary']
+                );
+                $readiness = $insights['readiness'] ?? $readiness;
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'executive' => [
+                    'verdict' => (string) ($readiness['verdict'] ?? ''),
+                    'summary' => (string) ($readiness['summary'] ?? ''),
+                    'auto_verdict' => (string) ($readiness['auto_verdict'] ?? ''),
+                    'auto_summary' => (string) ($readiness['auto_summary'] ?? ''),
+                    'custom_verdict' => $saved['verdict'],
+                    'custom_summary' => $saved['summary'],
+                    'is_custom' => !empty($readiness['is_custom']),
+                ],
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);
@@ -520,7 +617,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $evaluation,
                 $projectLinks,
                 $projectDiagrams,
-                $findingStatuses
+                $findingStatuses,
+                $record['executive_override'] ?? $repository->findExecutiveOverride($assessmentId)
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -565,7 +663,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $evaluation,
             $projectLinks,
             $projectDiagrams,
-            $findingStatuses
+            $findingStatuses,
+            $storedId > 0 ? $repository->findExecutiveOverride($storedId) : []
         );
     }
 }

@@ -47,6 +47,8 @@ final class Database
 
         $pdo->exec((string) file_get_contents($schemaPath));
         self::ensureColumn($pdo, 'assessments', 'workbook_json', "TEXT NOT NULL DEFAULT '{}'");
+        self::ensureColumn($pdo, 'assessments', 'custom_executive_verdict', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'assessments', 'custom_executive_summary', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessment_items', 'item_type', "TEXT NOT NULL DEFAULT 'architecture'");
         self::ensureColumn($pdo, 'assessment_items', 'review_question', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessment_items', 'source_reference', "TEXT NOT NULL DEFAULT ''");

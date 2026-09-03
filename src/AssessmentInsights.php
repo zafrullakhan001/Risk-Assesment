@@ -12,7 +12,7 @@ final class AssessmentInsights
      * @param array<string, array{action?: string, comment?: string}> $responses
      * @param array<string, string> $findingStatuses
      * @return array{
-     *   readiness: array{score: int, band: string, verdict: string, summary: string},
+     *   readiness: array{score: int, band: string, verdict: string, summary: string, auto_verdict?: string, auto_summary?: string, custom_verdict?: string, custom_summary?: string, is_custom?: bool},
      *   residual: array{high: int, risk: int, tbd: int, gap: int, open_findings: int},
      *   findings: list<array<string, string>>,
      *   owners: list<array{owner: string, total: int, high: int, risk: int, tbd: int, gap: int}>,
@@ -229,6 +229,37 @@ final class AssessmentInsights
             'evidence' => $this->scoreEvidence($checklist, $items, $assessment->workbook),
             'top_risks' => $topRisks,
         ];
+    }
+
+    /**
+     * Overlay a saved custom headline/body on the auto-generated readiness copy.
+     *
+     * @param array<string, mixed> $insights
+     * @return array<string, mixed>
+     */
+    public function applyExecutiveOverride(array $insights, string $customVerdict, string $customSummary): array
+    {
+        $readiness = is_array($insights['readiness'] ?? null) ? $insights['readiness'] : [];
+        $autoVerdict = (string) ($readiness['verdict'] ?? '');
+        $autoSummary = (string) ($readiness['summary'] ?? '');
+        $customVerdict = trim($customVerdict);
+        $customSummary = trim($customSummary);
+
+        $readiness['auto_verdict'] = $autoVerdict;
+        $readiness['auto_summary'] = $autoSummary;
+        $readiness['custom_verdict'] = $customVerdict;
+        $readiness['custom_summary'] = $customSummary;
+        $readiness['is_custom'] = $customVerdict !== '' || $customSummary !== '';
+        if ($customVerdict !== '') {
+            $readiness['verdict'] = $customVerdict;
+        }
+        if ($customSummary !== '') {
+            $readiness['summary'] = $customSummary;
+        }
+
+        $insights['readiness'] = $readiness;
+
+        return $insights;
     }
 
     /** @param list<array<string, mixed>> $findings */

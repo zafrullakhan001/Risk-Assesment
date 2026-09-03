@@ -557,9 +557,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const openExceptions = Array.from(exceptionSelects).filter((node) => node.value === 'Open').length;
 
         const execSummaryEl = document.querySelector('.exec-summary');
+        const execCopyEl = document.getElementById('exec-copy');
         const scoreEl = document.querySelector('.exec-score strong');
-        const verdictEl = document.querySelector('.exec-copy h3');
-        const summaryEl = document.querySelector('.exec-copy p');
+        const verdictEl = document.getElementById('exec-verdict') || document.querySelector('.exec-copy-view h3');
+        const summaryEl = document.getElementById('exec-summary-text') || document.querySelector('.exec-copy-view p');
 
         const openMetricSpan = Array.from(document.querySelectorAll('.exec-metrics span')).find((span) => span.textContent.trim().endsWith('Open exceptions'));
         const openMetricBold = openMetricSpan ? openMetricSpan.querySelector('b') : null;
@@ -605,8 +606,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         execSummaryEl.classList.remove('band-ready', 'band-conditional', 'band-blocked');
         execSummaryEl.classList.add(`band-${band}`);
+        if (execCopyEl) {
+            execCopyEl.dataset.autoVerdict = verdict;
+            execCopyEl.dataset.autoSummary = summary;
+        }
+        const evalVerdict = document.getElementById('eval-exec-verdict');
+        const evalSummary = document.getElementById('eval-exec-summary');
+        if (evalVerdict) {
+            evalVerdict.placeholder = verdict;
+        }
+        if (evalSummary) {
+            evalSummary.placeholder = summary;
+        }
+        if (execCopyEl?.dataset.custom === '1') {
+            return;
+        }
         verdictEl.textContent = verdict;
         summaryEl.textContent = summary;
+        const deskVerdict = document.getElementById('exec-verdict-input');
+        const deskSummary = document.getElementById('exec-summary-input');
+        if (deskVerdict && document.getElementById('exec-summary-form')?.hidden) {
+            deskVerdict.value = verdict;
+        }
+        if (deskSummary && document.getElementById('exec-summary-form')?.hidden) {
+            deskSummary.value = summary;
+        }
     };
 
     document.querySelectorAll('.exception-status').forEach((select) => {
@@ -1202,6 +1226,205 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    const applyExecutiveSummaryUi = (executive = {}) => {
+        const execCopyEl = document.getElementById('exec-copy');
+        const verdictEl = document.getElementById('exec-verdict');
+        const summaryEl = document.getElementById('exec-summary-text');
+        const customPill = document.getElementById('exec-custom-pill');
+        const evalCustomPill = document.getElementById('eval-exec-custom-pill');
+        const deskVerdict = document.getElementById('exec-verdict-input');
+        const deskSummary = document.getElementById('exec-summary-input');
+        const evalVerdict = document.getElementById('eval-exec-verdict');
+        const evalSummary = document.getElementById('eval-exec-summary');
+        const isCustom = !!executive.is_custom;
+        const displayVerdict = executive.verdict || '';
+        const displaySummary = executive.summary || '';
+
+        if (execCopyEl) {
+            execCopyEl.dataset.custom = isCustom ? '1' : '0';
+            if (executive.auto_verdict) {
+                execCopyEl.dataset.autoVerdict = executive.auto_verdict;
+            }
+            if (executive.auto_summary) {
+                execCopyEl.dataset.autoSummary = executive.auto_summary;
+            }
+        }
+        if (verdictEl && displayVerdict) {
+            verdictEl.textContent = displayVerdict;
+        }
+        if (summaryEl && displaySummary) {
+            summaryEl.textContent = displaySummary;
+        }
+        if (customPill) {
+            customPill.hidden = !isCustom;
+        }
+        if (evalCustomPill) {
+            evalCustomPill.hidden = !isCustom;
+        }
+        if (deskVerdict) {
+            deskVerdict.value = displayVerdict || execCopyEl?.dataset.autoVerdict || '';
+        }
+        if (deskSummary) {
+            deskSummary.value = displaySummary || execCopyEl?.dataset.autoSummary || '';
+        }
+        if (evalVerdict) {
+            evalVerdict.value = executive.custom_verdict || '';
+            if (executive.auto_verdict) {
+                evalVerdict.placeholder = executive.auto_verdict;
+            }
+        }
+        if (evalSummary) {
+            evalSummary.value = executive.custom_summary || '';
+            if (executive.auto_summary) {
+                evalSummary.placeholder = executive.auto_summary;
+            }
+        }
+    };
+
+    const execSummaryForm = document.getElementById('exec-summary-form');
+    const execSummaryView = document.getElementById('exec-summary-view');
+    const editExecBtn = document.getElementById('btn-edit-exec-summary');
+    const cancelExecBtn = document.getElementById('btn-cancel-exec-summary');
+    const resetExecBtn = document.getElementById('btn-reset-exec-summary');
+    const execEditStatus = document.getElementById('exec-edit-status');
+
+    const setExecEditStatus = (message, isError = false) => {
+        if (!execEditStatus) {
+            return;
+        }
+        execEditStatus.hidden = !message;
+        execEditStatus.textContent = message || '';
+        execEditStatus.classList.toggle('is-error', !!isError);
+    };
+
+    const setExecEditorOpen = (open) => {
+        if (execSummaryForm) {
+            execSummaryForm.hidden = !open;
+        }
+        if (execSummaryView) {
+            execSummaryView.hidden = !!open;
+        }
+        if (editExecBtn) {
+            editExecBtn.hidden = !!open;
+        }
+        if (open) {
+            const execCopyEl = document.getElementById('exec-copy');
+            const deskVerdict = document.getElementById('exec-verdict-input');
+            const deskSummary = document.getElementById('exec-summary-input');
+            const verdictEl = document.getElementById('exec-verdict');
+            const summaryEl = document.getElementById('exec-summary-text');
+            if (deskVerdict) {
+                deskVerdict.value = verdictEl?.textContent || execCopyEl?.dataset.autoVerdict || '';
+            }
+            if (deskSummary) {
+                deskSummary.value = summaryEl?.textContent || execCopyEl?.dataset.autoSummary || '';
+            }
+            deskVerdict?.focus();
+        }
+        setExecEditStatus('');
+    };
+
+    const persistExecutiveSummary = async (verdict, summary) => {
+        if (!assessmentId || Number(assessmentId) <= 0) {
+            throw new Error('Save requires a stored assessment');
+        }
+        const body = new URLSearchParams({
+            action: 'save_executive_summary',
+            csrf_token: csrfToken,
+            assessment_id: String(assessmentId),
+            executive_verdict: verdict,
+            executive_summary: summary,
+        });
+        const response = await fetch('index.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body,
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || 'Save failed');
+        }
+        return payload;
+    };
+
+    if (editExecBtn) {
+        editExecBtn.addEventListener('click', () => {
+            setExecEditorOpen(true);
+        });
+    }
+    if (cancelExecBtn) {
+        cancelExecBtn.addEventListener('click', () => {
+            setExecEditorOpen(false);
+        });
+    }
+    if (resetExecBtn) {
+        resetExecBtn.addEventListener('click', async () => {
+            const execCopyEl = document.getElementById('exec-copy');
+            const deskVerdict = document.getElementById('exec-verdict-input');
+            const deskSummary = document.getElementById('exec-summary-input');
+            if (deskVerdict) {
+                deskVerdict.value = execCopyEl?.dataset.autoVerdict || '';
+            }
+            if (deskSummary) {
+                deskSummary.value = execCopyEl?.dataset.autoSummary || '';
+            }
+            setExecEditStatus('Saving…');
+            try {
+                const payload = await persistExecutiveSummary('', '');
+                applyExecutiveSummaryUi(payload.executive || {
+                    verdict: execCopyEl?.dataset.autoVerdict || '',
+                    summary: execCopyEl?.dataset.autoSummary || '',
+                    auto_verdict: execCopyEl?.dataset.autoVerdict || '',
+                    auto_summary: execCopyEl?.dataset.autoSummary || '',
+                    custom_verdict: '',
+                    custom_summary: '',
+                    is_custom: false,
+                });
+                setExecEditorOpen(false);
+            } catch (error) {
+                setExecEditStatus(error.message || 'Save failed', true);
+            }
+        });
+    }
+    if (execSummaryForm) {
+        execSummaryForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const deskVerdict = document.getElementById('exec-verdict-input');
+            const deskSummary = document.getElementById('exec-summary-input');
+            const execCopyEl = document.getElementById('exec-copy');
+            const verdict = (deskVerdict?.value || '').trim();
+            const summary = (deskSummary?.value || '').trim();
+            const autoVerdict = execCopyEl?.dataset.autoVerdict || '';
+            const autoSummary = execCopyEl?.dataset.autoSummary || '';
+            const persistVerdict = verdict === autoVerdict ? '' : verdict;
+            const persistSummary = summary === autoSummary ? '' : summary;
+            const saveBtn = document.getElementById('btn-save-exec-summary');
+            if (saveBtn) {
+                saveBtn.disabled = true;
+            }
+            setExecEditStatus('Saving…');
+            try {
+                const payload = await persistExecutiveSummary(persistVerdict, persistSummary);
+                applyExecutiveSummaryUi(payload.executive || {
+                    verdict: persistVerdict || autoVerdict,
+                    summary: persistSummary || autoSummary,
+                    auto_verdict: autoVerdict,
+                    auto_summary: autoSummary,
+                    custom_verdict: persistVerdict,
+                    custom_summary: persistSummary,
+                    is_custom: persistVerdict !== '' || persistSummary !== '',
+                });
+                setExecEditorOpen(false);
+            } catch (error) {
+                setExecEditStatus(error.message || 'Save failed', true);
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                }
+            }
+        });
+    }
+
     const evaluationForm = document.getElementById('final-evaluation-form');
     if (evaluationForm) {
         const statusEl = document.getElementById('final-eval-status');
@@ -1282,6 +1505,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = document.getElementById('eval-name')?.value.trim() || '';
             const email = document.getElementById('eval-email')?.value.trim() || '';
             const notes = document.getElementById('eval-notes')?.value || '';
+            const execVerdict = document.getElementById('eval-exec-verdict')?.value.trim() || '';
+            const execSummary = document.getElementById('eval-exec-summary')?.value.trim() || '';
             const ready = !!document.getElementById('eval-ready')?.checked;
             const gates = computeGoliveGatesClient();
 
@@ -1309,6 +1534,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 evaluator_email: email,
                 notes,
                 ready_to_golive: ready ? '1' : '0',
+                executive_verdict: execVerdict,
+                executive_summary: execSummary,
             });
 
             if (saveBtn) {
@@ -1334,6 +1561,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     evaluator_name: name,
                     updated_at: 'just now',
                 });
+                if (payload.executive) {
+                    applyExecutiveSummaryUi(payload.executive);
+                }
                 if (payload.gates) {
                     applyGoliveGates(payload.gates);
                 } else {

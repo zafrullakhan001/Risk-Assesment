@@ -85,7 +85,7 @@ final class AssessmentRepository
         }
     }
 
-    /** @return array{assessment: Assessment, source_filename: string, uploaded_at: string}|null */
+    /** @return array{assessment: Assessment, source_filename: string, uploaded_at: string, executive_override: array{verdict: string, summary: string}}|null */
     public function findById(int $id): ?array
     {
         $statement = $this->pdo->prepare('SELECT * FROM assessments WHERE id = :id LIMIT 1');
@@ -119,7 +119,74 @@ final class AssessmentRepository
             'assessment' => Assessment::fromParsedData($metadata, $architectureItems, $dueDiligenceItems, $workbook),
             'source_filename' => (string) ($row['original_filename'] ?? ''),
             'uploaded_at' => (string) ($row['uploaded_at'] ?? ''),
+            'executive_override' => [
+                'verdict' => trim((string) ($row['custom_executive_verdict'] ?? '')),
+                'summary' => trim((string) ($row['custom_executive_summary'] ?? '')),
+            ],
         ];
+    }
+
+    /**
+     * @return array{verdict: string, summary: string}
+     */
+    public function findExecutiveOverride(int $assessmentId): array
+    {
+        if ($assessmentId <= 0) {
+            return ['verdict' => '', 'summary' => ''];
+        }
+
+        $statement = $this->pdo->prepare(
+            'SELECT custom_executive_verdict, custom_executive_summary
+             FROM assessments
+             WHERE id = :id
+             LIMIT 1'
+        );
+        $statement->execute([':id' => $assessmentId]);
+        $row = $statement->fetch();
+        if ($row === false) {
+            return ['verdict' => '', 'summary' => ''];
+        }
+
+        return [
+            'verdict' => trim((string) ($row['custom_executive_verdict'] ?? '')),
+            'summary' => trim((string) ($row['custom_executive_summary'] ?? '')),
+        ];
+    }
+
+    public function saveExecutiveOverride(int $assessmentId, string $verdict, string $summary): bool
+    {
+        if ($assessmentId <= 0) {
+            return false;
+        }
+
+        $verdict = trim($verdict);
+        $summary = trim($summary);
+        if (mb_strlen($verdict) > 200) {
+            $verdict = mb_substr($verdict, 0, 200);
+        }
+        if (mb_strlen($summary) > 2000) {
+            $summary = mb_substr($summary, 0, 2000);
+        }
+
+        $exists = $this->pdo->prepare('SELECT 1 FROM assessments WHERE id = :id LIMIT 1');
+        $exists->execute([':id' => $assessmentId]);
+        if ($exists->fetchColumn() === false) {
+            return false;
+        }
+
+        $statement = $this->pdo->prepare(
+            'UPDATE assessments
+             SET custom_executive_verdict = :verdict,
+                 custom_executive_summary = :summary
+             WHERE id = :id'
+        );
+        $statement->execute([
+            ':verdict' => $verdict,
+            ':summary' => $summary,
+            ':id' => $assessmentId,
+        ]);
+
+        return true;
     }
 
     /** @return list<array<string, mixed>> */

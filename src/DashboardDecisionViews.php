@@ -27,6 +27,9 @@ final class DashboardDecisionViews
         $evaluatorName = (string) ($evaluation['evaluator_name'] ?? '');
         $evalNotes = (string) ($evaluation['notes'] ?? '');
         $readyToGolive = !empty($evaluation['ready_to_golive']);
+        $autoVerdict = (string) ($readiness['auto_verdict'] ?? $readiness['verdict'] ?? '');
+        $autoSummary = (string) ($readiness['auto_summary'] ?? $readiness['summary'] ?? '');
+        $isCustomSummary = !empty($readiness['is_custom']);
         $riskOpen = (int) ($progress['risk']['open'] ?? $residual['risk'] ?? 0);
         $riskTotal = (int) ($progress['risk']['total'] ?? $residual['risk'] ?? 0);
         $gapOpen = (int) ($progress['gap']['open'] ?? $residual['gap'] ?? 0);
@@ -45,10 +48,39 @@ final class DashboardDecisionViews
                     <strong><?= (int) $readiness['score'] ?></strong>
                     <em>/ 100</em>
                 </div>
-                <div class="exec-copy">
-                    <div class="eyebrow">📋 Executive summary</div>
-                    <h3><?= $this->e((string) $readiness['verdict']) ?></h3>
-                    <p><?= $this->e((string) $readiness['summary']) ?></p>
+                <div
+                    class="exec-copy"
+                    id="exec-copy"
+                    data-custom="<?= $isCustomSummary ? '1' : '0' ?>"
+                    data-auto-verdict="<?= $this->e($autoVerdict) ?>"
+                    data-auto-summary="<?= $this->e($autoSummary) ?>"
+                >
+                    <div class="exec-copy-head">
+                        <div class="eyebrow">📋 Executive summary</div>
+                        <span class="exec-custom-pill" id="exec-custom-pill" <?= $isCustomSummary ? '' : 'hidden' ?>>✏️ Customized</span>
+                        <button type="button" class="button ghost-light exec-edit-btn" id="btn-edit-exec-summary">✏️ Edit</button>
+                    </div>
+                    <div class="exec-copy-view" id="exec-summary-view">
+                        <h3 id="exec-verdict"><?= $this->e((string) $readiness['verdict']) ?></h3>
+                        <p id="exec-summary-text"><?= $this->e((string) $readiness['summary']) ?></p>
+                    </div>
+                    <form class="exec-summary-editor" id="exec-summary-form" hidden>
+                        <label>
+                            <span>Headline</span>
+                            <input type="text" name="executive_verdict" id="exec-verdict-input" maxlength="200" value="<?= $this->e((string) $readiness['verdict']) ?>" placeholder="Conditional go-live ready">
+                        </label>
+                        <label>
+                            <span>Summary</span>
+                            <textarea name="executive_summary" id="exec-summary-input" rows="3" maxlength="2000" placeholder="Write the go-live narrative for this version..."><?= $this->e((string) $readiness['summary']) ?></textarea>
+                        </label>
+                        <p class="exec-edit-help">Leave a field blank to keep the auto-generated text. Restore clears both and returns to the live score wording.</p>
+                        <p class="exec-edit-status" id="exec-edit-status" hidden></p>
+                        <div class="exec-edit-actions">
+                            <button type="button" class="button ghost-light" id="btn-reset-exec-summary">↺ Restore auto text</button>
+                            <button type="button" class="button ghost-light" id="btn-cancel-exec-summary">Cancel</button>
+                            <button type="submit" class="button button-primary" id="btn-save-exec-summary">💾 Save summary</button>
+                        </div>
+                    </form>
                     <div class="exec-metrics">
                         <?php
                         $metric = static function (string $key, int $open, int $total, string $label) : string {
@@ -375,6 +407,21 @@ final class DashboardDecisionViews
                                 <span>Final evaluation notes</span>
                                 <textarea name="notes" id="eval-notes" rows="5" maxlength="8000" placeholder="Overall conclusion, residual risk acceptance, conditions, and follow-ups..."><?= $this->e($evalNotes) ?></textarea>
                             </label>
+                            <div class="final-eval-exec">
+                                <div class="final-eval-exec-head">
+                                    <span>Executive summary</span>
+                                    <span class="exec-custom-pill" id="eval-exec-custom-pill" <?= !empty($insights['readiness']['is_custom']) ? '' : 'hidden' ?>>✏️ Customized</span>
+                                </div>
+                                <p class="panel-help">Optional override for the decision-desk headline and paragraph. Leave blank to keep the auto-generated “Conditional go-live ready” wording.</p>
+                                <label>
+                                    <span>Headline</span>
+                                    <input type="text" name="executive_verdict" id="eval-exec-verdict" maxlength="200" value="<?= $this->e((string) ($insights['readiness']['custom_verdict'] ?? '')) ?>" placeholder="<?= $this->e((string) ($insights['readiness']['auto_verdict'] ?? 'Conditional go-live ready')) ?>">
+                                </label>
+                                <label>
+                                    <span>Summary</span>
+                                    <textarea name="executive_summary" id="eval-exec-summary" rows="3" maxlength="2000" placeholder="<?= $this->e((string) ($insights['readiness']['auto_summary'] ?? 'Write the go-live narrative for this version...')) ?>"><?= $this->e((string) ($insights['readiness']['custom_summary'] ?? '')) ?></textarea>
+                                </label>
+                            </div>
                             <div class="final-eval-footer">
                                 <label class="golive-toggle">
                                     <input type="checkbox" name="ready_to_golive" id="eval-ready" value="1" <?= $readyToGolive ? 'checked' : '' ?> <?= empty($goliveGates['ready_allowed']) && !$readyToGolive ? 'disabled' : '' ?>>

@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS assessments (
     file_path TEXT NOT NULL,
     original_filename TEXT NOT NULL,
     workbook_json TEXT NOT NULL DEFAULT '{}',
+    custom_executive_verdict TEXT NOT NULL DEFAULT '',
+    custom_executive_summary TEXT NOT NULL DEFAULT '',
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

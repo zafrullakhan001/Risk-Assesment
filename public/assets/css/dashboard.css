@@ -2095,6 +2095,87 @@ html[data-size="xxl"] .login-card {
 .exec-score em { color: var(--muted); font-style: normal; font-size: 12px; }
 .exec-copy h3 { margin: 4px 0 6px; font-family: var(--font-display); font-size: 18px; }
 .exec-copy p { margin: 0; color: var(--ink-soft); font-size: 13px; line-height: 1.45; }
+.exec-copy-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.exec-copy-head .eyebrow { margin-right: auto; }
+.exec-custom-pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line));
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+.exec-edit-btn { height: 30px; padding: 0 10px; font-size: 12px; }
+.exec-summary-editor {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+.exec-edit-btn[hidden],
+.exec-summary-editor[hidden],
+.exec-copy-view[hidden],
+.exec-custom-pill[hidden],
+.exec-edit-status[hidden] {
+    display: none !important;
+}
+.exec-summary-editor label {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+.exec-summary-editor input,
+.exec-summary-editor textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--card);
+    color: var(--ink);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+}
+.exec-summary-editor textarea { resize: vertical; min-height: 72px; }
+.exec-edit-help { margin: 0; font-size: 12px; color: var(--muted); }
+.exec-edit-status {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--pass);
+}
+.exec-edit-status.is-error { color: var(--risk); }
+.exec-edit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.final-eval-exec {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--primary-soft) 45%, transparent);
+}
+.final-eval-exec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+}
 .exec-metrics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .exec-metrics b { color: var(--ink); }
 .exec-actions { display: grid; gap: 6px; }
@@ -2459,12 +2540,17 @@ body.is-presentation .dash-tabs,
 body.is-presentation .display-controls,
 body.is-presentation .theme-controls,
 body.is-presentation .exec-actions,
+body.is-presentation .exec-edit-btn,
+body.is-presentation .exec-summary-editor,
+body.is-presentation .exec-custom-pill,
 body.is-presentation .blocker-row { display: none !important; }
+body.is-presentation #exec-summary-view { display: block !important; }
 body.is-presentation .charts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .print-only-block { display: none; }
 body.is-presentation .print-only-block { display: block; }
 @media print {
-    .topbar-actions, .toolbar, .dash-tabs, .exec-actions, .theme-controls, .display-controls, .hero-actions { display: none !important; }
+    .topbar-actions, .toolbar, .dash-tabs, .exec-actions, .exec-edit-btn, .exec-summary-editor, .exec-custom-pill, .theme-controls, .display-controls, .hero-actions { display: none !important; }
+    #exec-summary-view { display: block !important; }
     .print-only-block { display: block !important; }
     body { background: #fff; }
     .shell { max-width: none; padding: 0; }
