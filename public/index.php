@@ -94,7 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $savedRows = $responseRepository->upsertMany($targetId, $itemKeys, $responseAction, $comment, $actor);
                 $normalizedAction = ItemResponseRepository::normalizeAction($responseAction);
                 $actionLabel = ItemResponseRepository::label($responseAction);
-                $summary = $actionLabel . (trim($comment) !== '' ? ' — comment updated' : '');
+                $summary = 'Marked as ' . $actionLabel;
+                if (trim($comment) !== '') {
+                    $summary .= ' — comment posted';
+                }
                 foreach ($savedRows as $savedRow) {
                     $changeLogRepository->record(
                         $targetId,
@@ -104,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $summary,
                         [
                             'action' => $normalizedAction,
+                            'action_label' => $actionLabel,
                             'comment' => (string) ($savedRow['comment'] ?? ''),
                         ]
                     );
@@ -132,14 +136,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $normalizedAction = ItemResponseRepository::normalizeAction($responseAction);
             $actionLabel = ItemResponseRepository::label($responseAction);
+            $historySummary = 'Marked as ' . $actionLabel;
+            if (trim($comment) !== '') {
+                $historySummary .= ' — comment posted';
+            }
             $changeLogRepository->record(
                 $targetId,
                 AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE,
                 $itemKey,
                 $actor,
-                $actionLabel . (trim($comment) !== '' ? ' — comment updated' : ''),
+                $historySummary,
                 [
                     'action' => $normalizedAction,
+                    'action_label' => $actionLabel,
                     'comment' => (string) ($savedRow['comment'] ?? ''),
                 ]
             );
@@ -152,7 +161,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'updated_by_label' => $actor['label'],
                 'updated_at' => $savedRow['updated_at'],
                 'history_entry' => [
-                    'summary' => $actionLabel . (trim($comment) !== '' ? ' — comment updated' : ''),
+                    'summary' => $historySummary,
+                    'details' => [
+                        'action' => $normalizedAction,
+                        'action_label' => $actionLabel,
+                        'comment' => (string) ($savedRow['comment'] ?? ''),
+                    ],
                     'actor_username' => $actor['username'],
                     'actor_display_name' => $actor['display_name'],
                     'actor_auth_source' => $actor['auth_source'],
@@ -329,7 +343,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'evaluator_name' => trim($evaluatorName),
                     'evaluator_email' => trim($evaluatorEmail),
                     'ready_to_golive' => $readyToGolive,
+                    'action_label' => $readyToGolive ? 'Ready to go-live' : 'Not ready to go-live',
                     'notes' => trim($notes),
+                    'comment' => trim($notes),
                 ]
             );
 
@@ -383,6 +399,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'evaluation' => $saved,
                 'executive' => $executive,
                 'gates' => $gate,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'list_change_history') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $entityType = trim((string) ($_POST['entity_type'] ?? ''));
+            $entityKey = (string) ($_POST['entity_key'] ?? '');
+            $query = trim((string) ($_POST['q'] ?? ''));
+            $page = max(1, (int) ($_POST['page'] ?? 1));
+            $perPage = max(1, min(20, (int) ($_POST['per_page'] ?? 5)));
+
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment to load history.');
+            }
+            if (
+                $entityType !== AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE
+                && $entityType !== AssessmentChangeLogRepository::ENTITY_FINAL_EVALUATION
+            ) {
+                throw new RuntimeException('Invalid history type.');
+            }
+
+            $result = $changeLogRepository->searchForEntity(
+                $targetId,
+                $entityType,
+                $entityKey,
+                $query,
+                $page,
+                $perPage
+            );
+
+            echo json_encode([
+                'ok' => true,
+                'entries' => $result['entries'],
+                'total' => $result['total'],
+                'page' => $result['page'],
+                'per_page' => $result['per_page'],
+                'total_pages' => $result['total_pages'],
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);

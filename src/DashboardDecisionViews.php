@@ -456,7 +456,16 @@ final class DashboardDecisionViews
                                 </div>
                             </div>
                         </form>
-                        <?= $this->renderChangeHistory('evaluation-history', 'Sign-off history', $evaluationHistory) ?>
+                        <?= $this->renderChangeHistory(
+                            'evaluation-history',
+                            'Sign-off history',
+                            $evaluationHistory,
+                            false,
+                            $currentId,
+                            \RiskAssessment\Repositories\AssessmentChangeLogRepository::ENTITY_FINAL_EVALUATION,
+                            '',
+                            5
+                        ) ?>
                     <?php endif; ?>
                 </section>
             </div>
@@ -472,6 +481,73 @@ final class DashboardDecisionViews
                     <?= $this->renderEvidenceSection($evidence) ?>
                 </div>
             </div>
+
+            <dialog class="response-dialog" id="item-response-dialog" aria-labelledby="response-dialog-title">
+                <form method="dialog" class="response-dialog-form" id="item-response-dialog-form">
+                    <div class="response-dialog-head">
+                        <div>
+                            <div class="eyebrow">Recorded response</div>
+                            <h3 id="response-dialog-title">Edit response</h3>
+                            <p class="response-dialog-sub" id="response-dialog-sub"></p>
+                        </div>
+                        <button type="button" class="button ghost-light response-dialog-close" id="response-dialog-close" aria-label="Close">✕</button>
+                    </div>
+                    <label class="response-dialog-field">
+                        <span>Our response</span>
+                        <select id="response-dialog-action" required>
+                            <?php foreach ($actionLabels as $value => $label): ?>
+                                <option value="<?= $this->e($value) ?>"><?= $this->e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="response-dialog-field">
+                        <span>Comment</span>
+                        <textarea id="response-dialog-comment" rows="4" maxlength="2000" placeholder="Comment (optional)"></textarea>
+                    </label>
+                    <p class="item-response-attribution response-dialog-attribution" id="response-dialog-attribution" hidden></p>
+                    <div
+                        class="response-dialog-history history-panel is-compact"
+                        id="response-dialog-history"
+                        data-history-panel
+                        data-assessment-id="<?= (int) $currentId ?>"
+                        data-entity-type="<?= $this->e(\RiskAssessment\Repositories\AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE) ?>"
+                        data-entity-key=""
+                        data-heading="Activity log"
+                        data-per-page="5"
+                    >
+                        <div class="history-panel-head">
+                            <h4 class="history-panel-title">
+                                Activity log
+                                <em class="history-panel-count" hidden>0</em>
+                            </h4>
+                            <label class="history-panel-search-wrap">
+                                <span class="visually-hidden">Search history</span>
+                                <input
+                                    type="search"
+                                    class="history-panel-search"
+                                    placeholder="Search comments, status, author…"
+                                    autocomplete="off"
+                                >
+                            </label>
+                        </div>
+                        <div class="history-panel-list" role="feed" aria-live="polite"></div>
+                        <p class="history-panel-empty" hidden>No history posts yet for this action item.</p>
+                        <div class="history-panel-footer">
+                            <span class="history-panel-meta"></span>
+                            <nav class="history-panel-pagination" aria-label="Activity log pages" hidden>
+                                <button type="button" class="button ghost history-panel-prev">← Prev</button>
+                                <span class="history-panel-page"></span>
+                                <button type="button" class="button ghost history-panel-next">Next →</button>
+                            </nav>
+                        </div>
+                    </div>
+                    <p class="response-dialog-status" id="response-dialog-status" hidden></p>
+                    <div class="response-dialog-actions">
+                        <button type="button" class="button ghost" id="response-dialog-cancel">Cancel</button>
+                        <button type="submit" class="button button-primary" id="response-dialog-save">💾 Save response</button>
+                    </div>
+                </form>
+            </dialog>
         </div>
 
         <?php if ($topRisks !== []): ?>
@@ -598,30 +674,62 @@ final class DashboardDecisionViews
                                     <td><?= $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture' ?></td>
                                     <td><?= $this->e((string) ($row['status'] ?? '')) ?></td>
                                     <td><?= $this->e((string) ($row['risk_level'] ?? '')) ?></td>
-                                    <td>
-                                        <div class="item-response" data-item-key="<?= $this->e($key) ?>">
-                                            <select class="item-response-action" aria-label="Response">
-                                                <?php foreach ($actionLabels as $value => $label): ?>
-                                                    <option value="<?= $this->e($value) ?>" <?= $action === $value ? 'selected' : '' ?>><?= $this->e($label) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <textarea
-                                                class="item-response-comment"
-                                                rows="2"
-                                                maxlength="2000"
-                                                placeholder="Comment (optional)"
-                                            ><?= $this->e($comment) ?></textarea>
-                                            <span class="item-response-save" hidden>Saved</span>
-                                            <div class="item-response-meta">
-                                                <span class="item-response-attribution" <?= $updatedAt === '' && $updatedByLabel === '' ? 'hidden' : '' ?>>
-                                                    <?php if ($updatedByLabel !== ''): ?>
-                                                        Updated by <?= $this->e($updatedByLabel) ?><?= $updatedAt !== '' ? ' · ' . $this->e($updatedAt) : '' ?>
-                                                    <?php elseif ($updatedAt !== ''): ?>
-                                                        Updated <?= $this->e($updatedAt) ?> · Not yet attributed
+                                    <td class="response-cell">
+                                        <?php
+                                        $actionLabel = $actionLabels[$action] ?? 'Open';
+                                        $commentPreview = $comment !== ''
+                                            ? (mb_strlen($comment) > 90 ? mb_substr($comment, 0, 87) . '…' : $comment)
+                                            : '';
+                                        $checkTitle = (string) ($row['check'] ?? '');
+                                        $sectionSub = (string) ($row['section'] ?? '');
+                                        if (($row['owner'] ?? '') !== '') {
+                                            $sectionSub .= ($sectionSub !== '' ? ' · ' : '') . (string) $row['owner'];
+                                        }
+                                        ?>
+                                        <div
+                                            class="item-response"
+                                            data-item-key="<?= $this->e($key) ?>"
+                                            data-item-title="<?= $this->e($checkTitle) ?>"
+                                            data-item-sub="<?= $this->e($sectionSub) ?>"
+                                        >
+                                            <div class="item-response-summary">
+                                                <div class="item-response-summary-main">
+                                                    <span class="response-pill response-<?= $this->e($action) ?>"><?= $this->e($actionLabel) ?></span>
+                                                    <?php if ($commentPreview !== ''): ?>
+                                                        <p class="item-response-comment-preview"><?= $this->e($commentPreview) ?></p>
+                                                    <?php else: ?>
+                                                        <p class="item-response-comment-preview is-empty">No comment yet</p>
                                                     <?php endif; ?>
-                                                </span>
+                                                    <span class="item-response-attribution" <?= $updatedAt === '' && $updatedByLabel === '' ? 'hidden' : '' ?>>
+                                                        <?php if ($updatedByLabel !== ''): ?>
+                                                            Updated by <?= $this->e($updatedByLabel) ?><?= $updatedAt !== '' ? ' · ' . $this->e($updatedAt) : '' ?>
+                                                        <?php elseif ($updatedAt !== ''): ?>
+                                                            Updated <?= $this->e($updatedAt) ?> · Not yet attributed
+                                                        <?php endif; ?>
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="item-response-edit"
+                                                    aria-label="Edit response for <?= $this->e($checkTitle) ?>"
+                                                    title="Edit response"
+                                                >✏️</button>
                                             </div>
-                                            <?= $this->renderChangeHistory('item-history-' . md5($key), 'History', $history, true) ?>
+                                            <div class="item-response-fields" hidden>
+                                                <select class="item-response-action" aria-label="Response" tabindex="-1">
+                                                    <?php foreach ($actionLabels as $value => $label): ?>
+                                                        <option value="<?= $this->e($value) ?>" <?= $action === $value ? 'selected' : '' ?>><?= $this->e($label) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <textarea
+                                                    class="item-response-comment"
+                                                    rows="2"
+                                                    maxlength="2000"
+                                                    placeholder="Comment (optional)"
+                                                    tabindex="-1"
+                                                ><?= $this->e($comment) ?></textarea>
+                                                <span class="item-response-save" hidden>Saved</span>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -984,28 +1092,59 @@ final class DashboardDecisionViews
     }
 
     /**
-     * @param list<array<string, mixed>> $entries
+     * @param list<array<string, mixed>> $entries Unused when loading via AJAX; kept for callers.
      */
-    private function renderChangeHistory(string $id, string $heading, array $entries, bool $compact = false): string
-    {
+    private function renderChangeHistory(
+        string $id,
+        string $heading,
+        array $entries = [],
+        bool $compact = false,
+        int $assessmentId = 0,
+        string $entityType = '',
+        string $entityKey = '',
+        int $perPage = 5
+    ): string {
+        $totalHint = count($entries);
+        $hasSeed = $assessmentId > 0 && $entityType !== '';
         ob_start();
         ?>
-        <details class="change-history<?= $compact ? ' is-compact' : '' ?>" id="<?= $this->e($id) ?>" <?= $entries === [] ? 'hidden' : '' ?>>
-            <summary><?= $this->e($heading) ?><?= $entries !== [] ? ' (' . count($entries) . ')' : '' ?></summary>
-            <ul class="change-history-list">
-                <?php foreach ($entries as $entry): ?>
-                    <?php
-                    $actorLabel = Actor::labelFromRow($entry, 'actor');
-                    $when = (string) ($entry['created_at'] ?? '');
-                    $summary = (string) ($entry['summary'] ?? '');
-                    ?>
-                    <li>
-                        <strong><?= $this->e($summary !== '' ? $summary : 'Updated') ?></strong>
-                        <span><?= $actorLabel !== '' ? $this->e($actorLabel) : 'Unknown user' ?><?= $when !== '' ? ' · ' . $this->e($when) : '' ?></span>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        </details>
+        <section
+            class="history-panel<?= $compact ? ' is-compact' : '' ?>"
+            id="<?= $this->e($id) ?>"
+            data-history-panel
+            data-assessment-id="<?= (int) $assessmentId ?>"
+            data-entity-type="<?= $this->e($entityType) ?>"
+            data-entity-key="<?= $this->e($entityKey) ?>"
+            data-heading="<?= $this->e($heading) ?>"
+            data-per-page="<?= max(1, min(20, $perPage)) ?>"
+            <?= !$hasSeed && $entries === [] ? 'hidden' : '' ?>
+        >
+            <div class="history-panel-head">
+                <h4 class="history-panel-title">
+                    <?= $this->e($heading) ?>
+                    <em class="history-panel-count" <?= $totalHint === 0 ? 'hidden' : '' ?>><?= (int) $totalHint ?></em>
+                </h4>
+                <label class="history-panel-search-wrap">
+                    <span class="visually-hidden">Search history</span>
+                    <input
+                        type="search"
+                        class="history-panel-search"
+                        placeholder="Search comments, status, author…"
+                        autocomplete="off"
+                    >
+                </label>
+            </div>
+            <div class="history-panel-list" role="feed" aria-live="polite"></div>
+            <p class="history-panel-empty" hidden>No history posts yet.</p>
+            <div class="history-panel-footer">
+                <span class="history-panel-meta"></span>
+                <nav class="history-panel-pagination" aria-label="<?= $this->e($heading) ?> pages" hidden>
+                    <button type="button" class="button ghost history-panel-prev">← Prev</button>
+                    <span class="history-panel-page"></span>
+                    <button type="button" class="button ghost history-panel-next">Next →</button>
+                </nav>
+            </div>
+        </section>
         <?php
 
         return (string) ob_get_clean();

@@ -724,6 +724,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const responseActionLabels = {
+        open: 'Open',
+        take_care: 'Taken care',
+        ignore: 'Ignore',
+        not_applicable: 'Not applicable',
+        closed: 'Closed',
+    };
+
+    const truncateComment = (comment, max = 90) => {
+        const text = String(comment || '').trim();
+        if (text === '') {
+            return '';
+        }
+        return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    };
+
+    const refreshResponseSummary = (widget) => {
+        if (!widget) {
+            return;
+        }
+        const action = widget.querySelector('.item-response-action')?.value || 'open';
+        const comment = widget.querySelector('.item-response-comment')?.value || '';
+        const pill = widget.querySelector('.response-pill');
+        const preview = widget.querySelector('.item-response-comment-preview');
+        if (pill) {
+            pill.textContent = responseActionLabels[action] || 'Open';
+            pill.className = `response-pill response-${action}`;
+        }
+        if (preview) {
+            const short = truncateComment(comment);
+            preview.textContent = short || 'No comment yet';
+            preview.classList.toggle('is-empty', short === '');
+        }
+    };
+
     const syncResponseWidgets = (itemKey, action, comment, { refreshFilters = false, source = null } = {}) => {
         document.querySelectorAll('.item-response').forEach((widget) => {
             if (widget.dataset.itemKey !== itemKey) {
@@ -737,6 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (commentField && widget !== source && commentField.value !== comment) {
                 commentField.value = comment;
             }
+            refreshResponseSummary(widget);
             const row = widget.closest('tr');
             if (row) {
                 row.dataset.response = action;
@@ -749,14 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.dataset.hasComment = comment.trim() ? '1' : '0';
                 const pill = row.querySelector('.response-pill');
                 if (pill) {
-                    const labels = {
-                        open: 'Open',
-                        take_care: 'Taken care',
-                        ignore: 'Ignore',
-                        not_applicable: 'Not applicable',
-                        closed: 'Closed',
-                    };
-                    pill.textContent = labels[action] || 'Open';
+                    pill.textContent = responseActionLabels[action] || 'Open';
                     pill.className = `response-pill response-${action}`;
                 }
             }
@@ -986,14 +1015,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveLabel.hidden = true;
                 }, 1200);
             }
-            applyItemAttribution(widget, payload);
+            applyItemAttribution(sourceWidget, payload);
+            refreshResponseSummary(sourceWidget);
             refreshGoliveGates();
         } catch (error) {
             if (saveLabel) {
                 saveLabel.hidden = false;
                 saveLabel.textContent = 'Save failed';
             }
+            throw error;
         }
+    };
+
+    const actionLabelsMap = {
+        open: 'Open',
+        take_care: 'Taken care',
+        ignore: 'Ignore',
+        not_applicable: 'Not applicable',
+        closed: 'Closed',
     };
 
     const formatActorLabel = (entry = {}) => {
@@ -1012,6 +1051,235 @@ document.addEventListener('DOMContentLoaded', () => {
         return label;
     };
 
+    const historyPostBody = (entry = {}) => {
+        const details = entry.details && typeof entry.details === 'object' ? entry.details : {};
+        const comment = String(details.comment || details.notes || '').trim();
+        const actionKey = String(details.action || '').trim();
+        const actionLabel = String(details.action_label || actionLabelsMap[actionKey] || '').trim();
+        const title = String(entry.summary || actionLabel || 'Update').trim();
+        return { title, comment, actionKey, actionLabel };
+    };
+
+    const renderHistoryPost = (entry = {}) => {
+        const { title, comment, actionKey, actionLabel } = historyPostBody(entry);
+        const article = document.createElement('article');
+        article.className = 'history-post';
+        if (actionKey) {
+            article.dataset.action = actionKey;
+        }
+
+        const head = document.createElement('header');
+        head.className = 'history-post-head';
+        const heading = document.createElement('h5');
+        heading.className = 'history-post-title';
+        heading.textContent = title;
+        head.appendChild(heading);
+        if (actionLabel) {
+            const pill = document.createElement('span');
+            pill.className = actionKey
+                ? `response-pill response-${actionKey}`
+                : 'history-post-status';
+            pill.textContent = actionLabel;
+            head.appendChild(pill);
+        }
+        article.appendChild(head);
+
+        const byline = document.createElement('p');
+        byline.className = 'history-post-byline';
+        const actorLabel = formatActorLabel(entry) || 'Unknown user';
+        byline.textContent = `${actorLabel}${entry.created_at ? ` · ${entry.created_at}` : ''}`;
+        article.appendChild(byline);
+
+        const body = document.createElement('div');
+        body.className = 'history-post-body';
+        if (comment !== '') {
+            body.textContent = comment;
+        } else {
+            body.classList.add('is-empty');
+            body.textContent = 'No comment was recorded with this update.';
+        }
+        article.appendChild(body);
+
+        return article;
+    };
+
+    const createHistoryPanelController = (panel) => {
+        if (!panel) {
+            return null;
+        }
+        const listEl = panel.querySelector('.history-panel-list');
+        const emptyEl = panel.querySelector('.history-panel-empty');
+        const metaEl = panel.querySelector('.history-panel-meta');
+        const countEl = panel.querySelector('.history-panel-count');
+        const searchEl = panel.querySelector('.history-panel-search');
+        const paginationEl = panel.querySelector('.history-panel-pagination');
+        const pageEl = panel.querySelector('.history-panel-page');
+        const prevBtn = panel.querySelector('.history-panel-prev');
+        const nextBtn = panel.querySelector('.history-panel-next');
+        const state = {
+            page: 1,
+            query: '',
+            perPage: Math.max(1, parseInt(panel.dataset.perPage || '5', 10) || 5),
+            total: 0,
+            totalPages: 1,
+            loading: false,
+        };
+        let searchTimer = null;
+
+        const setLoading = (loading) => {
+            state.loading = loading;
+            panel.classList.toggle('is-loading', loading);
+        };
+
+        const renderEntries = (entries) => {
+            if (!listEl) {
+                return;
+            }
+            listEl.innerHTML = '';
+            entries.forEach((entry) => {
+                listEl.appendChild(renderHistoryPost(entry));
+            });
+            if (emptyEl) {
+                emptyEl.hidden = entries.length > 0 || state.total > 0;
+                if (state.total === 0) {
+                    emptyEl.textContent = state.query
+                        ? 'No history posts match that search.'
+                        : (panel.dataset.emptyText || 'No history posts yet.');
+                    emptyEl.hidden = false;
+                } else if (entries.length === 0) {
+                    emptyEl.hidden = false;
+                    emptyEl.textContent = 'No history posts on this page.';
+                } else {
+                    emptyEl.hidden = true;
+                }
+            }
+            if (countEl) {
+                countEl.hidden = state.total <= 0;
+                countEl.textContent = String(state.total);
+            }
+            if (metaEl) {
+                if (state.total === 0) {
+                    metaEl.textContent = '';
+                } else {
+                    const from = ((state.page - 1) * state.perPage) + 1;
+                    const to = Math.min(state.total, state.page * state.perPage);
+                    metaEl.textContent = `Showing ${from}–${to} of ${state.total}`;
+                }
+            }
+            if (paginationEl) {
+                const showPager = state.totalPages > 1;
+                paginationEl.hidden = !showPager;
+                if (pageEl) {
+                    pageEl.textContent = `Page ${state.page} / ${state.totalPages}`;
+                }
+                if (prevBtn) {
+                    prevBtn.disabled = state.page <= 1 || state.loading;
+                }
+                if (nextBtn) {
+                    nextBtn.disabled = state.page >= state.totalPages || state.loading;
+                }
+            }
+            panel.hidden = false;
+        };
+
+        const load = async (page = state.page) => {
+            const assessmentIdValue = Number(panel.dataset.assessmentId || assessmentId || 0);
+            const entityType = panel.dataset.entityType || '';
+            if (assessmentIdValue <= 0 || !entityType) {
+                renderEntries([]);
+                return;
+            }
+            setLoading(true);
+            try {
+                const body = new URLSearchParams({
+                    action: 'list_change_history',
+                    csrf_token: csrfToken,
+                    assessment_id: String(assessmentIdValue),
+                    entity_type: entityType,
+                    entity_key: panel.dataset.entityKey || '',
+                    q: state.query,
+                    page: String(page),
+                    per_page: String(state.perPage),
+                });
+                const response = await fetch('index.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                    body,
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || 'Unable to load history');
+                }
+                state.page = Number(payload.page || 1);
+                state.total = Number(payload.total || 0);
+                state.totalPages = Number(payload.total_pages || 1);
+                state.perPage = Number(payload.per_page || state.perPage);
+                renderEntries(Array.isArray(payload.entries) ? payload.entries : []);
+            } catch (error) {
+                if (listEl) {
+                    listEl.innerHTML = '';
+                }
+                if (emptyEl) {
+                    emptyEl.hidden = false;
+                    emptyEl.textContent = error?.message || 'Unable to load history.';
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        searchEl?.addEventListener('input', () => {
+            if (searchTimer) {
+                window.clearTimeout(searchTimer);
+            }
+            searchTimer = window.setTimeout(() => {
+                state.query = searchEl.value.trim();
+                state.page = 1;
+                load(1);
+            }, 280);
+        });
+        prevBtn?.addEventListener('click', () => {
+            if (state.page > 1) {
+                load(state.page - 1);
+            }
+        });
+        nextBtn?.addEventListener('click', () => {
+            if (state.page < state.totalPages) {
+                load(state.page + 1);
+            }
+        });
+
+        return {
+            panel,
+            load,
+            reload: () => load(1),
+            setEntityKey(entityKey) {
+                panel.dataset.entityKey = entityKey || '';
+            },
+            setAssessmentId(id) {
+                panel.dataset.assessmentId = String(id || 0);
+            },
+            clearSearch() {
+                state.query = '';
+                state.page = 1;
+                if (searchEl) {
+                    searchEl.value = '';
+                }
+            },
+        };
+    };
+
+    const historyControllers = new Map();
+    document.querySelectorAll('[data-history-panel]').forEach((panel) => {
+        const controller = createHistoryPanelController(panel);
+        if (controller) {
+            historyControllers.set(panel.id || panel, controller);
+            if (panel.id === 'evaluation-history') {
+                controller.load(1);
+            }
+        }
+    });
+
     const applyItemAttribution = (widget, payload = {}) => {
         if (!widget) {
             return;
@@ -1029,40 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `Updated by ${label}${updatedAt ? ` · ${updatedAt}` : ''}`
                 : `Updated ${updatedAt}`;
         }
-        const historyEntry = payload.history_entry;
-        if (historyEntry) {
-            prependHistoryEntry(widget.querySelector('.change-history'), historyEntry);
-        }
-    };
-
-    const prependHistoryEntry = (detailsEl, entry) => {
-        if (!detailsEl || !entry) {
-            return;
-        }
-        detailsEl.hidden = false;
-        let list = detailsEl.querySelector('.change-history-list');
-        if (!list) {
-            list = document.createElement('ul');
-            list.className = 'change-history-list';
-            detailsEl.appendChild(list);
-        }
-        const li = document.createElement('li');
-        const strong = document.createElement('strong');
-        strong.textContent = entry.summary || 'Updated';
-        const span = document.createElement('span');
-        const actorLabel = formatActorLabel(entry) || 'Unknown user';
-        span.textContent = `${actorLabel}${entry.created_at ? ` · ${entry.created_at}` : ''}`;
-        li.appendChild(strong);
-        li.appendChild(span);
-        list.insertBefore(li, list.firstChild);
-        const summary = detailsEl.querySelector('summary');
-        if (summary) {
-            const base = summary.textContent.replace(/\s*\(\d+\)\s*$/, '').trim() || 'History';
-            summary.textContent = `${base} (${list.children.length})`;
-        }
-        while (list.children.length > 20) {
-            list.removeChild(list.lastElementChild);
-        }
+        refreshResponseSummary(widget);
     };
 
     document.querySelectorAll('.item-response').forEach((widget) => {
@@ -1072,7 +1307,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const actionSelect = widget.querySelector('.item-response-action');
         const commentField = widget.querySelector('.item-response-comment');
-        const saveLabel = widget.querySelector('.item-response-save');
         const saved = localResponses[itemKey];
 
         if (saved && Number(assessmentId) <= 0) {
@@ -1086,26 +1320,134 @@ document.addEventListener('DOMContentLoaded', () => {
                 refreshFilters: true,
                 source: widget,
             });
+        } else {
+            refreshResponseSummary(widget);
         }
+    });
 
-        let commentTimer = null;
-        const queueSave = (refreshFilters) => {
-            const action = actionSelect ? actionSelect.value : 'open';
-            const comment = commentField ? commentField.value : '';
-            persistResponse(itemKey, action, comment, saveLabel, widget, refreshFilters);
-        };
+    const responseDialog = document.getElementById('item-response-dialog');
+    const responseDialogForm = document.getElementById('item-response-dialog-form');
+    const responseDialogAction = document.getElementById('response-dialog-action');
+    const responseDialogComment = document.getElementById('response-dialog-comment');
+    const responseDialogTitle = document.getElementById('response-dialog-title');
+    const responseDialogSub = document.getElementById('response-dialog-sub');
+    const responseDialogAttribution = document.getElementById('response-dialog-attribution');
+    const responseDialogHistory = document.getElementById('response-dialog-history');
+    const responseDialogStatus = document.getElementById('response-dialog-status');
+    const responseDialogSave = document.getElementById('response-dialog-save');
+    let responseDialogWidget = null;
 
+    const setResponseDialogStatus = (message, isError = false) => {
+        if (!responseDialogStatus) {
+            return;
+        }
+        responseDialogStatus.hidden = !message;
+        responseDialogStatus.textContent = message || '';
+        responseDialogStatus.classList.toggle('is-error', !!isError);
+    };
+
+    const closeResponseDialog = () => {
+        if (responseDialog && typeof responseDialog.close === 'function' && responseDialog.open) {
+            responseDialog.close();
+        }
+        responseDialogWidget = null;
+        setResponseDialogStatus('');
+    };
+
+    const openResponseDialog = (widget) => {
+        if (!responseDialog || !widget) {
+            return;
+        }
+        responseDialogWidget = widget;
+        const action = widget.querySelector('.item-response-action')?.value || 'open';
+        const comment = widget.querySelector('.item-response-comment')?.value || '';
+        const attribution = widget.querySelector('.item-response-attribution');
+
+        if (responseDialogTitle) {
+            responseDialogTitle.textContent = widget.dataset.itemTitle || 'Edit response';
+        }
+        if (responseDialogSub) {
+            responseDialogSub.textContent = widget.dataset.itemSub || '';
+            responseDialogSub.hidden = !widget.dataset.itemSub;
+        }
+        if (responseDialogAction) {
+            responseDialogAction.value = action;
+        }
+        if (responseDialogComment) {
+            responseDialogComment.value = comment;
+        }
+        if (responseDialogAttribution) {
+            const text = attribution && !attribution.hidden ? attribution.textContent.trim() : '';
+            responseDialogAttribution.textContent = text;
+            responseDialogAttribution.hidden = text === '';
+        }
+        const historyController = historyControllers.get('response-dialog-history');
+        if (historyController) {
+            historyController.setAssessmentId(assessmentId);
+            historyController.setEntityKey(widget.dataset.itemKey || '');
+            historyController.clearSearch();
+            historyController.reload();
+        }
+        setResponseDialogStatus('');
+        if (typeof responseDialog.showModal === 'function') {
+            responseDialog.showModal();
+        } else {
+            responseDialog.setAttribute('open', 'open');
+        }
+        responseDialogAction?.focus();
+    };
+
+    document.querySelectorAll('.item-response-edit').forEach((button) => {
+        button.addEventListener('click', () => {
+            openResponseDialog(button.closest('.item-response'));
+        });
+    });
+
+    document.getElementById('response-dialog-close')?.addEventListener('click', closeResponseDialog);
+    document.getElementById('response-dialog-cancel')?.addEventListener('click', closeResponseDialog);
+
+    responseDialog?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeResponseDialog();
+    });
+
+    responseDialogForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const widget = responseDialogWidget;
+        if (!widget) {
+            closeResponseDialog();
+            return;
+        }
+        const itemKey = widget.dataset.itemKey;
+        const action = responseDialogAction?.value || 'open';
+        const comment = responseDialogComment?.value || '';
+        const actionSelect = widget.querySelector('.item-response-action');
+        const commentField = widget.querySelector('.item-response-comment');
+        const saveLabel = widget.querySelector('.item-response-save');
         if (actionSelect) {
-            actionSelect.addEventListener('change', () => queueSave(true));
+            actionSelect.value = action;
         }
         if (commentField) {
-            commentField.addEventListener('input', () => {
-                if (commentTimer) {
-                    window.clearTimeout(commentTimer);
-                }
-                commentTimer = window.setTimeout(() => queueSave(false), 500);
-            });
-            commentField.addEventListener('blur', () => queueSave(false));
+            commentField.value = comment;
+        }
+        if (responseDialogSave) {
+            responseDialogSave.disabled = true;
+        }
+        setResponseDialogStatus('Saving…');
+        try {
+            await persistResponse(itemKey, action, comment, saveLabel, widget, true);
+            refreshResponseSummary(widget);
+            historyControllers.get('response-dialog-history')?.reload();
+            setResponseDialogStatus('Saved');
+            window.setTimeout(() => {
+                closeResponseDialog();
+            }, 450);
+        } catch (error) {
+            setResponseDialogStatus(error?.message || 'Save failed', true);
+        } finally {
+            if (responseDialogSave) {
+                responseDialogSave.disabled = false;
+            }
         }
     });
 
@@ -1613,15 +1955,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? `💾 Saved ${evaluation.updated_at} · ${by}`
                     : `💾 Saved ${evaluation.updated_at}`;
             }
-            if (evaluation.updated_at || evaluation.updated_by_label) {
-                prependHistoryEntry(document.getElementById('evaluation-history'), {
-                    summary: `${ready ? 'Ready to go-live' : 'Not ready to go-live'} — evaluation saved`,
-                    actor_username: evaluation.updated_by_username,
-                    actor_display_name: evaluation.updated_by_display_name,
-                    actor_auth_source: evaluation.updated_by_auth_source,
-                    created_at: evaluation.updated_at,
-                });
-            }
+            historyControllers.get('evaluation-history')?.reload();
         };
 
         evaluationForm.addEventListener('submit', async (event) => {
