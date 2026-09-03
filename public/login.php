@@ -72,8 +72,9 @@ $ldapOn = $auth->ldapEnabled();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $needsSetup ? 'Create administrator' : 'Sign in' ?> · <?= e((string) $config['app_name']) ?></title>
+    <title><?= $needsSetup ? 'Create administrator' : 'Sign in' ?> · <?= e(\RiskAssessment\Branding::current()->documentTitle()) ?></title>
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
+    <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
@@ -84,7 +85,7 @@ $ldapOn = $auth->ldapEnabled();
             <div class="brand">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div>
-                    <div class="brand-title">Architecture Risk</div>
+                    <div class="brand-title"><?= e(\RiskAssessment\Branding::current()->brandTitle()) ?></div>
                     <h1><?= $needsSetup ? 'First-time setup' : 'Sign in' ?></h1>
                 </div>
             </div>
@@ -239,6 +240,7 @@ $ldapOn = $auth->ldapEnabled();
                 </section>
             <?php endif; ?>
         </main>
+        <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
 </body>

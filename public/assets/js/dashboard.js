@@ -411,7 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             {
                 id: 'exceptions',
-                label: 'All exceptions approved or expired',
+                label: 'All exceptions closed, approved, or expired',
                 passed: openExceptions === 0,
                 detail: openExceptions === 0
                     ? 'No open governance exceptions'
@@ -516,15 +516,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const response = await fetch('index.php', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
             body,
         });
-        const payload = await response.json();
+        const text = await response.text();
+        let payload = {};
+        try {
+            payload = text ? JSON.parse(text) : {};
+        } catch (error) {
+            throw new Error('Save failed');
+        }
         if (!response.ok || !payload.ok) {
             throw new Error(payload.error || 'Save failed');
         }
 
         return payload;
+    };
+
+    const setExceptionSaveLabel = (select, message, isError = false) => {
+        const label = select.parentElement?.querySelector('.exception-status-save');
+        if (!label) {
+            return;
+        }
+        label.hidden = !message;
+        label.textContent = message;
+        label.classList.toggle('is-error', !!isError);
     };
 
     const updateExecSummaryFromExceptions = () => {
@@ -590,40 +611,67 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('.exception-status').forEach((select) => {
         const findingId = select.dataset.findingId;
+        if (!findingId) {
+            return;
+        }
         if (Number(assessmentId) <= 0 && savedExceptions[findingId]) {
             select.value = savedExceptions[findingId];
         }
+        let saveGeneration = 0;
         select.addEventListener('change', async () => {
             const openCount = Array.from(document.querySelectorAll('.exception-status'))
                 .filter((node) => node.value === 'Open').length;
-            const label = document.getElementById('exception-open-count');
-            if (label) {
-                label.textContent = `${openCount} open`;
+            const countLabel = document.getElementById('exception-open-count');
+            if (countLabel) {
+                countLabel.textContent = `${openCount} open`;
             }
 
             updateExecSummaryFromExceptions();
 
+            const generation = ++saveGeneration;
+            const status = select.value;
+
             if (Number(assessmentId) > 0) {
-                select.disabled = true;
+                setExceptionSaveLabel(select, 'Saving…');
                 try {
-                    const payload = await persistFindingStatus(findingId, select.value);
+                    const payload = await persistFindingStatus(findingId, status);
+                    if (generation !== saveGeneration) {
+                        return;
+                    }
+                    if (payload.status && payload.status !== select.value) {
+                        select.value = payload.status;
+                    }
+                    setExceptionSaveLabel(select, 'Saved');
+                    window.setTimeout(() => {
+                        if (generation === saveGeneration) {
+                            setExceptionSaveLabel(select, '');
+                        }
+                    }, 1200);
                     if (payload.gates) {
                         applyGoliveGates(payload.gates);
                     } else {
                         refreshGoliveGates();
                     }
                 } catch (error) {
-                    if (label) {
-                        label.textContent = 'Save failed';
+                    if (generation !== saveGeneration) {
+                        return;
                     }
-                } finally {
-                    select.disabled = false;
+                    setExceptionSaveLabel(select, error.message || 'Save failed', true);
+                    if (countLabel) {
+                        countLabel.textContent = `${openCount} open`;
+                    }
                 }
                 return;
             }
 
-            savedExceptions[findingId] = select.value;
+            savedExceptions[findingId] = status;
             localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
+            setExceptionSaveLabel(select, 'Saved locally');
+            window.setTimeout(() => {
+                if (generation === saveGeneration) {
+                    setExceptionSaveLabel(select, '');
+                }
+            }, 1200);
             refreshGoliveGates();
         });
     });

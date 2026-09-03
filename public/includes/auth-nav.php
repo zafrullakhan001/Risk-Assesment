@@ -10,7 +10,7 @@ $navPrefix = $navAuth->publicPrefix();
 ?>
 <?php if ($navUser !== null): ?>
     <?php if (!empty($navUser['is_admin'])): ?>
-        <a class="button ghost home-link" href="<?= e($navPrefix) ?>admin/index.php" title="Users, LDAP, and GitHub updates">Admin</a>
+        <a class="button ghost home-link" href="<?= e($navPrefix) ?>admin/index.php" title="Users, branding, LDAP, and GitHub updates">Admin</a>
     <?php endif; ?>
     <span class="user-chip" title="<?= e((string) $navUser['email']) ?>">
         <span class="auth-badge <?= $navUser['auth_source'] === 'ldap' ? 'is-ldap' : 'is-local' ?>"><?= e((string) $navUser['auth_source']) ?></span>

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RiskAssessment\Auth;
+use RiskAssessment\Branding;
 use RiskAssessment\Crypto;
 use RiskAssessment\Database\Database;
 use RiskAssessment\LdapAuth;
@@ -21,6 +22,11 @@ $crypto = new Crypto(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'database' . DIREC
 $ldap = new LdapAuth($settings, $crypto);
 Session::start();
 $auth = new Auth($users, $settings, $ldap);
+$branding = new Branding(
+    $settings,
+    (string) $config['branding_dir'],
+    (int) $config['branding_max_bytes']
+);
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

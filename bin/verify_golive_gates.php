@@ -53,5 +53,5 @@ echo 'ready_allowed=' . (!empty($result['ready_allowed']) ? 'yes' : 'no') . PHP_
 echo 'rules=' . count($result['rules']) . PHP_EOL;
 echo 'has_golive_gates=' . (str_contains($html, 'golive-gates') ? 'yes' : 'no') . PHP_EOL;
 echo 'has_high_rule=' . (str_contains($html, 'No open High risks') ? 'yes' : 'no') . PHP_EOL;
-echo 'has_exceptions_rule=' . (str_contains($html, 'All exceptions approved or expired') ? 'yes' : 'no') . PHP_EOL;
+echo 'has_exceptions_rule=' . (str_contains($html, 'All exceptions closed, approved, or expired') ? 'yes' : 'no') . PHP_EOL;
 echo 'has_notes_rule=' . (str_contains($html, 'Evaluator notes completed') ? 'yes' : 'no') . PHP_EOL;

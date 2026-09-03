@@ -1,4 +1,6 @@
 /vendor/
+/public/assets/branding/*
+!/public/assets/branding/.gitkeep
 /uploads/*
 !/uploads/.gitkeep
 !/uploads/.htaccess

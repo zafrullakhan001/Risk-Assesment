@@ -41,7 +41,7 @@ $adminTitle = 'Admin';
 $adminTab = 'home';
 $adminEyebrow = 'Control room';
 $adminHeading = 'Install <em>administration</em>';
-$adminIntro = 'User access, local/LDAP sign-in, and GitHub updates live here.';
+$adminIntro = 'User access, branding, local/LDAP sign-in, and GitHub updates live here.';
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
             <section class="admin-grid">
@@ -59,6 +59,10 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <span class="auth-badge <?= $auth->localEnabled() ? 'is-local' : 'is-off' ?>">Local <?= $auth->localEnabled() ? 'on' : 'off' ?></span>
                         <span class="auth-badge <?= $auth->ldapEnabled() ? 'is-ldap' : 'is-off' ?>">LDAP <?= $auth->ldapEnabled() ? 'on' : 'off' ?></span>
                     </div>
+                </a>
+                <a class="upload-card admin-tile" href="branding.php">
+                    <h2>Branding</h2>
+                    <p>Personalize the brand name, logo, home hero, footer text, and favicon.</p>
                 </a>
                 <a class="upload-card admin-tile" href="updates.php">
                     <h2>App updates</h2>

@@ -402,6 +402,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $assessment = $parser->parse($destination);
                     $savedId = $repository->save($assessment, $destination, $originalName);
+                    $priorVersion = $repository->findPreviousVersion($assessment->getMetadata('solution_name'), $savedId);
+                    if ($priorVersion !== null) {
+                        $findingStatusRepository->copyMissingFromAssessment((int) $priorVersion['id'], $savedId);
+                    }
                 } catch (Throwable $parseException) {
                     if (is_file($destination)) {
                         @unlink($destination);
@@ -499,6 +503,10 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $projectLinks = $projectLinksRepository->listForAssessment($assessmentId);
             $projectDiagrams = $projectMermaidRepository->listForAssessment($assessmentId);
             $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
+            if ($prior !== null) {
+                $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $assessmentId);
+                $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
+            }
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -540,6 +548,10 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
         $projectLinks = $storedId > 0 ? $projectLinksRepository->listForAssessment($storedId) : [];
         $projectDiagrams = $storedId > 0 ? $projectMermaidRepository->listForAssessment($storedId) : [];
         $findingStatuses = $storedId > 0 ? $findingStatusRepository->listForAssessment($storedId) : [];
+        if ($storedId > 0 && $prior !== null) {
+            $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $storedId);
+            $findingStatuses = $findingStatusRepository->listForAssessment($storedId);
+        }
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render(
             $assessment,
@@ -570,8 +582,9 @@ $totalProjects = $repository->countAll();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= htmlspecialchars($config['app_name'], ENT_QUOTES, 'UTF-8') ?></title>
+    <title><?= e($branding->documentTitle()) ?></title>
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
+    <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
@@ -582,8 +595,8 @@ $totalProjects = $repository->countAll();
             <a class="brand brand-link" href="index.php#find-projects" title="Find projects by name">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div>
-                    <div class="brand-title">Architecture Risk</div>
-                    <h1>Assessment register</h1>
+                    <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
+                    <h1><?= e($branding->brandSubtitle()) ?></h1>
                 </div>
             </a>
             <div class="topbar-actions">
@@ -599,9 +612,9 @@ $totalProjects = $repository->countAll();
                 <div class="hero-main">
                     <div class="hero-head">
                         <div class="hero-intro">
-                            <div class="eyebrow">Architecture risk assessment</div>
-                            <h2>Find any project by <em>name</em></h2>
-                            <p>Upload a multi-tab workbook or open a saved assessment.</p>
+                            <div class="eyebrow"><?= e($branding->heroEyebrow()) ?></div>
+                            <h2><?= $branding->heroHeadingHtml() ?></h2>
+                            <p><?= e($branding->heroIntro()) ?></p>
                         </div>
                         <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $totalProjects, 'saved projects'); ?>
                     </div>
@@ -616,7 +629,7 @@ $totalProjects = $repository->countAll();
             <?php endif; ?>
 
             <section class="upload-card search-card" id="find-projects">
-                <h2>Find any project by name</h2>
+                <h2><?= e($branding->heroHeadingPlain()) ?></h2>
                 <p>Type part of the project name, vendor, or scope. Leave blank to browse recent uploads. Delete drops that saved version only.</p>
                 <form method="get" class="search-form" action="index.php#find-projects">
                     <div class="search-wrap search-wrap-wide">
@@ -700,6 +713,7 @@ $totalProjects = $repository->countAll();
                 </form>
             </section>
         </main>
+        <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
     <script src="assets/js/upload.js?v=<?= filemtime(__DIR__ . '/assets/js/upload.js') ?>"></script>

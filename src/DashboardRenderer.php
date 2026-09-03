@@ -91,6 +91,7 @@ final class DashboardRenderer
         $ddSectionSlices = $this->buildSectionSlices($ddSummary);
 
         $progressJson = json_encode($progress, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+        $branding = Branding::current();
 
         ob_start();
         ?>
@@ -99,8 +100,9 @@ final class DashboardRenderer
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $this->e($solutionName) ?></title>
+    <title><?= $this->e($solutionName) ?> · <?= $this->e($branding->brandTitle()) ?></title>
     <?php require dirname(__DIR__) . '/public/includes/theme-head.php'; ?>
+    <?php require dirname(__DIR__) . '/public/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(dirname(__DIR__) . '/public/assets/css/dashboard.css') ?>">
@@ -115,10 +117,10 @@ final class DashboardRenderer
     <div class="shell">
         <header class="topbar">
             <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
-                <?= $this->brandMark() ?>
+                <?= $branding->renderMark() ?>
                 <div>
-                    <div class="brand-title">Architecture Risk</div>
-                    <h1>Assessment register</h1>
+                    <div class="brand-title"><?= $this->e($branding->brandTitle()) ?></div>
+                    <h1><?= $this->e($branding->brandSubtitle()) ?></h1>
                 </div>
             </a>
             <div class="topbar-actions">
@@ -275,6 +277,7 @@ final class DashboardRenderer
                 </div>
             <?php endif; ?>
         </main>
+        <?php require dirname(__DIR__) . '/public/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/theme.js') ?>"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -1434,13 +1437,6 @@ final class DashboardRenderer
         <?php
 
         return (string) ob_get_clean();
-    }
-
-    private function brandMark(): string
-    {
-        $path = dirname(__DIR__) . '/public/includes/brand-mark.php';
-
-        return is_readable($path) ? (string) file_get_contents($path) : '';
     }
 
     private function e(string $value): string

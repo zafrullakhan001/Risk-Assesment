@@ -12,4 +12,6 @@ return [
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/octet-stream',
     ],
+    'branding_dir' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'branding',
+    'branding_max_bytes' => 1024 * 1024,
 ];

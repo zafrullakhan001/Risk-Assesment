@@ -13,8 +13,9 @@ $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($adminTitle) ?> · <?= e((string) $config['app_name']) ?></title>
+    <title><?= e($adminTitle) ?> · <?= e(\RiskAssessment\Branding::current()->documentTitle()) ?></title>
     <?php require dirname(__DIR__) . '/includes/theme-head.php'; ?>
+    <?php require dirname(__DIR__) . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="../assets/css/dashboard.css?v=<?= filemtime(dirname(__DIR__) . '/assets/css/dashboard.css') ?>">
@@ -25,7 +26,7 @@ $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
             <a class="brand brand-link" href="../index.php#find-projects" title="Find projects by name">
                 <?php require dirname(__DIR__) . '/includes/brand-mark.php'; ?>
                 <div>
-                    <div class="brand-title">Architecture Risk</div>
+                    <div class="brand-title"><?= e(\RiskAssessment\Branding::current()->brandTitle()) ?></div>
                     <h1>Admin</h1>
                 </div>
             </a>

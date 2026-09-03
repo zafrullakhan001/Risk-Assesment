@@ -298,7 +298,7 @@ final class DashboardDecisionViews
                     <?php if ($findings === []): ?>
                         <p class="empty-panel project-empty-state">✨ No documented exceptions in this workbook.</p>
                     <?php else: ?>
-                        <p class="panel-help">📝 Update exception status as findings are approved or expire.</p>
+                        <p class="panel-help">📝 Update exception status as findings are approved, closed, or expire. Changes save as soon as you pick a status.</p>
                         <div class="table-scroll">
                             <table id="exception-table">
                                 <thead>
@@ -314,11 +314,14 @@ final class DashboardDecisionViews
                                     <?php foreach ($findings as $finding): ?>
                                         <tr data-finding-id="<?= $this->e((string) $finding['id']) ?>">
                                             <td>
-                                                <select class="exception-status" data-finding-id="<?= $this->e((string) $finding['id']) ?>">
-                                                    <?php foreach (['Open', 'Approved', 'Expired'] as $status): ?>
-                                                        <option value="<?= $this->e($status) ?>" <?= ($finding['status'] ?? 'Open') === $status ? 'selected' : '' ?>><?= $this->e($status) ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
+                                                <div class="exception-status-wrap">
+                                                    <select class="exception-status" data-finding-id="<?= $this->e((string) $finding['id']) ?>" aria-label="Exception status">
+                                                        <?php foreach (\RiskAssessment\Repositories\FindingStatusRepository::STATUSES as $status): ?>
+                                                            <option value="<?= $this->e($status) ?>" <?= ($finding['status'] ?? 'Open') === $status ? 'selected' : '' ?>><?= $this->e($status) ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                    <span class="exception-status-save" hidden></span>
+                                                </div>
                                             </td>
                                             <td>
                                                 <div class="clamp-text" data-expandable><?= $this->e((string) $finding['finding']) ?></div>

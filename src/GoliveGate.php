@@ -42,7 +42,7 @@ final class GoliveGate
             ],
             [
                 'id' => 'exceptions',
-                'label' => 'All exceptions approved or expired',
+                'label' => 'All exceptions closed, approved, or expired',
                 'passed' => $openExceptions === 0,
                 'detail' => $openExceptions === 0
                     ? 'No open governance exceptions'

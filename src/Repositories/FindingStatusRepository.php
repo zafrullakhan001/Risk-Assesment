@@ -9,7 +9,7 @@ use PDO;
 final class FindingStatusRepository
 {
     /** @var list<string> */
-    public const STATUSES = ['Open', 'Approved', 'Expired'];
+    public const STATUSES = ['Open', 'Approved', 'Closed', 'Expired'];
 
     public function __construct(
         private readonly PDO $pdo,
@@ -87,13 +87,38 @@ final class FindingStatusRepository
         $statement->execute([':id' => $assessmentId]);
     }
 
+    public function copyMissingFromAssessment(int $sourceId, int $targetId): int
+    {
+        if ($sourceId <= 0 || $targetId <= 0 || $sourceId === $targetId) {
+            return 0;
+        }
+
+        $existing = $this->listForAssessment($targetId);
+        $copied = 0;
+        foreach ($this->listForAssessment($sourceId) as $findingId => $status) {
+            if (isset($existing[$findingId])) {
+                continue;
+            }
+            if ($this->upsert($targetId, $findingId, $status)) {
+                $copied++;
+            }
+        }
+
+        return $copied;
+    }
+
     public static function normalizeStatus(string $status): string
     {
         $status = trim($status);
-        if (!in_array($status, self::STATUSES, true)) {
-            return 'Open';
+        foreach (self::STATUSES as $allowed) {
+            if (strcasecmp($status, $allowed) === 0) {
+                return $allowed;
+            }
+        }
+        if (strcasecmp($status, 'close') === 0) {
+            return 'Closed';
         }
 
-        return $status;
+        return 'Open';
     }
 }
