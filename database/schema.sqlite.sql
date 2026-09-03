@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS assessments (
     assessment_date TEXT,
     file_path TEXT NOT NULL,
     original_filename TEXT NOT NULL,
+    workbook_json TEXT NOT NULL DEFAULT '{}',
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -19,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_assessments_uploaded_at ON assessments (uploaded_
 CREATE TABLE IF NOT EXISTS assessment_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     assessment_id INTEGER NOT NULL,
+    item_type TEXT NOT NULL DEFAULT 'architecture',
     section TEXT NOT NULL DEFAULT '',
     check_name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT '',
@@ -27,6 +29,8 @@ CREATE TABLE IF NOT EXISTS assessment_items (
     mitigation TEXT,
     owner TEXT NOT NULL DEFAULT '',
     remediation_timeline TEXT NOT NULL DEFAULT '',
+    review_question TEXT NOT NULL DEFAULT '',
+    source_reference TEXT NOT NULL DEFAULT '',
     sort_order INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
 );

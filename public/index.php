@@ -83,6 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'id' => $savedId,
             'metadata' => $assessment->metadata,
             'items' => $assessment->items,
+            'due_diligence_items' => $assessment->dueDiligenceItems,
+            'workbook' => $assessment->workbook,
             'summary' => $assessment->summary,
             'source_filename' => $originalName,
             'stored_filename' => $storedName,
@@ -108,7 +110,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
         $stored = $_SESSION['assessment'];
         $assessment = Assessment::fromParsedData(
             $stored['metadata'] ?? [],
-            $stored['items'] ?? []
+            $stored['items'] ?? [],
+            $stored['due_diligence_items'] ?? [],
+            $stored['workbook'] ?? []
         );
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render($assessment, (string) ($stored['source_filename'] ?? ''));
@@ -135,7 +139,7 @@ $totalProjects = $repository->countAll();
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
 </head>
 <body>
     <div class="shell upload-page">
@@ -159,8 +163,8 @@ $totalProjects = $repository->countAll();
                     <div class="hero-head">
                         <div class="hero-intro">
                             <div class="eyebrow">Architecture risk assessment</div>
-                            <h2>Find any project by <em>name.</em></h2>
-                            <p>Upload a workbook or search saved assessments in SQLite.</p>
+                            <h2>Find any project by <em>name</em></h2>
+                            <p>Upload a multi-tab workbook or open a saved assessment.</p>
                         </div>
                         <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $totalProjects, 'saved projects'); ?>
                     </div>
@@ -209,11 +213,11 @@ $totalProjects = $repository->countAll();
 
             <section class="upload-card">
                 <h2>Upload assessment</h2>
-                <p>Use the same spreadsheet format as the Architecture Risk Assessment Data Sheet:</p>
+                <p>Supports the Architecture Risk Assessment workbook, including Due Diligence Extension, Governance Summary, and Scoring Legend tabs.</p>
                 <ul class="format-list">
-                    <li>Rows 2–7: solution metadata (Solution Name, Vendor, Scope, Architecture Model, Reviewer, Date)</li>
-                    <li>Row 8: column headers (Section, Check, Status, Risk Level, Notes, Mitigation, Owner, Remediation Timeline)</li>
-                    <li>Row 9 onward: risk checks grouped by section</li>
+                    <li>Architecture sheet: metadata in rows 2–7, headers in row 8, checks from row 9</li>
+                    <li>Due Diligence Extension: category items with status, risk, actions, and sources</li>
+                    <li>JSON Due Diligence Summary: ratings, recommendations, and exception findings</li>
                 </ul>
 
                 <form method="post" enctype="multipart/form-data" class="upload-form">

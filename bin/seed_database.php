@@ -11,7 +11,10 @@ use RiskAssessment\Repositories\AssessmentRepository;
 $config = require dirname(__DIR__) . '/config/config.php';
 $dbConfig = require dirname(__DIR__) . '/config/database.php';
 
-$samplePath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Architecture_Risk_Assessment_DataSheet_FibroScan (2)1.xlsx';
+$samplePath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Architecture_Risk_Assessment_DataSheet_FibroScan_AI_Enabled.xlsx';
+if (!is_readable($samplePath)) {
+    $samplePath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Architecture_Risk_Assessment_DataSheet_FibroScan (2)1.xlsx';
+}
 if (!is_readable($samplePath)) {
     fwrite(STDERR, "Sample workbook not found.\n");
     exit(1);

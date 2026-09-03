@@ -24,10 +24,10 @@ final class AssessmentRepository
             $statement = $this->pdo->prepare(
                 'INSERT INTO assessments (
                     solution_name, vendor, scope, architecture_model, reviewer,
-                    assessment_date, file_path, original_filename, uploaded_at
+                    assessment_date, file_path, original_filename, workbook_json, uploaded_at
                 ) VALUES (
                     :solution_name, :vendor, :scope, :architecture_model, :reviewer,
-                    :assessment_date, :file_path, :original_filename, datetime(\'now\')
+                    :assessment_date, :file_path, :original_filename, :workbook_json, datetime(\'now\')
                 )'
             );
 
@@ -40,23 +40,28 @@ final class AssessmentRepository
                 ':assessment_date' => $metadata['date'] ?? '',
                 ':file_path' => $filePath,
                 ':original_filename' => $originalFilename,
+                ':workbook_json' => json_encode($assessment->workbook, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
             ]);
 
             $assessmentId = (int) $this->pdo->lastInsertId();
 
             $itemStatement = $this->pdo->prepare(
                 'INSERT INTO assessment_items (
-                    assessment_id, section, check_name, status, risk_level,
-                    notes, mitigation, owner, remediation_timeline, sort_order
+                    assessment_id, item_type, section, check_name, status, risk_level,
+                    notes, mitigation, owner, remediation_timeline, review_question,
+                    source_reference, sort_order
                 ) VALUES (
-                    :assessment_id, :section, :check_name, :status, :risk_level,
-                    :notes, :mitigation, :owner, :remediation_timeline, :sort_order
+                    :assessment_id, :item_type, :section, :check_name, :status, :risk_level,
+                    :notes, :mitigation, :owner, :remediation_timeline, :review_question,
+                    :source_reference, :sort_order
                 )'
             );
 
-            foreach ($assessment->items as $index => $item) {
+            $allItems = array_merge($assessment->items, $assessment->dueDiligenceItems);
+            foreach ($allItems as $index => $item) {
                 $itemStatement->execute([
                     ':assessment_id' => $assessmentId,
+                    ':item_type' => $item['item_type'] ?? 'architecture',
                     ':section' => $item['section'] ?? '',
                     ':check_name' => $item['check'] ?? '',
                     ':status' => $item['status'] ?? '',
@@ -65,6 +70,8 @@ final class AssessmentRepository
                     ':mitigation' => $item['mitigation'] ?? '',
                     ':owner' => $item['owner'] ?? '',
                     ':remediation_timeline' => $item['remediation_timeline'] ?? '',
+                    ':review_question' => $item['review_question'] ?? '',
+                    ':source_reference' => $item['source_reference'] ?? '',
                     ':sort_order' => (int) ($item['sort_order'] ?? $index),
                 ]);
             }
@@ -89,11 +96,27 @@ final class AssessmentRepository
             return null;
         }
 
-        $items = $this->fetchItems($id);
+        $allItems = $this->fetchItems($id);
+        $architectureItems = [];
+        $dueDiligenceItems = [];
+
+        foreach ($allItems as $item) {
+            if (($item['item_type'] ?? 'architecture') === 'due_diligence') {
+                $dueDiligenceItems[] = $item;
+            } else {
+                $architectureItems[] = $item;
+            }
+        }
+
+        $workbook = json_decode((string) ($row['workbook_json'] ?? '{}'), true);
+        if (!is_array($workbook)) {
+            $workbook = [];
+        }
+
         $metadata = $this->mapMetadata($row);
 
         return [
-            'assessment' => Assessment::fromParsedData($metadata, $items),
+            'assessment' => Assessment::fromParsedData($metadata, $architectureItems, $dueDiligenceItems, $workbook),
             'source_filename' => (string) ($row['original_filename'] ?? ''),
             'uploaded_at' => (string) ($row['uploaded_at'] ?? ''),
         ];
@@ -148,16 +171,18 @@ final class AssessmentRepository
     private function fetchItems(int $assessmentId): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT section, check_name, status, risk_level, notes, mitigation, owner, remediation_timeline, sort_order
+            'SELECT item_type, section, check_name, status, risk_level, notes, mitigation, owner,
+                    remediation_timeline, review_question, source_reference, sort_order
              FROM assessment_items
              WHERE assessment_id = :assessment_id
-             ORDER BY sort_order ASC, id ASC'
+             ORDER BY item_type ASC, sort_order ASC, id ASC'
         );
         $statement->execute([':assessment_id' => $assessmentId]);
 
         $items = [];
         foreach ($statement->fetchAll() as $row) {
             $items[] = [
+                'item_type' => (string) ($row['item_type'] ?? 'architecture'),
                 'section' => (string) ($row['section'] ?? ''),
                 'check' => (string) ($row['check_name'] ?? ''),
                 'status' => (string) ($row['status'] ?? ''),
@@ -166,6 +191,8 @@ final class AssessmentRepository
                 'mitigation' => (string) ($row['mitigation'] ?? ''),
                 'owner' => (string) ($row['owner'] ?? ''),
                 'remediation_timeline' => (string) ($row['remediation_timeline'] ?? ''),
+                'review_question' => (string) ($row['review_question'] ?? ''),
+                'source_reference' => (string) ($row['source_reference'] ?? ''),
                 'sort_order' => (string) ($row['sort_order'] ?? '0'),
             ];
         }
@@ -177,7 +204,7 @@ final class AssessmentRepository
     /** @return array<string, string> */
     private function mapMetadata(array $row): array
     {
-        return [
+        $metadata = [
             'solution_name' => (string) ($row['solution_name'] ?? ''),
             'vendor' => (string) ($row['vendor'] ?? ''),
             'scope' => (string) ($row['scope'] ?? ''),
@@ -185,5 +212,39 @@ final class AssessmentRepository
             'reviewer' => (string) ($row['reviewer'] ?? ''),
             'date' => (string) ($row['assessment_date'] ?? ''),
         ];
+
+        $workbook = json_decode((string) ($row['workbook_json'] ?? '{}'), true);
+        if (is_array($workbook)) {
+            foreach (($workbook['fields'] ?? []) as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $label = strtolower(preg_replace('/[^a-z0-9]+/', '', (string) ($field['label'] ?? '')) ?? '');
+                $value = trim((string) ($field['value'] ?? ''));
+                if ($value === '') {
+                    continue;
+                }
+
+                $map = [
+                    'duediligencerequest' => 'ddr_id',
+                    'technologyriskassessment' => 'vra_id',
+                    'businessunit' => 'business_unit',
+                    'assessmenttypetier' => 'assessment_tier',
+                    'overallriskrating' => 'overall_risk_rating',
+                    'tprmrecommendation' => 'tprm_recommendation',
+                    'technologyrecommendation' => 'technology_recommendation',
+                    'facilityregion' => 'facility_region',
+                    'datahosting' => 'data_hosting',
+                    'vendoraccessai' => 'vendor_access_ai',
+                    'requiredgovernanceaction' => 'governance_action',
+                ];
+
+                if (isset($map[$label])) {
+                    $metadata[$map[$label]] = $value;
+                }
+            }
+        }
+
+        return $metadata;
     }
 }

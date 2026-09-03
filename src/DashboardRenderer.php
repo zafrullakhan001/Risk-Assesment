@@ -9,38 +9,24 @@ use RiskAssessment\Models\Assessment;
 final class DashboardRenderer
 {
     /** @var array<string, string> */
-    private const STATUS_EMOJI = [
-        'Pass' => '✅',
-        'Gap' => '⚠️',
-        'Risk' => '🚨',
-        'TBD' => '❓',
-    ];
-
-    /** @var array<string, string> */
-    private const RISK_EMOJI = [
-        'High' => '🔴',
-        'Med' => '🟠',
-        'Low' => '🟢',
-    ];
-
-    /** @var array<string, string> */
     private const STATUS_COLOR = [
         'Pass' => '#0f766e',
-        'Gap' => '#d97706',
-        'Risk' => '#dc2626',
+        'Gap' => '#c2410c',
+        'Risk' => '#be123c',
         'TBD' => '#64748b',
+        'N/A' => '#94a3b8',
     ];
 
     /** @var array<string, string> */
     private const RISK_COLOR = [
-        'High' => '#b91c1c',
-        'Med' => '#ea580c',
-        'Low' => '#059669',
+        'High' => '#be123c',
+        'Med' => '#c2410c',
+        'Low' => '#0f766e',
     ];
 
     /** @var list<string> */
     private const SECTION_COLORS = [
-        '#0f766e', '#2c9b8d', '#059669', '#0891b2', '#6366f1', '#d97706', '#dc2626', '#7c3aed',
+        '#0e7490', '#0f766e', '#0284c7', '#155e75', '#c2410c', '#be123c', '#64748b', '#0369a1',
     ];
 
     public function render(Assessment $assessment, string $sourceFilename = ''): string
@@ -48,12 +34,22 @@ final class DashboardRenderer
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
         $items = $assessment->items;
+        $dueItems = $assessment->dueDiligenceItems;
+        $workbook = $assessment->workbook;
+        $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
+
         $solutionName = $metadata['solution_name'] ?: 'Risk Assessment Dashboard';
         $assessmentDate = $metadata['date'] ?: date('Y-m-d');
+        $hasDueDiligence = $dueItems !== [];
+        $hasGovernance = ($workbook['fields'] ?? []) !== [] || ($workbook['findings'] ?? []) !== [];
+        $hasLegend = ($workbook['legend']['statuses'] ?? []) !== [] || ($workbook['legend']['checklist'] ?? []) !== [];
 
         $statusSlices = $this->buildStatusSlices($summary);
         $riskSlices = $this->buildRiskSlices($summary);
         $sectionSlices = $this->buildSectionSlices($summary);
+        $ddStatusSlices = $this->buildStatusSlices($ddSummary);
+        $ddRiskSlices = $this->buildRiskSlices($ddSummary);
+        $ddSectionSlices = $this->buildSectionSlices($ddSummary);
 
         ob_start();
         ?>
@@ -66,7 +62,7 @@ final class DashboardRenderer
     <?php require dirname(__DIR__) . '/public/includes/theme-head.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(dirname(__DIR__) . '/public/assets/css/dashboard.css') ?>">
 </head>
 <body>
     <div class="shell">
@@ -92,8 +88,8 @@ final class DashboardRenderer
                 <div class="hero-main">
                     <div class="hero-head">
                         <div class="hero-intro">
-                            <div class="eyebrow">Executive view / architecture risk</div>
-                            <h2>Risk <em>Dashboard</em></h2>
+                            <div class="eyebrow">Architecture risk signal desk</div>
+                            <h2>Risk <em>posture</em></h2>
                         </div>
                         <div class="hero-art">
                             <?= $this->renderDonutChart($statusSlices, 'hero-donut', (string) $summary['total'], 'checks', true) ?>
@@ -102,6 +98,7 @@ final class DashboardRenderer
                     <div class="hero-project">
                         <span class="hero-project-label">Project</span>
                         <p class="hero-project-name"><?= $this->e($solutionName) ?></p>
+                        <?= $this->renderRiskSpectrum($summary) ?>
                     </div>
                     <div class="hero-actions">
                         <a class="button ghost" href="index.php">Upload another file</a>
@@ -110,205 +107,88 @@ final class DashboardRenderer
                 </div>
             </section>
 
-            <section class="kpis" id="kpi-tiles">
-                <button type="button" class="kpi kpi-clickable tone-all is-active" data-filter-type="all" data-filter-value="" aria-pressed="true">
-                    <span class="kpi-emoji">📋</span>
-                    <div class="eyebrow">Total checks</div>
-                    <strong><?= (int) $summary['total'] ?></strong>
-                    <span>Tap to view all rows</span>
-                </button>
-                <?php foreach (['Pass', 'Gap', 'Risk', 'TBD'] as $status): ?>
-                    <button
-                        type="button"
-                        class="kpi kpi-clickable tone-<?= strtolower($this->e($status)) ?>"
-                        data-filter-type="status"
-                        data-filter-value="<?= $this->e($status) ?>"
-                        aria-pressed="false"
-                    >
-                        <span class="kpi-emoji"><?= self::STATUS_EMOJI[$status] ?></span>
-                        <div class="eyebrow"><?= $this->e($status) ?></div>
-                        <strong><?= (int) ($summary['by_status'][$status] ?? 0) ?></strong>
-                        <span>Filter <?= $this->e(strtolower($status)) ?> rows</span>
-                    </button>
-                <?php endforeach; ?>
-                <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
-                    <button
-                        type="button"
-                        class="kpi kpi-clickable tone-<?= strtolower($this->e($risk)) ?>"
-                        data-filter-type="risk"
-                        data-filter-value="<?= $this->e($risk) ?>"
-                        aria-pressed="false"
-                    >
-                        <span class="kpi-emoji"><?= self::RISK_EMOJI[$risk] ?></span>
-                        <div class="eyebrow"><?= $this->e($risk) ?> risk</div>
-                        <strong><?= (int) ($summary['by_risk'][$risk] ?? 0) ?></strong>
-                        <span>Filter <?= $this->e(strtolower($risk)) ?> risk rows</span>
-                    </button>
-                <?php endforeach; ?>
-            </section>
+            <?= $this->renderKpis($summary, 'architecture') ?>
 
             <section class="meta-grid">
-                <div class="meta-item meta-vendor"><span class="label">Vendor</span><strong><?= $this->e($metadata['vendor']) ?></strong></div>
-                <div class="meta-item meta-scope"><span class="label">Scope</span><strong><?= $this->e($metadata['scope']) ?></strong></div>
-                <div class="meta-item meta-arch"><span class="label">Architecture model</span><strong><?= $this->e($metadata['architecture_model']) ?></strong></div>
-                <div class="meta-item meta-reviewer"><span class="label">Reviewer</span><strong><?= $this->e($metadata['reviewer']) ?></strong></div>
+                <div class="meta-item meta-vendor"><span class="label">Vendor</span><strong><?= $this->e($metadata['vendor'] ?? '') ?></strong></div>
+                <div class="meta-item meta-scope"><span class="label">Scope</span><strong><?= $this->e($metadata['scope'] ?? '') ?></strong></div>
+                <div class="meta-item meta-arch"><span class="label">Architecture model</span><strong><?= $this->e($metadata['architecture_model'] ?? '') ?></strong></div>
+                <div class="meta-item meta-reviewer"><span class="label">Reviewer</span><strong><?= $this->e($metadata['reviewer'] ?? '') ?></strong></div>
+                <?php if (($metadata['ddr_id'] ?? '') !== ''): ?>
+                    <div class="meta-item meta-file"><span class="label">DDR</span><strong><?= $this->e($metadata['ddr_id']) ?></strong></div>
+                <?php endif; ?>
+                <?php if (($metadata['vra_id'] ?? '') !== ''): ?>
+                    <div class="meta-item meta-file"><span class="label">VRA</span><strong><?= $this->e($metadata['vra_id']) ?></strong></div>
+                <?php endif; ?>
+                <?php if (($metadata['overall_risk_rating'] ?? '') !== ''): ?>
+                    <div class="meta-item meta-reviewer"><span class="label">Overall risk rating</span><strong><?= $this->e($metadata['overall_risk_rating']) ?></strong></div>
+                <?php endif; ?>
+                <?php if (($metadata['business_unit'] ?? '') !== ''): ?>
+                    <div class="meta-item meta-scope"><span class="label">Business unit</span><strong><?= $this->e($metadata['business_unit']) ?></strong></div>
+                <?php endif; ?>
                 <?php if ($sourceFilename !== ''): ?>
                     <div class="meta-item meta-file"><span class="label">Source file</span><strong><?= $this->e($sourceFilename) ?></strong></div>
                 <?php endif; ?>
             </section>
 
-            <section class="charts-grid">
-                <div class="chart-card">
-                    <div class="card-heading">
-                        <div>
-                            <div class="eyebrow">Flow health</div>
-                            <h3>✅ Status mix</h3>
-                        </div>
-                    </div>
-                    <div class="chart-panel">
-                        <?= $this->renderDonutChart($statusSlices, 'status-donut', (string) ($summary['by_status']['Risk'] ?? 0), 'risk items', false) ?>
-                        <?= $this->renderChartLegend($statusSlices, 'status') ?>
-                    </div>
-                </div>
+            <nav class="dash-tabs" role="tablist" aria-label="Workbook tabs">
+                <button type="button" class="dash-tab is-active" role="tab" aria-selected="true" data-tab="architecture">Architecture checks</button>
+                <?php if ($hasDueDiligence): ?>
+                    <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="due-diligence">Due diligence</button>
+                <?php endif; ?>
+                <?php if ($hasGovernance): ?>
+                    <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="governance">Governance summary</button>
+                <?php endif; ?>
+                <?php if ($hasLegend): ?>
+                    <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="legend">Scoring legend</button>
+                <?php endif; ?>
+            </nav>
 
-                <div class="chart-card">
-                    <div class="card-heading">
-                        <div>
-                            <div class="eyebrow">Risk exposure</div>
-                            <h3>🎯 Risk levels</h3>
-                        </div>
-                    </div>
-                    <div class="chart-panel">
-                        <?= $this->renderDonutChart($riskSlices, 'risk-donut', (string) ($summary['by_risk']['High'] ?? 0), 'high risk', false) ?>
-                        <?= $this->renderChartLegend($riskSlices, 'risk') ?>
-                    </div>
-                </div>
+            <div class="dash-panel is-active" data-panel="architecture">
+                <?= $this->renderChartsBlock($statusSlices, $riskSlices, $sectionSlices, $summary, 'architecture') ?>
+                <?= $this->renderSectionBars($summary['by_section'] ?? []) ?>
+                <?= $this->renderRegister(
+                    'architecture',
+                    'risk-register',
+                    'Architecture checks',
+                    'Risk register',
+                    $items,
+                    $summary,
+                    false
+                ) ?>
+            </div>
 
-                <div class="chart-card chart-card-wide">
-                    <div class="card-heading">
-                        <div>
-                            <div class="eyebrow">Section coverage</div>
-                            <h3>🧩 Section distribution</h3>
-                        </div>
-                    </div>
-                    <div class="chart-panel chart-panel-split">
-                        <?= $this->renderPieChart($sectionSlices, 'section-pie') ?>
-                        <?= $this->renderChartLegend($sectionSlices, 'section') ?>
-                    </div>
+            <?php if ($hasDueDiligence): ?>
+                <div class="dash-panel" data-panel="due-diligence" hidden>
+                    <?php if (($workbook['context'] ?? '') !== ''): ?>
+                        <div class="context-banner"><?= $this->e((string) $workbook['context']) ?></div>
+                    <?php endif; ?>
+                    <?= $this->renderKpis($ddSummary, 'due_diligence') ?>
+                    <?= $this->renderChartsBlock($ddStatusSlices, $ddRiskSlices, $ddSectionSlices, $ddSummary, 'due_diligence') ?>
+                    <?= $this->renderSectionBars($ddSummary['by_section'] ?? []) ?>
+                    <?= $this->renderRegister(
+                        'due_diligence',
+                        'dd-register',
+                        'Due diligence extension',
+                        'Technology risk template',
+                        $dueItems,
+                        $ddSummary,
+                        true
+                    ) ?>
                 </div>
-            </section>
+            <?php endif; ?>
 
-            <section class="chart-card section-bars-card">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Section drill-down</div>
-                        <h3>📈 Checks by section</h3>
-                        <p>Click a section bar to jump to matching rows.</p>
-                    </div>
+            <?php if ($hasGovernance): ?>
+                <div class="dash-panel" data-panel="governance" hidden>
+                    <?= $this->renderGovernancePanel($workbook, $metadata) ?>
                 </div>
-                <div class="state-bars">
-                    <?php foreach ($summary['by_section'] as $section => $counts): ?>
-                        <?php $max = max(1, (int) $counts['total']); ?>
-                        <button
-                            type="button"
-                            class="bar-row bar-row-clickable"
-                            data-filter-type="section"
-                            data-filter-value="<?= $this->e($section) ?>"
-                        >
-                            <span>📂 <?= $this->e($section) ?></span>
-                            <div class="bar-track">
-                                <span class="bar-fill bar-pass" style="width: <?= $this->percent((int) $counts['Pass'], $max) ?>%"></span>
-                                <span class="bar-fill bar-gap" style="width: <?= $this->percent((int) $counts['Gap'], $max) ?>%"></span>
-                                <span class="bar-fill bar-risk" style="width: <?= $this->percent((int) $counts['Risk'], $max) ?>%"></span>
-                                <span class="bar-fill bar-tbd" style="width: <?= $this->percent((int) $counts['TBD'], $max) ?>%"></span>
-                            </div>
-                            <b><?= (int) $counts['total'] ?></b>
-                        </button>
-                        <div class="section-meta">
-                            <span>🔴 <?= (int) $counts['High'] ?> High</span>
-                            <span>🟠 <?= (int) $counts['Med'] ?> Med</span>
-                            <span>🟢 <?= (int) $counts['Low'] ?> Low</span>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            </section>
+            <?php endif; ?>
 
-            <section class="toolbar">
-                <div class="search-wrap">
-                    <span>🔎</span>
-                    <input type="search" id="filter-search" placeholder="Search check, notes, owner, mitigation...">
+            <?php if ($hasLegend): ?>
+                <div class="dash-panel" data-panel="legend" hidden>
+                    <?= $this->renderLegendPanel($workbook['legend'] ?? []) ?>
                 </div>
-                <select id="filter-section">
-                    <option value="">All sections</option>
-                    <?php foreach (array_keys($summary['by_section']) as $section): ?>
-                        <option value="<?= $this->e($section) ?>"><?= $this->e($section) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <select id="filter-status">
-                    <option value="">All statuses</option>
-                    <?php foreach (['Pass', 'Gap', 'Risk', 'TBD'] as $status): ?>
-                        <option value="<?= $this->e($status) ?>"><?= self::STATUS_EMOJI[$status] ?> <?= $this->e($status) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <select id="filter-risk">
-                    <option value="">All risk levels</option>
-                    <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
-                        <option value="<?= $this->e($risk) ?>"><?= self::RISK_EMOJI[$risk] ?> <?= $this->e($risk) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <button type="button" class="button ghost" id="clearFilters">↩️ Reset</button>
-            </section>
-
-            <section class="table-card" id="risk-register">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Risk register</div>
-                        <h3>📝 Architecture checks</h3>
-                    </div>
-                    <span class="result-count" id="filter-count"><?= (int) $summary['total'] ?> shown</span>
-                </div>
-                <div class="table-scroll">
-                    <table id="risk-table">
-                        <thead>
-                            <tr>
-                                <th>Section</th>
-                                <th>Check</th>
-                                <th>Status</th>
-                                <th>Risk level</th>
-                                <th>Notes</th>
-                                <th>Mitigation / controls</th>
-                                <th>Owner</th>
-                                <th>Remediation timeline</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($items as $item): ?>
-                                <tr
-                                    class="data-row"
-                                    data-section="<?= $this->e($item['section']) ?>"
-                                    data-status="<?= $this->e($item['status']) ?>"
-                                    data-risk="<?= $this->e($item['risk_level']) ?>"
-                                    data-search="<?= $this->e(strtolower($item['section'] . ' ' . $item['check'] . ' ' . $item['notes'] . ' ' . $item['mitigation'] . ' ' . $item['owner'])) ?>"
-                                >
-                                    <td><span class="section-name">📂 <?= $this->e($item['section']) ?></span></td>
-                                    <td>
-                                        <div class="check-name"><?= $this->e($item['check']) ?></div>
-                                        <?php if ($item['owner'] !== ''): ?>
-                                            <div class="subtext">👤 <?= $this->e($item['owner']) ?></div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?= $this->pill($item['status'], 'status') ?></td>
-                                    <td><?= $this->pill($item['risk_level'], 'risk') ?></td>
-                                    <td><?= $this->e($item['notes']) ?></td>
-                                    <td><?= $this->e($item['mitigation']) ?></td>
-                                    <td><?= $this->e($item['owner']) ?></td>
-                                    <td><?= $this->e($item['remediation_timeline']) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            <?php endif; ?>
         </main>
     </div>
     <script src="assets/js/theme.js"></script>
@@ -320,58 +200,531 @@ final class DashboardRenderer
         return (string) ob_get_clean();
     }
 
-    /** @param array<string, int> $summary */
+    /** @param array<string, mixed> $summary */
+    private function renderKpis(array $summary, string $scope): string
+    {
+        $prefix = $scope === 'due_diligence' ? 'dd-' : '';
+        ob_start();
+        ?>
+        <section class="kpis" id="<?= $prefix ?>kpi-tiles" data-filter-scope="<?= $this->e($scope) ?>">
+            <button type="button" class="kpi kpi-clickable tone-all is-active" data-filter-type="all" data-filter-value="" aria-pressed="true">
+                <div class="eyebrow">Total</div>
+                <strong><?= (int) ($summary['total'] ?? 0) ?></strong>
+                <span>View all rows</span>
+            </button>
+            <?php foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $status): ?>
+                <?php if (!isset($summary['by_status'][$status]) && $status === 'N/A') { continue; } ?>
+                <?php if (($summary['by_status'][$status] ?? 0) === 0 && $status === 'N/A') { continue; } ?>
+                <button
+                    type="button"
+                    class="kpi kpi-clickable tone-<?= strtolower(str_replace('/', '', $status)) ?>"
+                    data-filter-type="status"
+                    data-filter-value="<?= $this->e($status) ?>"
+                    aria-pressed="false"
+                >
+                    <div class="eyebrow"><?= $this->e($status) ?></div>
+                    <strong><?= (int) ($summary['by_status'][$status] ?? 0) ?></strong>
+                    <span>Filter <?= $this->e(strtolower($status)) ?> rows</span>
+                </button>
+            <?php endforeach; ?>
+            <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
+                <button
+                    type="button"
+                    class="kpi kpi-clickable tone-<?= strtolower($risk) ?>"
+                    data-filter-type="risk"
+                    data-filter-value="<?= $this->e($risk) ?>"
+                    aria-pressed="false"
+                >
+                    <div class="eyebrow"><?= $this->e($risk) ?> risk</div>
+                    <strong><?= (int) ($summary['by_risk'][$risk] ?? 0) ?></strong>
+                    <span>Filter <?= $this->e(strtolower($risk)) ?> risk rows</span>
+                </button>
+            <?php endforeach; ?>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<array<string, mixed>> $statusSlices
+     * @param list<array<string, mixed>> $riskSlices
+     * @param list<array<string, mixed>> $sectionSlices
+     * @param array<string, mixed> $summary
+     */
+    private function renderChartsBlock(
+        array $statusSlices,
+        array $riskSlices,
+        array $sectionSlices,
+        array $summary,
+        string $scope
+    ): string {
+        $idPrefix = $scope === 'due_diligence' ? 'dd-' : '';
+        ob_start();
+        ?>
+        <section class="charts-grid">
+            <div class="chart-card">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Flow health</div>
+                        <h3>Status mix</h3>
+                    </div>
+                </div>
+                <div class="chart-panel">
+                    <?= $this->renderDonutChart($statusSlices, $idPrefix . 'status-donut', (string) ($summary['by_status']['Risk'] ?? 0), 'risk items', false) ?>
+                    <?= $this->renderChartLegend($statusSlices, 'status') ?>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Risk exposure</div>
+                        <h3>Risk levels</h3>
+                    </div>
+                </div>
+                <div class="chart-panel">
+                    <?= $this->renderDonutChart($riskSlices, $idPrefix . 'risk-donut', (string) ($summary['by_risk']['High'] ?? 0), 'high risk', false) ?>
+                    <?= $this->renderChartLegend($riskSlices, 'risk') ?>
+                </div>
+            </div>
+            <div class="chart-card chart-card-wide">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Section coverage</div>
+                        <h3>Section distribution</h3>
+                    </div>
+                </div>
+                <div class="chart-panel chart-panel-split">
+                    <?= $this->renderPieChart($sectionSlices, $idPrefix . 'section-pie') ?>
+                    <?= $this->renderChartLegend($sectionSlices, 'section') ?>
+                </div>
+            </div>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /** @param array<string, array<string, int>> $bySection */
+    private function renderSectionBars(array $bySection): string
+    {
+        ob_start();
+        ?>
+        <section class="chart-card section-bars-card">
+            <div class="card-heading">
+                <div>
+                    <div class="eyebrow">Section drill-down</div>
+                    <h3>Checks by section</h3>
+                </div>
+            </div>
+            <div class="state-bars">
+                <?php foreach ($bySection as $section => $counts): ?>
+                    <?php $max = max(1, (int) $counts['total']); ?>
+                    <button
+                        type="button"
+                        class="bar-row bar-row-clickable"
+                        data-filter-type="section"
+                        data-filter-value="<?= $this->e($section) ?>"
+                    >
+                        <span><?= $this->e($section) ?></span>
+                        <div class="bar-track">
+                            <span class="bar-fill bar-pass" style="width: <?= $this->percent((int) ($counts['Pass'] ?? 0), $max) ?>%"></span>
+                            <span class="bar-fill bar-gap" style="width: <?= $this->percent((int) ($counts['Gap'] ?? 0), $max) ?>%"></span>
+                            <span class="bar-fill bar-risk" style="width: <?= $this->percent((int) ($counts['Risk'] ?? 0), $max) ?>%"></span>
+                            <span class="bar-fill bar-tbd" style="width: <?= $this->percent((int) ($counts['TBD'] ?? 0), $max) ?>%"></span>
+                        </div>
+                        <b><?= (int) $counts['total'] ?></b>
+                    </button>
+                    <div class="section-meta">
+                        <span><?= (int) ($counts['High'] ?? 0) ?> High</span>
+                        <span><?= (int) ($counts['Med'] ?? 0) ?> Med</span>
+                        <span><?= (int) ($counts['Low'] ?? 0) ?> Low</span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<array<string, string>> $items
+     * @param array<string, mixed> $summary
+     */
+    private function renderRegister(
+        string $scope,
+        string $registerId,
+        string $heading,
+        string $eyebrow,
+        array $items,
+        array $summary,
+        bool $extendedColumns
+    ): string {
+        $tableId = $scope === 'due_diligence' ? 'dd-table' : 'risk-table';
+        $prefix = $scope === 'due_diligence' ? 'dd-' : '';
+        $checkLabel = $extendedColumns ? 'Assessment item' : 'Check';
+        $notesLabel = $extendedColumns ? 'Finding / evidence' : 'Notes';
+        $timelineLabel = $extendedColumns ? 'Timeline' : 'Remediation timeline';
+
+        ob_start();
+        ?>
+        <section class="toolbar" data-filter-scope="<?= $this->e($scope) ?>">
+            <div class="search-wrap">
+                <span>Search</span>
+                <input type="search" id="<?= $prefix ?>filter-search" placeholder="Search check, notes, owner, mitigation...">
+            </div>
+            <select id="<?= $prefix ?>filter-section">
+                <option value="">All sections</option>
+                <?php foreach (array_keys($summary['by_section'] ?? []) as $section): ?>
+                    <option value="<?= $this->e((string) $section) ?>"><?= $this->e((string) $section) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="<?= $prefix ?>filter-status">
+                <option value="">All statuses</option>
+                <?php foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $status): ?>
+                    <option value="<?= $this->e($status) ?>"><?= $this->e($status) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="<?= $prefix ?>filter-risk">
+                <option value="">All risk levels</option>
+                <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
+                    <option value="<?= $this->e($risk) ?>"><?= $this->e($risk) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="button" class="button ghost" id="<?= $prefix ?>clearFilters">Reset</button>
+        </section>
+
+        <section class="table-card" id="<?= $this->e($registerId) ?>" data-filter-scope="<?= $this->e($scope) ?>">
+            <div class="card-heading">
+                <div>
+                    <div class="eyebrow"><?= $this->e($eyebrow) ?></div>
+                    <h3><?= $this->e($heading) ?></h3>
+                </div>
+                <span class="result-count" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
+            </div>
+            <div class="table-scroll">
+                <table id="<?= $this->e($tableId) ?>">
+                    <thead>
+                        <tr>
+                            <th>Section</th>
+                            <th><?= $this->e($checkLabel) ?></th>
+                            <th>Status</th>
+                            <th>Risk level</th>
+                            <th><?= $this->e($notesLabel) ?></th>
+                            <th>Mitigation / controls</th>
+                            <th>Owner</th>
+                            <th><?= $this->e($timelineLabel) ?></th>
+                            <?php if ($extendedColumns): ?>
+                                <th>Review question</th>
+                                <th>Source</th>
+                            <?php endif; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($items as $item): ?>
+                            <?php
+                            $searchParts = [
+                                $item['section'] ?? '',
+                                $item['check'] ?? '',
+                                $item['notes'] ?? '',
+                                $item['mitigation'] ?? '',
+                                $item['owner'] ?? '',
+                                $item['review_question'] ?? '',
+                                $item['source_reference'] ?? '',
+                            ];
+                            ?>
+                            <tr
+                                class="data-row"
+                                data-section="<?= $this->e($item['section'] ?? '') ?>"
+                                data-status="<?= $this->e($item['status'] ?? '') ?>"
+                                data-risk="<?= $this->e($item['risk_level'] ?? '') ?>"
+                                data-search="<?= $this->e(strtolower(implode(' ', $searchParts))) ?>"
+                            >
+                                <td><span class="section-name"><?= $this->e($item['section'] ?? '') ?></span></td>
+                                <td>
+                                    <div class="check-name"><?= $this->e($item['check'] ?? '') ?></div>
+                                    <?php if (($item['owner'] ?? '') !== ''): ?>
+                                        <div class="subtext"><?= $this->e($item['owner'] ?? '') ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?= $this->pill($item['status'] ?? '', 'status') ?></td>
+                                <td><?= $this->pill($item['risk_level'] ?? '', 'risk') ?></td>
+                                <td><?= $this->e($item['notes'] ?? '') ?></td>
+                                <td><?= $this->e($item['mitigation'] ?? '') ?></td>
+                                <td><?= $this->e($item['owner'] ?? '') ?></td>
+                                <td><?= $this->e($item['remediation_timeline'] ?? '') ?></td>
+                                <?php if ($extendedColumns): ?>
+                                    <td><?= $this->e($item['review_question'] ?? '') ?></td>
+                                    <td><?= $this->e($item['source_reference'] ?? '') ?></td>
+                                <?php endif; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /** @param array<string, mixed> $workbook */
+    /** @param array<string, string> $metadata */
+    private function renderGovernancePanel(array $workbook, array $metadata): string
+    {
+        $fields = $workbook['fields'] ?? [];
+        $findings = $workbook['findings'] ?? [];
+        $note = (string) ($workbook['note'] ?? '');
+
+        ob_start();
+        ?>
+        <?php if (($metadata['tprm_recommendation'] ?? '') !== '' || ($metadata['technology_recommendation'] ?? '') !== '' || ($metadata['governance_action'] ?? '') !== ''): ?>
+            <section class="governance-highlights">
+                <?php if (($metadata['overall_risk_rating'] ?? '') !== ''): ?>
+                    <article class="highlight-card">
+                        <span class="label">Overall rating</span>
+                        <strong><?= $this->e($metadata['overall_risk_rating']) ?></strong>
+                    </article>
+                <?php endif; ?>
+                <?php if (($metadata['tprm_recommendation'] ?? '') !== ''): ?>
+                    <article class="highlight-card">
+                        <span class="label">TPRM recommendation</span>
+                        <strong><?= $this->e($metadata['tprm_recommendation']) ?></strong>
+                    </article>
+                <?php endif; ?>
+                <?php if (($metadata['technology_recommendation'] ?? '') !== ''): ?>
+                    <article class="highlight-card">
+                        <span class="label">Technology recommendation</span>
+                        <strong><?= $this->e($metadata['technology_recommendation']) ?></strong>
+                    </article>
+                <?php endif; ?>
+                <?php if (($metadata['governance_action'] ?? '') !== ''): ?>
+                    <article class="highlight-card highlight-warning">
+                        <span class="label">Required governance action</span>
+                        <strong><?= $this->e($metadata['governance_action']) ?></strong>
+                    </article>
+                <?php endif; ?>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($fields !== []): ?>
+            <section class="table-card">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">JSON due diligence</div>
+                        <h3>Summary fields</h3>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Value</th>
+                                <th>Assessment use</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($fields as $field): ?>
+                                <tr>
+                                    <td><strong><?= $this->e((string) ($field['label'] ?? '')) ?></strong></td>
+                                    <td><?= $this->e((string) ($field['value'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($field['use'] ?? '')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($findings !== []): ?>
+            <section class="table-card" style="margin-top: 10px;">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Exceptions</div>
+                        <h3>Documented findings</h3>
+                    </div>
+                    <span class="result-count"><?= count($findings) ?> findings</span>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Finding / control</th>
+                                <th>Policy / reference</th>
+                                <th>Impact</th>
+                                <th>Required exception / mitigation</th>
+                                <th>Owner</th>
+                                <th>Timeline</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($findings as $finding): ?>
+                                <tr>
+                                    <td><?= $this->e((string) ($finding['finding'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($finding['policy_reference'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($finding['impact'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($finding['mitigation'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($finding['owner'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($finding['timeline'] ?? '')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($note !== ''): ?>
+            <div class="context-banner context-note"><?= $this->e($note) ?></div>
+        <?php endif; ?>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /** @param array<string, mixed> $legend */
+    private function renderLegendPanel(array $legend): string
+    {
+        $statuses = $legend['statuses'] ?? [];
+        $riskLevels = $legend['risk_levels'] ?? [];
+        $checklist = $legend['checklist'] ?? [];
+
+        ob_start();
+        ?>
+        <div class="legend-grid">
+            <section class="table-card">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Scoring</div>
+                        <h3>Status meanings</h3>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Meaning</th>
+                                <th>Typical action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($statuses as $row): ?>
+                                <tr>
+                                    <td><?= $this->pill((string) ($row['status'] ?? ''), 'status') ?></td>
+                                    <td><?= $this->e((string) ($row['meaning'] ?? '')) ?></td>
+                                    <td><?= $this->e((string) ($row['action'] ?? '')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="table-card">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Scoring</div>
+                        <h3>Risk level guidance</h3>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Risk level</th>
+                                <th>Use when</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($riskLevels as $row): ?>
+                                <tr>
+                                    <td><?= $this->pill((string) ($row['risk_level'] ?? ''), 'risk') ?></td>
+                                    <td><?= $this->e((string) ($row['use_when'] ?? '')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <?php if ($checklist !== []): ?>
+            <section class="table-card" style="margin-top: 10px;">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Evidence</div>
+                        <h3>Minimum evidence checklist</h3>
+                    </div>
+                </div>
+                <ol class="checklist">
+                    <?php foreach ($checklist as $item): ?>
+                        <li><?= $this->e((string) $item) ?></li>
+                    <?php endforeach; ?>
+                </ol>
+            </section>
+        <?php endif; ?>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /** @param array<string, mixed> $summary */
     /** @return list<array<string, mixed>> */
     private function buildStatusSlices(array $summary): array
     {
         $slices = [];
-        foreach (['Pass', 'Gap', 'Risk', 'TBD'] as $status) {
+        foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $status) {
+            $value = (int) ($summary['by_status'][$status] ?? 0);
+            if ($status === 'N/A' && $value === 0) {
+                continue;
+            }
             $slices[] = [
-                'label' => self::STATUS_EMOJI[$status] . ' ' . $status,
-                'value' => (int) ($summary['by_status'][$status] ?? 0),
-                'color' => self::STATUS_COLOR[$status],
+                'label' => $status,
+                'value' => $value,
+                'color' => self::STATUS_COLOR[$status] ?? '#94a3b8',
                 'filterType' => 'status',
                 'filterValue' => $status,
-                'emoji' => self::STATUS_EMOJI[$status],
             ];
         }
 
         return $slices;
     }
 
-    /** @param array<string, int> $summary */
+    /** @param array<string, mixed> $summary */
     /** @return list<array<string, mixed>> */
     private function buildRiskSlices(array $summary): array
     {
         $slices = [];
         foreach (['High', 'Med', 'Low'] as $risk) {
             $slices[] = [
-                'label' => self::RISK_EMOJI[$risk] . ' ' . $risk,
+                'label' => $risk,
                 'value' => (int) ($summary['by_risk'][$risk] ?? 0),
                 'color' => self::RISK_COLOR[$risk],
                 'filterType' => 'risk',
                 'filterValue' => $risk,
-                'emoji' => self::RISK_EMOJI[$risk],
             ];
         }
 
         return $slices;
     }
 
-    /** @param array<string, array<string, int>> $summary */
+    /** @param array<string, mixed> $summary */
     /** @return list<array<string, mixed>> */
     private function buildSectionSlices(array $summary): array
     {
         $slices = [];
         $index = 0;
-        foreach ($summary['by_section'] as $section => $counts) {
+        foreach (($summary['by_section'] ?? []) as $section => $counts) {
             $slices[] = [
-                'label' => '📂 ' . $section,
-                'value' => (int) $counts['total'],
+                'label' => (string) $section,
+                'value' => (int) ($counts['total'] ?? 0),
                 'color' => self::SECTION_COLORS[$index % count(self::SECTION_COLORS)],
                 'filterType' => 'section',
-                'filterValue' => $section,
-                'emoji' => '📂',
+                'filterValue' => (string) $section,
             ];
             $index++;
         }
@@ -379,9 +732,43 @@ final class DashboardRenderer
         return $slices;
     }
 
-    /**
-     * @param list<array<string, mixed>> $slices
-     */
+    /** @param array<string, mixed> $summary */
+    private function renderRiskSpectrum(array $summary): string
+    {
+        $total = max(1, (int) ($summary['total'] ?? 0));
+        $parts = [
+            'pass' => (int) ($summary['by_status']['Pass'] ?? 0),
+            'gap' => (int) ($summary['by_status']['Gap'] ?? 0),
+            'risk' => (int) ($summary['by_status']['Risk'] ?? 0),
+            'tbd' => (int) ($summary['by_status']['TBD'] ?? 0),
+            'na' => (int) ($summary['by_status']['N/A'] ?? 0),
+        ];
+
+        ob_start();
+        ?>
+        <div class="risk-spectrum" aria-label="Status mix">
+            <div class="risk-spectrum-track">
+                <?php foreach ($parts as $key => $count): ?>
+                    <?php if ($count <= 0) { continue; } ?>
+                    <span
+                        class="risk-spectrum-seg <?= $this->e($key) ?>"
+                        style="width: <?= $this->percent($count, $total) ?>%; animation-delay: <?= array_search($key, array_keys($parts), true) * 0.05 ?>s"
+                        title="<?= $this->e(strtoupper($key)) ?>: <?= $count ?>"
+                    ></span>
+                <?php endforeach; ?>
+            </div>
+            <div class="risk-spectrum-legend">
+                <?php foreach (['Pass' => 'pass', 'Gap' => 'gap', 'Risk' => 'risk', 'TBD' => 'tbd'] as $label => $key): ?>
+                    <span><b><?= (int) ($parts[$key] ?? 0) ?></b> <?= $this->e($label) ?></span>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /** @param list<array<string, mixed>> $slices */
     private function renderDonutChart(array $slices, string $chartId, string $centerValue, string $centerLabel, bool $hero): string
     {
         $total = max(1, array_sum(array_column($slices, 'value')));
@@ -434,9 +821,7 @@ final class DashboardRenderer
         return (string) ob_get_clean();
     }
 
-    /**
-     * @param list<array<string, mixed>> $slices
-     */
+    /** @param list<array<string, mixed>> $slices */
     private function renderPieChart(array $slices, string $chartId): string
     {
         $total = array_sum(array_column($slices, 'value'));
@@ -483,9 +868,7 @@ final class DashboardRenderer
         return (string) ob_get_clean();
     }
 
-    /**
-     * @param list<array<string, mixed>> $slices
-     */
+    /** @param list<array<string, mixed>> $slices */
     private function renderChartLegend(array $slices, string $kind): string
     {
         ob_start();
@@ -502,7 +885,7 @@ final class DashboardRenderer
                     <span class="legend-swatch" style="background: <?= $this->e((string) $slice['color']) ?>"></span>
                     <span class="legend-copy">
                         <strong><?= $this->e((string) $slice['label']) ?></strong>
-                        <em><?= (int) $slice['value'] ?> items</em>
+                        <em><?= (int) $slice['value'] ?></em>
                     </span>
                 </button>
             <?php endforeach; ?>
@@ -579,10 +962,9 @@ final class DashboardRenderer
                 'pass' => 'teal',
                 'gap' => 'amber',
                 'risk' => 'coral',
-                'tbd' => 'gray',
+                'tbd', 'na', 'n/a' => 'gray',
                 default => 'gray',
             };
-            $emoji = self::STATUS_EMOJI[$value] ?? '';
         } else {
             $class = match ($normalized) {
                 'high' => 'coral',
@@ -590,16 +972,13 @@ final class DashboardRenderer
                 'low' => 'teal',
                 default => 'gray',
             };
-            $emoji = self::RISK_EMOJI[$value] ?? '';
         }
 
-        $label = $emoji !== '' ? $emoji . ' ' . $value : $value;
-
-        return sprintf('<span class="pill %s">%s</span>', $this->e($class), $this->e($label));
+        return sprintf('<span class="pill %s">%s</span>', $this->e($class), $this->e($value));
     }
 
     private function percent(int $value, int $max): float
     {
-        return round(($value / $max) * 100, 2);
+        return round(($value / max(1, $max)) * 100, 2);
     }
 }

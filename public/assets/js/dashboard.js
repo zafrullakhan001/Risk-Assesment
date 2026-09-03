@@ -1,135 +1,177 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const table = document.getElementById('risk-table');
-    if (!table) {
-        return;
-    }
+    const tabButtons = Array.from(document.querySelectorAll('.dash-tab'));
+    const panels = Array.from(document.querySelectorAll('.dash-panel'));
 
-    const sectionFilter = document.getElementById('filter-section');
-    const statusFilter = document.getElementById('filter-status');
-    const riskFilter = document.getElementById('filter-risk');
-    const searchFilter = document.getElementById('filter-search');
-    const clearFilters = document.getElementById('clearFilters');
-    const countLabel = document.getElementById('filter-count');
-    const riskRegister = document.getElementById('risk-register');
-    const rows = Array.from(table.querySelectorAll('tbody tr'));
-    const kpiTiles = Array.from(document.querySelectorAll('.kpi-clickable'));
-    const clickableFilters = Array.from(document.querySelectorAll(
-        '.kpi-clickable, .legend-clickable, .bar-row-clickable, .donut-segment, .pie-segment'
-    ));
+    const activateTab = (tabName) => {
+        tabButtons.forEach((button) => {
+            const isActive = button.dataset.tab === tabName;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
 
-    const applyFilters = (scrollToTable = false) => {
-        const sectionValue = sectionFilter.value.trim().toLowerCase();
-        const statusValue = statusFilter.value.trim().toLowerCase();
-        const riskValue = riskFilter.value.trim().toLowerCase();
-        const searchValue = searchFilter.value.trim().toLowerCase();
+        panels.forEach((panel) => {
+            const isActive = panel.dataset.panel === tabName;
+            panel.classList.toggle('is-active', isActive);
+            panel.hidden = !isActive;
+        });
+    };
 
-        let visibleCount = 0;
-        let firstVisibleRow = null;
+    tabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            activateTab(button.dataset.tab || 'architecture');
+        });
+    });
 
-        rows.forEach((row) => {
-            const section = (row.dataset.section || '').toLowerCase();
-            const status = (row.dataset.status || '').toLowerCase();
-            const risk = (row.dataset.risk || '').toLowerCase();
-            const search = row.dataset.search || '';
+    const initFilterScope = (scope, tableId, prefix) => {
+        const table = document.getElementById(tableId);
+        if (!table) {
+            return;
+        }
 
-            const matches =
-                (sectionValue === '' || section === sectionValue) &&
-                (statusValue === '' || status === statusValue) &&
-                (riskValue === '' || risk === riskValue) &&
-                (searchValue === '' || search.includes(searchValue));
+        const sectionFilter = document.getElementById(`${prefix}filter-section`);
+        const statusFilter = document.getElementById(`${prefix}filter-status`);
+        const riskFilter = document.getElementById(`${prefix}filter-risk`);
+        const searchFilter = document.getElementById(`${prefix}filter-search`);
+        const clearFilters = document.getElementById(`${prefix}clearFilters`);
+        const countLabel = document.getElementById(`${prefix}filter-count`);
+        const register = document.querySelector(`[data-filter-scope="${scope}"].table-card`);
+        const panel = table.closest('.dash-panel');
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        const kpiTiles = Array.from((panel || document).querySelectorAll(`[data-filter-scope="${scope}"] .kpi-clickable`));
+        const clickableFilters = Array.from((panel || document).querySelectorAll(
+            `.kpi-clickable, .legend-clickable, .bar-row-clickable, .donut-segment, .pie-segment`
+        )).filter((element) => {
+            const host = element.closest('[data-filter-scope], .dash-panel');
+            if (!host) {
+                return scope === 'architecture';
+            }
+            if (host.dataset.filterScope) {
+                return host.dataset.filterScope === scope;
+            }
+            return host === panel;
+        });
 
-            row.classList.toggle('hidden', !matches);
-            row.classList.remove('row-highlight');
+        if (!sectionFilter || !statusFilter || !riskFilter || !searchFilter || !countLabel) {
+            return;
+        }
 
-            if (matches) {
-                visibleCount += 1;
-                if (!firstVisibleRow) {
-                    firstVisibleRow = row;
+        const applyFilters = (scrollToTable = false) => {
+            const sectionValue = sectionFilter.value.trim().toLowerCase();
+            const statusValue = statusFilter.value.trim().toLowerCase();
+            const riskValue = riskFilter.value.trim().toLowerCase();
+            const searchValue = searchFilter.value.trim().toLowerCase();
+
+            let visibleCount = 0;
+            let firstVisibleRow = null;
+
+            rows.forEach((row) => {
+                const section = (row.dataset.section || '').toLowerCase();
+                const status = (row.dataset.status || '').toLowerCase();
+                const risk = (row.dataset.risk || '').toLowerCase();
+                const search = row.dataset.search || '';
+
+                const matches =
+                    (sectionValue === '' || section === sectionValue) &&
+                    (statusValue === '' || status === statusValue) &&
+                    (riskValue === '' || risk === riskValue) &&
+                    (searchValue === '' || search.includes(searchValue));
+
+                row.classList.toggle('hidden', !matches);
+                row.classList.remove('row-highlight');
+
+                if (matches) {
+                    visibleCount += 1;
+                    if (!firstVisibleRow) {
+                        firstVisibleRow = row;
+                    }
+                }
+            });
+
+            countLabel.textContent = `${visibleCount} shown`;
+            syncActiveTiles();
+
+            if (scrollToTable && register) {
+                register.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (firstVisibleRow) {
+                    window.setTimeout(() => {
+                        firstVisibleRow.classList.add('row-highlight');
+                        firstVisibleRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 250);
                 }
             }
-        });
+        };
 
-        countLabel.textContent = `${visibleCount} shown`;
-        syncActiveTiles();
+        const syncActiveTiles = () => {
+            kpiTiles.forEach((tile) => {
+                const filterType = tile.dataset.filterType || '';
+                const filterValue = tile.dataset.filterValue || '';
+                let isActive = false;
 
-        if (scrollToTable && riskRegister) {
-            riskRegister.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            if (firstVisibleRow) {
-                window.setTimeout(() => {
-                    firstVisibleRow.classList.add('row-highlight');
-                    firstVisibleRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 250);
-            }
-        }
-    };
+                if (filterType === 'all') {
+                    isActive =
+                        sectionFilter.value === '' &&
+                        statusFilter.value === '' &&
+                        riskFilter.value === '' &&
+                        searchFilter.value.trim() === '';
+                } else if (filterType === 'status') {
+                    isActive = statusFilter.value === filterValue && sectionFilter.value === '' && riskFilter.value === '';
+                } else if (filterType === 'risk') {
+                    isActive = riskFilter.value === filterValue && sectionFilter.value === '' && statusFilter.value === '';
+                }
 
-    const syncActiveTiles = () => {
-        kpiTiles.forEach((tile) => {
-            const filterType = tile.dataset.filterType || '';
-            const filterValue = tile.dataset.filterValue || '';
-            let isActive = false;
+                tile.classList.toggle('is-active', isActive);
+                tile.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        };
 
+        const setFilterFromTrigger = (filterType, filterValue, scrollToTable = true) => {
             if (filterType === 'all') {
-                isActive =
-                    sectionFilter.value === '' &&
-                    statusFilter.value === '' &&
-                    riskFilter.value === '' &&
-                    searchFilter.value.trim() === '';
+                sectionFilter.value = '';
+                statusFilter.value = '';
+                riskFilter.value = '';
+                searchFilter.value = '';
+            } else if (filterType === 'section') {
+                sectionFilter.value = filterValue;
+                statusFilter.value = '';
+                riskFilter.value = '';
             } else if (filterType === 'status') {
-                isActive = statusFilter.value === filterValue && sectionFilter.value === '' && riskFilter.value === '';
+                statusFilter.value = filterValue;
+                sectionFilter.value = '';
+                riskFilter.value = '';
             } else if (filterType === 'risk') {
-                isActive = riskFilter.value === filterValue && sectionFilter.value === '' && statusFilter.value === '';
+                riskFilter.value = filterValue;
+                sectionFilter.value = '';
+                statusFilter.value = '';
             }
 
-            tile.classList.toggle('is-active', isActive);
-            tile.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-        });
-    };
+            applyFilters(scrollToTable);
+        };
 
-    const setFilterFromTrigger = (filterType, filterValue, scrollToTable = true) => {
-        if (filterType === 'all') {
-            sectionFilter.value = '';
-            statusFilter.value = '';
-            riskFilter.value = '';
-            searchFilter.value = '';
-        } else if (filterType === 'section') {
-            sectionFilter.value = filterValue;
-            statusFilter.value = '';
-            riskFilter.value = '';
-        } else if (filterType === 'status') {
-            statusFilter.value = filterValue;
-            sectionFilter.value = '';
-            riskFilter.value = '';
-        } else if (filterType === 'risk') {
-            riskFilter.value = filterValue;
-            sectionFilter.value = '';
-            statusFilter.value = '';
+        clickableFilters.forEach((element) => {
+            element.addEventListener('click', () => {
+                const filterType = element.dataset.filterType;
+                const filterValue = element.dataset.filterValue ?? '';
+                if (!filterType) {
+                    return;
+                }
+                setFilterFromTrigger(filterType, filterValue, true);
+            });
+        });
+
+        [sectionFilter, statusFilter, riskFilter, searchFilter].forEach((element) => {
+            element.addEventListener('input', () => applyFilters(false));
+            element.addEventListener('change', () => applyFilters(false));
+        });
+
+        if (clearFilters) {
+            clearFilters.addEventListener('click', () => {
+                setFilterFromTrigger('all', '', false);
+            });
         }
 
-        applyFilters(scrollToTable);
+        applyFilters(false);
     };
 
-    clickableFilters.forEach((element) => {
-        element.addEventListener('click', () => {
-            const filterType = element.dataset.filterType;
-            const filterValue = element.dataset.filterValue ?? '';
-            if (!filterType) {
-                return;
-            }
-            setFilterFromTrigger(filterType, filterValue, true);
-        });
-    });
-
-    [sectionFilter, statusFilter, riskFilter, searchFilter].forEach((element) => {
-        element.addEventListener('input', () => applyFilters(false));
-        element.addEventListener('change', () => applyFilters(false));
-    });
-
-    if (clearFilters) {
-        clearFilters.addEventListener('click', () => {
-            setFilterFromTrigger('all', '', false);
-        });
-    }
-
-    applyFilters(false);
+    initFilterScope('architecture', 'risk-table', '');
+    initFilterScope('due_diligence', 'dd-table', 'dd-');
 });

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS assessments (
     assessment_date DATE NULL,
     file_path VARCHAR(500) NOT NULL,
     original_filename VARCHAR(255) NOT NULL,
+    workbook_json LONGTEXT NULL,
     uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_uploaded_at (uploaded_at),
     INDEX idx_solution_name (solution_name)
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS assessments (
 CREATE TABLE IF NOT EXISTS assessment_items (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     assessment_id INT UNSIGNED NOT NULL,
+    item_type VARCHAR(50) NOT NULL DEFAULT 'architecture',
     section VARCHAR(255) NOT NULL DEFAULT '',
     check_name TEXT NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT '',
@@ -32,11 +34,14 @@ CREATE TABLE IF NOT EXISTS assessment_items (
     mitigation TEXT,
     owner VARCHAR(255) NOT NULL DEFAULT '',
     remediation_timeline VARCHAR(255) NOT NULL DEFAULT '',
+    review_question TEXT NULL,
+    source_reference VARCHAR(500) NOT NULL DEFAULT '',
     sort_order INT UNSIGNED NOT NULL DEFAULT 0,
     CONSTRAINT fk_assessment_items_assessment
         FOREIGN KEY (assessment_id) REFERENCES assessments (id)
         ON DELETE CASCADE,
     INDEX idx_assessment_id (assessment_id),
+    INDEX idx_item_type (item_type),
     INDEX idx_section (section),
     INDEX idx_status (status),
     INDEX idx_risk_level (risk_level)
