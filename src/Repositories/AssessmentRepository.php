@@ -240,6 +240,12 @@ final class AssessmentRepository
             $deleteItems = $this->pdo->prepare('DELETE FROM assessment_items WHERE assessment_id = :id');
             $deleteItems->execute([':id' => $id]);
 
+            $deleteResponses = $this->pdo->prepare('DELETE FROM item_responses WHERE assessment_id = :id');
+            $deleteResponses->execute([':id' => $id]);
+
+            $deleteEvaluation = $this->pdo->prepare('DELETE FROM final_evaluations WHERE assessment_id = :id');
+            $deleteEvaluation->execute([':id' => $id]);
+
             $deleteAssessment = $this->pdo->prepare('DELETE FROM assessments WHERE id = :id');
             $deleteAssessment->execute([':id' => $id]);
 

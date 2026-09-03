@@ -37,3 +37,29 @@ CREATE TABLE IF NOT EXISTS assessment_items (
 
 CREATE INDEX IF NOT EXISTS idx_assessment_items_assessment_id ON assessment_items (assessment_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_items_section ON assessment_items (section);
+
+CREATE TABLE IF NOT EXISTS item_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assessment_id INTEGER NOT NULL,
+    item_key TEXT NOT NULL,
+    action TEXT NOT NULL DEFAULT 'open',
+    comment TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (assessment_id, item_key),
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_responses_assessment_id ON item_responses (assessment_id);
+
+CREATE TABLE IF NOT EXISTS final_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assessment_id INTEGER NOT NULL UNIQUE,
+    evaluator_name TEXT NOT NULL DEFAULT '',
+    evaluator_email TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    ready_to_golive INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_final_evaluations_assessment_id ON final_evaluations (assessment_id);

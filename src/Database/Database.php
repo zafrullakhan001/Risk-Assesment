@@ -51,6 +51,32 @@ final class Database
         self::ensureColumn($pdo, 'assessment_items', 'review_question', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessment_items', 'source_reference', "TEXT NOT NULL DEFAULT ''");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_items_item_type ON assessment_items (item_type)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS item_responses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                item_key TEXT NOT NULL,
+                action TEXT NOT NULL DEFAULT \'open\',
+                comment TEXT NOT NULL DEFAULT \'\',
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                UNIQUE (assessment_id, item_key),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_item_responses_assessment_id ON item_responses (assessment_id)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS final_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL UNIQUE,
+                evaluator_name TEXT NOT NULL DEFAULT \'\',
+                evaluator_email TEXT NOT NULL DEFAULT \'\',
+                notes TEXT NOT NULL DEFAULT \'\',
+                ready_to_golive INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_final_evaluations_assessment_id ON final_evaluations (assessment_id)');
     }
 
     private static function ensureColumn(PDO $pdo, string $table, string $column, string $definition): void

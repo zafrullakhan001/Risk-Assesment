@@ -32,6 +32,14 @@ final class DashboardRenderer
     /**
      * @param array<string, mixed> $comparison
      * @param list<array<string, mixed>> $versions
+     * @param array<string, array{action: string, comment: string, updated_at?: string}> $responses
+     * @param array{
+     *   evaluator_name?: string,
+     *   evaluator_email?: string,
+     *   notes?: string,
+     *   ready_to_golive?: bool,
+     *   updated_at?: string
+     * }|null $evaluation
      */
     public function render(
         Assessment $assessment,
@@ -40,7 +48,9 @@ final class DashboardRenderer
         array $comparison = [],
         array $versions = [],
         string $csrfToken = '',
-        string $flash = ''
+        string $flash = '',
+        array $responses = [],
+        ?array $evaluation = null
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -51,6 +61,7 @@ final class DashboardRenderer
         $insights = (new AssessmentInsights())->build($assessment);
         $decisionViews = new DashboardDecisionViews();
         $changedKeys = is_array($comparison['changed_keys'] ?? null) ? $comparison['changed_keys'] : [];
+        $actionableItems = $this->collectActionableItems($items, $dueItems, $responses);
 
         $solutionName = $metadata['solution_name'] ?: 'Risk Assessment Dashboard';
         $assessmentDate = $metadata['date'] ?: date('Y-m-d');
@@ -78,7 +89,7 @@ final class DashboardRenderer
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(dirname(__DIR__) . '/public/assets/css/dashboard.css') ?>">
 </head>
-<body data-assessment-id="<?= (int) $assessmentId ?>">
+<body data-assessment-id="<?= (int) $assessmentId ?>" data-csrf-token="<?= $this->e($csrfToken) ?>" class="<?= !empty($evaluation['ready_to_golive']) ? 'is-ready-golive' : '' ?>">
     <div class="shell">
         <header class="topbar">
             <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
@@ -117,6 +128,9 @@ final class DashboardRenderer
                     <div class="hero-project">
                         <span class="hero-project-label">Project</span>
                         <p class="hero-project-name"><?= $this->e($solutionName) ?></p>
+                        <?php if (!empty($evaluation['ready_to_golive'])): ?>
+                            <span class="golive-pill">Ready to go-live</span>
+                        <?php endif; ?>
                         <?= $this->renderRiskSpectrum($summary) ?>
                     </div>
                     <div class="hero-actions">
@@ -127,7 +141,7 @@ final class DashboardRenderer
                 </div>
             </section>
 
-            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison) ?>
+            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison, $evaluation) ?>
 
             <?= $this->renderKpis($summary, 'architecture') ?>
 
@@ -178,7 +192,9 @@ final class DashboardRenderer
                     $items,
                     $summary,
                     false,
-                    $changedKeys
+                    $changedKeys,
+                    $responses,
+                    $assessmentId
                 ) ?>
             </div>
 
@@ -198,13 +214,15 @@ final class DashboardRenderer
                         $dueItems,
                         $ddSummary,
                         true,
-                        $changedKeys
+                        $changedKeys,
+                        $responses,
+                        $assessmentId
                     ) ?>
                 </div>
             <?php endif; ?>
 
             <div class="dash-panel" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems) ?>
             </div>
 
             <?php if ($hasGovernance): ?>
@@ -381,6 +399,7 @@ final class DashboardRenderer
      * @param list<array<string, string>> $items
      * @param array<string, mixed> $summary
      * @param array<string, true> $changedKeys
+     * @param array<string, array{action: string, comment: string, updated_at?: string}> $responses
      */
     private function renderRegister(
         string $scope,
@@ -390,7 +409,9 @@ final class DashboardRenderer
         array $items,
         array $summary,
         bool $extendedColumns,
-        array $changedKeys = []
+        array $changedKeys = [],
+        array $responses = [],
+        int $assessmentId = 0
     ): string {
         $tableId = $scope === 'due_diligence' ? 'dd-table' : 'risk-table';
         $prefix = $scope === 'due_diligence' ? 'dd-' : '';
@@ -398,6 +419,7 @@ final class DashboardRenderer
         $notesLabel = $extendedColumns ? 'Finding / evidence' : 'Notes';
         $timelineLabel = $extendedColumns ? 'Timeline' : 'Remediation timeline';
         $itemType = $scope === 'due_diligence' ? 'due_diligence' : 'architecture';
+        $actionLabels = \RiskAssessment\Repositories\ItemResponseRepository::ACTION_LABELS;
 
         ob_start();
         ?>
@@ -424,6 +446,16 @@ final class DashboardRenderer
                     <option value="<?= $this->e($risk) ?>"><?= $this->e($risk) ?></option>
                 <?php endforeach; ?>
             </select>
+            <select id="<?= $prefix ?>filter-response">
+                <option value="">All responses</option>
+                <option value="needs">Needs response (Gap/Risk/TBD)</option>
+                <option value="open">Open</option>
+                <option value="take_care">Taken care</option>
+                <option value="ignore">Ignore</option>
+                <option value="not_applicable">Not applicable</option>
+                <option value="closed">Closed</option>
+                <option value="commented">Has comment</option>
+            </select>
             <select id="<?= $prefix ?>filter-changed">
                 <option value="">All rows</option>
                 <option value="changed">Changed since last upload</option>
@@ -439,14 +471,31 @@ final class DashboardRenderer
                 </div>
                 <span class="result-count" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
             </div>
+            <div class="bulk-response-bar" data-bulk-scope="<?= $this->e($scope) ?>" data-bulk-table="<?= $this->e($tableId) ?>">
+                <label class="bulk-select-all">
+                    <input type="checkbox" class="bulk-select-all-toggle" title="Select all listed actionable rows">
+                    <span>Select all listed</span>
+                </label>
+                <span class="bulk-selected-count">0 selected</span>
+                <select class="bulk-response-action" aria-label="Bulk response">
+                    <?php foreach ($actionLabels as $value => $label): ?>
+                        <option value="<?= $this->e($value) ?>"><?= $this->e($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" class="bulk-response-comment" maxlength="2000" placeholder="Comment for selected (optional)">
+                <button type="button" class="button button-primary bulk-response-apply">Update selected</button>
+                <span class="bulk-response-status" hidden></span>
+            </div>
             <div class="table-scroll">
                 <table id="<?= $this->e($tableId) ?>">
                     <thead>
                         <tr>
+                            <th class="col-select">Sel</th>
                             <th>Section</th>
                             <th><?= $this->e($checkLabel) ?></th>
                             <th>Status</th>
                             <th>Risk level</th>
+                            <th>Our response</th>
                             <th><?= $this->e($notesLabel) ?></th>
                             <th>Mitigation / controls</th>
                             <th>Owner</th>
@@ -464,12 +513,18 @@ final class DashboardRenderer
                             $timeline = (string) ($item['remediation_timeline'] ?? '');
                             $mitigation = (string) ($item['mitigation'] ?? '');
                             $notes = (string) ($item['notes'] ?? '');
+                            $status = (string) ($item['status'] ?? '');
+                            $riskLevel = (string) ($item['risk_level'] ?? '');
                             $key = AssessmentComparer::itemKey(
                                 (string) ($item['item_type'] ?? $itemType),
                                 (string) ($item['section'] ?? ''),
                                 (string) ($item['check'] ?? '')
                             );
                             $isChanged = isset($changedKeys[$key]);
+                            $isActionable = \RiskAssessment\Repositories\ItemResponseRepository::isActionableStatus($status, $riskLevel);
+                            $response = $responses[$key] ?? ['action' => 'open', 'comment' => ''];
+                            $responseAction = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open'));
+                            $responseComment = (string) ($response['comment'] ?? '');
                             $searchParts = [
                                 $item['section'] ?? '',
                                 $item['check'] ?? '',
@@ -478,23 +533,36 @@ final class DashboardRenderer
                                 $owner,
                                 $item['review_question'] ?? '',
                                 $item['source_reference'] ?? '',
+                                $responseComment,
+                                $actionLabels[$responseAction] ?? '',
                             ];
                             $ownersAttr = strtolower(preg_replace('/\s*(?:\+|\/|,|;|\band\b)\s*/i', '|', $owner !== '' ? $owner : 'unassigned') ?? 'unassigned');
                             $timelineLane = $this->timelineLane($timeline);
                             ?>
                             <tr
-                                class="data-row<?= $isChanged ? ' row-changed' : '' ?>"
+                                class="data-row<?= $isChanged ? ' row-changed' : '' ?><?= $isActionable ? ' row-actionable' : '' ?>"
                                 data-section="<?= $this->e($item['section'] ?? '') ?>"
-                                data-status="<?= $this->e($item['status'] ?? '') ?>"
-                                data-risk="<?= $this->e($item['risk_level'] ?? '') ?>"
+                                data-status="<?= $this->e($status) ?>"
+                                data-risk="<?= $this->e($riskLevel) ?>"
                                 data-owner="<?= $this->e($ownersAttr) ?>"
                                 data-timeline="<?= $this->e($timelineLane) ?>"
                                 data-changed="<?= $isChanged ? '1' : '0' ?>"
+                                data-actionable="<?= $isActionable ? '1' : '0' ?>"
+                                data-response="<?= $this->e($responseAction) ?>"
+                                data-has-comment="<?= $responseComment !== '' ? '1' : '0' ?>"
+                                data-item-key="<?= $this->e($key) ?>"
                                 data-missing-owner="<?= $owner === '' ? '1' : '0' ?>"
                                 data-missing-timeline="<?= $timeline === '' ? '1' : '0' ?>"
                                 data-missing-mitigation="<?= $mitigation === '' ? '1' : '0' ?>"
                                 data-search="<?= $this->e(strtolower(implode(' ', $searchParts))) ?>"
                             >
+                                <td class="col-select">
+                                    <?php if ($isActionable): ?>
+                                        <input type="checkbox" class="row-select" value="<?= $this->e($key) ?>" aria-label="Select <?= $this->e($item['check'] ?? '') ?>">
+                                    <?php else: ?>
+                                        <span class="response-na">—</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><span class="section-name"><?= $this->e($item['section'] ?? '') ?></span><?php if ($isChanged): ?><span class="change-flag">Changed</span><?php endif; ?></td>
                                 <td>
                                     <div class="check-name"><?= $this->e($item['check'] ?? '') ?></div>
@@ -502,8 +570,29 @@ final class DashboardRenderer
                                         <div class="subtext"><?= $this->e($owner) ?></div>
                                     <?php endif; ?>
                                 </td>
-                                <td><?= $this->pill($item['status'] ?? '', 'status') ?></td>
-                                <td><?= $this->pill($item['risk_level'] ?? '', 'risk') ?></td>
+                                <td><?= $this->pill($status, 'status') ?></td>
+                                <td><?= $this->pill($riskLevel, 'risk') ?></td>
+                                <td class="response-cell">
+                                    <?php if ($isActionable): ?>
+                                        <div class="item-response" data-item-key="<?= $this->e($key) ?>">
+                                            <select class="item-response-action" aria-label="Response for <?= $this->e($item['check'] ?? '') ?>">
+                                                <?php foreach ($actionLabels as $value => $label): ?>
+                                                    <option value="<?= $this->e($value) ?>" <?= $responseAction === $value ? 'selected' : '' ?>><?= $this->e($label) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <textarea
+                                                class="item-response-comment"
+                                                rows="2"
+                                                maxlength="2000"
+                                                placeholder="Comment (optional)"
+                                                aria-label="Comment for <?= $this->e($item['check'] ?? '') ?>"
+                                            ><?= $this->e($responseComment) ?></textarea>
+                                            <span class="item-response-save" hidden>Saved</span>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="response-na">—</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><div class="clamp-text" data-expandable><?= $this->e($notes) ?></div></td>
                                 <td><div class="clamp-text" data-expandable><?= $this->e($mitigation) ?></div></td>
                                 <td><?= $this->e($owner) ?></td>
@@ -517,10 +606,72 @@ final class DashboardRenderer
                     </tbody>
                 </table>
             </div>
+            <?php if ($assessmentId <= 0): ?>
+                <p class="response-hint">Save this assessment (upload) to persist responses in the database. Until then they stay in this browser only.</p>
+            <?php endif; ?>
         </section>
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<array<string, string>> $items
+     * @param list<array<string, string>> $dueItems
+     * @param array<string, array{action: string, comment: string, updated_at?: string}> $responses
+     * @return list<array<string, mixed>>
+     */
+    private function collectActionableItems(array $items, array $dueItems, array $responses): array
+    {
+        $out = [];
+        foreach (array_merge($items, $dueItems) as $item) {
+            $status = (string) ($item['status'] ?? '');
+            $riskLevel = (string) ($item['risk_level'] ?? '');
+            if (!\RiskAssessment\Repositories\ItemResponseRepository::isActionableStatus($status, $riskLevel)) {
+                continue;
+            }
+            $type = (string) ($item['item_type'] ?? 'architecture');
+            $key = AssessmentComparer::itemKey($type, (string) ($item['section'] ?? ''), (string) ($item['check'] ?? ''));
+            $response = $responses[$key] ?? ['action' => 'open', 'comment' => ''];
+            $out[] = [
+                'key' => $key,
+                'item_type' => $type,
+                'section' => (string) ($item['section'] ?? ''),
+                'check' => (string) ($item['check'] ?? ''),
+                'status' => $status,
+                'risk_level' => $riskLevel,
+                'owner' => (string) ($item['owner'] ?? ''),
+                'action' => \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open')),
+                'comment' => (string) ($response['comment'] ?? ''),
+            ];
+        }
+
+        usort($out, static function (array $a, array $b): int {
+            $rank = static function (array $row): int {
+                $action = (string) ($row['action'] ?? 'open');
+                if ($action === 'open') {
+                    return 0;
+                }
+                if ($action === 'take_care') {
+                    return 1;
+                }
+                return 2;
+            };
+            $cmp = $rank($a) <=> $rank($b);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+            $riskRank = ['High' => 0, 'Med' => 1, 'Low' => 2];
+            $ra = $riskRank[$a['risk_level']] ?? 3;
+            $rb = $riskRank[$b['risk_level']] ?? 3;
+            if ($ra !== $rb) {
+                return $ra <=> $rb;
+            }
+
+            return strcmp((string) $a['check'], (string) $b['check']);
+        });
+
+        return $out;
     }
 
     private function timelineLane(string $timeline): string

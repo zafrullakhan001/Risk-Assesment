@@ -6,18 +6,33 @@ namespace RiskAssessment;
 
 final class DashboardDecisionViews
 {
-    /** @param array<string, mixed> $insights */
-    /** @param array<string, mixed> $comparison */
-    public function renderDecisionDesk(array $insights, int $assessmentId, array $comparison = []): string
+    /**
+     * @param array<string, mixed> $insights
+     * @param array<string, mixed> $comparison
+     * @param array{
+     *   evaluator_name?: string,
+     *   evaluator_email?: string,
+     *   notes?: string,
+     *   ready_to_golive?: bool,
+     *   updated_at?: string
+     * }|null $evaluation
+     */
+    public function renderDecisionDesk(array $insights, int $assessmentId, array $comparison = [], ?array $evaluation = null): string
     {
         $readiness = $insights['readiness'];
         $residual = $insights['residual'];
         $band = (string) $readiness['band'];
+        $evaluation = $evaluation ?? [];
+        $evaluatorName = (string) ($evaluation['evaluator_name'] ?? '');
+        $evaluatorEmail = (string) ($evaluation['evaluator_email'] ?? '');
+        $evalNotes = (string) ($evaluation['notes'] ?? '');
+        $readyToGolive = !empty($evaluation['ready_to_golive']);
+        $evalUpdatedAt = (string) ($evaluation['updated_at'] ?? '');
 
         ob_start();
         ?>
         <section class="decision-desk" id="decision-desk" data-assessment-id="<?= (int) $assessmentId ?>">
-            <article class="exec-summary band-<?= $this->e($band) ?>">
+            <article class="exec-summary band-<?= $this->e($band) ?><?= $readyToGolive ? ' is-ready-golive' : '' ?>">
                 <div class="exec-score">
                     <span class="label">Go-live readiness</span>
                     <strong><?= (int) $readiness['score'] ?></strong>
@@ -33,11 +48,19 @@ final class DashboardDecisionViews
                         <span><b><?= (int) $residual['tbd'] ?></b> TBD</span>
                         <span><b><?= (int) $residual['open_findings'] ?></b> Open exceptions</span>
                     </div>
+                    <?php if ($readyToGolive): ?>
+                        <div class="golive-badge" id="golive-status-badge">Ready to go-live<?= $evaluatorName !== '' ? ' · ' . $this->e($evaluatorName) : '' ?></div>
+                    <?php else: ?>
+                        <div class="golive-badge is-pending" id="golive-status-badge" <?= $evaluatorName === '' && $evalNotes === '' ? 'hidden' : '' ?>>
+                            Not ready to go-live<?= $evaluatorName !== '' ? ' · ' . $this->e($evaluatorName) : '' ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <div class="exec-actions no-print-hide">
                     <button type="button" class="button button-primary" id="btn-presentation">Presentation mode</button>
                     <button type="button" class="button ghost-light" id="btn-print">Print one-pager</button>
                     <button type="button" class="button ghost-light" id="btn-export-csv">Export CSV</button>
+                    <a class="button ghost-light" href="#final-evaluation">Final evaluation</a>
                 </div>
             </article>
 
@@ -66,6 +89,50 @@ final class DashboardDecisionViews
                     <a class="button ghost-light" href="#version-history">Manage versions</a>
                 </div>
             <?php endif; ?>
+
+            <section class="table-card final-evaluation-card" id="final-evaluation">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Evaluator sign-off</div>
+                        <h3>Final evaluation</h3>
+                    </div>
+                    <span class="result-count" id="final-eval-saved-label">
+                        <?= $evalUpdatedAt !== '' ? 'Saved ' . $this->e($evalUpdatedAt) : 'Not saved yet' ?>
+                    </span>
+                </div>
+                <?php if ($assessmentId <= 0): ?>
+                    <p class="panel-help">Upload and open a saved assessment to record the final evaluation.</p>
+                <?php else: ?>
+                    <p class="panel-help">Capture the evaluator’s notes, identity, and ready-to-go-live decision for this version.</p>
+                    <form id="final-evaluation-form" class="final-evaluation-form" novalidate>
+                        <div class="final-eval-grid">
+                            <label>
+                                <span>Evaluator name</span>
+                                <input type="text" name="evaluator_name" id="eval-name" maxlength="200" required value="<?= $this->e($evaluatorName) ?>" placeholder="Full name">
+                            </label>
+                            <label>
+                                <span>Evaluator email</span>
+                                <input type="email" name="evaluator_email" id="eval-email" maxlength="254" required value="<?= $this->e($evaluatorEmail) ?>" placeholder="name@company.com">
+                            </label>
+                        </div>
+                        <label class="final-eval-notes">
+                            <span>Final evaluation notes</span>
+                            <textarea name="notes" id="eval-notes" rows="5" maxlength="8000" placeholder="Overall conclusion, residual risk acceptance, conditions, and follow-ups..."><?= $this->e($evalNotes) ?></textarea>
+                        </label>
+                        <div class="final-eval-footer">
+                            <label class="golive-toggle">
+                                <input type="checkbox" name="ready_to_golive" id="eval-ready" value="1" <?= $readyToGolive ? 'checked' : '' ?>>
+                                <span class="golive-toggle-ui" aria-hidden="true"></span>
+                                <span class="golive-toggle-label">Ready to go-live</span>
+                            </label>
+                            <div class="final-eval-actions">
+                                <span class="final-eval-status" id="final-eval-status" hidden></span>
+                                <button type="submit" class="button button-primary" id="btn-save-evaluation">Save evaluation</button>
+                            </div>
+                        </div>
+                    </form>
+                <?php endif; ?>
+            </section>
         </section>
         <?php
 
@@ -106,18 +173,105 @@ final class DashboardDecisionViews
      * @param array<string, mixed> $insights
      * @param array<string, mixed> $comparison
      * @param list<array<string, mixed>> $versions
+     * @param list<array<string, mixed>> $actionableItems
      */
-    public function renderActionsPanel(array $insights, array $comparison = [], array $versions = [], int $currentId = 0, string $csrfToken = ''): string
+    public function renderActionsPanel(array $insights, array $comparison = [], array $versions = [], int $currentId = 0, string $csrfToken = '', array $actionableItems = []): string
     {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
         $timelines = $insights['timelines'] ?? [];
         $evidence = $insights['evidence'] ?? ['total' => 0, 'covered' => 0, 'partial' => 0, 'missing' => 0, 'items' => []];
         $topRisks = $insights['top_risks'] ?? [];
+        $actionLabels = \RiskAssessment\Repositories\ItemResponseRepository::ACTION_LABELS;
+        $openResponses = 0;
+        foreach ($actionableItems as $row) {
+            if (($row['action'] ?? 'open') === 'open') {
+                $openResponses++;
+            }
+        }
 
         ob_start();
         ?>
         <div class="actions-grid">
+            <section class="table-card" id="item-responses">
+                <div class="card-heading">
+                    <div>
+                        <div class="eyebrow">Recorded responses</div>
+                        <h3>Risks, gaps &amp; TBDs</h3>
+                    </div>
+                    <span class="result-count" id="response-open-count"><?= (int) $openResponses ?> open</span>
+                </div>
+                <?php if ($actionableItems === []): ?>
+                    <p class="empty-panel">No Gap, Risk, TBD, or High-risk items need a recorded response.</p>
+                <?php else: ?>
+                    <p class="panel-help">Select listed rows and update them together, or edit one at a time. Use Taken care, Ignore, Not applicable, or Closed, and add a comment when needed.</p>
+                    <div class="bulk-response-bar" data-bulk-scope="actions" data-bulk-table="response-tracker-table">
+                        <label class="bulk-select-all">
+                            <input type="checkbox" class="bulk-select-all-toggle" title="Select all listed rows">
+                            <span>Select all listed</span>
+                        </label>
+                        <span class="bulk-selected-count">0 selected</span>
+                        <select class="bulk-response-action" aria-label="Bulk response">
+                            <?php foreach ($actionLabels as $value => $label): ?>
+                                <option value="<?= $this->e($value) ?>"><?= $this->e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="text" class="bulk-response-comment" maxlength="2000" placeholder="Comment for selected (optional)">
+                        <button type="button" class="button button-primary bulk-response-apply">Update selected</button>
+                        <span class="bulk-response-status" hidden></span>
+                    </div>
+                    <div class="table-scroll">
+                        <table id="response-tracker-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-select">Sel</th>
+                                    <th>Item</th>
+                                    <th>Status</th>
+                                    <th>Risk</th>
+                                    <th>Our response &amp; comment</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($actionableItems as $row): ?>
+                                    <?php
+                                    $key = (string) ($row['key'] ?? '');
+                                    $action = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($row['action'] ?? 'open'));
+                                    $comment = (string) ($row['comment'] ?? '');
+                                    ?>
+                                    <tr data-item-key="<?= $this->e($key) ?>" data-response="<?= $this->e($action) ?>" data-actionable="1">
+                                        <td class="col-select">
+                                            <input type="checkbox" class="row-select" value="<?= $this->e($key) ?>" aria-label="Select <?= $this->e((string) ($row['check'] ?? '')) ?>">
+                                        </td>
+                                        <td>
+                                            <strong><?= $this->e((string) ($row['check'] ?? '')) ?></strong>
+                                            <div class="subtext"><?= $this->e((string) ($row['section'] ?? '')) ?><?php if (($row['owner'] ?? '') !== ''): ?> · <?= $this->e((string) $row['owner']) ?><?php endif; ?></div>
+                                        </td>
+                                        <td><?= $this->e((string) ($row['status'] ?? '')) ?></td>
+                                        <td><?= $this->e((string) ($row['risk_level'] ?? '')) ?></td>
+                                        <td>
+                                            <div class="item-response" data-item-key="<?= $this->e($key) ?>">
+                                                <select class="item-response-action" aria-label="Response">
+                                                    <?php foreach ($actionLabels as $value => $label): ?>
+                                                        <option value="<?= $this->e($value) ?>" <?= $action === $value ? 'selected' : '' ?>><?= $this->e($label) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <textarea
+                                                    class="item-response-comment"
+                                                    rows="2"
+                                                    maxlength="2000"
+                                                    placeholder="Comment (optional)"
+                                                ><?= $this->e($comment) ?></textarea>
+                                                <span class="item-response-save" hidden>Saved</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
+
             <section class="table-card" id="version-history">
                 <div class="card-heading">
                     <div>

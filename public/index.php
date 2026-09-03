@@ -12,10 +12,14 @@ use RiskAssessment\Database\Database;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
 use RiskAssessment\Repositories\AssessmentRepository;
+use RiskAssessment\Repositories\FinalEvaluationRepository;
+use RiskAssessment\Repositories\ItemResponseRepository;
 
 $config = require dirname(__DIR__) . '/config/config.php';
 $dbConfig = require dirname(__DIR__) . '/config/database.php';
 $repository = new AssessmentRepository(Database::connection($dbConfig));
+$responseRepository = new ItemResponseRepository(Database::connection($dbConfig));
+$evaluationRepository = new FinalEvaluationRepository(Database::connection($dbConfig));
 
 $error = '';
 $flash = '';
@@ -36,12 +40,116 @@ if (isset($_SESSION['dashboard_html']) && ($_GET['view'] ?? '') === '1' && $asse
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postedAction = (string) ($_POST['action'] ?? 'upload');
+
+    if ($postedAction === 'save_item_response' || $postedAction === 'save_item_responses_bulk') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $responseAction = (string) ($_POST['response_action'] ?? 'open');
+            $comment = (string) ($_POST['comment'] ?? '');
+
+            if ($targetId <= 0) {
+                throw new RuntimeException('Invalid response payload.');
+            }
+
+            if ($postedAction === 'save_item_responses_bulk') {
+                $rawKeys = $_POST['item_keys'] ?? '[]';
+                if (is_string($rawKeys)) {
+                    $decoded = json_decode($rawKeys, true);
+                    $itemKeys = is_array($decoded) ? $decoded : [];
+                } elseif (is_array($rawKeys)) {
+                    $itemKeys = $rawKeys;
+                } else {
+                    $itemKeys = [];
+                }
+                $itemKeys = array_values(array_filter(array_map(
+                    static fn ($key): string => trim((string) $key),
+                    $itemKeys
+                ), static fn (string $key): bool => $key !== ''));
+
+                if ($itemKeys === []) {
+                    throw new RuntimeException('Select at least one row to update.');
+                }
+                if (count($itemKeys) > 500) {
+                    throw new RuntimeException('Too many rows selected at once.');
+                }
+
+                $saved = $responseRepository->upsertMany($targetId, $itemKeys, $responseAction, $comment);
+                echo json_encode([
+                    'ok' => true,
+                    'saved' => $saved,
+                    'action' => ItemResponseRepository::normalizeAction($responseAction),
+                    'label' => ItemResponseRepository::label($responseAction),
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $itemKey = trim((string) ($_POST['item_key'] ?? ''));
+            if ($itemKey === '') {
+                throw new RuntimeException('Invalid response payload.');
+            }
+
+            if (!$responseRepository->upsert($targetId, $itemKey, $responseAction, $comment)) {
+                throw new RuntimeException('Unable to save response.');
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'action' => ItemResponseRepository::normalizeAction($responseAction),
+                'label' => ItemResponseRepository::label($responseAction),
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'save_final_evaluation') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $evaluatorName = (string) ($_POST['evaluator_name'] ?? '');
+            $evaluatorEmail = (string) ($_POST['evaluator_email'] ?? '');
+            $notes = (string) ($_POST['notes'] ?? '');
+            $readyRaw = $_POST['ready_to_golive'] ?? '0';
+            $readyToGolive = $readyRaw === '1' || $readyRaw === 1 || $readyRaw === true || $readyRaw === 'true' || $readyRaw === 'on';
+
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before saving the final evaluation.');
+            }
+
+            if (!$evaluationRepository->upsert($targetId, $evaluatorName, $evaluatorEmail, $notes, $readyToGolive)) {
+                throw new RuntimeException('Unable to save final evaluation.');
+            }
+
+            $saved = $evaluationRepository->findByAssessmentId($targetId);
+            echo json_encode([
+                'ok' => true,
+                'evaluation' => $saved,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
     try {
         if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
             throw new RuntimeException('Invalid form submission. Please refresh and try again.');
         }
 
-        $action = (string) ($_POST['action'] ?? 'upload');
+        $action = $postedAction;
 
         if ($action === 'delete_assessment') {
             $deleteId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
@@ -179,6 +287,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 (string) ($prior['uploaded_at'] ?? '')
             );
             $versions = $repository->listVersionsBySolutionName($solutionName);
+            $responses = $responseRepository->listForAssessment($assessmentId);
+            $evaluation = $evaluationRepository->findByAssessmentId($assessmentId);
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -187,7 +297,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $comparison,
                 $versions,
                 (string) $_SESSION['csrf_token'],
-                $flash
+                $flash,
+                $responses,
+                $evaluation
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -210,6 +322,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             (string) ($prior['uploaded_at'] ?? '')
         );
         $versions = $repository->listVersionsBySolutionName($assessment->getMetadata('solution_name'));
+        $responses = $storedId > 0 ? $responseRepository->listForAssessment($storedId) : [];
+        $evaluation = $storedId > 0 ? $evaluationRepository->findByAssessmentId($storedId) : null;
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render(
             $assessment,
@@ -218,7 +332,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $comparison,
             $versions,
             (string) $_SESSION['csrf_token'],
-            $flash
+            $flash,
+            $responses,
+            $evaluation
         );
     }
 }
