@@ -156,6 +156,32 @@ final class Database
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_user_audit_log_created_at ON user_audit_log (created_at)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_user_audit_log_event ON user_audit_log (event)');
+        self::ensureColumn($pdo, 'item_responses', 'updated_by_user_id', 'INTEGER');
+        self::ensureColumn($pdo, 'item_responses', 'updated_by_username', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'item_responses', 'updated_by_display_name', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'item_responses', 'updated_by_auth_source', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'final_evaluations', 'updated_by_user_id', 'INTEGER');
+        self::ensureColumn($pdo, 'final_evaluations', 'updated_by_username', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'final_evaluations', 'updated_by_display_name', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'final_evaluations', 'updated_by_auth_source', "TEXT NOT NULL DEFAULT ''");
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS assessment_change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_key TEXT NOT NULL DEFAULT \'\',
+                actor_id INTEGER,
+                actor_username TEXT NOT NULL DEFAULT \'\',
+                actor_display_name TEXT NOT NULL DEFAULT \'\',
+                actor_auth_source TEXT NOT NULL DEFAULT \'\',
+                summary TEXT NOT NULL DEFAULT \'\',
+                details TEXT NOT NULL DEFAULT \'{}\',
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_change_log_assessment_id ON assessment_change_log (assessment_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_change_log_entity ON assessment_change_log (assessment_id, entity_type, entity_key)');
         self::seedAuthSettings($pdo);
         self::seedDefaultAdmin($pdo);
         self::migrateLegacyMermaidDiagrams($pdo);

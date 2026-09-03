@@ -45,6 +45,9 @@ final class DashboardRenderer
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $projectDiagrams
      * @param array<string, string> $findingStatuses
      * @param array{verdict?: string, summary?: string} $executiveOverride
+     * @param array<string, list<array<string, mixed>>> $itemResponseHistory
+     * @param list<array<string, mixed>> $evaluationHistory
+     * @param array{name?: string, email?: string} $evaluatorDefaults
      */
     public function render(
         Assessment $assessment,
@@ -59,7 +62,10 @@ final class DashboardRenderer
         array $projectLinks = [],
         array $projectDiagrams = [],
         array $findingStatuses = [],
-        array $executiveOverride = []
+        array $executiveOverride = [],
+        array $itemResponseHistory = [],
+        array $evaluationHistory = [],
+        array $evaluatorDefaults = []
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -81,6 +87,11 @@ final class DashboardRenderer
         $projectResources = new DashboardProjectResources();
         $changedKeys = is_array($comparison['changed_keys'] ?? null) ? $comparison['changed_keys'] : [];
         $actionableItems = $this->collectActionableItems($items, $dueItems, $responses);
+        foreach ($actionableItems as &$actionableRow) {
+            $key = (string) ($actionableRow['key'] ?? '');
+            $actionableRow['history'] = $itemResponseHistory[$key] ?? [];
+        }
+        unset($actionableRow);
         $progress = (new ResponseProgress())->compute(array_merge($items, $dueItems), $responses);
         $archProgress = (new ResponseProgress())->compute($items, $responses);
         $ddProgress = (new ResponseProgress())->compute($dueItems, $responses);
@@ -264,7 +275,7 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation, $goliveGates) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults) ?>
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>
@@ -768,6 +779,12 @@ final class DashboardRenderer
                 'owner' => (string) ($item['owner'] ?? ''),
                 'action' => \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open')),
                 'comment' => (string) ($response['comment'] ?? ''),
+                'updated_at' => (string) ($response['updated_at'] ?? ''),
+                'updated_by_label' => (string) ($response['updated_by_label'] ?? ''),
+                'updated_by_username' => (string) ($response['updated_by_username'] ?? ''),
+                'updated_by_display_name' => (string) ($response['updated_by_display_name'] ?? ''),
+                'updated_by_auth_source' => (string) ($response['updated_by_auth_source'] ?? ''),
+                'history' => [],
             ];
         }
 

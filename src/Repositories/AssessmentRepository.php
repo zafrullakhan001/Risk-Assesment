@@ -192,46 +192,107 @@ final class AssessmentRepository
     /** @return list<array<string, mixed>> */
     public function searchByProjectName(string $query, int $limit = 25): array
     {
-        $query = trim($query);
-        if ($query === '') {
-            return $this->listRecent($limit);
-        }
-
-        $statement = $this->pdo->prepare(
-            'SELECT ' . self::projectListColumns() . '
-             FROM ' . self::projectListFrom() . '
-             WHERE a.solution_name LIKE :query
-                OR a.vendor LIKE :query
-                OR a.scope LIKE :query
-             ORDER BY a.uploaded_at DESC
-             LIMIT :limit'
-        );
-
-        $statement->bindValue(':query', '%' . $query . '%', PDO::PARAM_STR);
-        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $statement->execute();
-
-        return $statement->fetchAll();
+        return $this->searchProjects($query, 1, $limit);
     }
 
     /** @return list<array<string, mixed>> */
     public function listRecent(int $limit = 10): array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT ' . self::projectListColumns() . '
+        return $this->searchProjects('', 1, $limit);
+    }
+
+    /**
+     * Search across project/assessment fields with pagination.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function searchProjects(string $query, int $page = 1, int $perPage = 20): array
+    {
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $offset = ($page - 1) * $perPage;
+
+        [$whereSql, $params] = $this->projectSearchWhere($query);
+
+        $sql = 'SELECT ' . self::projectListColumns() . '
              FROM ' . self::projectListFrom() . '
-             ORDER BY a.uploaded_at DESC
-             LIMIT :limit'
-        );
-        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
+             ' . $whereSql . '
+             ORDER BY a.uploaded_at DESC, a.id DESC
+             LIMIT :limit OFFSET :offset';
+
+        $statement = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $statement->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
         $statement->execute();
 
         return $statement->fetchAll();
     }
 
+    public function countProjects(string $query = ''): int
+    {
+        [$whereSql, $params] = $this->projectSearchWhere($query);
+
+        $sql = 'SELECT COUNT(*) FROM ' . self::projectListFrom() . ' ' . $whereSql;
+        $statement = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $statement->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $statement->execute();
+
+        return (int) $statement->fetchColumn();
+    }
+
     public function countAll(): int
     {
-        return (int) $this->pdo->query('SELECT COUNT(*) FROM assessments')->fetchColumn();
+        return $this->countProjects('');
+    }
+
+    /**
+     * @return array{0: string, 1: array<string, string|int>}
+     */
+    private function projectSearchWhere(string $query): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return ['', []];
+        }
+
+        $like = '%' . $query . '%';
+        $conditions = [
+            'a.solution_name LIKE :q',
+            'a.vendor LIKE :q',
+            'IFNULL(a.scope, \'\') LIKE :q',
+            'IFNULL(a.architecture_model, \'\') LIKE :q',
+            'a.reviewer LIKE :q',
+            'a.original_filename LIKE :q',
+            'a.custom_executive_verdict LIKE :q',
+            'a.custom_executive_summary LIKE :q',
+            'IFNULL(a.assessment_date, \'\') LIKE :q',
+            'a.uploaded_at LIKE :q',
+            'IFNULL(e.evaluator_name, \'\') LIKE :q',
+            'IFNULL(e.evaluator_email, \'\') LIKE :q',
+            'IFNULL(e.notes, \'\') LIKE :q',
+        ];
+        $params = [':q' => $like];
+
+        if (ctype_digit($query)) {
+            $conditions[] = 'a.id = :exact_id';
+            $params[':exact_id'] = (int) $query;
+        }
+
+        $normalized = strtolower(preg_replace('/\s+/', ' ', $query) ?? $query);
+        if (in_array($normalized, ['ready', 'go-live', 'golive', 'ready to go-live', 'ready to golive'], true)) {
+            $conditions[] = '(e.ready_to_golive = 1 AND e.updated_at IS NOT NULL AND e.updated_at != \'\')';
+        } elseif (in_array($normalized, ['not ready', 'not ready to go-live', 'not ready to golive'], true)) {
+            $conditions[] = '(e.updated_at IS NOT NULL AND e.updated_at != \'\' AND IFNULL(e.ready_to_golive, 0) = 0)';
+        } elseif (in_array($normalized, ['no final', 'no final assessment', 'unevaluated'], true)) {
+            $conditions[] = '(e.assessment_id IS NULL OR e.updated_at IS NULL OR e.updated_at = \'\')';
+        }
+
+        return ['WHERE ' . implode(' OR ', $conditions), $params];
     }
 
     /** @return array{assessment: Assessment, source_filename: string, uploaded_at: string, id: int}|null */
@@ -321,6 +382,9 @@ final class AssessmentRepository
 
             $deleteFindingStatuses = $this->pdo->prepare('DELETE FROM finding_statuses WHERE assessment_id = :id');
             $deleteFindingStatuses->execute([':id' => $id]);
+
+            $deleteChangeLog = $this->pdo->prepare('DELETE FROM assessment_change_log WHERE assessment_id = :id');
+            $deleteChangeLog->execute([':id' => $id]);
 
             $deleteAssessment = $this->pdo->prepare('DELETE FROM assessments WHERE id = :id');
             $deleteAssessment->execute([':id' => $id]);

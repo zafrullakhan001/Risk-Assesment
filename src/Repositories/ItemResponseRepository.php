@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RiskAssessment\Repositories;
 
 use PDO;
+use RiskAssessment\Actor;
 
 final class ItemResponseRepository
 {
@@ -32,7 +33,16 @@ final class ItemResponseRepository
     }
 
     /**
-     * @return array<string, array{action: string, comment: string, updated_at: string}>
+     * @return array<string, array{
+     *   action: string,
+     *   comment: string,
+     *   updated_at: string,
+     *   updated_by_user_id: int|null,
+     *   updated_by_username: string,
+     *   updated_by_display_name: string,
+     *   updated_by_auth_source: string,
+     *   updated_by_label: string
+     * }>
      */
     public function listForAssessment(int $assessmentId): array
     {
@@ -41,7 +51,8 @@ final class ItemResponseRepository
         }
 
         $statement = $this->pdo->prepare(
-            'SELECT item_key, action, comment, updated_at
+            'SELECT item_key, action, comment, updated_at,
+                    updated_by_user_id, updated_by_username, updated_by_display_name, updated_by_auth_source
              FROM item_responses
              WHERE assessment_id = :assessment_id'
         );
@@ -53,20 +64,34 @@ final class ItemResponseRepository
             if ($key === '') {
                 continue;
             }
-            $out[$key] = [
-                'action' => self::normalizeAction((string) ($row['action'] ?? 'open')),
-                'comment' => (string) ($row['comment'] ?? ''),
-                'updated_at' => (string) ($row['updated_at'] ?? ''),
-            ];
+            $out[$key] = $this->mapRow($row);
         }
 
         return $out;
     }
 
-    public function upsert(int $assessmentId, string $itemKey, string $action, string $comment): bool
+    /**
+     * @param array{
+     *   user_id?: int,
+     *   username?: string,
+     *   display_name?: string,
+     *   auth_source?: string
+     * }|null $actor
+     * @return array{
+     *   action: string,
+     *   comment: string,
+     *   updated_at: string,
+     *   updated_by_user_id: int|null,
+     *   updated_by_username: string,
+     *   updated_by_display_name: string,
+     *   updated_by_auth_source: string,
+     *   updated_by_label: string
+     * }|null
+     */
+    public function upsert(int $assessmentId, string $itemKey, string $action, string $comment, ?array $actor = null): ?array
     {
         if ($assessmentId <= 0 || trim($itemKey) === '') {
-            return false;
+            return null;
         }
 
         $action = self::normalizeAction($action);
@@ -78,16 +103,33 @@ final class ItemResponseRepository
         $exists = $this->pdo->prepare('SELECT 1 FROM assessments WHERE id = :id LIMIT 1');
         $exists->execute([':id' => $assessmentId]);
         if ($exists->fetchColumn() === false) {
-            return false;
+            return null;
         }
 
+        $actorId = isset($actor['user_id']) ? (int) $actor['user_id'] : null;
+        if ($actorId !== null && $actorId <= 0) {
+            $actorId = null;
+        }
+        $actorUsername = (string) ($actor['username'] ?? '');
+        $actorDisplayName = (string) ($actor['display_name'] ?? '');
+        $actorAuthSource = (string) ($actor['auth_source'] ?? '');
+
         $statement = $this->pdo->prepare(
-            'INSERT INTO item_responses (assessment_id, item_key, action, comment, updated_at)
-             VALUES (:assessment_id, :item_key, :action, :comment, datetime(\'now\'))
+            'INSERT INTO item_responses (
+                assessment_id, item_key, action, comment, updated_at,
+                updated_by_user_id, updated_by_username, updated_by_display_name, updated_by_auth_source
+             ) VALUES (
+                :assessment_id, :item_key, :action, :comment, datetime(\'now\'),
+                :updated_by_user_id, :updated_by_username, :updated_by_display_name, :updated_by_auth_source
+             )
              ON CONFLICT(assessment_id, item_key) DO UPDATE SET
                 action = excluded.action,
                 comment = excluded.comment,
-                updated_at = datetime(\'now\')'
+                updated_at = datetime(\'now\'),
+                updated_by_user_id = excluded.updated_by_user_id,
+                updated_by_username = excluded.updated_by_username,
+                updated_by_display_name = excluded.updated_by_display_name,
+                updated_by_auth_source = excluded.updated_by_auth_source'
         );
 
         $statement->execute([
@@ -95,17 +137,38 @@ final class ItemResponseRepository
             ':item_key' => $itemKey,
             ':action' => $action,
             ':comment' => $comment,
+            ':updated_by_user_id' => $actorId,
+            ':updated_by_username' => $actorUsername,
+            ':updated_by_display_name' => $actorDisplayName,
+            ':updated_by_auth_source' => $actorAuthSource,
         ]);
 
-        return true;
+        return $this->findOne($assessmentId, $itemKey);
     }
 
     /**
      * @param list<string> $itemKeys
+     * @param array{
+     *   user_id?: int,
+     *   username?: string,
+     *   display_name?: string,
+     *   auth_source?: string
+     * }|null $actor
+     * @return list<array{
+     *   item_key: string,
+     *   action: string,
+     *   comment: string,
+     *   updated_at: string,
+     *   updated_by_user_id: int|null,
+     *   updated_by_username: string,
+     *   updated_by_display_name: string,
+     *   updated_by_auth_source: string,
+     *   updated_by_label: string
+     * }>
      */
-    public function upsertMany(int $assessmentId, array $itemKeys, string $action, string $comment): int
+    public function upsertMany(int $assessmentId, array $itemKeys, string $action, string $comment, ?array $actor = null): array
     {
-        $saved = 0;
+        $saved = [];
         $seen = [];
         foreach ($itemKeys as $itemKey) {
             $itemKey = trim((string) $itemKey);
@@ -113,8 +176,9 @@ final class ItemResponseRepository
                 continue;
             }
             $seen[$itemKey] = true;
-            if ($this->upsert($assessmentId, $itemKey, $action, $comment)) {
-                $saved++;
+            $row = $this->upsert($assessmentId, $itemKey, $action, $comment, $actor);
+            if ($row !== null) {
+                $saved[] = array_merge(['item_key' => $itemKey], $row);
             }
         }
 
@@ -155,5 +219,67 @@ final class ItemResponseRepository
     public static function isAddressed(string $action): bool
     {
         return self::normalizeAction($action) !== 'open';
+    }
+
+    /**
+     * @return array{
+     *   action: string,
+     *   comment: string,
+     *   updated_at: string,
+     *   updated_by_user_id: int|null,
+     *   updated_by_username: string,
+     *   updated_by_display_name: string,
+     *   updated_by_auth_source: string,
+     *   updated_by_label: string
+     * }|null
+     */
+    private function findOne(int $assessmentId, string $itemKey): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT action, comment, updated_at,
+                    updated_by_user_id, updated_by_username, updated_by_display_name, updated_by_auth_source
+             FROM item_responses
+             WHERE assessment_id = :assessment_id AND item_key = :item_key
+             LIMIT 1'
+        );
+        $statement->execute([
+            ':assessment_id' => $assessmentId,
+            ':item_key' => $itemKey,
+        ]);
+        $row = $statement->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        return $this->mapRow($row);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{
+     *   action: string,
+     *   comment: string,
+     *   updated_at: string,
+     *   updated_by_user_id: int|null,
+     *   updated_by_username: string,
+     *   updated_by_display_name: string,
+     *   updated_by_auth_source: string,
+     *   updated_by_label: string
+     * }
+     */
+    private function mapRow(array $row): array
+    {
+        $userId = $row['updated_by_user_id'] ?? null;
+
+        return [
+            'action' => self::normalizeAction((string) ($row['action'] ?? 'open')),
+            'comment' => (string) ($row['comment'] ?? ''),
+            'updated_at' => (string) ($row['updated_at'] ?? ''),
+            'updated_by_user_id' => $userId !== null && $userId !== '' ? (int) $userId : null,
+            'updated_by_username' => (string) ($row['updated_by_username'] ?? ''),
+            'updated_by_display_name' => (string) ($row['updated_by_display_name'] ?? ''),
+            'updated_by_auth_source' => (string) ($row['updated_by_auth_source'] ?? ''),
+            'updated_by_label' => Actor::labelFromRow($row, 'updated_by'),
+        ];
     }
 }

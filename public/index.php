@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
+use RiskAssessment\Actor;
 use RiskAssessment\AssessmentComparer;
 use RiskAssessment\AssessmentInsights;
 use RiskAssessment\DashboardRenderer;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
 use RiskAssessment\GoliveGate;
+use RiskAssessment\Repositories\AssessmentChangeLogRepository;
 use RiskAssessment\Repositories\AssessmentRepository;
 use RiskAssessment\Repositories\FinalEvaluationRepository;
 use RiskAssessment\Repositories\FindingStatusRepository;
@@ -18,9 +20,11 @@ use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
 
 $currentUser = $auth->requireAuth();
+$actor = Actor::fromUser($currentUser);
 $repository = new AssessmentRepository($pdo);
 $responseRepository = new ItemResponseRepository($pdo);
 $evaluationRepository = new FinalEvaluationRepository($pdo);
+$changeLogRepository = new AssessmentChangeLogRepository($pdo);
 $projectLinksRepository = new ProjectLinksRepository($pdo);
 $projectMermaidRepository = new ProjectMermaidRepository($pdo);
 $findingStatusRepository = new FindingStatusRepository($pdo);
@@ -30,9 +34,16 @@ $error = '';
 $flash = '';
 $dashboardHtml = '';
 $searchQuery = trim((string) ($_GET['q'] ?? ''));
-$searchResults = $searchQuery !== '' || isset($_GET['q'])
-    ? $repository->searchByProjectName($searchQuery)
-    : $repository->listRecent(50);
+$searchPage = max(1, (int) ($_GET['page'] ?? 1));
+$searchPerPage = 20;
+$searchTotal = $repository->countProjects($searchQuery);
+$searchTotalPages = max(1, (int) ceil($searchTotal / $searchPerPage));
+if ($searchPage > $searchTotalPages) {
+    $searchPage = $searchTotalPages;
+}
+$searchResults = $repository->searchProjects($searchQuery, $searchPage, $searchPerPage);
+$searchFrom = $searchTotal === 0 ? 0 : (($searchPage - 1) * $searchPerPage) + 1;
+$searchTo = min($searchTotal, $searchPage * $searchPerPage);
 
 $assessmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
 
@@ -80,12 +91,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Too many rows selected at once.');
                 }
 
-                $saved = $responseRepository->upsertMany($targetId, $itemKeys, $responseAction, $comment);
+                $savedRows = $responseRepository->upsertMany($targetId, $itemKeys, $responseAction, $comment, $actor);
+                $normalizedAction = ItemResponseRepository::normalizeAction($responseAction);
+                $actionLabel = ItemResponseRepository::label($responseAction);
+                $summary = $actionLabel . (trim($comment) !== '' ? ' — comment updated' : '');
+                foreach ($savedRows as $savedRow) {
+                    $changeLogRepository->record(
+                        $targetId,
+                        AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE,
+                        (string) ($savedRow['item_key'] ?? ''),
+                        $actor,
+                        $summary,
+                        [
+                            'action' => $normalizedAction,
+                            'comment' => (string) ($savedRow['comment'] ?? ''),
+                        ]
+                    );
+                }
                 echo json_encode([
                     'ok' => true,
-                    'saved' => $saved,
-                    'action' => ItemResponseRepository::normalizeAction($responseAction),
-                    'label' => ItemResponseRepository::label($responseAction),
+                    'saved' => count($savedRows),
+                    'action' => $normalizedAction,
+                    'label' => $actionLabel,
+                    'responses' => $savedRows,
+                    'updated_by_label' => $actor['label'],
+                    'updated_at' => $savedRows[0]['updated_at'] ?? date('Y-m-d H:i:s'),
                 ], JSON_UNESCAPED_UNICODE);
                 exit;
             }
@@ -95,14 +125,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invalid response payload.');
             }
 
-            if (!$responseRepository->upsert($targetId, $itemKey, $responseAction, $comment)) {
+            $savedRow = $responseRepository->upsert($targetId, $itemKey, $responseAction, $comment, $actor);
+            if ($savedRow === null) {
                 throw new RuntimeException('Unable to save response.');
             }
 
+            $normalizedAction = ItemResponseRepository::normalizeAction($responseAction);
+            $actionLabel = ItemResponseRepository::label($responseAction);
+            $changeLogRepository->record(
+                $targetId,
+                AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE,
+                $itemKey,
+                $actor,
+                $actionLabel . (trim($comment) !== '' ? ' — comment updated' : ''),
+                [
+                    'action' => $normalizedAction,
+                    'comment' => (string) ($savedRow['comment'] ?? ''),
+                ]
+            );
+
             echo json_encode([
                 'ok' => true,
-                'action' => ItemResponseRepository::normalizeAction($responseAction),
-                'label' => ItemResponseRepository::label($responseAction),
+                'action' => $normalizedAction,
+                'label' => $actionLabel,
+                'response' => $savedRow,
+                'updated_by_label' => $actor['label'],
+                'updated_at' => $savedRow['updated_at'],
+                'history_entry' => [
+                    'summary' => $actionLabel . (trim($comment) !== '' ? ' — comment updated' : ''),
+                    'actor_username' => $actor['username'],
+                    'actor_display_name' => $actor['display_name'],
+                    'actor_auth_source' => $actor['auth_source'],
+                    'created_at' => $savedRow['updated_at'],
+                ],
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);
@@ -260,9 +315,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            if (!$evaluationRepository->upsert($targetId, $evaluatorName, $evaluatorEmail, $notes, $readyToGolive)) {
+            if (!$evaluationRepository->upsert($targetId, $evaluatorName, $evaluatorEmail, $notes, $readyToGolive, $actor)) {
                 throw new RuntimeException('Unable to save final evaluation.');
             }
+
+            $changeLogRepository->record(
+                $targetId,
+                AssessmentChangeLogRepository::ENTITY_FINAL_EVALUATION,
+                '',
+                $actor,
+                ($readyToGolive ? 'Ready to go-live' : 'Not ready to go-live') . ' — evaluation saved',
+                [
+                    'evaluator_name' => trim($evaluatorName),
+                    'evaluator_email' => trim($evaluatorEmail),
+                    'ready_to_golive' => $readyToGolive,
+                    'notes' => trim($notes),
+                ]
+            );
 
             if (array_key_exists('executive_verdict', $_POST) || array_key_exists('executive_summary', $_POST)) {
                 if (!$repository->saveExecutiveOverride(
@@ -542,9 +611,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = $savedCount === 1
                 ? '1 workbook was saved. Fix the files that failed and try again.'
                 : $savedCount . ' workbooks were saved. Fix the files that failed and try again.';
-            $searchResults = $searchQuery !== '' || isset($_GET['q'])
-                ? $repository->searchByProjectName($searchQuery)
-                : $repository->listRecent(50);
+            $searchTotal = $repository->countProjects($searchQuery);
+            $searchTotalPages = max(1, (int) ceil($searchTotal / $searchPerPage));
+            if ($searchPage > $searchTotalPages) {
+                $searchPage = $searchTotalPages;
+            }
+            $searchResults = $repository->searchProjects($searchQuery, $searchPage, $searchPerPage);
+            $searchFrom = $searchTotal === 0 ? 0 : (($searchPage - 1) * $searchPerPage) + 1;
+            $searchTo = min($searchTotal, $searchPage * $searchPerPage);
         } else {
             $savedId = $savedIds[array_key_last($savedIds)];
             $uploadedCount = count($savedIds);
@@ -600,6 +674,13 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $projectLinks = $projectLinksRepository->listForAssessment($assessmentId);
             $projectDiagrams = $projectMermaidRepository->listForAssessment($assessmentId);
             $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
+            $itemResponseHistory = $changeLogRepository->listItemResponseHistory($assessmentId);
+            $evaluationHistory = $changeLogRepository->listForEntity(
+                $assessmentId,
+                AssessmentChangeLogRepository::ENTITY_FINAL_EVALUATION,
+                ''
+            );
+            $evaluatorDefaults = Actor::evaluatorDefaults($currentUser);
             if ($prior !== null) {
                 $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $assessmentId);
                 $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
@@ -618,7 +699,10 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $projectLinks,
                 $projectDiagrams,
                 $findingStatuses,
-                $record['executive_override'] ?? $repository->findExecutiveOverride($assessmentId)
+                $record['executive_override'] ?? $repository->findExecutiveOverride($assessmentId),
+                $itemResponseHistory,
+                $evaluationHistory,
+                $evaluatorDefaults
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -646,6 +730,11 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
         $projectLinks = $storedId > 0 ? $projectLinksRepository->listForAssessment($storedId) : [];
         $projectDiagrams = $storedId > 0 ? $projectMermaidRepository->listForAssessment($storedId) : [];
         $findingStatuses = $storedId > 0 ? $findingStatusRepository->listForAssessment($storedId) : [];
+        $itemResponseHistory = $storedId > 0 ? $changeLogRepository->listItemResponseHistory($storedId) : [];
+        $evaluationHistory = $storedId > 0
+            ? $changeLogRepository->listForEntity($storedId, AssessmentChangeLogRepository::ENTITY_FINAL_EVALUATION, '')
+            : [];
+        $evaluatorDefaults = Actor::evaluatorDefaults($currentUser);
         if ($storedId > 0 && $prior !== null) {
             $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $storedId);
             $findingStatuses = $findingStatusRepository->listForAssessment($storedId);
@@ -664,7 +753,10 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $projectLinks,
             $projectDiagrams,
             $findingStatuses,
-            $storedId > 0 ? $repository->findExecutiveOverride($storedId) : []
+            $storedId > 0 ? $repository->findExecutiveOverride($storedId) : [],
+            $itemResponseHistory,
+            $evaluationHistory,
+            $evaluatorDefaults
         );
     }
 }
@@ -729,7 +821,7 @@ $totalProjects = $repository->countAll();
 
             <section class="upload-card search-card" id="find-projects">
                 <h2><?= e($branding->heroHeadingPlain()) ?></h2>
-                <p>Type part of the project name, vendor, or scope. Leave blank to browse recent uploads. Delete drops that saved version only.</p>
+                <p>Search any project field: name, vendor, scope, reviewer, architecture, filename, evaluator, executive summary, dates, or go-live status (try “ready”, “not ready”, “no final”). Leave blank to browse all saved versions.</p>
                 <form method="get" class="search-form" action="index.php#find-projects">
                     <div class="search-wrap search-wrap-wide">
                         <span>Find</span>
@@ -737,7 +829,7 @@ $totalProjects = $repository->countAll();
                             type="search"
                             name="q"
                             value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>"
-                            placeholder="Project name, e.g. FibroScan..."
+                            placeholder="Name, vendor, reviewer, evaluator, filename…"
                             autofocus
                         >
                     </div>
@@ -747,6 +839,7 @@ $totalProjects = $repository->countAll();
                 <?php if ($searchResults === []): ?>
                     <p class="empty-results">No saved projects found<?= $searchQuery !== '' ? ' for that search.' : ' yet.' ?></p>
                 <?php else: ?>
+                    <p class="search-result-meta">Showing <?= (int) $searchFrom ?>–<?= (int) $searchTo ?> of <?= (int) $searchTotal ?><?= $searchQuery !== '' ? ' matching “' . htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') . '”' : '' ?></p>
                     <div class="project-list">
                         <?php foreach ($searchResults as $project): ?>
                             <?php $goliveStatus = AssessmentRepository::goliveCardStatus($project); ?>
@@ -773,6 +866,42 @@ $totalProjects = $repository->countAll();
                             </div>
                         <?php endforeach; ?>
                     </div>
+                    <?php if ($searchTotalPages > 1): ?>
+                        <?php
+                        $pageQuery = static function (int $page) use ($searchQuery): string {
+                            $params = ['page' => $page];
+                            if ($searchQuery !== '') {
+                                $params['q'] = $searchQuery;
+                            }
+                            return 'index.php?' . http_build_query($params) . '#find-projects';
+                        };
+                        ?>
+                        <nav class="pagination" aria-label="Project list pages">
+                            <?php if ($searchPage > 1): ?>
+                                <a class="button ghost" href="<?= htmlspecialchars($pageQuery($searchPage - 1), ENT_QUOTES, 'UTF-8') ?>">← Previous</a>
+                            <?php else: ?>
+                                <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                            <?php endif; ?>
+                            <span class="pagination-pages">
+                                <?php
+                                $windowStart = max(1, $searchPage - 2);
+                                $windowEnd = min($searchTotalPages, $searchPage + 2);
+                                for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
+                                ?>
+                                    <?php if ($pageNum === $searchPage): ?>
+                                        <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
+                                    <?php else: ?>
+                                        <a class="pagination-page" href="<?= htmlspecialchars($pageQuery($pageNum), ENT_QUOTES, 'UTF-8') ?>"><?= $pageNum ?></a>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+                            </span>
+                            <?php if ($searchPage < $searchTotalPages): ?>
+                                <a class="button ghost" href="<?= htmlspecialchars($pageQuery($searchPage + 1), ENT_QUOTES, 'UTF-8') ?>">Next →</a>
+                            <?php else: ?>
+                                <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                            <?php endif; ?>
+                        </nav>
+                    <?php endif; ?>
                 <?php endif; ?>
             </section>
 

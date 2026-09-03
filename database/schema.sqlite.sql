@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS item_responses (
     action TEXT NOT NULL DEFAULT 'open',
     comment TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by_user_id INTEGER,
+    updated_by_username TEXT NOT NULL DEFAULT '',
+    updated_by_display_name TEXT NOT NULL DEFAULT '',
+    updated_by_auth_source TEXT NOT NULL DEFAULT '',
     UNIQUE (assessment_id, item_key),
     FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
 );
@@ -61,10 +65,32 @@ CREATE TABLE IF NOT EXISTS final_evaluations (
     notes TEXT NOT NULL DEFAULT '',
     ready_to_golive INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by_user_id INTEGER,
+    updated_by_username TEXT NOT NULL DEFAULT '',
+    updated_by_display_name TEXT NOT NULL DEFAULT '',
+    updated_by_auth_source TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_final_evaluations_assessment_id ON final_evaluations (assessment_id);
+
+CREATE TABLE IF NOT EXISTS assessment_change_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assessment_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_key TEXT NOT NULL DEFAULT '',
+    actor_id INTEGER,
+    actor_username TEXT NOT NULL DEFAULT '',
+    actor_display_name TEXT NOT NULL DEFAULT '',
+    actor_auth_source TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_change_log_assessment_id ON assessment_change_log (assessment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_change_log_entity ON assessment_change_log (assessment_id, entity_type, entity_key);
 
 CREATE TABLE IF NOT EXISTS project_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

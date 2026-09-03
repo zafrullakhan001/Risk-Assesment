@@ -3696,3 +3696,124 @@ html.is-compact .site-footer {
     margin-top: 16px;
     font-size: 11px;
 }
+
+/* Attribution, history, presets, pagination */
+.item-response-meta {
+    margin-top: 6px;
+}
+.item-response-attribution {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.35;
+}
+.change-history {
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--card) 94%, var(--paper));
+    padding: 6px 10px;
+}
+.change-history.is-compact {
+    margin-top: 8px;
+    padding: 4px 8px;
+}
+.change-history summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+.change-history-list {
+    list-style: none;
+    margin: 8px 0 4px;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+.change-history-list li {
+    display: grid;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--muted);
+}
+.change-history-list strong {
+    color: var(--ink);
+    font-weight: 600;
+}
+.exec-preset-row {
+    display: grid;
+    gap: 6px;
+    margin: 4px 0 2px;
+}
+.exec-preset-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.exec-preset-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.exec-preset-chip {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--primary-soft) 70%, var(--card));
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.exec-preset-chip:hover {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary-soft) 90%, var(--card));
+}
+.search-result-meta {
+    margin: 10px 0 8px;
+    font-size: 13px;
+    color: var(--muted);
+}
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+}
+.pagination-pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.pagination-page {
+    min-width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 0 8px;
+    background: var(--card);
+}
+.pagination-page.is-current {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    font-weight: 600;
+}
+.button.is-disabled,
+.button[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+}

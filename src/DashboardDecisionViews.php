@@ -73,7 +73,8 @@ final class DashboardDecisionViews
                             <span>Summary</span>
                             <textarea name="executive_summary" id="exec-summary-input" rows="3" maxlength="2000" placeholder="Write the go-live narrative for this version..."><?= $this->e((string) $readiness['summary']) ?></textarea>
                         </label>
-                        <p class="exec-edit-help">Leave a field blank to keep the auto-generated text. Restore clears both and returns to the live score wording.</p>
+                        <?= $this->renderExecutivePresetChips('exec') ?>
+                        <p class="exec-edit-help">Leave a field blank to keep the auto-generated text. Restore clears both and returns to the live score wording. Presets fill both fields — you can still edit before saving.</p>
                         <p class="exec-edit-status" id="exec-edit-status" hidden></p>
                         <div class="exec-edit-actions">
                             <button type="button" class="button ghost-light" id="btn-reset-exec-summary">↺ Restore auto text</button>
@@ -186,7 +187,8 @@ final class DashboardDecisionViews
      *   evaluator_email?: string,
      *   notes?: string,
      *   ready_to_golive?: bool,
-     *   updated_at?: string
+     *   updated_at?: string,
+     *   updated_by_label?: string
      * }|null $evaluation
      * @param array{
      *   ready_allowed: bool,
@@ -199,6 +201,8 @@ final class DashboardDecisionViews
      *     filter_value: string
      *   }>
      * } $goliveGates
+     * @param list<array<string, mixed>> $evaluationHistory
+     * @param array{name?: string, email?: string} $evaluatorDefaults
      */
     public function renderActionsPanel(
         array $insights,
@@ -208,7 +212,9 @@ final class DashboardDecisionViews
         string $csrfToken = '',
         array $actionableItems = [],
         ?array $evaluation = null,
-        array $goliveGates = []
+        array $goliveGates = [],
+        array $evaluationHistory = [],
+        array $evaluatorDefaults = []
     ): string {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
@@ -238,10 +244,22 @@ final class DashboardDecisionViews
         $evaluation = $evaluation ?? [];
         $evaluatorName = (string) ($evaluation['evaluator_name'] ?? '');
         $evaluatorEmail = (string) ($evaluation['evaluator_email'] ?? '');
+        if ($evaluatorName === '' && $evaluatorEmail === '') {
+            $evaluatorName = (string) ($evaluatorDefaults['name'] ?? '');
+            $evaluatorEmail = (string) ($evaluatorDefaults['email'] ?? '');
+        }
         $evalNotes = (string) ($evaluation['notes'] ?? '');
         $readyToGolive = !empty($evaluation['ready_to_golive']);
         $evalUpdatedAt = (string) ($evaluation['updated_at'] ?? '');
+        $evalUpdatedBy = (string) ($evaluation['updated_by_label'] ?? '');
         $openExceptions = (int) ($insights['residual']['open_findings'] ?? 0);
+        $evalSavedLabel = 'Not saved yet';
+        if ($evalUpdatedAt !== '') {
+            $evalSavedLabel = '💾 Saved ' . $evalUpdatedAt;
+            if ($evalUpdatedBy !== '') {
+                $evalSavedLabel .= ' · ' . $evalUpdatedBy;
+            }
+        }
 
         ob_start();
         ?>
@@ -384,7 +402,7 @@ final class DashboardDecisionViews
                             </div>
                         </div>
                         <span class="result-count result-count-badge" id="final-eval-saved-label">
-                            <?= $evalUpdatedAt !== '' ? '💾 Saved ' . $this->e($evalUpdatedAt) : 'Not saved yet' ?>
+                            <?= $this->e($evalSavedLabel) ?>
                         </span>
                     </div>
                     <?php if ($currentId <= 0): ?>
@@ -421,6 +439,7 @@ final class DashboardDecisionViews
                                     <span>Summary</span>
                                     <textarea name="executive_summary" id="eval-exec-summary" rows="3" maxlength="2000" placeholder="<?= $this->e((string) ($insights['readiness']['auto_summary'] ?? 'Write the go-live narrative for this version...')) ?>"><?= $this->e((string) ($insights['readiness']['custom_summary'] ?? '')) ?></textarea>
                                 </label>
+                                <?= $this->renderExecutivePresetChips('eval') ?>
                             </div>
                             <div class="final-eval-footer">
                                 <label class="golive-toggle">
@@ -437,6 +456,7 @@ final class DashboardDecisionViews
                                 </div>
                             </div>
                         </form>
+                        <?= $this->renderChangeHistory('evaluation-history', 'Sign-off history', $evaluationHistory) ?>
                     <?php endif; ?>
                 </section>
             </div>
@@ -558,6 +578,9 @@ final class DashboardDecisionViews
                                 $action = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($row['action'] ?? 'open'));
                                 $comment = (string) ($row['comment'] ?? '');
                                 $itemType = (string) ($row['item_type'] ?? 'architecture');
+                                $updatedAt = (string) ($row['updated_at'] ?? '');
+                                $updatedByLabel = (string) ($row['updated_by_label'] ?? '');
+                                $history = is_array($row['history'] ?? null) ? $row['history'] : [];
                                 ?>
                                 <tr
                                     data-item-key="<?= $this->e($key) ?>"
@@ -589,6 +612,16 @@ final class DashboardDecisionViews
                                                 placeholder="Comment (optional)"
                                             ><?= $this->e($comment) ?></textarea>
                                             <span class="item-response-save" hidden>Saved</span>
+                                            <div class="item-response-meta">
+                                                <span class="item-response-attribution" <?= $updatedAt === '' && $updatedByLabel === '' ? 'hidden' : '' ?>>
+                                                    <?php if ($updatedByLabel !== ''): ?>
+                                                        Updated by <?= $this->e($updatedByLabel) ?><?= $updatedAt !== '' ? ' · ' . $this->e($updatedAt) : '' ?>
+                                                    <?php elseif ($updatedAt !== ''): ?>
+                                                        Updated <?= $this->e($updatedAt) ?> · Not yet attributed
+                                                    <?php endif; ?>
+                                                </span>
+                                            </div>
+                                            <?= $this->renderChangeHistory('item-history-' . md5($key), 'History', $history, true) ?>
                                         </div>
                                     </td>
                                 </tr>
@@ -920,6 +953,59 @@ final class DashboardDecisionViews
                     : 'Resolve each failing gate, then save with Ready to go-live checked.' ?>
             </p>
         </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function renderExecutivePresetChips(string $target): string
+    {
+        $presets = ExecutiveSummaryPresets::all();
+        ob_start();
+        ?>
+        <div class="exec-preset-row" data-exec-preset-target="<?= $this->e($target) ?>">
+            <span class="exec-preset-label">Presets</span>
+            <div class="exec-preset-chips">
+                <?php foreach ($presets as $preset): ?>
+                    <button
+                        type="button"
+                        class="exec-preset-chip"
+                        data-exec-preset
+                        data-verdict="<?= $this->e((string) $preset['verdict']) ?>"
+                        data-summary="<?= $this->e((string) $preset['summary']) ?>"
+                        title="<?= $this->e((string) $preset['summary']) ?>"
+                    ><?= $this->e((string) $preset['label']) ?></button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<array<string, mixed>> $entries
+     */
+    private function renderChangeHistory(string $id, string $heading, array $entries, bool $compact = false): string
+    {
+        ob_start();
+        ?>
+        <details class="change-history<?= $compact ? ' is-compact' : '' ?>" id="<?= $this->e($id) ?>" <?= $entries === [] ? 'hidden' : '' ?>>
+            <summary><?= $this->e($heading) ?><?= $entries !== [] ? ' (' . count($entries) . ')' : '' ?></summary>
+            <ul class="change-history-list">
+                <?php foreach ($entries as $entry): ?>
+                    <?php
+                    $actorLabel = Actor::labelFromRow($entry, 'actor');
+                    $when = (string) ($entry['created_at'] ?? '');
+                    $summary = (string) ($entry['summary'] ?? '');
+                    ?>
+                    <li>
+                        <strong><?= $this->e($summary !== '' ? $summary : 'Updated') ?></strong>
+                        <span><?= $actorLabel !== '' ? $this->e($actorLabel) : 'Unknown user' ?><?= $when !== '' ? ' · ' . $this->e($when) : '' ?></span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </details>
         <?php
 
         return (string) ob_get_clean();

@@ -986,12 +986,82 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveLabel.hidden = true;
                 }, 1200);
             }
+            applyItemAttribution(widget, payload);
             refreshGoliveGates();
         } catch (error) {
             if (saveLabel) {
                 saveLabel.hidden = false;
                 saveLabel.textContent = 'Save failed';
             }
+        }
+    };
+
+    const formatActorLabel = (entry = {}) => {
+        const displayName = String(entry.actor_display_name || entry.updated_by_display_name || '').trim();
+        const username = String(entry.actor_username || entry.updated_by_username || '').trim();
+        const authSource = String(entry.actor_auth_source || entry.updated_by_auth_source || '').trim().toLowerCase();
+        let label = '';
+        if (displayName && username && displayName.toLowerCase() !== username.toLowerCase()) {
+            label = `${displayName} (${username})`;
+        } else {
+            label = displayName || username || '';
+        }
+        if (label && (authSource === 'ldap' || authSource === 'local')) {
+            label += ` · ${authSource}`;
+        }
+        return label;
+    };
+
+    const applyItemAttribution = (widget, payload = {}) => {
+        if (!widget) {
+            return;
+        }
+        const response = payload.response || {};
+        const label = payload.updated_by_label
+            || response.updated_by_label
+            || formatActorLabel(response)
+            || formatActorLabel(payload.history_entry || {});
+        const updatedAt = payload.updated_at || response.updated_at || '';
+        const attr = widget.querySelector('.item-response-attribution');
+        if (attr && (label || updatedAt)) {
+            attr.hidden = false;
+            attr.textContent = label
+                ? `Updated by ${label}${updatedAt ? ` · ${updatedAt}` : ''}`
+                : `Updated ${updatedAt}`;
+        }
+        const historyEntry = payload.history_entry;
+        if (historyEntry) {
+            prependHistoryEntry(widget.querySelector('.change-history'), historyEntry);
+        }
+    };
+
+    const prependHistoryEntry = (detailsEl, entry) => {
+        if (!detailsEl || !entry) {
+            return;
+        }
+        detailsEl.hidden = false;
+        let list = detailsEl.querySelector('.change-history-list');
+        if (!list) {
+            list = document.createElement('ul');
+            list.className = 'change-history-list';
+            detailsEl.appendChild(list);
+        }
+        const li = document.createElement('li');
+        const strong = document.createElement('strong');
+        strong.textContent = entry.summary || 'Updated';
+        const span = document.createElement('span');
+        const actorLabel = formatActorLabel(entry) || 'Unknown user';
+        span.textContent = `${actorLabel}${entry.created_at ? ` · ${entry.created_at}` : ''}`;
+        li.appendChild(strong);
+        li.appendChild(span);
+        list.insertBefore(li, list.firstChild);
+        const summary = detailsEl.querySelector('summary');
+        if (summary) {
+            const base = summary.textContent.replace(/\s*\(\d+\)\s*$/, '').trim() || 'History';
+            summary.textContent = `${base} (${list.children.length})`;
+        }
+        while (list.children.length > 20) {
+            list.removeChild(list.lastElementChild);
         }
     };
 
@@ -1117,6 +1187,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusLabel.hidden = true;
                 }, 1600);
             }
+            const responses = Array.isArray(payload.responses) ? payload.responses : [];
+            responses.forEach((row) => {
+                const key = row.item_key || '';
+                const widget = document.querySelector(`.item-response[data-item-key="${CSS.escape(key)}"]`);
+                applyItemAttribution(widget, {
+                    response: row,
+                    updated_by_label: payload.updated_by_label || row.updated_by_label,
+                    updated_at: row.updated_at || payload.updated_at,
+                    history_entry: {
+                        summary: `${payload.label || 'Updated'}${comment ? ' — comment updated' : ''}`,
+                        actor_username: row.updated_by_username,
+                        actor_display_name: row.updated_by_display_name,
+                        actor_auth_source: row.updated_by_auth_source,
+                        created_at: row.updated_at,
+                    },
+                });
+            });
             return true;
         } catch (error) {
             if (statusLabel) {
@@ -1425,6 +1512,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const applyExecutivePreset = (button) => {
+        const verdict = button.dataset.verdict || '';
+        const summary = button.dataset.summary || '';
+        const target = button.closest('[data-exec-preset-target]')?.dataset.execPresetTarget || 'exec';
+        if (target === 'eval') {
+            const verdictInput = document.getElementById('eval-exec-verdict');
+            const summaryInput = document.getElementById('eval-exec-summary');
+            if (verdictInput) {
+                verdictInput.value = verdict;
+            }
+            if (summaryInput) {
+                summaryInput.value = summary;
+            }
+        } else {
+            // Open the editor first (it reseeds from the live view), then apply the preset.
+            if (execSummaryForm?.hidden) {
+                setExecEditorOpen(true);
+            }
+            const verdictInput = document.getElementById('exec-verdict-input');
+            const summaryInput = document.getElementById('exec-summary-input');
+            if (verdictInput) {
+                verdictInput.value = verdict;
+            }
+            if (summaryInput) {
+                summaryInput.value = summary;
+            }
+        }
+    };
+
+    document.querySelectorAll('[data-exec-preset]').forEach((button) => {
+        button.addEventListener('click', () => applyExecutivePreset(button));
+    });
+
     const evaluationForm = document.getElementById('final-evaluation-form');
     if (evaluationForm) {
         const statusEl = document.getElementById('final-eval-status');
@@ -1488,7 +1608,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 badge.textContent = `${ready ? '🚀 Ready to go-live' : '⏳ Not ready to go-live'}${name ? ` · ${name}` : ''}`;
             }
             if (savedLabel && evaluation.updated_at) {
-                savedLabel.textContent = `Saved ${evaluation.updated_at}`;
+                const by = evaluation.updated_by_label || formatActorLabel(evaluation) || '';
+                savedLabel.textContent = by
+                    ? `💾 Saved ${evaluation.updated_at} · ${by}`
+                    : `💾 Saved ${evaluation.updated_at}`;
+            }
+            if (evaluation.updated_at || evaluation.updated_by_label) {
+                prependHistoryEntry(document.getElementById('evaluation-history'), {
+                    summary: `${ready ? 'Ready to go-live' : 'Not ready to go-live'} — evaluation saved`,
+                    actor_username: evaluation.updated_by_username,
+                    actor_display_name: evaluation.updated_by_display_name,
+                    actor_auth_source: evaluation.updated_by_auth_source,
+                    created_at: evaluation.updated_at,
+                });
             }
         };
 
