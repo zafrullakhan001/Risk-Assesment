@@ -147,39 +147,51 @@ $adminHeading = 'People on this <em>install</em>';
 $adminIntro = 'Local accounts can sign in with a password. LDAP accounts are provisioned from the directory.';
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
-            <section class="upload-card">
-                <h2>Add local user</h2>
+            <section class="upload-card settings-card">
+                <h2><span class="settings-emoji" aria-hidden="true">👤</span> Add local user</h2>
                 <p>Created accounts are approved immediately. Share the password over a private channel.</p>
-                <form method="post" class="updater-form updater-form-stack user-create-form">
+                <form method="post" class="settings-form user-create-form">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="create_user">
-                    <div class="admin-form-grid">
-                        <label class="file-input">
-                            <span>Username</span>
-                            <input type="text" name="username" required minlength="3" maxlength="80" autocomplete="off">
-                        </label>
-                        <label class="file-input">
-                            <span>Email</span>
-                            <input type="email" name="email" required autocomplete="off">
-                        </label>
-                        <label class="file-input">
-                            <span>Display name</span>
-                            <input type="text" name="display_name" maxlength="120" autocomplete="off">
-                        </label>
-                        <label class="file-input">
-                            <span>Password</span>
-                            <input type="password" name="password" required minlength="8" autocomplete="new-password">
-                        </label>
-                        <label class="file-input">
-                            <span>Confirm password</span>
-                            <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
-                        </label>
-                        <label class="remember-row">
-                            <input type="checkbox" name="is_admin" value="1">
-                            <span>Administrator</span>
-                        </label>
+                    <fieldset class="settings-fieldset settings-tone-teal">
+                        <legend><span class="settings-emoji" aria-hidden="true">🪪</span> Account</legend>
+                        <p class="settings-hint">Local username and contact details for this install.</p>
+                        <div class="settings-grid">
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🧑</span> Username</span>
+                                <input type="text" name="username" required minlength="3" maxlength="80" autocomplete="off">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">✉️</span> Email</span>
+                                <input type="email" name="email" required autocomplete="off">
+                            </label>
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">🏷️</span> Display name</span>
+                                <input type="text" name="display_name" maxlength="120" autocomplete="off">
+                            </label>
+                        </div>
+                    </fieldset>
+                    <fieldset class="settings-fieldset settings-tone-violet">
+                        <legend><span class="settings-emoji" aria-hidden="true">🔑</span> Password</legend>
+                        <p class="settings-hint">At least 8 characters. The person signs in with this until they change it.</p>
+                        <div class="settings-grid">
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🔒</span> Password</span>
+                                <input type="password" name="password" required minlength="8" autocomplete="new-password">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">✅</span> Confirm password</span>
+                                <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
+                            </label>
+                            <label class="remember-row settings-span-all">
+                                <input type="checkbox" name="is_admin" value="1">
+                                <span><span class="settings-emoji" aria-hidden="true">🛡️</span> Administrator</span>
+                            </label>
+                        </div>
+                    </fieldset>
+                    <div class="settings-actions">
+                        <button type="submit" class="button button-primary">➕ Create user</button>
                     </div>
-                    <button type="submit" class="button button-primary">Create user</button>
                 </form>
             </section>
 

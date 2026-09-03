@@ -171,7 +171,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
             <section class="upload-card">
                 <h2>Updater settings</h2>
                 <p>Leave the token field blank to keep the saved PAT. Token is encrypted at rest and never shown again.</p>
-                <form method="post" class="updater-form updater-form-stack">
+                <form id="updater-settings-form" method="post" class="updater-form updater-form-stack">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="save_settings">
                     <label class="file-input">
@@ -191,17 +191,17 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             placeholder="<?= $status['hasToken'] ? '•••••••• (saved)' : 'ghp_…' ?>"
                         >
                     </label>
-                    <div class="updater-actions">
-                        <button type="submit" class="button button-primary">Save settings</button>
-                    </div>
                 </form>
-                <?php if ($status['hasToken']): ?>
-                    <form method="post" class="inline-form" onsubmit="return confirm('Remove the saved GitHub token?');">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="clear_token">
-                        <button type="submit" class="button ghost">Remove token</button>
-                    </form>
-                <?php endif; ?>
+                <div class="updater-actions">
+                    <button type="submit" form="updater-settings-form" class="button button-primary">Save settings</button>
+                    <?php if ($status['hasToken']): ?>
+                        <form method="post" class="inline-form" onsubmit="return confirm('Remove the saved GitHub token?');">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="clear_token">
+                            <button type="submit" class="button ghost">Remove token</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
             </section>
 <?php
 require dirname(__DIR__) . '/includes/admin-footer.php';

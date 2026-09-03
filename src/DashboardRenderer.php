@@ -276,7 +276,7 @@ final class DashboardRenderer
             <?php endif; ?>
         </main>
     </div>
-    <script src="assets/js/theme.js"></script>
+    <script src="assets/js/theme.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/theme.js') ?>"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
     <script src="assets/js/project-resources.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/project-resources.js') ?>"></script>
     <script src="assets/js/dashboard.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/dashboard.js') ?>"></script>

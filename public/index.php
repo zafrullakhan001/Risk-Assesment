@@ -701,7 +701,7 @@ $totalProjects = $repository->countAll();
             </section>
         </main>
     </div>
-    <script src="assets/js/theme.js"></script>
+    <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
     <script src="assets/js/upload.js?v=<?= filemtime(__DIR__ . '/assets/js/upload.js') ?>"></script>
 </body>
 </html>

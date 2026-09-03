@@ -139,110 +139,157 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 </form>
             </section>
 
-            <section class="upload-card">
-                <h2>LDAP server</h2>
+            <section class="upload-card settings-card ldap-card">
+                <h2><span class="settings-emoji" aria-hidden="true">🛰️</span> LDAP server</h2>
                 <p>Use a service account bind, then search for the user and bind as that user to verify the password. User passwords are never stored.</p>
                 <?php if (!extension_loaded('ldap')): ?>
                     <p class="updater-warning">PHP LDAP extension is not loaded. Enable <code>extension=ldap</code> in <code>php.ini</code> and restart Apache.</p>
                 <?php endif; ?>
-                <form method="post" class="updater-form updater-form-stack">
+                <form method="post" class="settings-form ldap-form">
                     <?= csrf_field() ?>
-                    <div class="admin-form-grid">
-                        <label class="file-input">
-                            <span>Display name</span>
-                            <input type="text" name="name" value="<?= e((string) $server['name']) ?>">
-                        </label>
-                        <label class="file-input">
-                            <span>Server host</span>
-                            <input type="text" name="server" value="<?= e((string) $server['server']) ?>" placeholder="dc1.corp.example.com">
-                        </label>
-                        <label class="file-input">
-                            <span>Port</span>
-                            <input type="number" name="port" value="<?= (int) $server['port'] ?>" min="1" max="65535">
-                        </label>
-                        <label class="file-input">
-                            <span>Protocol</span>
-                            <select name="protocol">
-                                <option value="ldap" <?= ($server['protocol'] ?? '') === 'ldap' ? 'selected' : '' ?>>ldap</option>
-                                <option value="ldaps" <?= ($server['protocol'] ?? '') === 'ldaps' ? 'selected' : '' ?>>ldaps</option>
-                            </select>
-                        </label>
-                        <label class="file-input">
-                            <span>Timeout (seconds)</span>
-                            <input type="number" name="timeout" value="<?= (int) $server['timeout'] ?>" min="1" max="60">
-                        </label>
-                        <label class="file-input">
-                            <span>Search scope</span>
-                            <select name="search_scope">
-                                <option value="sub" <?= ($server['search_scope'] ?? '') === 'sub' ? 'selected' : '' ?>>Subtree</option>
-                                <option value="one" <?= ($server['search_scope'] ?? '') === 'one' ? 'selected' : '' ?>>One level</option>
-                                <option value="base" <?= ($server['search_scope'] ?? '') === 'base' ? 'selected' : '' ?>>Base</option>
-                            </select>
-                        </label>
-                        <label class="file-input">
-                            <span>Bind DN</span>
-                            <input type="text" name="bind_dn" value="<?= e((string) $server['bind_dn']) ?>" placeholder="CN=svc,OU=Service,DC=corp,DC=com">
-                        </label>
-                        <label class="file-input">
-                            <span>Bind password<?= $hasBindPassword ? ' (leave blank to keep)' : '' ?></span>
-                            <input type="password" name="bind_password" autocomplete="off" placeholder="<?= $hasBindPassword ? '•••••••• (saved)' : '' ?>">
-                        </label>
-                        <label class="file-input">
-                            <span>User search base</span>
-                            <input type="text" name="user_search_base" value="<?= e((string) $server['user_search_base']) ?>" placeholder="OU=Users,DC=corp,DC=com">
-                        </label>
-                        <label class="file-input">
-                            <span>User filter</span>
-                            <input type="text" name="user_filter" value="<?= e((string) $server['user_filter']) ?>">
-                        </label>
-                        <label class="file-input">
-                            <span>User attributes</span>
-                            <input type="text" name="user_attributes" value="<?= e((string) $server['user_attributes']) ?>">
-                        </label>
-                        <label class="file-input">
-                            <span>Email attribute</span>
-                            <input type="text" name="email_attribute" value="<?= e((string) $server['email_attribute']) ?>">
-                        </label>
-                        <label class="file-input">
-                            <span>Display name attribute</span>
-                            <input type="text" name="display_name_attribute" value="<?= e((string) $server['display_name_attribute']) ?>">
-                        </label>
-                        <label class="file-input">
-                            <span>Login domain (optional)</span>
-                            <input type="text" name="login_domain" value="<?= e((string) $server['login_domain']) ?>" placeholder="corp.example.com">
-                        </label>
-                        <label class="file-input">
-                            <span>User DN template (optional)</span>
-                            <input type="text" name="user_dn_template" value="<?= e((string) $server['user_dn_template']) ?>" placeholder="CN={username},OU=Users,DC=corp,DC=com">
-                        </label>
-                    </div>
-                    <label class="file-input">
-                        <span>Required groups (one per line, optional)</span>
-                        <textarea name="required_groups" rows="3"><?= e((string) $server['required_groups']) ?></textarea>
-                    </label>
-                    <label class="file-input">
-                        <span>Denied groups (one per line, optional)</span>
-                        <textarea name="denied_groups" rows="3"><?= e((string) $server['denied_groups']) ?></textarea>
-                    </label>
-                    <label class="remember-row">
-                        <input type="checkbox" name="require_group_membership" value="1" <?= ($server['require_group_membership'] ?? '0') === '1' ? 'checked' : '' ?>>
-                        <span>Require membership in at least one required group</span>
-                    </label>
-                    <label class="remember-row">
-                        <input type="checkbox" name="tls" value="1" <?= ($server['tls'] ?? '0') === '1' ? 'checked' : '' ?>>
-                        <span>StartTLS (for ldap://, not ldaps://)</span>
-                    </label>
-                    <label class="remember-row">
-                        <input type="checkbox" name="ssl_verify" value="1" <?= ($server['ssl_verify'] ?? '0') === '1' ? 'checked' : '' ?>>
-                        <span>Verify TLS certificate</span>
-                    </label>
-                    <label class="remember-row">
-                        <input type="checkbox" name="referrals" value="1" <?= ($server['referrals'] ?? '0') === '1' ? 'checked' : '' ?>>
-                        <span>Follow LDAP referrals</span>
-                    </label>
-                    <div class="updater-actions">
-                        <button type="submit" class="button button-primary" name="action" value="save_ldap">Save LDAP server</button>
-                        <button type="submit" class="button ghost" name="action" value="test_ldap">Test connection</button>
+
+                    <fieldset class="settings-fieldset settings-tone-teal">
+                        <legend><span class="settings-emoji" aria-hidden="true">🔌</span> Connection</legend>
+                        <p class="settings-hint">How this app reaches the directory.</p>
+                        <div class="settings-grid settings-grid-connection">
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🏷️</span> Display name</span>
+                                <input type="text" name="name" value="<?= e((string) $server['name']) ?>" maxlength="120" autocomplete="off">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🖥️</span> Server host</span>
+                                <input type="text" name="server" value="<?= e((string) $server['server']) ?>" placeholder="dc1.corp.example.com" spellcheck="false" autocomplete="off">
+                            </label>
+                        </div>
+                        <div class="settings-grid settings-grid-compact">
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🔢</span> Port</span>
+                                <input type="number" name="port" value="<?= (int) $server['port'] ?>" min="1" max="65535">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🔗</span> Protocol</span>
+                                <select name="protocol">
+                                    <option value="ldap" <?= ($server['protocol'] ?? '') === 'ldap' ? 'selected' : '' ?>>ldap://</option>
+                                    <option value="ldaps" <?= ($server['protocol'] ?? '') === 'ldaps' ? 'selected' : '' ?>>ldaps://</option>
+                                </select>
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">⏱️</span> Timeout</span>
+                                <input type="number" name="timeout" value="<?= (int) $server['timeout'] ?>" min="1" max="60">
+                                <small class="settings-help">Seconds</small>
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">📂</span> Search scope</span>
+                                <select name="search_scope">
+                                    <option value="sub" <?= ($server['search_scope'] ?? '') === 'sub' ? 'selected' : '' ?>>Subtree</option>
+                                    <option value="one" <?= ($server['search_scope'] ?? '') === 'one' ? 'selected' : '' ?>>One level</option>
+                                    <option value="base" <?= ($server['search_scope'] ?? '') === 'base' ? 'selected' : '' ?>>Base</option>
+                                </select>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="settings-fieldset settings-tone-violet">
+                        <legend><span class="settings-emoji" aria-hidden="true">🔐</span> Service account</legend>
+                        <p class="settings-hint">Used only to search for the user. The user’s password is checked with a second bind and is never saved.</p>
+                        <div class="settings-grid">
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">🪪</span> Bind DN</span>
+                                <input type="text" name="bind_dn" value="<?= e((string) $server['bind_dn']) ?>" placeholder="CN=svc,OU=Service,DC=corp,DC=com" spellcheck="false" autocomplete="off">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🔑</span> Bind password</span>
+                                <input type="password" name="bind_password" autocomplete="new-password" placeholder="<?= $hasBindPassword ? 'Saved — leave blank to keep' : 'Service account password' ?>">
+                                <?php if ($hasBindPassword): ?>
+                                    <small class="settings-help settings-help-ok">Encrypted password is already stored.</small>
+                                <?php endif; ?>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="settings-fieldset settings-tone-sky">
+                        <legend><span class="settings-emoji" aria-hidden="true">🔎</span> User lookup</legend>
+                        <p class="settings-hint">Find the account after the service bind. <code>{username}</code> is replaced with the sign-in name.</p>
+                        <div class="settings-grid">
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">🌳</span> User search base</span>
+                                <input type="text" name="user_search_base" value="<?= e((string) $server['user_search_base']) ?>" placeholder="OU=Users,DC=corp,DC=com" spellcheck="false" autocomplete="off">
+                            </label>
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">🧪</span> User filter</span>
+                                <input type="text" name="user_filter" value="<?= e((string) $server['user_filter']) ?>" spellcheck="false" autocomplete="off">
+                            </label>
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">🧩</span> User DN template <em>optional</em></span>
+                                <input type="text" name="user_dn_template" value="<?= e((string) $server['user_dn_template']) ?>" placeholder="CN={username},OU=Users,DC=corp,DC=com" spellcheck="false" autocomplete="off">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🌐</span> Login domain <em>optional</em></span>
+                                <input type="text" name="login_domain" value="<?= e((string) $server['login_domain']) ?>" placeholder="corp.example.com" spellcheck="false" autocomplete="off">
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="settings-fieldset settings-tone-mint">
+                        <legend><span class="settings-emoji" aria-hidden="true">🏷️</span> Attributes</legend>
+                        <p class="settings-hint">Directory fields copied onto the local user record after a successful bind.</p>
+                        <div class="settings-grid">
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">📋</span> User attributes</span>
+                                <input type="text" name="user_attributes" value="<?= e((string) $server['user_attributes']) ?>" spellcheck="false" autocomplete="off">
+                                <small class="settings-help">Comma-separated list requested from the directory.</small>
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">📧</span> Email attribute</span>
+                                <input type="text" name="email_attribute" value="<?= e((string) $server['email_attribute']) ?>" spellcheck="false" autocomplete="off">
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🙂</span> Display name attribute</span>
+                                <input type="text" name="display_name_attribute" value="<?= e((string) $server['display_name_attribute']) ?>" spellcheck="false" autocomplete="off">
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="settings-fieldset settings-tone-amber">
+                        <legend><span class="settings-emoji" aria-hidden="true">👥</span> Group access</legend>
+                        <p class="settings-hint">Optional allow and deny lists. Use one group DN or name per line.</p>
+                        <div class="settings-grid">
+                            <label class="settings-field settings-field-allow">
+                                <span><span class="settings-emoji" aria-hidden="true">✅</span> Required groups</span>
+                                <textarea name="required_groups" rows="4" spellcheck="false"><?= e((string) $server['required_groups']) ?></textarea>
+                            </label>
+                            <label class="settings-field settings-field-deny">
+                                <span><span class="settings-emoji" aria-hidden="true">🚫</span> Denied groups</span>
+                                <textarea name="denied_groups" rows="4" spellcheck="false"><?= e((string) $server['denied_groups']) ?></textarea>
+                            </label>
+                            <label class="remember-row settings-span-all">
+                                <input type="checkbox" name="require_group_membership" value="1" <?= ($server['require_group_membership'] ?? '0') === '1' ? 'checked' : '' ?>>
+                                <span>Require membership in at least one required group</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="settings-fieldset settings-tone-rose">
+                        <legend><span class="settings-emoji" aria-hidden="true">🛡️</span> Security options</legend>
+                        <div class="settings-checks">
+                            <label class="remember-row">
+                                <input type="checkbox" name="tls" value="1" <?= ($server['tls'] ?? '0') === '1' ? 'checked' : '' ?>>
+                                <span>🔒 StartTLS (for ldap://, not ldaps://)</span>
+                            </label>
+                            <label class="remember-row">
+                                <input type="checkbox" name="ssl_verify" value="1" <?= ($server['ssl_verify'] ?? '0') === '1' ? 'checked' : '' ?>>
+                                <span>📜 Verify TLS certificate</span>
+                            </label>
+                            <label class="remember-row">
+                                <input type="checkbox" name="referrals" value="1" <?= ($server['referrals'] ?? '0') === '1' ? 'checked' : '' ?>>
+                                <span>↪️ Follow LDAP referrals</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <div class="settings-actions">
+                        <button type="submit" class="button button-primary" name="action" value="save_ldap">💾 Save LDAP server</button>
+                        <button type="submit" class="button ghost" name="action" value="test_ldap">🧪 Test connection</button>
                     </div>
                 </form>
             </section>
