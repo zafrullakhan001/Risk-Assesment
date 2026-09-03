@@ -77,6 +77,73 @@ final class Database
             )'
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_final_evaluations_assessment_id ON final_evaluations (assessment_id)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS project_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                label TEXT NOT NULL DEFAULT \'\',
+                url TEXT NOT NULL DEFAULT \'\',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_project_links_assessment_id ON project_links (assessment_id)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS project_mermaid_diagrams (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                title TEXT NOT NULL DEFAULT \'\',
+                source TEXT NOT NULL DEFAULT \'\',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_project_mermaid_diagrams_assessment_id ON project_mermaid_diagrams (assessment_id)');
+        self::migrateLegacyMermaidDiagrams($pdo);
+    }
+
+    private static function migrateLegacyMermaidDiagrams(PDO $pdo): void
+    {
+        $legacy = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='project_mermaid'");
+        if ($legacy === false || $legacy->fetch() === false) {
+            return;
+        }
+
+        $rows = $pdo->query(
+            'SELECT assessment_id, source, updated_at
+             FROM project_mermaid
+             WHERE trim(source) != \'\''
+        );
+        if ($rows === false) {
+            return;
+        }
+
+        $check = $pdo->prepare(
+            'SELECT 1 FROM project_mermaid_diagrams WHERE assessment_id = :assessment_id LIMIT 1'
+        );
+        $insert = $pdo->prepare(
+            'INSERT INTO project_mermaid_diagrams (assessment_id, title, source, sort_order, updated_at)
+             VALUES (:assessment_id, :title, :source, 0, :updated_at)'
+        );
+
+        foreach ($rows->fetchAll() as $row) {
+            $assessmentId = (int) ($row['assessment_id'] ?? 0);
+            if ($assessmentId <= 0) {
+                continue;
+            }
+            $check->execute([':assessment_id' => $assessmentId]);
+            if ($check->fetchColumn() !== false) {
+                continue;
+            }
+            $insert->execute([
+                ':assessment_id' => $assessmentId,
+                ':title' => 'Architecture diagram',
+                ':source' => (string) ($row['source'] ?? ''),
+                ':updated_at' => (string) ($row['updated_at'] ?? date('Y-m-d H:i:s')),
+            ]);
+        }
     }
 
     private static function ensureColumn(PDO $pdo, string $table, string $column, string $definition): void

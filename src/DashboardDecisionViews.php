@@ -41,12 +41,12 @@ final class DashboardDecisionViews
         <section class="decision-desk" id="decision-desk" data-assessment-id="<?= (int) $assessmentId ?>">
             <article class="exec-summary band-<?= $this->e($band) ?><?= $readyToGolive ? ' is-ready-golive' : '' ?>">
                 <div class="exec-score">
-                    <span class="label">Go-live readiness</span>
+                    <span class="label">🚀 Go-live readiness</span>
                     <strong><?= (int) $readiness['score'] ?></strong>
                     <em>/ 100</em>
                 </div>
                 <div class="exec-copy">
-                    <div class="eyebrow">Executive summary</div>
+                    <div class="eyebrow">📋 Executive summary</div>
                     <h3><?= $this->e((string) $readiness['verdict']) ?></h3>
                     <p><?= $this->e((string) $readiness['summary']) ?></p>
                     <div class="exec-metrics">
@@ -59,27 +59,27 @@ final class DashboardDecisionViews
                                 : '<span data-progress-open="' . htmlspecialchars($key, ENT_QUOTES, 'UTF-8') . '">' . $total . '</span><span class="exec-progress-tail" hidden>/<span data-progress-total="' . htmlspecialchars($key, ENT_QUOTES, 'UTF-8') . '">' . $total . '</span></span>';
                             return '<span><b>' . $value . '</b> ' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
                         };
-                        echo $metric('high', $highOpen, $highTotal, 'High open');
-                        echo $metric('risk', $riskOpen, $riskTotal, 'Risk open');
-                        echo $metric('gap', $gapOpen, $gapTotal, 'Gap open');
-                        echo $metric('tbd', $tbdOpen, $tbdTotal, 'TBD open');
+                        echo $metric('high', $highOpen, $highTotal, '🚨 High open');
+                        echo $metric('risk', $riskOpen, $riskTotal, '🔴 Risk open');
+                        echo $metric('gap', $gapOpen, $gapTotal, '🟠 Gap open');
+                        echo $metric('tbd', $tbdOpen, $tbdTotal, '❓ TBD open');
                         ?>
-                        <span><b><?= (int) $residual['open_findings'] ?></b> Open exceptions</span>
+                        <span><b><?= (int) $residual['open_findings'] ?></b> ⚠️ Open exceptions</span>
                     </div>
                     <?php if ($readyToGolive): ?>
-                        <div class="golive-badge" id="golive-status-badge">Ready to go-live<?= $evaluatorName !== '' ? ' · ' . $this->e($evaluatorName) : '' ?></div>
+                        <div class="golive-badge" id="golive-status-badge">🚀 Ready to go-live<?= $evaluatorName !== '' ? ' · ' . $this->e($evaluatorName) : '' ?></div>
                     <?php else: ?>
                         <div class="golive-badge is-pending" id="golive-status-badge" <?= $evaluatorName === '' && $evalNotes === '' ? 'hidden' : '' ?>>
-                            Not ready to go-live<?= $evaluatorName !== '' ? ' · ' . $this->e($evaluatorName) : '' ?>
+                            ⏳ Not ready to go-live<?= $evaluatorName !== '' ? ' · ' . $this->e($evaluatorName) : '' ?>
                         </div>
                     <?php endif; ?>
                 </div>
                 <div class="exec-actions no-print-hide">
-                    <button type="button" class="button button-primary" id="btn-presentation">Presentation mode</button>
-                    <button type="button" class="button ghost-light" id="btn-print">Print one-pager</button>
-                    <button type="button" class="button ghost-light" id="btn-export-csv">Export CSV</button>
-                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="risks">Open Actions</button>
-                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="signoff">Final evaluation</button>
+                    <button type="button" class="button button-primary" id="btn-presentation">🎬 Presentation mode</button>
+                    <button type="button" class="button ghost-light" id="btn-print">🖨️ Print one-pager</button>
+                    <button type="button" class="button ghost-light" id="btn-export-csv">📥 Export CSV</button>
+                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="risks">✅ Open Actions</button>
+                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="signoff">✍️ Final evaluation</button>
                 </div>
             </article>
 
@@ -100,12 +100,12 @@ final class DashboardDecisionViews
             <?php endif; ?>
 
             <?php if (!empty($comparison['has_prior'])): ?>
-                <div class="diff-summary">
-                    <span class="label">Since last upload</span>
+                <div class="diff-summary diff-summary-uplift">
+                    <span class="label">📈 Since last upload</span>
                     <strong><?= count($comparison['changes'] ?? []) ?> field changes</strong>
-                    <span><?= count($comparison['added'] ?? []) ?> added</span>
-                    <span><?= count($comparison['removed'] ?? []) ?> removed</span>
-                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="versions">Manage versions</button>
+                    <span>➕ <?= count($comparison['added'] ?? []) ?> added</span>
+                    <span>➖ <?= count($comparison['removed'] ?? []) ?> removed</span>
+                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="versions">🗂️ Manage versions</button>
                 </div>
             <?php endif; ?>
         </section>
@@ -201,37 +201,40 @@ final class DashboardDecisionViews
 
         ob_start();
         ?>
-        <div class="actions-workspace" id="actions-workspace">
-            <div class="actions-intro">
-                <div>
-                    <div class="eyebrow">Response workspace</div>
-                    <h2>Actions</h2>
-                    <p>Record decisions on risks, gaps, TBDs, and exceptions here. Other tabs stay as dashboards.</p>
+        <div class="actions-workspace actions-workspace-uplift" id="actions-workspace">
+            <div class="actions-intro dash-panel-intro actions-intro-hero">
+                <div class="dash-panel-intro-copy">
+                    <span class="dash-panel-intro-icon" aria-hidden="true">✅</span>
+                    <div>
+                        <div class="eyebrow">Response workspace</div>
+                        <h2>Actions</h2>
+                        <p>Record decisions on risks, gaps, TBDs, and exceptions here. Other tabs stay as dashboards.</p>
+                    </div>
                 </div>
-                <span class="result-count" id="response-open-count"><?= (int) $openResponses ?> item responses open</span>
+                <span class="result-count project-resources-badge" id="response-open-count"><?= (int) $openResponses ?> item responses open</span>
             </div>
 
-            <nav class="action-tabs" role="tablist" aria-label="Action categories">
-                <button type="button" class="action-tab is-active" role="tab" aria-selected="true" data-action-tab="risks">
-                    Risks <em><?= count($riskItems) ?></em>
+            <nav class="action-tabs action-tabs-uplift" role="tablist" aria-label="Action categories">
+                <button type="button" class="action-tab action-tab-risks is-active" role="tab" aria-selected="true" data-action-tab="risks">
+                    🔴 Risks <em><?= count($riskItems) ?></em>
                 </button>
-                <button type="button" class="action-tab" role="tab" aria-selected="false" data-action-tab="gaps">
-                    Gaps <em><?= count($gapItems) ?></em>
+                <button type="button" class="action-tab action-tab-gaps" role="tab" aria-selected="false" data-action-tab="gaps">
+                    🟠 Gaps <em><?= count($gapItems) ?></em>
                 </button>
-                <button type="button" class="action-tab" role="tab" aria-selected="false" data-action-tab="tbd">
-                    TBD <em><?= count($tbdItems) ?></em>
+                <button type="button" class="action-tab action-tab-tbd" role="tab" aria-selected="false" data-action-tab="tbd">
+                    ❓ TBD <em><?= count($tbdItems) ?></em>
                 </button>
-                <button type="button" class="action-tab" role="tab" aria-selected="false" data-action-tab="exceptions">
-                    Exceptions <em><?= count($findings) ?></em>
+                <button type="button" class="action-tab action-tab-exceptions" role="tab" aria-selected="false" data-action-tab="exceptions">
+                    ⚠️ Exceptions <em><?= count($findings) ?></em>
                 </button>
-                <button type="button" class="action-tab" role="tab" aria-selected="false" data-action-tab="signoff">
-                    Sign-off
+                <button type="button" class="action-tab action-tab-signoff" role="tab" aria-selected="false" data-action-tab="signoff">
+                    ✍️ Sign-off
                 </button>
-                <button type="button" class="action-tab" role="tab" aria-selected="false" data-action-tab="versions">
-                    Versions <em><?= count($versions) ?></em>
+                <button type="button" class="action-tab action-tab-versions" role="tab" aria-selected="false" data-action-tab="versions">
+                    🗂️ Versions <em><?= count($versions) ?></em>
                 </button>
-                <button type="button" class="action-tab" role="tab" aria-selected="false" data-action-tab="workspace">
-                    Workspace
+                <button type="button" class="action-tab action-tab-workspace" role="tab" aria-selected="false" data-action-tab="workspace">
+                    🧰 Workspace
                 </button>
             </nav>
 
@@ -269,18 +272,21 @@ final class DashboardDecisionViews
             </div>
 
             <div class="action-panel" data-action-panel="exceptions" hidden>
-                <section class="table-card" id="exception-tracker">
-                    <div class="card-heading">
-                        <div>
-                            <div class="eyebrow">Exception tracker</div>
-                            <h3>Governance findings</h3>
+                <section class="table-card table-card-uplift chart-card-tone-governance" id="exception-tracker">
+                    <div class="card-heading card-heading-uplift">
+                        <div class="card-heading-with-icon">
+                            <span class="card-icon" aria-hidden="true">⚠️</span>
+                            <div>
+                                <div class="eyebrow">Exception tracker</div>
+                                <h3>Governance findings</h3>
+                            </div>
                         </div>
-                        <span class="result-count" id="exception-open-count"><?= $openExceptions ?> open</span>
+                        <span class="result-count result-count-badge" id="exception-open-count"><?= $openExceptions ?> open</span>
                     </div>
                     <?php if ($findings === []): ?>
-                        <p class="empty-panel">No documented exceptions in this workbook.</p>
+                        <p class="empty-panel project-empty-state">✨ No documented exceptions in this workbook.</p>
                     <?php else: ?>
-                        <p class="panel-help">Update exception status as findings are approved or expire.</p>
+                        <p class="panel-help">📝 Update exception status as findings are approved or expire.</p>
                         <div class="table-scroll">
                             <table id="exception-table">
                                 <thead>
@@ -321,20 +327,23 @@ final class DashboardDecisionViews
             </div>
 
             <div class="action-panel" data-action-panel="signoff" hidden>
-                <section class="table-card final-evaluation-card" id="final-evaluation">
-                    <div class="card-heading">
-                        <div>
-                            <div class="eyebrow">Evaluator sign-off</div>
-                            <h3>Final evaluation</h3>
+                <section class="table-card table-card-uplift final-evaluation-card chart-card-tone-signoff" id="final-evaluation">
+                    <div class="card-heading card-heading-uplift">
+                        <div class="card-heading-with-icon">
+                            <span class="card-icon" aria-hidden="true">✍️</span>
+                            <div>
+                                <div class="eyebrow">Evaluator sign-off</div>
+                                <h3>Final evaluation</h3>
+                            </div>
                         </div>
-                        <span class="result-count" id="final-eval-saved-label">
-                            <?= $evalUpdatedAt !== '' ? 'Saved ' . $this->e($evalUpdatedAt) : 'Not saved yet' ?>
+                        <span class="result-count result-count-badge" id="final-eval-saved-label">
+                            <?= $evalUpdatedAt !== '' ? '💾 Saved ' . $this->e($evalUpdatedAt) : 'Not saved yet' ?>
                         </span>
                     </div>
                     <?php if ($currentId <= 0): ?>
-                        <p class="panel-help">Upload and open a saved assessment to record the final evaluation.</p>
+                        <p class="panel-help">📁 Upload and open a saved assessment to record the final evaluation.</p>
                     <?php else: ?>
-                        <p class="panel-help">Capture the evaluator’s notes, identity, and ready-to-go-live decision for this version.</p>
+                        <p class="panel-help">📝 Capture the evaluator’s notes, identity, and ready-to-go-live decision for this version.</p>
                         <form id="final-evaluation-form" class="final-evaluation-form" novalidate>
                             <div class="final-eval-grid">
                                 <label>
@@ -354,11 +363,11 @@ final class DashboardDecisionViews
                                 <label class="golive-toggle">
                                     <input type="checkbox" name="ready_to_golive" id="eval-ready" value="1" <?= $readyToGolive ? 'checked' : '' ?>>
                                     <span class="golive-toggle-ui" aria-hidden="true"></span>
-                                    <span class="golive-toggle-label">Ready to go-live</span>
+                                    <span class="golive-toggle-label">🚀 Ready to go-live</span>
                                 </label>
                                 <div class="final-eval-actions">
                                     <span class="final-eval-status" id="final-eval-status" hidden></span>
-                                    <button type="submit" class="button button-primary" id="btn-save-evaluation">Save evaluation</button>
+                                    <button type="submit" class="button button-primary" id="btn-save-evaluation">💾 Save evaluation</button>
                                 </div>
                             </div>
                         </form>
@@ -434,18 +443,21 @@ final class DashboardDecisionViews
     ): string {
         ob_start();
         ?>
-        <section class="table-card">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow">Recorded responses</div>
-                    <h3><?= $this->e($heading) ?></h3>
+        <section class="table-card table-card-uplift">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true"><?= match ($scope) { 'risks' => '🔴', 'gaps' => '🟠', 'tbd' => '❓', default => '📝' } ?></span>
+                    <div>
+                        <div class="eyebrow">Recorded responses</div>
+                        <h3><?= $this->e($heading) ?></h3>
+                    </div>
                 </div>
-                <span class="result-count"><?= count($items) ?> item<?= count($items) === 1 ? '' : 's' ?></span>
+                <span class="result-count result-count-badge"><?= count($items) ?> item<?= count($items) === 1 ? '' : 's' ?></span>
             </div>
             <?php if ($items === []): ?>
-                <p class="empty-panel">No items in this category right now.</p>
+                <p class="empty-panel project-empty-state">✨ No items in this category right now.</p>
             <?php else: ?>
-                <p class="panel-help"><?= $this->e($help) ?>. Select listed rows to update them together, or edit one at a time.</p>
+                <p class="panel-help">📋 <?= $this->e($help) ?>. Select listed rows to update them together, or edit one at a time.</p>
                 <div class="bulk-response-bar" data-bulk-scope="<?= $this->e($scope) ?>" data-bulk-table="<?= $this->e($tableId) ?>">
                     <label class="bulk-select-all">
                         <input type="checkbox" class="bulk-select-all-toggle" title="Select all listed rows">
@@ -533,16 +545,19 @@ final class DashboardDecisionViews
     {
         ob_start();
         ?>
-        <section class="table-card" id="version-history">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow">Comparison & history</div>
-                    <h3>Saved versions</h3>
+        <section class="table-card table-card-uplift chart-card-tone-versions" id="version-history">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">🗂️</span>
+                    <div>
+                        <div class="eyebrow">Comparison & history</div>
+                        <h3>Saved versions</h3>
+                    </div>
                 </div>
-                <span class="result-count"><?= count($versions) ?> version<?= count($versions) === 1 ? '' : 's' ?></span>
+                <span class="result-count result-count-badge"><?= count($versions) ?> version<?= count($versions) === 1 ? '' : 's' ?></span>
             </div>
             <?php if ($versions === []): ?>
-                <p class="empty-panel">No other saved versions for this project yet. Upload again to enable diff and trends.</p>
+                <p class="empty-panel project-empty-state">📁 No other saved versions for this project yet. Upload again to enable diff and trends.</p>
             <?php else: ?>
                 <?php
                 $olderCount = 0;
@@ -654,11 +669,14 @@ final class DashboardDecisionViews
     {
         ob_start();
         ?>
-        <section class="table-card">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow">Actionability</div>
-                    <h3>Owner workload</h3>
+        <section class="table-card table-card-uplift chart-card-tone-workspace">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">👥</span>
+                    <div>
+                        <div class="eyebrow">Actionability</div>
+                        <h3>Owner workload</h3>
+                    </div>
                 </div>
             </div>
             <div class="owner-list">
@@ -695,11 +713,14 @@ final class DashboardDecisionViews
 
         ob_start();
         ?>
-        <section class="table-card">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow">Timeline heat</div>
-                    <h3>Remediation lanes</h3>
+        <section class="table-card table-card-uplift chart-card-tone-workspace">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">⏱️</span>
+                    <div>
+                        <div class="eyebrow">Timeline heat</div>
+                        <h3>Remediation lanes</h3>
+                    </div>
                 </div>
             </div>
             <div class="timeline-lanes">
@@ -735,13 +756,16 @@ final class DashboardDecisionViews
         $total = max(1, (int) ($evidence['total'] ?? 0));
         ob_start();
         ?>
-        <section class="table-card">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow">Trust / completeness</div>
-                    <h3>Evidence checklist</h3>
+        <section class="table-card table-card-uplift chart-card-tone-workspace">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">✅</span>
+                    <div>
+                        <div class="eyebrow">Trust / completeness</div>
+                        <h3>Evidence checklist</h3>
+                    </div>
                 </div>
-                <span class="result-count"><?= (int) ($evidence['covered'] ?? 0) ?>/<?= (int) ($evidence['total'] ?? 0) ?> covered</span>
+                <span class="result-count result-count-badge"><?= (int) ($evidence['covered'] ?? 0) ?>/<?= (int) ($evidence['total'] ?? 0) ?> covered</span>
             </div>
             <div class="evidence-meter">
                 <span class="ev-covered" style="width: <?= round(((int) ($evidence['covered'] ?? 0) / $total) * 100, 2) ?>%"></span>

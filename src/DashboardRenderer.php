@@ -41,6 +41,8 @@ final class DashboardRenderer
      *   ready_to_golive?: bool,
      *   updated_at?: string
      * }|null $evaluation
+     * @param list<array{id: int, label: string, url: string, sort_order: int}> $projectLinks
+     * @param list<array{id: int, title: string, source: string, sort_order: int}> $projectDiagrams
      */
     public function render(
         Assessment $assessment,
@@ -51,7 +53,9 @@ final class DashboardRenderer
         string $csrfToken = '',
         string $flash = '',
         array $responses = [],
-        ?array $evaluation = null
+        ?array $evaluation = null,
+        array $projectLinks = [],
+        array $projectDiagrams = []
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -61,6 +65,7 @@ final class DashboardRenderer
         $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
         $insights = (new AssessmentInsights())->build($assessment, $responses);
         $decisionViews = new DashboardDecisionViews();
+        $projectResources = new DashboardProjectResources();
         $changedKeys = is_array($comparison['changed_keys'] ?? null) ? $comparison['changed_keys'] : [];
         $actionableItems = $this->collectActionableItems($items, $dueItems, $responses);
         $progress = (new ResponseProgress())->compute(array_merge($items, $dueItems), $responses);
@@ -128,7 +133,7 @@ final class DashboardRenderer
                 <div class="hero-main">
                     <div class="hero-head">
                         <div class="hero-intro">
-                            <div class="eyebrow">Architecture risk signal desk</div>
+                            <div class="eyebrow">📡 Architecture risk signal desk</div>
                             <h2>Risk <em>posture</em></h2>
                             <?= $decisionViews->renderTrendChips($comparison) ?>
                         </div>
@@ -143,61 +148,63 @@ final class DashboardRenderer
                         </div>
                     </div>
                     <div class="hero-project">
-                        <span class="hero-project-label">Project</span>
+                        <span class="hero-project-label">📁 Project</span>
                         <p class="hero-project-name"><?= $this->e($solutionName) ?></p>
                         <?php if (!empty($evaluation['ready_to_golive'])): ?>
-                            <span class="golive-pill">Ready to go-live</span>
+                            <span class="golive-pill">🚀 Ready to go-live</span>
                         <?php endif; ?>
                         <?= $this->renderProgressMeter($progress) ?>
                         <?= $this->renderRiskSpectrum($archProgress) ?>
                     </div>
                     <div class="hero-actions">
-                        <a class="button ghost" href="index.php#find-projects">← Home · Find projects</a>
-                        <a class="button ghost" href="index.php#upload">Upload another file</a>
-                        <a class="button button-primary" href="#risk-register">View register</a>
+                        <a class="button ghost" href="index.php#find-projects">🏠 Home · Find projects</a>
+                        <a class="button ghost" href="index.php#upload">📤 Upload another file</a>
+                        <a class="button button-primary" href="#risk-register">📋 View register</a>
                     </div>
                 </div>
             </section>
 
             <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison, $evaluation, $progress) ?>
 
-            <section class="meta-grid">
-                <div class="meta-item meta-vendor"><span class="label">Vendor</span><strong><?= $this->e($metadata['vendor'] ?? '') ?></strong></div>
-                <div class="meta-item meta-scope"><span class="label">Scope</span><strong><?= $this->e($metadata['scope'] ?? '') ?></strong></div>
-                <div class="meta-item meta-arch"><span class="label">Architecture model</span><strong><?= $this->e($metadata['architecture_model'] ?? '') ?></strong></div>
-                <div class="meta-item meta-reviewer"><span class="label">Reviewer</span><strong><?= $this->e($metadata['reviewer'] ?? '') ?></strong></div>
+            <section class="meta-grid meta-grid-uplift">
+                <div class="meta-item meta-vendor"><span class="label">🏢 Vendor</span><strong><?= $this->e($metadata['vendor'] ?? '') ?></strong></div>
+                <div class="meta-item meta-scope"><span class="label">🎯 Scope</span><strong><?= $this->e($metadata['scope'] ?? '') ?></strong></div>
+                <div class="meta-item meta-arch"><span class="label">🏗️ Architecture model</span><strong><?= $this->e($metadata['architecture_model'] ?? '') ?></strong></div>
+                <div class="meta-item meta-reviewer"><span class="label">👤 Reviewer</span><strong><?= $this->e($metadata['reviewer'] ?? '') ?></strong></div>
                 <?php if (($metadata['ddr_id'] ?? '') !== ''): ?>
-                    <div class="meta-item meta-file"><span class="label">DDR</span><strong><?= $this->e($metadata['ddr_id']) ?></strong></div>
+                    <div class="meta-item meta-file"><span class="label">📄 DDR</span><strong><?= $this->e($metadata['ddr_id']) ?></strong></div>
                 <?php endif; ?>
                 <?php if (($metadata['vra_id'] ?? '') !== ''): ?>
-                    <div class="meta-item meta-file"><span class="label">VRA</span><strong><?= $this->e($metadata['vra_id']) ?></strong></div>
+                    <div class="meta-item meta-file"><span class="label">📄 VRA</span><strong><?= $this->e($metadata['vra_id']) ?></strong></div>
                 <?php endif; ?>
                 <?php if (($metadata['overall_risk_rating'] ?? '') !== ''): ?>
-                    <div class="meta-item meta-reviewer"><span class="label">Overall risk rating</span><strong><?= $this->e($metadata['overall_risk_rating']) ?></strong></div>
+                    <div class="meta-item meta-reviewer"><span class="label">⚖️ Overall risk rating</span><strong><?= $this->e($metadata['overall_risk_rating']) ?></strong></div>
                 <?php endif; ?>
                 <?php if (($metadata['business_unit'] ?? '') !== ''): ?>
-                    <div class="meta-item meta-scope"><span class="label">Business unit</span><strong><?= $this->e($metadata['business_unit']) ?></strong></div>
+                    <div class="meta-item meta-scope"><span class="label">🏬 Business unit</span><strong><?= $this->e($metadata['business_unit']) ?></strong></div>
                 <?php endif; ?>
                 <?php if ($sourceFilename !== ''): ?>
-                    <div class="meta-item meta-file"><span class="label">Source file</span><strong><?= $this->e($sourceFilename) ?></strong></div>
+                    <div class="meta-item meta-file"><span class="label">📎 Source file</span><strong><?= $this->e($sourceFilename) ?></strong></div>
                 <?php endif; ?>
             </section>
 
-            <nav class="dash-tabs" role="tablist" aria-label="Workbook tabs">
-                <button type="button" class="dash-tab is-active" role="tab" aria-selected="true" data-tab="architecture">Architecture checks</button>
+            <nav class="dash-tabs dash-tabs-uplift" role="tablist" aria-label="Workbook tabs">
+                <button type="button" class="dash-tab dash-tab-theme-architecture is-active" role="tab" aria-selected="true" data-tab="architecture">🏛️ Architecture checks</button>
                 <?php if ($hasDueDiligence): ?>
-                    <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="due-diligence">Due diligence</button>
+                    <button type="button" class="dash-tab dash-tab-theme-diligence" role="tab" aria-selected="false" data-tab="due-diligence">🔍 Due diligence</button>
                 <?php endif; ?>
-                <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="actions">Actions</button>
+                <button type="button" class="dash-tab dash-tab-theme-actions" role="tab" aria-selected="false" data-tab="actions">✅ Actions</button>
+                <button type="button" class="dash-tab dash-tab-theme-project" role="tab" aria-selected="false" data-tab="project">📐 Diagram &amp; links</button>
                 <?php if ($hasGovernance): ?>
-                    <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="governance">Governance summary</button>
+                    <button type="button" class="dash-tab dash-tab-theme-governance" role="tab" aria-selected="false" data-tab="governance">⚖️ Governance summary</button>
                 <?php endif; ?>
                 <?php if ($hasLegend): ?>
-                    <button type="button" class="dash-tab" role="tab" aria-selected="false" data-tab="legend">Scoring legend</button>
+                    <button type="button" class="dash-tab dash-tab-theme-legend" role="tab" aria-selected="false" data-tab="legend">📊 Scoring legend</button>
                 <?php endif; ?>
             </nav>
 
-            <div class="dash-panel is-active" data-panel="architecture">
+            <div class="dash-panel dash-panel-theme-architecture is-active" data-panel="architecture">
+                <?= $this->renderPanelIntro('🏛️', 'Architecture review', 'Architecture checks', 'Browse status, risk levels, charts, and the full register for every architecture control.') ?>
                 <?= $this->renderKpis($summary, 'architecture', $archProgress) ?>
                 <?= $this->renderChartsBlock($statusSlices, $riskSlices, $sectionSlices, $summary, 'architecture', $archProgress) ?>
                 <?= $this->renderSectionBars($summary['by_section'] ?? []) ?>
@@ -216,9 +223,10 @@ final class DashboardRenderer
             </div>
 
             <?php if ($hasDueDiligence): ?>
-                <div class="dash-panel" data-panel="due-diligence" hidden>
+                <div class="dash-panel dash-panel-theme-diligence" data-panel="due-diligence" hidden>
+                    <?= $this->renderPanelIntro('🔍', 'Extended review', 'Due diligence', 'Technology risk template items, evidence notes, and extended diligence coverage.') ?>
                     <?php if (($workbook['context'] ?? '') !== ''): ?>
-                        <div class="context-banner"><?= $this->e((string) $workbook['context']) ?></div>
+                        <div class="context-banner context-banner-uplift">💡 <?= $this->e((string) $workbook['context']) ?></div>
                     <?php endif; ?>
                     <?= $this->renderKpis($ddSummary, 'due_diligence', $ddProgress) ?>
                     <?= $this->renderChartsBlock($ddStatusSlices, $ddRiskSlices, $ddSectionSlices, $ddSummary, 'due_diligence', $ddProgress) ?>
@@ -238,24 +246,32 @@ final class DashboardRenderer
                 </div>
             <?php endif; ?>
 
-            <div class="dash-panel" data-panel="actions" hidden>
+            <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
                 <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation) ?>
             </div>
 
+            <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>
+                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams) ?>
+            </div>
+
             <?php if ($hasGovernance): ?>
-                <div class="dash-panel" data-panel="governance" hidden>
+                <div class="dash-panel dash-panel-theme-governance" data-panel="governance" hidden>
+                    <?= $this->renderPanelIntro('⚖️', 'Governance & compliance', 'Governance summary', 'JSON diligence fields, documented exceptions, and recommended governance actions.') ?>
                     <?= $this->renderGovernancePanel($workbook, $metadata) ?>
                 </div>
             <?php endif; ?>
 
             <?php if ($hasLegend): ?>
-                <div class="dash-panel" data-panel="legend" hidden>
+                <div class="dash-panel dash-panel-theme-legend" data-panel="legend" hidden>
+                    <?= $this->renderPanelIntro('📊', 'Scoring reference', 'Scoring legend', 'Status meanings, risk level guidance, and minimum evidence checklist from the workbook.') ?>
                     <?= $this->renderLegendPanel($workbook['legend'] ?? []) ?>
                 </div>
             <?php endif; ?>
         </main>
     </div>
     <script src="assets/js/theme.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script src="assets/js/project-resources.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/project-resources.js') ?>"></script>
     <script src="assets/js/dashboard.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/dashboard.js') ?>"></script>
 </body>
 </html>
@@ -269,10 +285,19 @@ final class DashboardRenderer
     private function renderKpis(array $summary, string $scope, array $progress = []): string
     {
         $prefix = $scope === 'due_diligence' ? 'dd-' : '';
+        $statusEmoji = [
+            'Pass' => '✅',
+            'Gap' => '🟠',
+            'Risk' => '🔴',
+            'TBD' => '❓',
+            'N/A' => '➖',
+        ];
+        $riskEmoji = ['High' => '🚨', 'Med' => '⚠️', 'Low' => '🟢'];
         ob_start();
         ?>
-        <section class="kpis" id="<?= $prefix ?>kpi-tiles" data-filter-scope="<?= $this->e($scope) ?>">
+        <section class="kpis kpis-uplift" id="<?= $prefix ?>kpi-tiles" data-filter-scope="<?= $this->e($scope) ?>">
             <button type="button" class="kpi kpi-clickable tone-all is-active" data-filter-type="all" data-filter-value="" aria-pressed="true">
+                <span class="kpi-emoji" aria-hidden="true">📊</span>
                 <div class="eyebrow">Total</div>
                 <strong><?= (int) ($summary['total'] ?? 0) ?></strong>
                 <span>View all rows</span>
@@ -295,6 +320,7 @@ final class DashboardRenderer
                     data-progress-key="<?= $showProgress ? $this->e($bucketKey) : '' ?>"
                     aria-pressed="false"
                 >
+                    <span class="kpi-emoji" aria-hidden="true"><?= $statusEmoji[$status] ?? '📌' ?></span>
                     <div class="eyebrow"><?= $this->e($status) ?></div>
                     <?php if ($showProgress): ?>
                         <?php $hasResolution = $addressed > 0; ?>
@@ -328,6 +354,7 @@ final class DashboardRenderer
                     data-progress-key="<?= $showProgress ? 'high' : '' ?>"
                     aria-pressed="false"
                 >
+                    <span class="kpi-emoji" aria-hidden="true"><?= $riskEmoji[$risk] ?? '📌' ?></span>
                     <div class="eyebrow"><?= $this->e($risk) ?> risk</div>
                     <?php if ($showProgress): ?>
                         <strong
@@ -388,12 +415,15 @@ final class DashboardRenderer
 
         ob_start();
         ?>
-        <section class="charts-grid">
-            <div class="chart-card">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Flow health</div>
-                        <h3>Status mix</h3>
+        <section class="charts-grid charts-grid-uplift">
+            <div class="chart-card chart-card-uplift chart-card-tone-status">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">💚</span>
+                        <div>
+                            <div class="eyebrow">Flow health</div>
+                            <h3>Status mix</h3>
+                        </div>
                     </div>
                 </div>
                 <div class="chart-panel">
@@ -407,11 +437,14 @@ final class DashboardRenderer
                     <?= $this->renderChartLegend($statusSlices, 'status') ?>
                 </div>
             </div>
-            <div class="chart-card">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Risk exposure</div>
-                        <h3>Risk levels</h3>
+            <div class="chart-card chart-card-uplift chart-card-tone-risk">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">🎯</span>
+                        <div>
+                            <div class="eyebrow">Risk exposure</div>
+                            <h3>Risk levels</h3>
+                        </div>
                     </div>
                 </div>
                 <div class="chart-panel">
@@ -425,11 +458,14 @@ final class DashboardRenderer
                     <?= $this->renderChartLegend($riskSlices, 'risk') ?>
                 </div>
             </div>
-            <div class="chart-card chart-card-wide">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Section coverage</div>
-                        <h3>Section distribution</h3>
+            <div class="chart-card chart-card-wide chart-card-uplift chart-card-tone-section">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">🧩</span>
+                        <div>
+                            <div class="eyebrow">Section coverage</div>
+                            <h3>Section distribution</h3>
+                        </div>
                     </div>
                 </div>
                 <div class="chart-panel chart-panel-split">
@@ -453,11 +489,14 @@ final class DashboardRenderer
     {
         ob_start();
         ?>
-        <section class="chart-card section-bars-card">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow">Section drill-down</div>
-                    <h3>Checks by section</h3>
+        <section class="chart-card section-bars-card chart-card-uplift chart-card-tone-section">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">📚</span>
+                    <div>
+                        <div class="eyebrow">Section drill-down</div>
+                        <h3>Checks by section</h3>
+                    </div>
                 </div>
             </div>
             <div class="state-bars">
@@ -519,9 +558,9 @@ final class DashboardRenderer
 
         ob_start();
         ?>
-        <section class="toolbar" data-filter-scope="<?= $this->e($scope) ?>">
+        <section class="toolbar toolbar-uplift" data-filter-scope="<?= $this->e($scope) ?>">
             <div class="search-wrap">
-                <span>Search</span>
+                <span>🔎 Search</span>
                 <input type="search" id="<?= $prefix ?>filter-search" placeholder="Search check, notes, owner, mitigation...">
             </div>
             <select id="<?= $prefix ?>filter-section">
@@ -556,19 +595,22 @@ final class DashboardRenderer
                 <option value="">All rows</option>
                 <option value="changed">Changed since last upload</option>
             </select>
-            <button type="button" class="button ghost" id="<?= $prefix ?>clearFilters">Reset</button>
-            <button type="button" class="button ghost" data-filter-type="action_tab" data-filter-value="risks">Respond in Actions</button>
+            <button type="button" class="button ghost" id="<?= $prefix ?>clearFilters">↩️ Reset</button>
+            <button type="button" class="button ghost" data-filter-type="action_tab" data-filter-value="risks">✅ Respond in Actions</button>
         </section>
 
-        <section class="table-card" id="<?= $this->e($registerId) ?>" data-filter-scope="<?= $this->e($scope) ?>">
-            <div class="card-heading">
-                <div>
-                    <div class="eyebrow"><?= $this->e($eyebrow) ?></div>
-                    <h3><?= $this->e($heading) ?></h3>
+        <section class="table-card table-card-uplift" id="<?= $this->e($registerId) ?>" data-filter-scope="<?= $this->e($scope) ?>">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true"><?= $extendedColumns ? '🔍' : '📋' ?></span>
+                    <div>
+                        <div class="eyebrow"><?= $this->e($eyebrow) ?></div>
+                        <h3><?= $this->e($heading) ?></h3>
+                    </div>
                 </div>
-                <span class="result-count" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
+                <span class="result-count result-count-badge" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
             </div>
-            <p class="panel-help dashboard-readonly-hint">Dashboard view only. Record Taken care / Ignore / comments in the <strong>Actions</strong> tab.</p>
+            <p class="panel-help dashboard-readonly-hint">👀 Dashboard view only. Record Taken care / Ignore / comments in the <strong>✅ Actions</strong> tab.</p>
             <div class="table-scroll">
                 <table id="<?= $this->e($tableId) ?>">
                     <thead>
@@ -779,28 +821,28 @@ final class DashboardRenderer
         ob_start();
         ?>
         <?php if (($metadata['tprm_recommendation'] ?? '') !== '' || ($metadata['technology_recommendation'] ?? '') !== '' || ($metadata['governance_action'] ?? '') !== ''): ?>
-            <section class="governance-highlights">
+            <section class="governance-highlights governance-highlights-uplift">
                 <?php if (($metadata['overall_risk_rating'] ?? '') !== ''): ?>
                     <article class="highlight-card">
-                        <span class="label">Overall rating</span>
+                        <span class="label">⚖️ Overall rating</span>
                         <strong><?= $this->e($metadata['overall_risk_rating']) ?></strong>
                     </article>
                 <?php endif; ?>
                 <?php if (($metadata['tprm_recommendation'] ?? '') !== ''): ?>
                     <article class="highlight-card">
-                        <span class="label">TPRM recommendation</span>
+                        <span class="label">🛡️ TPRM recommendation</span>
                         <strong><?= $this->e($metadata['tprm_recommendation']) ?></strong>
                     </article>
                 <?php endif; ?>
                 <?php if (($metadata['technology_recommendation'] ?? '') !== ''): ?>
                     <article class="highlight-card">
-                        <span class="label">Technology recommendation</span>
+                        <span class="label">💻 Technology recommendation</span>
                         <strong><?= $this->e($metadata['technology_recommendation']) ?></strong>
                     </article>
                 <?php endif; ?>
                 <?php if (($metadata['governance_action'] ?? '') !== ''): ?>
                     <article class="highlight-card highlight-warning">
-                        <span class="label">Required governance action</span>
+                        <span class="label">⚠️ Required governance action</span>
                         <strong><?= $this->e($metadata['governance_action']) ?></strong>
                     </article>
                 <?php endif; ?>
@@ -808,11 +850,14 @@ final class DashboardRenderer
         <?php endif; ?>
 
         <?php if ($fields !== []): ?>
-            <section class="table-card">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">JSON due diligence</div>
-                        <h3>Summary fields</h3>
+            <section class="table-card table-card-uplift chart-card-tone-governance">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">📄</span>
+                        <div>
+                            <div class="eyebrow">JSON due diligence</div>
+                            <h3>Summary fields</h3>
+                        </div>
                     </div>
                 </div>
                 <div class="table-scroll">
@@ -839,13 +884,16 @@ final class DashboardRenderer
         <?php endif; ?>
 
         <?php if ($findings !== []): ?>
-            <section class="table-card" style="margin-top: 10px;">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Exceptions</div>
-                        <h3>Documented findings</h3>
+            <section class="table-card table-card-uplift chart-card-tone-governance" style="margin-top: 10px;">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">🚨</span>
+                        <div>
+                            <div class="eyebrow">Exceptions</div>
+                            <h3>Documented findings</h3>
+                        </div>
                     </div>
-                    <span class="result-count"><?= count($findings) ?> findings</span>
+                    <span class="result-count result-count-badge"><?= count($findings) ?> findings</span>
                 </div>
                 <div class="table-scroll">
                     <table>
@@ -877,7 +925,7 @@ final class DashboardRenderer
         <?php endif; ?>
 
         <?php if ($note !== ''): ?>
-            <div class="context-banner context-note"><?= $this->e($note) ?></div>
+            <div class="context-banner context-note context-banner-uplift">📝 <?= $this->e($note) ?></div>
         <?php endif; ?>
         <?php
 
@@ -893,12 +941,15 @@ final class DashboardRenderer
 
         ob_start();
         ?>
-        <div class="legend-grid">
-            <section class="table-card">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Scoring</div>
-                        <h3>Status meanings</h3>
+        <div class="legend-grid legend-grid-uplift">
+            <section class="table-card table-card-uplift chart-card-tone-legend">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">🏷️</span>
+                        <div>
+                            <div class="eyebrow">Scoring</div>
+                            <h3>Status meanings</h3>
+                        </div>
                     </div>
                 </div>
                 <div class="table-scroll">
@@ -923,11 +974,14 @@ final class DashboardRenderer
                 </div>
             </section>
 
-            <section class="table-card">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Scoring</div>
-                        <h3>Risk level guidance</h3>
+            <section class="table-card table-card-uplift chart-card-tone-legend">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">🎯</span>
+                        <div>
+                            <div class="eyebrow">Scoring</div>
+                            <h3>Risk level guidance</h3>
+                        </div>
                     </div>
                 </div>
                 <div class="table-scroll">
@@ -952,11 +1006,14 @@ final class DashboardRenderer
         </div>
 
         <?php if ($checklist !== []): ?>
-            <section class="table-card" style="margin-top: 10px;">
-                <div class="card-heading">
-                    <div>
-                        <div class="eyebrow">Evidence</div>
-                        <h3>Minimum evidence checklist</h3>
+            <section class="table-card table-card-uplift chart-card-tone-legend" style="margin-top: 10px;">
+                <div class="card-heading card-heading-uplift">
+                    <div class="card-heading-with-icon">
+                        <span class="card-icon" aria-hidden="true">✅</span>
+                        <div>
+                            <div class="eyebrow">Evidence</div>
+                            <h3>Minimum evidence checklist</h3>
+                        </div>
                     </div>
                 </div>
                 <ol class="checklist">
@@ -1351,6 +1408,25 @@ final class DashboardRenderer
             'x' => $cx + ($radius * cos($radians)),
             'y' => $cy + ($radius * sin($radians)),
         ];
+    }
+
+    private function renderPanelIntro(string $emoji, string $eyebrow, string $title, string $description): string
+    {
+        ob_start();
+        ?>
+        <div class="dash-panel-intro">
+            <div class="dash-panel-intro-copy">
+                <span class="dash-panel-intro-icon" aria-hidden="true"><?= $emoji ?></span>
+                <div>
+                    <div class="eyebrow"><?= $this->e($eyebrow) ?></div>
+                    <h2><?= $this->e($title) ?></h2>
+                    <p><?= $this->e($description) ?></p>
+                </div>
+            </div>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
     }
 
     private function brandMark(): string

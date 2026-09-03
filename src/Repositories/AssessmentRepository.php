@@ -246,6 +246,12 @@ final class AssessmentRepository
             $deleteEvaluation = $this->pdo->prepare('DELETE FROM final_evaluations WHERE assessment_id = :id');
             $deleteEvaluation->execute([':id' => $id]);
 
+            $deleteLinks = $this->pdo->prepare('DELETE FROM project_links WHERE assessment_id = :id');
+            $deleteLinks->execute([':id' => $id]);
+
+            $deleteMermaid = $this->pdo->prepare('DELETE FROM project_mermaid_diagrams WHERE assessment_id = :id');
+            $deleteMermaid->execute([':id' => $id]);
+
             $deleteAssessment = $this->pdo->prepare('DELETE FROM assessments WHERE id = :id');
             $deleteAssessment->execute([':id' => $id]);
 

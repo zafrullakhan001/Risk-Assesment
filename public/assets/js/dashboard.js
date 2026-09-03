@@ -1017,7 +1017,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 if (heroPill) {
-                    heroPill.textContent = 'Ready to go-live';
+                    heroPill.textContent = '🚀 Ready to go-live';
                 }
             } else if (heroPill) {
                 heroPill.remove();
@@ -1025,7 +1025,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (badge) {
                 badge.hidden = false;
                 badge.classList.toggle('is-pending', !ready);
-                badge.textContent = `${ready ? 'Ready to go-live' : 'Not ready to go-live'}${name ? ` · ${name}` : ''}`;
+                badge.textContent = `${ready ? '🚀 Ready to go-live' : '⏳ Not ready to go-live'}${name ? ` · ${name}` : ''}`;
             }
             if (savedLabel && evaluation.updated_at) {
                 savedLabel.textContent = `Saved ${evaluation.updated_at}`;

@@ -14,12 +14,16 @@ use RiskAssessment\Models\Assessment;
 use RiskAssessment\Repositories\AssessmentRepository;
 use RiskAssessment\Repositories\FinalEvaluationRepository;
 use RiskAssessment\Repositories\ItemResponseRepository;
+use RiskAssessment\Repositories\ProjectLinksRepository;
+use RiskAssessment\Repositories\ProjectMermaidRepository;
 
 $config = require dirname(__DIR__) . '/config/config.php';
 $dbConfig = require dirname(__DIR__) . '/config/database.php';
 $repository = new AssessmentRepository(Database::connection($dbConfig));
 $responseRepository = new ItemResponseRepository(Database::connection($dbConfig));
 $evaluationRepository = new FinalEvaluationRepository(Database::connection($dbConfig));
+$projectLinksRepository = new ProjectLinksRepository(Database::connection($dbConfig));
+$projectMermaidRepository = new ProjectMermaidRepository(Database::connection($dbConfig));
 
 $error = '';
 $flash = '';
@@ -102,6 +106,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'ok' => true,
                 'action' => ItemResponseRepository::normalizeAction($responseAction),
                 'label' => ItemResponseRepository::label($responseAction),
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'save_project_mermaid') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $rawDiagrams = $_POST['diagrams'] ?? '[]';
+            if (is_string($rawDiagrams)) {
+                $decoded = json_decode($rawDiagrams, true);
+                $diagrams = is_array($decoded) ? $decoded : [];
+            } elseif (is_array($rawDiagrams)) {
+                $diagrams = $rawDiagrams;
+            } else {
+                $diagrams = [];
+            }
+
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before saving diagrams.');
+            }
+
+            if (!$projectMermaidRepository->replaceForAssessment($targetId, $diagrams)) {
+                throw new RuntimeException('Unable to save diagrams.');
+            }
+
+            $saved = $projectMermaidRepository->listForAssessment($targetId);
+            echo json_encode([
+                'ok' => true,
+                'diagrams' => $saved,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'save_project_links') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $rawLinks = $_POST['links'] ?? '[]';
+            if (is_string($rawLinks)) {
+                $decoded = json_decode($rawLinks, true);
+                $links = is_array($decoded) ? $decoded : [];
+            } elseif (is_array($rawLinks)) {
+                $links = $rawLinks;
+            } else {
+                $links = [];
+            }
+
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before saving links.');
+            }
+
+            if (!$projectLinksRepository->replaceForAssessment($targetId, $links)) {
+                throw new RuntimeException('Unable to save links.');
+            }
+
+            $saved = $projectLinksRepository->listForAssessment($targetId);
+            echo json_encode([
+                'ok' => true,
+                'links' => $saved,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);
@@ -289,6 +369,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $versions = $repository->listVersionsBySolutionName($solutionName);
             $responses = $responseRepository->listForAssessment($assessmentId);
             $evaluation = $evaluationRepository->findByAssessmentId($assessmentId);
+            $projectLinks = $projectLinksRepository->listForAssessment($assessmentId);
+            $projectDiagrams = $projectMermaidRepository->listForAssessment($assessmentId);
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -299,7 +381,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 (string) $_SESSION['csrf_token'],
                 $flash,
                 $responses,
-                $evaluation
+                $evaluation,
+                $projectLinks,
+                $projectDiagrams
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -324,6 +408,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
         $versions = $repository->listVersionsBySolutionName($assessment->getMetadata('solution_name'));
         $responses = $storedId > 0 ? $responseRepository->listForAssessment($storedId) : [];
         $evaluation = $storedId > 0 ? $evaluationRepository->findByAssessmentId($storedId) : null;
+        $projectLinks = $storedId > 0 ? $projectLinksRepository->listForAssessment($storedId) : [];
+        $projectDiagrams = $storedId > 0 ? $projectMermaidRepository->listForAssessment($storedId) : [];
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render(
             $assessment,
@@ -334,7 +420,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             (string) $_SESSION['csrf_token'],
             $flash,
             $responses,
-            $evaluation
+            $evaluation,
+            $projectLinks,
+            $projectDiagrams
         );
     }
 }
