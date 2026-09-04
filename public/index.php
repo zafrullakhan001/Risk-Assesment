@@ -1289,7 +1289,7 @@ $totalProjects = $repository->countAll();
 
             <section class="upload-card" id="upload">
                 <h2>Upload assessment</h2>
-                <p>Drop one or more Architecture Risk Assessment workbooks (table-based Risk Register format). Include Due Diligence Extension, Governance Summary, and Scoring Legend tabs as needed. Expanding Excel tables in the workbook adds rows on the next upload.</p>
+                <p>Drop one or more Architecture Risk Assessment workbooks (.xlsx). Supports the classic table-based Risk Register format and the Adaptive Architecture template (classify → route → material findings). Include Due Diligence, Governance/Exception, and Scoring tabs as needed.</p>
                 <ul class="format-list">
                     <li>Architecture sheet: metadata in rows 2–7, headers in row 8, checks from row 9</li>
                     <li>Due Diligence Extension: category items with status, risk, actions, and sources</li>

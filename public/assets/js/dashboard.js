@@ -3002,4 +3002,113 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Adaptive Question Router filters (decision / module / search)
+    const routerTable = document.getElementById('adaptive-router-table');
+    if (routerTable) {
+        const routerPanel = routerTable.closest('.dash-panel');
+        const routerRows = Array.from(routerTable.querySelectorAll('tbody tr'));
+        const routerSearch = document.querySelector('[data-router-search]');
+        const routerCount = document.querySelector('[data-router-count]');
+        const routerClear = document.querySelector('[data-router-clear]');
+        const routerKpis = Array.from((routerPanel || document).querySelectorAll('.router-kpis .kpi-clickable'));
+        const routerChips = Array.from((routerPanel || document).querySelectorAll('.router-chip'));
+        const routerModuleBars = Array.from((routerPanel || document).querySelectorAll('.adaptive-module-bars .section-bar-row'));
+        let routerDecision = '';
+        let routerModule = '';
+
+        const syncRouterControls = () => {
+            routerKpis.forEach((kpi) => {
+                const type = kpi.dataset.filterType || '';
+                const value = kpi.dataset.filterValue || '';
+                const active = (type === 'all' && !routerDecision && !routerModule)
+                    || (type === 'router_decision' && value === routerDecision && !routerModule);
+                kpi.classList.toggle('is-active', active);
+                kpi.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            routerChips.forEach((chip) => {
+                const type = chip.dataset.filterType || '';
+                const value = chip.dataset.filterValue || '';
+                const active = (type === 'all' && !routerDecision && !routerModule)
+                    || (type === 'router_decision' && value === routerDecision && !routerModule);
+                chip.classList.toggle('is-active', active);
+                chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            routerModuleBars.forEach((bar) => {
+                bar.classList.toggle('is-active', (bar.dataset.filterValue || '') === routerModule);
+            });
+            if (routerClear) {
+                const hasFilter = Boolean(routerDecision || routerModule || (routerSearch?.value || '').trim());
+                routerClear.hidden = !hasFilter;
+            }
+        };
+
+        const applyRouterFilters = () => {
+            const q = (routerSearch?.value || '').trim().toLowerCase();
+            let visible = 0;
+            routerRows.forEach((row) => {
+                const decision = row.dataset.routerDecision || '';
+                const module = row.dataset.routerModule || '';
+                const search = row.dataset.search || '';
+                const matchDecision = !routerDecision || decision === routerDecision;
+                const matchModule = !routerModule || module === routerModule;
+                const matchSearch = !q || search.includes(q);
+                const show = matchDecision && matchModule && matchSearch;
+                row.hidden = !show;
+                if (show) {
+                    visible += 1;
+                }
+            });
+            if (routerCount) {
+                routerCount.textContent = `${visible} scenario${visible === 1 ? '' : 's'}`;
+            }
+            syncRouterControls();
+        };
+
+        const setRouterFilter = (filterType, filterValue) => {
+            if (filterType === 'all') {
+                routerDecision = '';
+                routerModule = '';
+            } else if (filterType === 'router_decision') {
+                routerDecision = routerDecision === filterValue ? '' : (filterValue || '');
+                routerModule = '';
+            } else if (filterType === 'router_module') {
+                routerModule = routerModule === filterValue ? '' : (filterValue || '');
+                routerDecision = '';
+            }
+            activateTab('router', true);
+            applyRouterFilters();
+            const first = routerRows.find((row) => !row.hidden);
+            first?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+
+        routerSearch?.addEventListener('input', applyRouterFilters);
+        routerClear?.addEventListener('click', () => {
+            routerDecision = '';
+            routerModule = '';
+            if (routerSearch) {
+                routerSearch.value = '';
+            }
+            applyRouterFilters();
+        });
+
+        (routerPanel || document).querySelectorAll(
+            '.router-kpis .kpi-clickable, .router-chip, .adaptive-module-bars .section-bar-row, [data-filter-type="router_decision"], [data-filter-type="router_module"]'
+        ).forEach((el) => {
+            el.addEventListener('click', (event) => {
+                // Avoid double-binding when legend/donut handlers also fire.
+                if (el.closest('.router-kpis, .router-filter-chips, .adaptive-module-bars')) {
+                    event.stopPropagation();
+                }
+                const type = el.dataset.filterType || '';
+                const value = el.dataset.filterValue || '';
+                if (!type) {
+                    return;
+                }
+                setRouterFilter(type, value);
+            });
+        });
+
+        applyRouterFilters();
+    }
 });

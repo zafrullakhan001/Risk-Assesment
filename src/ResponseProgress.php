@@ -64,10 +64,10 @@ final class ResponseProgress
                 }
             }
 
-            $this->bump($buckets, 'risk', $status === 'Risk', $addressed);
+            $this->bump($buckets, 'risk', $status === 'Risk' || $status === 'Decision Required', $addressed);
             $this->bump($buckets, 'gap', $status === 'Gap', $addressed);
             $this->bump($buckets, 'tbd', $status === 'TBD', $addressed);
-            $this->bump($buckets, 'high', $riskLevel === 'High', $addressed);
+            $this->bump($buckets, 'high', Models\Assessment::isElevatedRisk($riskLevel), $addressed);
         }
 
         return [

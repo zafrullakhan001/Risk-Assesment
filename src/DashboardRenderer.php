@@ -13,6 +13,9 @@ final class DashboardRenderer
         'Pass' => '#0f766e',
         'Gap' => '#c2410c',
         'Risk' => '#be123c',
+        'Decision Required' => '#7c3aed',
+        'Accepted Risk' => '#a16207',
+        'Closed' => '#0e7490',
         'TBD' => '#64748b',
         'N/A' => '#94a3b8',
         'Addressed' => '#0e7490',
@@ -20,6 +23,7 @@ final class DashboardRenderer
 
     /** @var array<string, string> */
     private const RISK_COLOR = [
+        'Critical' => '#7f1d1d',
         'High' => '#be123c',
         'Med' => '#c2410c',
         'Low' => '#0f766e',
@@ -74,6 +78,10 @@ final class DashboardRenderer
         $items = $assessment->items;
         $dueItems = $assessment->dueDiligenceItems;
         $workbook = $assessment->workbook;
+        $isAdaptive = ($workbook['format'] ?? '') === 'adaptive';
+        if ($isAdaptive) {
+            $items = $this->enrichAdaptiveItems($items, $workbook['material_findings'] ?? []);
+        }
         $ddSummary = is_array($summary['due_diligence'] ?? null) ? $summary['due_diligence'] : Assessment::summarizeItems($dueItems);
         $insightBuilder = new AssessmentInsights();
         $insights = $insightBuilder->build($assessment, $responses, $findingStatuses);
@@ -101,8 +109,19 @@ final class DashboardRenderer
         $solutionName = $metadata['solution_name'] ?: 'Risk Assessment Dashboard';
         $assessmentDate = $metadata['date'] ?: date('Y-m-d');
         $hasDueDiligence = $dueItems !== [];
-        $hasGovernance = ($workbook['fields'] ?? []) !== [] || ($workbook['findings'] ?? []) !== [];
-        $hasLegend = ($workbook['legend']['statuses'] ?? []) !== [] || ($workbook['legend']['checklist'] ?? []) !== [];
+        $hasGovernance = ($workbook['fields'] ?? []) !== []
+            || ($workbook['findings'] ?? []) !== []
+            || ($isAdaptive && (
+                ($workbook['classification'] ?? []) !== []
+                || ($workbook['decisions'] ?? []) !== []
+                || ($workbook['lifecycle'] ?? []) !== []
+                || ($workbook['exceptions'] ?? []) !== []
+            ));
+        $hasLegend = ($workbook['legend']['statuses'] ?? []) !== []
+            || ($workbook['legend']['checklist'] ?? []) !== []
+            || ($workbook['legend']['routing'] ?? []) !== [];
+        $hasRouter = $isAdaptive && ($workbook['router'] ?? []) !== [];
+        $adaptiveViews = $isAdaptive ? new AdaptiveDashboardViews() : null;
 
         $statusSlices = $this->buildProgressStatusSlices($archProgress);
         $riskSlices = $this->buildProgressRiskSlices($archProgress, $summary);
@@ -213,13 +232,23 @@ final class DashboardRenderer
                 <?php if (($metadata['business_unit'] ?? '') !== ''): ?>
                     <div class="meta-item meta-scope"><span class="label">🏬 Business unit</span><strong><?= $this->e($metadata['business_unit']) ?></strong></div>
                 <?php endif; ?>
+                <?php if (($metadata['decision_gate'] ?? '') !== ''): ?>
+                    <div class="meta-item meta-arch"><span class="label">🚪 Decision gate</span><strong><?= $this->e($metadata['decision_gate']) ?></strong></div>
+                <?php endif; ?>
                 <?php if ($sourceFilename !== ''): ?>
                     <div class="meta-item meta-file"><span class="label">📎 Source file</span><strong><?= $this->e($sourceFilename) ?></strong></div>
                 <?php endif; ?>
             </section>
 
+            <?php if ($adaptiveViews !== null): ?>
+                <?= $adaptiveViews->renderMetaChips($workbook, $metadata) ?>
+            <?php endif; ?>
+
             <nav class="dash-tabs dash-tabs-uplift" role="tablist" aria-label="Workbook tabs">
-                <button type="button" class="dash-tab dash-tab-theme-architecture is-active" role="tab" aria-selected="true" data-tab="architecture" data-tooltip="Browse architecture control status, risk levels, charts, and the full risk register.">🏛️ Architecture checks</button>
+                <button type="button" class="dash-tab dash-tab-theme-architecture is-active" role="tab" aria-selected="true" data-tab="architecture" data-tooltip="<?= $isAdaptive ? 'Material architecture findings from the Risk Register (not the full scenario catalog).' : 'Browse architecture control status, risk levels, charts, and the full risk register.' ?>"><?= $isAdaptive ? '📋 Material findings' : '🏛️ Architecture checks' ?></button>
+                <?php if ($hasRouter): ?>
+                    <button type="button" class="dash-tab dash-tab-theme-router" role="tab" aria-selected="false" data-tab="router" data-tooltip="Browse the adaptive question router: selected, conditional, and excluded scenarios by module.">🧭 Question Router</button>
+                <?php endif; ?>
                 <?php if ($hasDueDiligence): ?>
                     <button type="button" class="dash-tab dash-tab-theme-diligence" role="tab" aria-selected="false" data-tab="due-diligence" data-tooltip="Review technology risk / due-diligence items, evidence notes, and extended coverage.">🔍 Due diligence</button>
                 <?php endif; ?>
@@ -234,27 +263,51 @@ final class DashboardRenderer
             </nav>
 
             <div class="dash-panel dash-panel-theme-architecture is-active" data-panel="architecture">
-                <?= $this->renderPanelIntro('🏛️', 'Architecture review', 'Architecture checks', 'Browse status, risk levels, charts, and the full register for every architecture control.') ?>
+                <?= $this->renderPanelIntro(
+                    $isAdaptive ? '📋' : '🏛️',
+                    $isAdaptive ? 'Material findings' : 'Architecture review',
+                    $isAdaptive ? 'Architecture Risk Register' : 'Architecture checks',
+                    $isAdaptive
+                        ? 'Material Gap, Risk, and Decision Required findings only — the Question Router holds the full scenario catalog.'
+                        : 'Browse status, risk levels, charts, and the full register for every architecture control.'
+                ) ?>
                 <?= $this->renderKpis($summary, 'architecture', $archProgress) ?>
-                <?= $this->renderChartsBlock($statusSlices, $riskSlices, $sectionSlices, $summary, 'architecture', $archProgress) ?>
+                <?php if ($adaptiveViews !== null): ?>
+                    <?= $adaptiveViews->renderFindingsRiskCharts(
+                        $items,
+                        fn (array $slices, string $id, string $center, string $label, bool $hero = false): string => $this->renderDonutChart($slices, $id, $center, $label, $hero),
+                        fn (array $slices, string $type): string => $this->renderChartLegend($slices, $type)
+                    ) ?>
+                <?php else: ?>
+                    <?= $this->renderChartsBlock($statusSlices, $riskSlices, $sectionSlices, $summary, 'architecture', $archProgress) ?>
+                <?php endif; ?>
                 <?= $this->renderSectionBars($summary['by_section'] ?? []) ?>
                 <?= $this->renderRegister(
                     'architecture',
                     'risk-register',
-                    'Architecture checks',
-                    'Risk register',
+                    $isAdaptive ? 'Material findings' : 'Architecture checks',
+                    $isAdaptive ? 'Architecture Risk Register' : 'Risk register',
                     $items,
                     $summary,
-                    false,
+                    $isAdaptive,
                     $changedKeys,
                     $responses,
                     $assessmentId
                 ) ?>
             </div>
 
+            <?php if ($hasRouter && $adaptiveViews !== null): ?>
+                <?= $adaptiveViews->renderRouterPanel(
+                    $workbook,
+                    fn (array $slices, string $id, string $center, string $label, bool $hero = false): string => $this->renderDonutChart($slices, $id, $center, $label, $hero),
+                    fn (array $slices, string $type): string => $this->renderChartLegend($slices, $type),
+                    fn (string $icon, string $eyebrow, string $title, string $help): string => $this->renderPanelIntro($icon, $eyebrow, $title, $help)
+                ) ?>
+            <?php endif; ?>
+
             <?php if ($hasDueDiligence): ?>
                 <div class="dash-panel dash-panel-theme-diligence" data-panel="due-diligence" hidden>
-                    <?= $this->renderPanelIntro('🔍', 'Extended review', 'Due diligence', 'Technology risk template items, evidence notes, and extended diligence coverage.') ?>
+                    <?= $this->renderPanelIntro('🔍', 'Extended review', 'Due diligence', $isAdaptive ? 'Evidence and control-attestation layer for the detected solution architecture.' : 'Technology risk template items, evidence notes, and extended diligence coverage.') ?>
                     <?php if (($workbook['context'] ?? '') !== ''): ?>
                         <div class="context-banner context-banner-uplift">💡 <?= $this->e((string) $workbook['context']) ?></div>
                     <?php endif; ?>
@@ -264,8 +317,8 @@ final class DashboardRenderer
                     <?= $this->renderRegister(
                         'due_diligence',
                         'dd-register',
-                        'Due diligence extension',
-                        'Technology risk template',
+                        $isAdaptive ? 'Due diligence evidence' : 'Due diligence extension',
+                        $isAdaptive ? 'Evidence catalog' : 'Technology risk template',
                         $dueItems,
                         $ddSummary,
                         true,
@@ -286,15 +339,21 @@ final class DashboardRenderer
 
             <?php if ($hasGovernance): ?>
                 <div class="dash-panel dash-panel-theme-governance" data-panel="governance" hidden>
-                    <?= $this->renderPanelIntro('⚖️', 'Governance & compliance', 'Governance summary', 'JSON diligence fields, documented exceptions, and recommended governance actions.') ?>
+                    <?= $this->renderPanelIntro('⚖️', 'Governance & compliance', 'Governance summary', $isAdaptive ? 'Classification signals, ADRs, lifecycle inventory, and policy exceptions from the Adaptive workbook.' : 'JSON diligence fields, documented exceptions, and recommended governance actions.') ?>
                     <?= $this->renderGovernancePanel($workbook, $metadata) ?>
+                    <?php if ($adaptiveViews !== null): ?>
+                        <?= $adaptiveViews->renderAdaptiveGovernanceExtras($workbook, $metadata) ?>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 
             <?php if ($hasLegend): ?>
                 <div class="dash-panel dash-panel-theme-legend" data-panel="legend" hidden>
-                    <?= $this->renderPanelIntro('📊', 'Scoring reference', 'Scoring legend', 'Status meanings, risk level guidance, and minimum evidence checklist from the workbook.') ?>
+                    <?= $this->renderPanelIntro('📊', 'Scoring reference', 'Scoring legend', $isAdaptive ? 'Routing decisions, score bands (Low/Moderate/High/Critical), and materiality guidance.' : 'Status meanings, risk level guidance, and minimum evidence checklist from the workbook.') ?>
                     <?= $this->renderLegendPanel($workbook['legend'] ?? []) ?>
+                    <?php if ($adaptiveViews !== null): ?>
+                        <?= $adaptiveViews->renderAdaptiveLegendExtras($workbook['legend'] ?? []) ?>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </main>
@@ -321,10 +380,15 @@ final class DashboardRenderer
             'Pass' => '✅',
             'Gap' => '🟠',
             'Risk' => '🔴',
+            'Decision Required' => '🟣',
+            'Accepted Risk' => '🟤',
+            'Closed' => '☑️',
             'TBD' => '❓',
             'N/A' => '➖',
         ];
-        $riskEmoji = ['High' => '🚨', 'Med' => '⚠️', 'Low' => '🟢'];
+        $riskEmoji = ['Critical' => '🛑', 'High' => '🚨', 'Med' => '⚠️', 'Low' => '🟢'];
+        $statusOrder = array_keys($statusEmoji);
+        $riskOrder = array_keys($riskEmoji);
         ob_start();
         ?>
         <section class="kpis kpis-uplift" id="<?= $prefix ?>kpi-tiles" data-filter-scope="<?= $this->e($scope) ?>">
@@ -334,69 +398,45 @@ final class DashboardRenderer
                 <strong><?= (int) ($summary['total'] ?? 0) ?></strong>
                 <span>View all rows</span>
             </button>
-            <?php foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $status): ?>
-                <?php if (!isset($summary['by_status'][$status]) && $status === 'N/A') { continue; } ?>
-                <?php if (($summary['by_status'][$status] ?? 0) === 0 && $status === 'N/A') { continue; } ?>
-                <?php
-                $total = (int) ($summary['by_status'][$status] ?? 0);
-                $bucketKey = strtolower($status);
-                $showProgress = in_array($status, ['Gap', 'Risk', 'TBD'], true) && $total > 0;
-                $open = $showProgress ? (int) ($progress[$bucketKey]['open'] ?? $total) : $total;
-                $addressed = $showProgress ? (int) ($progress[$bucketKey]['addressed'] ?? 0) : 0;
-                ?>
-                <button
-                    type="button"
-                    class="kpi kpi-clickable tone-<?= strtolower(str_replace('/', '', $status)) ?>"
-                    data-filter-type="status"
-                    data-filter-value="<?= $this->e($status) ?>"
-                    data-progress-key="<?= $showProgress ? $this->e($bucketKey) : '' ?>"
-                    aria-pressed="false"
-                >
-                    <span class="kpi-emoji" aria-hidden="true"><?= $statusEmoji[$status] ?? '📌' ?></span>
+            <?php foreach ($statusOrder as $status): ?>
+                <?php if (!isset($summary['by_status'][$status])) { continue; } ?>
+                <?php if (($summary['by_status'][$status] ?? 0) === 0 && in_array($status, ['N/A', 'Decision Required', 'Accepted Risk', 'Closed'], true)) { continue; } ?>
+                <button type="button" class="kpi kpi-clickable tone-<?= $this->e(strtolower(str_replace(['/', ' '], ['', '-'], $status))) ?>" data-filter-type="status" data-filter-value="<?= $this->e($status) ?>" aria-pressed="false">
+                    <span class="kpi-emoji" aria-hidden="true"><?= $statusEmoji[$status] ?></span>
                     <div class="eyebrow"><?= $this->e($status) ?></div>
-                    <?php if ($showProgress): ?>
-                        <?php $hasResolution = $addressed > 0; ?>
-                        <strong
-                            class="kpi-progress"
-                            data-progress-display="<?= $this->e($bucketKey) ?>"
-                            data-progress-has-resolution="<?= $hasResolution ? '1' : '0' ?>"
-                        >
-                            <span data-progress-open="<?= $this->e($bucketKey) ?>"><?= $hasResolution ? $open : $total ?></span><span class="kpi-progress-tail"<?= $hasResolution ? '' : ' hidden' ?>>/<span data-progress-total="<?= $this->e($bucketKey) ?>"><?= $total ?></span></span>
-                        </strong>
-                        <span data-progress-caption="<?= $this->e($bucketKey) ?>"<?= $hasResolution ? '' : ' hidden' ?>><?= $addressed ?> addressed · <?= $open ?> open</span>
+                    <?php
+                    $openKey = strtolower($status);
+                    $open = (int) ($progress['by_status_open'][$status] ?? ($summary['by_status'][$status] ?? 0));
+                    $total = (int) ($summary['by_status'][$status] ?? 0);
+                    $addressed = max(0, $total - $open);
+                    ?>
+                    <?php if ($addressed > 0 && in_array($status, ['Gap', 'Risk', 'TBD', 'Decision Required'], true)): ?>
+                        <strong><?= $open ?><small>/<?= $total ?></small></strong>
+                        <span>Filter <?= $this->e(strtolower($status)) ?> rows</span>
                     <?php else: ?>
                         <strong><?= $total ?></strong>
                         <span>Filter <?= $this->e(strtolower($status)) ?> rows</span>
                     <?php endif; ?>
                 </button>
             <?php endforeach; ?>
-            <?php foreach (['High', 'Med', 'Low'] as $risk): ?>
-                <?php
-                $total = (int) ($summary['by_risk'][$risk] ?? 0);
-                $showProgress = $risk === 'High' && $total > 0;
-                $open = $showProgress ? (int) ($progress['high']['open'] ?? $total) : $total;
-                $addressed = $showProgress ? (int) ($progress['high']['addressed'] ?? 0) : 0;
-                $hasResolution = $showProgress && $addressed > 0;
-                ?>
-                <button
-                    type="button"
-                    class="kpi kpi-clickable tone-<?= strtolower($risk) ?>"
-                    data-filter-type="risk"
-                    data-filter-value="<?= $this->e($risk) ?>"
-                    data-progress-key="<?= $showProgress ? 'high' : '' ?>"
-                    aria-pressed="false"
-                >
-                    <span class="kpi-emoji" aria-hidden="true"><?= $riskEmoji[$risk] ?? '📌' ?></span>
+            <?php foreach ($riskOrder as $risk): ?>
+                <?php if (!isset($summary['by_risk'][$risk])) { continue; } ?>
+                <?php if (($summary['by_risk'][$risk] ?? 0) === 0 && $risk === 'Critical') { continue; } ?>
+                <button type="button" class="kpi kpi-clickable tone-<?= $this->e(strtolower($risk)) ?>" data-filter-type="risk" data-filter-value="<?= $this->e($risk) ?>" aria-pressed="false">
+                    <span class="kpi-emoji" aria-hidden="true"><?= $riskEmoji[$risk] ?></span>
                     <div class="eyebrow"><?= $this->e($risk) ?> risk</div>
-                    <?php if ($showProgress): ?>
-                        <strong
-                            class="kpi-progress"
-                            data-progress-display="high"
-                            data-progress-has-resolution="<?= $hasResolution ? '1' : '0' ?>"
-                        >
-                            <span data-progress-open="high"><?= $hasResolution ? $open : $total ?></span><span class="kpi-progress-tail"<?= $hasResolution ? '' : ' hidden' ?>>/<span data-progress-total="high"><?= $total ?></span></span>
-                        </strong>
-                        <span data-progress-caption="high"<?= $hasResolution ? '' : ' hidden' ?>><?= $addressed ?> addressed · <?= $open ?> open</span>
+                    <?php
+                    $total = (int) ($summary['by_risk'][$risk] ?? 0);
+                    ?>
+                    <?php if ($risk === 'High' || $risk === 'Critical'): ?>
+                        <?php
+                        $open = (int) ($progress['high']['open'] ?? $total);
+                        if ($risk === 'Critical') {
+                            $open = $total; // critical counted in high bucket combined; show raw count
+                        }
+                        ?>
+                        <strong><?= $total ?></strong>
+                        <span>Filter <?= $this->e(strtolower($risk)) ?> risk rows</span>
                     <?php else: ?>
                         <strong><?= $total ?></strong>
                         <span>Filter <?= $this->e(strtolower($risk)) ?> risk rows</span>
@@ -1264,9 +1304,12 @@ final class DashboardRenderer
     private function buildStatusSlices(array $summary): array
     {
         $slices = [];
-        foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $status) {
+        foreach (['Pass', 'Gap', 'Risk', 'Decision Required', 'Accepted Risk', 'Closed', 'TBD', 'N/A'] as $status) {
             $value = (int) ($summary['by_status'][$status] ?? 0);
-            if ($status === 'N/A' && $value === 0) {
+            if ($value === 0 && in_array($status, ['N/A', 'Decision Required', 'Accepted Risk', 'Closed'], true)) {
+                continue;
+            }
+            if ($value === 0 && !in_array($status, ['Pass', 'Gap', 'Risk', 'TBD'], true)) {
                 continue;
             }
             $slices[] = [
@@ -1286,10 +1329,14 @@ final class DashboardRenderer
     private function buildRiskSlices(array $summary): array
     {
         $slices = [];
-        foreach (['High', 'Med', 'Low'] as $risk) {
+        foreach (['Critical', 'High', 'Med', 'Low'] as $risk) {
+            $value = (int) ($summary['by_risk'][$risk] ?? 0);
+            if ($risk === 'Critical' && $value === 0) {
+                continue;
+            }
             $slices[] = [
                 'label' => $risk,
-                'value' => (int) ($summary['by_risk'][$risk] ?? 0),
+                'value' => $value,
                 'color' => self::RISK_COLOR[$risk],
                 'filterType' => 'risk',
                 'filterValue' => $risk,
@@ -1658,6 +1705,65 @@ final class DashboardRenderer
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    /**
+     * Reattach Adaptive material-finding score fields stored in workbook_json after DB reload.
+     *
+     * @param list<array<string, string>> $items
+     * @param list<array<string, mixed>> $materialFindings
+     * @return list<array<string, string>>
+     */
+    private function enrichAdaptiveItems(array $items, array $materialFindings): array
+    {
+        if ($materialFindings === []) {
+            return $items;
+        }
+
+        $byCheck = [];
+        $byRiskId = [];
+        foreach ($materialFindings as $finding) {
+            if (!is_array($finding)) {
+                continue;
+            }
+            $check = (string) ($finding['check'] ?? '');
+            $riskId = (string) ($finding['risk_id'] ?? '');
+            if ($check !== '') {
+                $byCheck[$check] = $finding;
+            }
+            if ($riskId !== '') {
+                $byRiskId[$riskId] = $finding;
+            }
+        }
+
+        foreach ($items as &$item) {
+            $check = (string) ($item['check'] ?? '');
+            $match = $byCheck[$check] ?? null;
+            if ($match === null && $check !== '') {
+                foreach ($byRiskId as $riskId => $finding) {
+                    if (str_starts_with($check, $riskId)) {
+                        $match = $finding;
+                        break;
+                    }
+                }
+            }
+            if (!is_array($match)) {
+                continue;
+            }
+            foreach ([
+                'risk_id', 'source_scenario_id', 'lens', 'quality_attribute',
+                'likelihood', 'impact', 'inherent_score', 'inherent_level',
+                'residual_likelihood', 'residual_impact', 'residual_score', 'residual_level',
+                'closure_evidence',
+            ] as $field) {
+                if (($item[$field] ?? '') === '' && ($match[$field] ?? '') !== '') {
+                    $item[$field] = (string) $match[$field];
+                }
+            }
+        }
+        unset($item);
+
+        return $items;
     }
 
     private function e(string $value): string

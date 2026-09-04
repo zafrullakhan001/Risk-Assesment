@@ -229,8 +229,17 @@ final class ItemResponseRepository
     {
         $status = strtolower(trim($status));
         $riskLevel = strtolower(trim($riskLevel));
+        $statusCompact = strtolower(preg_replace('/[^a-z0-9]+/', '', $status) ?? '');
 
-        return in_array($status, ['gap', 'risk', 'tbd'], true) || $riskLevel === 'high';
+        if (in_array($status, ['gap', 'risk', 'tbd'], true)) {
+            return true;
+        }
+
+        if (in_array($statusCompact, ['decisionrequired', 'acceptedrisk', 'pendingevidence'], true)) {
+            return true;
+        }
+
+        return $riskLevel === 'high' || $riskLevel === 'critical';
     }
 
     public static function isAddressed(string $action): bool

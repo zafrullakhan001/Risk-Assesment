@@ -63,7 +63,7 @@ final class AssessmentInsights
             );
             $addressed = \RiskAssessment\Repositories\ItemResponseRepository::isAddressed($action);
 
-            if ($riskLevel === 'High' && !$addressed) {
+            if (Assessment::isElevatedRisk($riskLevel) && !$addressed) {
                 $high++;
             }
             if ($status === 'Risk' && !$addressed) {
@@ -94,7 +94,7 @@ final class AssessmentInsights
                     $ownerMap[$ownerName] = ['owner' => $ownerName, 'total' => 0, 'high' => 0, 'risk' => 0, 'tbd' => 0, 'gap' => 0];
                 }
                 $ownerMap[$ownerName]['total']++;
-                if ($riskLevel === 'High') {
+                if (Assessment::isElevatedRisk($riskLevel)) {
                     $ownerMap[$ownerName]['high']++;
                 }
                 if ($status === 'Risk') {
@@ -110,7 +110,7 @@ final class AssessmentInsights
 
             $lane = $this->timelineLane($timeline);
             $timelineMap[$lane]['total']++;
-            if ($riskLevel === 'High') {
+            if (Assessment::isElevatedRisk($riskLevel)) {
                 $timelineMap[$lane]['high']++;
             }
             if ($status === 'Risk') {
@@ -120,13 +120,20 @@ final class AssessmentInsights
                 $timelineMap[$lane]['tbd']++;
             }
 
-            if ($riskLevel === 'High' || $status === 'Risk') {
+            if (Assessment::isElevatedRisk($riskLevel) || $status === 'Risk' || $status === 'Decision Required') {
                 $topRisks[] = $item;
             }
         }
 
         usort($topRisks, static function (array $a, array $b): int {
-            $rank = static fn(array $row): int => ($row['risk_level'] ?? '') === 'High' ? 0 : 1;
+            $rank = static function (array $row): int {
+                $level = Assessment::normalizeRiskLevel((string) ($row['risk_level'] ?? ''));
+                return match ($level) {
+                    'Critical' => 0,
+                    'High' => 1,
+                    default => 2,
+                };
+            };
             return $rank($a) <=> $rank($b);
         });
         $topRisks = array_slice($topRisks, 0, 5);

@@ -44,6 +44,11 @@ final class ExcelParser
         }
 
         $spreadsheet = IOFactory::load($filePath);
+
+        if (AdaptiveExcelParser::isAdaptiveWorkbook($spreadsheet)) {
+            return (new AdaptiveExcelParser())->parseSpreadsheet($spreadsheet);
+        }
+
         $architectureSheet = $this->findArchitectureSheet($spreadsheet);
 
         $metadata = $this->parseMetadata($architectureSheet);
@@ -84,6 +89,7 @@ final class ExcelParser
             $items,
             $dueDiligenceItems,
             [
+                'format' => 'classic',
                 'context' => $dueDiligenceContext,
                 'fields' => $summaryFields,
                 'findings' => $findings,

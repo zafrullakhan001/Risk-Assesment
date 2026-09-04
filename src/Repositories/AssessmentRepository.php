@@ -837,16 +837,28 @@ final class AssessmentRepository
 
                 $map = [
                     'duediligencerequest' => 'ddr_id',
+                    'duediligenceid' => 'ddr_id',
                     'technologyriskassessment' => 'vra_id',
+                    'technologyriskid' => 'vra_id',
                     'businessunit' => 'business_unit',
                     'assessmenttypetier' => 'assessment_tier',
                     'overallriskrating' => 'overall_risk_rating',
                     'tprmrecommendation' => 'tprm_recommendation',
                     'technologyrecommendation' => 'technology_recommendation',
+                    'overallrecommendation' => 'technology_recommendation',
                     'facilityregion' => 'facility_region',
+                    'facilitiesregion' => 'facility_region',
                     'datahosting' => 'data_hosting',
+                    'hostingdeployment' => 'data_hosting',
                     'vendoraccessai' => 'vendor_access_ai',
                     'requiredgovernanceaction' => 'governance_action',
+                    'decisiongate' => 'decision_gate',
+                    'primaryarchitecturetype' => 'architecture_model',
+                    'dataclassification' => 'data_classification',
+                    'clinicalbusinesscriticality' => 'clinical_criticality',
+                    'classificationconfidence' => 'classification_confidence',
+                    'secondarytypes' => 'secondary_types',
+                    'targetgolive' => 'target_go_live',
                 ];
 
                 if (isset($map[$label])) {
