@@ -4,6 +4,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const panels = Array.from(document.querySelectorAll('.dash-panel'));
     const assessmentId = document.body.dataset.assessmentId || '0';
     const csrfToken = document.body.dataset.csrfToken || '';
+    const isReadOnly = document.body.dataset.readonly === '1';
+
+    if (isReadOnly) {
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            const method = String(init.method || (typeof input !== 'string' && input && input.method) || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD' && /index\.php/i.test(String(url))) {
+                return Promise.reject(new Error('This shared view is read-only.'));
+            }
+            return originalFetch(input, init);
+        };
+    }
 
     let initialGoliveGates = null;
     try {
@@ -3112,5 +3125,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         applyRouterFilters();
+    }
+
+    const copyShareBtn = document.getElementById('btn-copy-share-link');
+    const shareUrlInput = document.getElementById('share-link-url');
+    const shareCopyStatus = document.getElementById('share-link-copy-status');
+    if (copyShareBtn && shareUrlInput) {
+        copyShareBtn.addEventListener('click', async () => {
+            const value = shareUrlInput.value;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(value);
+                } else {
+                    shareUrlInput.select();
+                    document.execCommand('copy');
+                }
+                if (shareCopyStatus) {
+                    shareCopyStatus.hidden = false;
+                    shareCopyStatus.textContent = 'Link copied to clipboard.';
+                }
+            } catch (error) {
+                shareUrlInput.select();
+                if (shareCopyStatus) {
+                    shareCopyStatus.hidden = false;
+                    shareCopyStatus.textContent = 'Select the link and press Ctrl+C to copy.';
+                }
+            }
+        });
     }
 });

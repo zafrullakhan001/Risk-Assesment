@@ -212,6 +212,40 @@ final class Database
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_change_log_assessment_id ON assessment_change_log (assessment_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_change_log_entity ON assessment_change_log (assessment_id, entity_type, entity_key)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS assessment_share_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                label TEXT NOT NULL DEFAULT \'\',
+                created_by_user_id INTEGER,
+                created_by_username TEXT NOT NULL DEFAULT \'\',
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                expires_at TEXT,
+                revoked_at TEXT,
+                last_accessed_at TEXT,
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_share_links_assessment_id ON assessment_share_links (assessment_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_share_links_token_hash ON assessment_share_links (token_hash)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS template_workbooks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL DEFAULT \'\',
+                workbook_path TEXT NOT NULL,
+                workbook_filename TEXT NOT NULL DEFAULT \'\',
+                workbook_size INTEGER NOT NULL DEFAULT 0,
+                prompt_path TEXT NOT NULL DEFAULT \'\',
+                prompt_filename TEXT NOT NULL DEFAULT \'\',
+                prompt_size INTEGER NOT NULL DEFAULT 0,
+                uploaded_by_user_id INTEGER,
+                uploaded_by_username TEXT NOT NULL DEFAULT \'\',
+                uploaded_by_display_name TEXT NOT NULL DEFAULT \'\',
+                uploaded_at TEXT NOT NULL DEFAULT (datetime(\'now\'))
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_template_workbooks_uploaded_at ON template_workbooks (uploaded_at)');
         self::seedAuthSettings($pdo);
         self::seedDefaultAdmin($pdo);
         self::migrateLegacyMermaidDiagrams($pdo);

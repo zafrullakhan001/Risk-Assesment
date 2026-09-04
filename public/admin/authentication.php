@@ -8,6 +8,7 @@ $currentUser = $auth->requireAdmin();
 $error = '';
 $flash = '';
 $testResult = null;
+$userTestResult = null;
 $ldap = $auth->ldap();
 
 function admin_bool_flag(array $post, string $key): string
@@ -65,6 +66,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'referrals' => admin_bool_flag($_POST, 'referrals'),
             ]);
 
+            // Common AD misconfig: ldaps:// on port 389 (plain LDAP). Auto-correct.
+            if (($server['protocol'] ?? '') === 'ldaps' && (int) $server['port'] === 389) {
+                $server['protocol'] = 'ldap';
+                $server['tls'] = '0';
+            }
+
             if ($action === 'save_ldap') {
                 if ($server['server'] === '') {
                     throw new RuntimeException('LDAP server host is required.');
@@ -86,6 +93,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = $testResult['message'];
                 }
             }
+        } elseif ($action === 'test_ldap_user') {
+            $testUsername = trim((string) ($_POST['test_username'] ?? ''));
+            $testPassword = (string) ($_POST['test_password'] ?? '');
+            if ($testUsername === '' || $testPassword === '') {
+                throw new RuntimeException('Enter an LDAP username and password to test.');
+            }
+
+            $servers = $ldap->servers();
+            if ($servers === []) {
+                throw new RuntimeException('Save an LDAP server configuration before testing a user login.');
+            }
+            $server = $servers[0];
+            if (trim((string) ($server['server'] ?? '')) === '') {
+                throw new RuntimeException('LDAP server host is not configured. Save the LDAP server first.');
+            }
+
+            $profile = $ldap->authenticateAgainstServer($server, $testUsername, $testPassword);
+            $provision = !empty($_POST['test_provision']);
+            $provisionNote = 'Local account was not created (provision option was off).';
+            if ($provision) {
+                $user = $auth->users()->upsertLdapUser(
+                    $profile,
+                    $settings->get('ldap_auto_create_users', '1') === '1',
+                    $settings->get('ldap_auto_update_users', '1') === '1',
+                    $settings->get('ldap_auto_approve', '1') === '1'
+                );
+                $status = (string) ($user['status'] ?? 'unknown');
+                $provisionNote = 'Local account ready: '
+                    . (string) $user['username']
+                    . ' (id ' . (int) $user['id'] . ', status ' . $status . ').';
+            }
+
+            $auth->users()->logAudit(
+                'settings.ldap_user_test',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'username' => $profile['username'],
+                    'provisioned' => $provision,
+                ]
+            );
+
+            $userTestResult = [
+                'success' => true,
+                'username' => $profile['username'],
+                'email' => $profile['email'],
+                'display_name' => $profile['display_name'],
+                'dn' => $profile['dn'],
+                'groups' => $profile['groups'],
+                'provision_note' => $provisionNote,
+            ];
+            $flash = 'LDAP user login succeeded for ' . $profile['username'] . '. ' . $provisionNote;
+        } elseif ($action === 'export_ldap') {
+            $includeSecrets = !empty($_POST['include_secrets']);
+            $payload = $ldap->exportSettings($includeSecrets);
+            $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                throw new RuntimeException('Unable to encode LDAP settings as JSON.');
+            }
+            $filename = 'ldap-settings-' . gmdate('Ymd-His') . '.json';
+            $auth->users()->logAudit(
+                'settings.ldap_export',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                ['secrets' => $includeSecrets, 'servers' => count($payload['servers'])]
+            );
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+            header('Content-Length: ' . (string) strlen($json));
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-store');
+            echo $json;
+            exit;
+        } elseif ($action === 'import_ldap') {
+            $file = $_FILES['ldap_json'] ?? null;
+            if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new RuntimeException('Choose a JSON file to import.');
+            }
+            $tmp = (string) ($file['tmp_name'] ?? '');
+            if ($tmp === '' || !is_uploaded_file($tmp)) {
+                throw new RuntimeException('Uploaded LDAP settings file is not valid.');
+            }
+            $size = (int) ($file['size'] ?? 0);
+            if ($size < 2 || $size > 1_048_576) {
+                throw new RuntimeException('LDAP settings file must be between 2 bytes and 1 MB.');
+            }
+            $name = (string) ($file['name'] ?? '');
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if ($ext !== '' && $ext !== 'json') {
+                throw new RuntimeException('Import file must be a .json file.');
+            }
+            $raw = file_get_contents($tmp);
+            if ($raw === false || trim($raw) === '') {
+                throw new RuntimeException('Unable to read the uploaded JSON file.');
+            }
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                throw new RuntimeException('LDAP import file is not valid JSON.');
+            }
+            $ldap->importSettings($decoded);
+            $auth->users()->logAudit(
+                'settings.ldap_import',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                ['servers' => is_array($decoded['servers'] ?? null) ? count($decoded['servers']) : 0]
+            );
+            $flash = 'LDAP settings imported from JSON. Re-enter the bind password if the file omitted secrets.';
         } else {
             throw new RuntimeException('Unknown action.');
         }
@@ -169,9 +289,10 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             <label class="settings-field">
                                 <span><span class="settings-emoji" aria-hidden="true">🔗</span> Protocol</span>
                                 <select name="protocol">
-                                    <option value="ldap" <?= ($server['protocol'] ?? '') === 'ldap' ? 'selected' : '' ?>>ldap://</option>
-                                    <option value="ldaps" <?= ($server['protocol'] ?? '') === 'ldaps' ? 'selected' : '' ?>>ldaps://</option>
+                                    <option value="ldap" <?= ($server['protocol'] ?? '') === 'ldap' ? 'selected' : '' ?>>ldap:// (port 389)</option>
+                                    <option value="ldaps" <?= ($server['protocol'] ?? '') === 'ldaps' ? 'selected' : '' ?>>ldaps:// (port 636)</option>
                                 </select>
+                                <small class="settings-help">For most Windows AD setups use ldap:// with port 389. ldaps:// needs a working certificate on 636.</small>
                             </label>
                             <label class="settings-field">
                                 <span><span class="settings-emoji" aria-hidden="true">⏱️</span> Timeout</span>
@@ -292,6 +413,88 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <button type="submit" class="button ghost" name="action" value="test_ldap">🧪 Test connection</button>
                     </div>
                 </form>
+            </section>
+
+            <section class="upload-card settings-card ldap-card">
+                <h2><span class="settings-emoji" aria-hidden="true">👤</span> Test LDAP user login</h2>
+                <p>Uses the <strong>saved</strong> LDAP server settings (same path as the login page). Enter a directory username and password to confirm that account can authenticate.</p>
+                <form method="post" class="settings-form ldap-form" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="test_ldap_user">
+                    <fieldset class="settings-fieldset settings-tone-sky">
+                        <legend><span class="settings-emoji" aria-hidden="true">🔑</span> Directory credentials</legend>
+                        <div class="settings-grid">
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">👤</span> Username</span>
+                                <input type="text" name="test_username" value="<?= e((string) ($_POST['test_username'] ?? '')) ?>" placeholder="sAMAccountName" spellcheck="false" autocomplete="off" required>
+                            </label>
+                            <label class="settings-field">
+                                <span><span class="settings-emoji" aria-hidden="true">🔒</span> Password</span>
+                                <input type="password" name="test_password" autocomplete="new-password" required>
+                            </label>
+                            <label class="remember-row settings-span-all">
+                                <input type="checkbox" name="test_provision" value="1" <?= (!isset($_POST['action']) || (string) ($_POST['action'] ?? '') !== 'test_ldap_user' || !empty($_POST['test_provision'])) ? 'checked' : '' ?>>
+                                <span>Provision / refresh the local user record on success (same as a real LDAP login)</span>
+                            </label>
+                        </div>
+                        <div class="settings-actions">
+                            <button type="submit" class="button button-primary">🧪 Test user login</button>
+                        </div>
+                    </fieldset>
+                </form>
+                <?php if (is_array($userTestResult) && !empty($userTestResult['success'])): ?>
+                    <div class="alert alert-success" style="margin-top:14px">
+                        <p><strong>Login path OK</strong> for <?= e((string) $userTestResult['username']) ?>.</p>
+                        <ul class="settings-help" style="margin:8px 0 0;padding-left:18px">
+                            <li>Display name: <?= e((string) $userTestResult['display_name']) ?></li>
+                            <li>Email: <?= e((string) $userTestResult['email']) ?></li>
+                            <li>DN: <?= e((string) $userTestResult['dn']) ?></li>
+                            <li><?= e((string) $userTestResult['provision_note']) ?></li>
+                            <?php if (!empty($userTestResult['groups']) && is_array($userTestResult['groups'])): ?>
+                                <li>Groups found: <?= e((string) count($userTestResult['groups'])) ?></li>
+                            <?php endif; ?>
+                        </ul>
+                        <p class="settings-help" style="margin-top:10px">You can now sign in on the login page with this username and choose LDAP (or Auto).</p>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <section class="upload-card settings-card ldap-card">
+                <h2><span class="settings-emoji" aria-hidden="true">📦</span> Export / import LDAP</h2>
+                <p>Download current LDAP methods and server settings as JSON, or restore them from a previously exported file. Empty bind passwords in an import keep the password already stored on this server.</p>
+                <div class="settings-grid settings-grid-connection">
+                    <form method="post" class="settings-form ldap-transfer-form">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="export_ldap">
+                        <fieldset class="settings-fieldset settings-tone-teal">
+                            <legend><span class="settings-emoji" aria-hidden="true">⬇️</span> Export</legend>
+                            <p class="settings-hint">Creates a downloadable JSON backup of LDAP flags and server fields.</p>
+                            <label class="remember-row">
+                                <input type="checkbox" name="include_secrets" value="1" checked>
+                                <span>Include bind password in plaintext</span>
+                            </label>
+                            <p class="settings-help">Treat exported files as secrets when this option is on.</p>
+                            <div class="settings-actions">
+                                <button type="submit" class="button button-primary">⬇️ Download JSON</button>
+                            </div>
+                        </fieldset>
+                    </form>
+                    <form method="post" enctype="multipart/form-data" class="settings-form ldap-transfer-form">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="import_ldap">
+                        <fieldset class="settings-fieldset settings-tone-violet">
+                            <legend><span class="settings-emoji" aria-hidden="true">⬆️</span> Import</legend>
+                            <p class="settings-hint">Replaces the LDAP server list and LDAP method flags from the file.</p>
+                            <label class="settings-field settings-span-all">
+                                <span><span class="settings-emoji" aria-hidden="true">📄</span> JSON file</span>
+                                <input type="file" name="ldap_json" accept=".json,application/json" required>
+                            </label>
+                            <div class="settings-actions">
+                                <button type="submit" class="button button-primary">⬆️ Import JSON</button>
+                            </div>
+                        </fieldset>
+                    </form>
+                </div>
             </section>
 <?php
 require dirname(__DIR__) . '/includes/admin-footer.php';

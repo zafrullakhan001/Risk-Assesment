@@ -103,6 +103,113 @@ final class LdapAuth
     }
 
     /**
+     * Build a portable LDAP settings payload for JSON export.
+     *
+     * @return array{
+     *   version: int,
+     *   exported_at: string,
+     *   ldap_enabled: string,
+     *   ldap_auto_create_users: string,
+     *   ldap_auto_update_users: string,
+     *   ldap_auto_approve: string,
+     *   servers: list<array<string, mixed>>,
+     *   secrets_included: bool
+     * }
+     */
+    public function exportSettings(bool $includeSecrets = true): array
+    {
+        $servers = [];
+        foreach ($this->servers() as $server) {
+            $row = $server;
+            $stored = (string) ($row['bind_password'] ?? '');
+            if ($includeSecrets) {
+                $row['bind_password'] = $this->decryptSecret($stored);
+            } else {
+                $row['bind_password'] = '';
+                $row['bind_password_set'] = $stored !== '';
+            }
+            $servers[] = $row;
+        }
+
+        return [
+            'version' => 1,
+            'exported_at' => gmdate('c'),
+            'ldap_enabled' => $this->settings->get('ldap_enabled', '0'),
+            'ldap_auto_create_users' => $this->settings->get('ldap_auto_create_users', '1'),
+            'ldap_auto_update_users' => $this->settings->get('ldap_auto_update_users', '1'),
+            'ldap_auto_approve' => $this->settings->get('ldap_auto_approve', '1'),
+            'servers' => $servers,
+            'secrets_included' => $includeSecrets,
+        ];
+    }
+
+    /**
+     * Apply LDAP settings from an exported JSON payload.
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function importSettings(array $payload): void
+    {
+        $version = (int) ($payload['version'] ?? 1);
+        if ($version < 1 || $version > 1) {
+            throw new RuntimeException('Unsupported LDAP settings export version.');
+        }
+
+        $serversRaw = $payload['servers'] ?? null;
+        if (!is_array($serversRaw)) {
+            throw new RuntimeException('LDAP import file must include a servers array.');
+        }
+
+        $servers = [];
+        foreach ($serversRaw as $server) {
+            if (!is_array($server)) {
+                continue;
+            }
+            unset($server['bind_password_set']);
+            $merged = array_merge(self::defaultServer(), $server);
+            if (trim((string) ($merged['server'] ?? '')) === '') {
+                throw new RuntimeException('Each LDAP server in the import file needs a host.');
+            }
+            $servers[] = $merged;
+        }
+
+        if ($servers === []) {
+            throw new RuntimeException('LDAP import file does not contain any servers.');
+        }
+
+        $ldapEnabled = $this->normalizeFlag($payload['ldap_enabled'] ?? $this->settings->get('ldap_enabled', '0'));
+        $localEnabled = $this->settings->get('local_auth_enabled', '1') === '1';
+        if ($ldapEnabled !== '1' && !$localEnabled) {
+            throw new RuntimeException('Import would disable LDAP while local sign-in is off. Enable local auth first, or keep LDAP enabled in the file.');
+        }
+
+        $this->saveServers($servers);
+        $this->settings->set('ldap_enabled', $ldapEnabled);
+        $this->settings->set(
+            'ldap_auto_create_users',
+            $this->normalizeFlag($payload['ldap_auto_create_users'] ?? $this->settings->get('ldap_auto_create_users', '1'))
+        );
+        $this->settings->set(
+            'ldap_auto_update_users',
+            $this->normalizeFlag($payload['ldap_auto_update_users'] ?? $this->settings->get('ldap_auto_update_users', '1'))
+        );
+        $this->settings->set(
+            'ldap_auto_approve',
+            $this->normalizeFlag($payload['ldap_auto_approve'] ?? $this->settings->get('ldap_auto_approve', '1'))
+        );
+    }
+
+    private function normalizeFlag(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+        $raw = strtolower(trim((string) $value));
+
+        return in_array($raw, ['1', 'true', 'yes', 'on'], true) ? '1' : '0';
+    }
+
+    /**
      * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
      */
     public function authenticate(string $username, string $password, int $serverIndex = 0, bool $fastFail = false): array
@@ -154,14 +261,29 @@ final class LdapAuth
         }
         $server['bind_password'] = $password;
 
+        if (!$this->nativeLdapUsable()) {
+            return $this->runCliWorker('test', ['server' => $server]);
+        }
+
         $connection = null;
         try {
             $connection = $this->connect($server);
             $bindDn = trim((string) ($server['bind_dn'] ?? ''));
             if (!@ldap_bind($connection, $bindDn !== '' ? $bindDn : null, $bindDn !== '' ? $password : null)) {
+                $message = $this->explainBindFailure($connection, 'Service bind failed');
+                $protocol = ($server['protocol'] ?? 'ldap') === 'ldaps' ? 'ldaps' : 'ldap';
+                $port = (int) ($server['port'] ?? 389);
+                if (stripos($message, "Can't contact LDAP server") !== false) {
+                    if ($protocol === 'ldaps') {
+                        $message .= ' Tip: ldaps:// needs SSL on the directory (usually port 636). For plain AD LDAP use protocol ldap:// and port 389.';
+                    } elseif ($port === 636) {
+                        $message .= ' Tip: port 636 is for ldaps://. For plain LDAP use port 389 with protocol ldap://.';
+                    }
+                }
+
                 return [
                     'success' => false,
-                    'message' => $this->explainBindFailure($connection, 'Service bind failed'),
+                    'message' => $message,
                 ];
             }
 
@@ -190,11 +312,36 @@ final class LdapAuth
      * @param array<string, mixed> $server
      * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
      */
+    public function authenticateAgainstServer(array $server, string $username, string $password): array
+    {
+        return $this->authenticateAgainst(array_merge(self::defaultServer(), $server), $username, $password);
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
+     */
     private function authenticateAgainst(array $server, string $username, string $password): array
     {
         $host = trim((string) ($server['server'] ?? ''));
         if ($host === '') {
             throw new RuntimeException('LDAP server host is not configured.');
+        }
+
+        if (!$this->nativeLdapUsable()) {
+            $result = $this->runCliWorker('authenticate', [
+                'server' => $server,
+                'username' => $username,
+                'password' => $password,
+            ]);
+            if (empty($result['success']) || !is_array($result['profile'] ?? null)) {
+                throw new RuntimeException((string) ($result['message'] ?? 'LDAP authentication failed.'));
+            }
+
+            /** @var array{username: string, email: string, display_name: string, dn: string, groups: list<string>} $profile */
+            $profile = $result['profile'];
+
+            return $profile;
         }
 
         $connection = $this->connect($server);
@@ -282,6 +429,13 @@ final class LdapAuth
 
         $connection = @ldap_connect($uri);
         if ($connection === false) {
+            $detail = error_get_last()['message'] ?? '';
+            if (stripos($detail, 'Local error') !== false || stripos($detail, 'session handle') !== false) {
+                throw new RuntimeException(
+                    'Unable to connect to the LDAP server (Apache PHP LDAP session error). '
+                    . 'The app will retry through CLI PHP automatically when available.'
+                );
+            }
             throw new RuntimeException('Unable to connect to the LDAP server.');
         }
 
@@ -295,6 +449,124 @@ final class LdapAuth
         }
 
         return $connection;
+    }
+
+    /**
+     * Apache + PHP 8.5 on Windows often fails ldap_connect with "Local error"
+     * while the same php.exe CLI works. Detect that and fall back to CLI.
+     */
+    private function nativeLdapUsable(): bool
+    {
+        static $usable = null;
+        if ($usable !== null) {
+            return $usable;
+        }
+        if (!extension_loaded('ldap')) {
+            return $usable = false;
+        }
+        if (PHP_SAPI === 'cli' || PHP_SAPI === 'cli-server') {
+            return $usable = true;
+        }
+
+        $previous = error_get_last();
+        $connection = @ldap_connect('ldap://127.0.0.1:1');
+        if ($connection !== false) {
+            if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
+                @ldap_unbind($connection);
+            }
+            return $usable = true;
+        }
+
+        $last = error_get_last();
+        if ($last !== null && $last !== $previous) {
+            $message = (string) ($last['message'] ?? '');
+            if (stripos($message, 'session handle') !== false || stripos($message, 'Local error') !== false) {
+                return $usable = false;
+            }
+        }
+
+        // Other connect failures (network, etc.) still mean the extension can create handles.
+        return $usable = true;
+    }
+
+    private function cliPhpBinary(): string
+    {
+        $extensionDir = str_replace('\\', '/', (string) ini_get('extension_dir'));
+        $candidates = [];
+        if ($extensionDir !== '') {
+            $candidates[] = dirname($extensionDir) . DIRECTORY_SEPARATOR . 'php.exe';
+            $candidates[] = dirname($extensionDir) . DIRECTORY_SEPARATOR . 'php';
+        }
+        $candidates[] = 'C:\\xampp\\php\\php.exe';
+        $candidates[] = 'php';
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === 'php') {
+                return $candidate;
+            }
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        throw new RuntimeException('Unable to locate php.exe for the LDAP CLI worker.');
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function runCliWorker(string $action, array $payload): array
+    {
+        $worker = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'ldap-worker.php';
+        if (!is_file($worker)) {
+            throw new RuntimeException('LDAP CLI worker is missing.');
+        }
+
+        $php = $this->cliPhpBinary();
+        $command = escapeshellarg($php) . ' ' . escapeshellarg($worker);
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $process = proc_open(
+            $command,
+            $descriptors,
+            $pipes,
+            dirname(__DIR__),
+            null,
+            ['bypass_shell' => true]
+        );
+        if (!is_resource($process)) {
+            throw new RuntimeException('Unable to start the LDAP CLI worker.');
+        }
+
+        $json = json_encode(array_merge(['action' => $action], $payload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            proc_close($process);
+            throw new RuntimeException('Unable to encode LDAP worker payload.');
+        }
+
+        fwrite($pipes[0], $json);
+        fclose($pipes[0]);
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        $decoded = is_string($stdout) ? json_decode($stdout, true) : null;
+        if (!is_array($decoded)) {
+            $hint = trim((string) $stderr);
+            throw new RuntimeException(
+                'LDAP CLI worker returned an invalid response'
+                . ($hint !== '' ? ': ' . $hint : '')
+                . ($exitCode !== 0 ? " (exit {$exitCode})" : '')
+            );
+        }
+
+        return $decoded;
     }
 
     /**

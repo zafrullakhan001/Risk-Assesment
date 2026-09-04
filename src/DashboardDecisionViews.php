@@ -18,7 +18,7 @@ final class DashboardDecisionViews
      * }|null $evaluation
      * @param array<string, mixed> $progress
      */
-    public function renderDecisionDesk(array $insights, int $assessmentId, array $comparison = [], ?array $evaluation = null, array $progress = []): string
+    public function renderDecisionDesk(array $insights, int $assessmentId, array $comparison = [], ?array $evaluation = null, array $progress = [], bool $readOnly = false): string
     {
         $readiness = $insights['readiness'];
         $residual = $insights['residual'];
@@ -63,6 +63,7 @@ final class DashboardDecisionViews
                         <h3 id="exec-verdict"><?= $this->e((string) $readiness['verdict']) ?></h3>
                         <p id="exec-summary-text"><?= $this->e((string) $readiness['summary']) ?></p>
                     </div>
+                    <?php if (!$readOnly): ?>
                     <form class="exec-summary-editor" id="exec-summary-form" hidden>
                         <label>
                             <span>Headline</span>
@@ -81,6 +82,7 @@ final class DashboardDecisionViews
                             <button type="submit" class="button button-primary" id="btn-save-exec-summary">💾 Save summary</button>
                         </div>
                     </form>
+                    <?php endif; ?>
                     <div class="exec-metrics">
                         <?php
                         $metric = static function (string $key, int $open, int $total, string $label) : string {
@@ -107,12 +109,17 @@ final class DashboardDecisionViews
                     <?php endif; ?>
                 </div>
                 <div class="exec-actions no-print-hide" role="toolbar" aria-label="Executive summary actions">
-                    <button type="button" class="button ghost-light exec-action-btn exec-edit-btn" id="btn-edit-exec-summary" title="Edit" aria-label="Edit">✏️</button>
+                    <?php if (!$readOnly): ?>
+                        <button type="button" class="button ghost-light exec-action-btn exec-edit-btn" id="btn-edit-exec-summary" title="Edit" aria-label="Edit">✏️</button>
+                    <?php endif; ?>
                     <button type="button" class="button button-primary exec-action-btn" id="btn-presentation" title="Presentation mode" aria-label="Presentation mode">🎬</button>
                     <button type="button" class="button ghost-light exec-action-btn" id="btn-print" title="Print one-pager" aria-label="Print one-pager">🖨️</button>
                     <button type="button" class="button ghost-light exec-action-btn" id="btn-export-csv" title="Export CSV" aria-label="Export CSV">📥</button>
                     <button type="button" class="button ghost-light exec-action-btn" data-filter-type="action_tab" data-filter-value="risks" title="Open Actions" aria-label="Open Actions">✅</button>
-                    <button type="button" class="button ghost-light exec-action-btn" data-filter-type="action_tab" data-filter-value="signoff" title="Final evaluation" aria-label="Final evaluation">✍️</button>
+                    <?php if (!$readOnly): ?>
+                        <button type="button" class="button ghost-light exec-action-btn" data-filter-type="action_tab" data-filter-value="signoff" title="Final evaluation" aria-label="Final evaluation">✍️</button>
+                        <button type="button" class="button ghost-light exec-action-btn" data-filter-type="action_tab" data-filter-value="share" title="Share read-only link" aria-label="Share read-only link">🔗</button>
+                    <?php endif; ?>
                 </div>
             </article>
 
@@ -138,7 +145,9 @@ final class DashboardDecisionViews
                     <strong><?= count($comparison['changes'] ?? []) ?> field changes</strong>
                     <span>➕ <?= count($comparison['added'] ?? []) ?> added</span>
                     <span>➖ <?= count($comparison['removed'] ?? []) ?> removed</span>
-                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="versions">🗂️ Manage versions</button>
+                    <?php if (!$readOnly): ?>
+                        <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="versions">🗂️ Manage versions</button>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </section>
@@ -203,6 +212,7 @@ final class DashboardDecisionViews
      * } $goliveGates
      * @param list<array<string, mixed>> $evaluationHistory
      * @param array{name?: string, email?: string} $evaluatorDefaults
+     * @param list<array{id: int, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
      */
     public function renderActionsPanel(
         array $insights,
@@ -214,7 +224,10 @@ final class DashboardDecisionViews
         ?array $evaluation = null,
         array $goliveGates = [],
         array $evaluationHistory = [],
-        array $evaluatorDefaults = []
+        array $evaluatorDefaults = [],
+        bool $readOnly = false,
+        array $shareLinks = [],
+        ?string $freshShareUrl = null
     ): string {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
@@ -272,7 +285,9 @@ final class DashboardDecisionViews
                     <div>
                         <div class="eyebrow">Response workspace</div>
                         <h2>Actions</h2>
-                        <p>Record decisions on risks, gaps, TBDs, and exceptions here. Other tabs stay as dashboards.</p>
+                        <p><?= $readOnly
+                            ? 'View recorded decisions on risks, gaps, TBDs, and exceptions. Editing is disabled on shared links.'
+                            : 'Record decisions on risks, gaps, TBDs, and exceptions here. Other tabs stay as dashboards.' ?></p>
                     </div>
                 </div>
                 <span class="result-count project-resources-badge" id="response-open-count"><?= (int) $openResponses ?> item responses open</span>
@@ -297,6 +312,11 @@ final class DashboardDecisionViews
                 <button type="button" class="action-tab action-tab-versions" role="tab" aria-selected="false" data-action-tab="versions" data-tooltip="Compare assessment versions and manage uploaded workbook history.">
                     🗂️ Versions <em><?= count($versions) ?></em>
                 </button>
+                <?php if (!$readOnly && $currentId > 0): ?>
+                    <button type="button" class="action-tab action-tab-share" role="tab" aria-selected="false" data-action-tab="share" data-tooltip="Create a public read-only link anyone can open without signing in.">
+                        🔗 Share
+                    </button>
+                <?php endif; ?>
                 <?php if ($showWorkspaceTab): ?>
                     <button type="button" class="action-tab action-tab-workspace" role="tab" aria-selected="false" data-action-tab="workspace" data-tooltip="See owner workload, remediation timelines, and evidence completeness. Click a row to filter Actions.">
                         🧰 Workspace
@@ -311,7 +331,8 @@ final class DashboardDecisionViews
                     'Risk-status and other high-priority actionable items',
                     'action-risks-table',
                     $riskItems,
-                    $actionLabels
+                    $actionLabels,
+                    $readOnly
                 ) ?>
             </div>
 
@@ -322,7 +343,8 @@ final class DashboardDecisionViews
                     'Gap items that need a recorded decision',
                     'action-gaps-table',
                     $gapItems,
-                    $actionLabels
+                    $actionLabels,
+                    $readOnly
                 ) ?>
             </div>
 
@@ -333,7 +355,8 @@ final class DashboardDecisionViews
                     'Open decisions that still need an owner response',
                     'action-tbd-table',
                     $tbdItems,
-                    $actionLabels
+                    $actionLabels,
+                    $readOnly
                 ) ?>
             </div>
 
@@ -585,7 +608,9 @@ final class DashboardDecisionViews
                                 </p>
                                 <div class="final-eval-actions">
                                     <span class="final-eval-status" id="final-eval-status" hidden></span>
-                                    <button type="submit" class="button button-primary" id="btn-save-evaluation">💾 Save evaluation</button>
+                                    <?php if (!$readOnly): ?>
+                                        <button type="submit" class="button button-primary" id="btn-save-evaluation">💾 Save evaluation</button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </form>
@@ -604,8 +629,14 @@ final class DashboardDecisionViews
             </div>
 
             <div class="action-panel" data-action-panel="versions" hidden>
-                <?= $this->renderVersionsSection($versions, $comparison, $currentId, $csrfToken) ?>
+                <?= $this->renderVersionsSection($versions, $comparison, $currentId, $csrfToken, $readOnly) ?>
             </div>
+
+            <?php if (!$readOnly && $currentId > 0): ?>
+                <div class="action-panel" data-action-panel="share" hidden>
+                    <?= $this->renderShareSection($currentId, $csrfToken, $shareLinks, $freshShareUrl) ?>
+                </div>
+            <?php endif; ?>
 
             <?php if ($showWorkspaceTab): ?>
                 <div class="action-panel" data-action-panel="workspace" hidden>
@@ -797,7 +828,8 @@ final class DashboardDecisionViews
         string $help,
         string $tableId,
         array $items,
-        array $actionLabels
+        array $actionLabels,
+        bool $readOnly = false
     ): string {
         ob_start();
         ?>
@@ -815,7 +847,8 @@ final class DashboardDecisionViews
             <?php if ($items === []): ?>
                 <p class="empty-panel project-empty-state">✨ No items in this category right now.</p>
             <?php else: ?>
-                <p class="panel-help">📋 <?= $this->e($help) ?>. Select listed rows to update them together, or edit one at a time.</p>
+                <p class="panel-help">📋 <?= $this->e($help) ?><?= $readOnly ? '.' : '. Select listed rows to update them together, or edit one at a time.' ?></p>
+                <?php if (!$readOnly): ?>
                 <div class="bulk-response-bar" data-bulk-scope="<?= $this->e($scope) ?>" data-bulk-table="<?= $this->e($tableId) ?>">
                     <label class="bulk-select-all">
                         <input type="checkbox" class="bulk-select-all-toggle" title="Select all listed rows">
@@ -831,11 +864,12 @@ final class DashboardDecisionViews
                     <button type="button" class="button button-primary bulk-response-apply">Update selected</button>
                     <span class="bulk-response-status" hidden></span>
                 </div>
+                <?php endif; ?>
                 <div class="table-scroll">
                     <table id="<?= $this->e($tableId) ?>">
                         <thead>
                             <tr>
-                                <th class="col-select">Sel</th>
+                                <?php if (!$readOnly): ?><th class="col-select">Sel</th><?php endif; ?>
                                 <th class="col-row-num">#</th>
                                 <th>Item</th>
                                 <th>Source</th>
@@ -864,9 +898,11 @@ final class DashboardDecisionViews
                                     data-actionable="1"
                                     data-has-comment="<?= $comment !== '' ? '1' : '0' ?>"
                                 >
+                                    <?php if (!$readOnly): ?>
                                     <td class="col-select">
                                         <input type="checkbox" class="row-select" value="<?= $this->e($key) ?>" aria-label="Select <?= $this->e((string) ($row['check'] ?? '')) ?>">
                                     </td>
+                                    <?php endif; ?>
                                     <td class="col-row-num">
                                         <?php if ($rowNumber > 0): ?>
                                             <span class="row-number" title="<?= $this->e($sourceLabel) ?> row <?= $rowNumber ?>">#<?= $rowNumber ?></span>
@@ -938,6 +974,7 @@ final class DashboardDecisionViews
                                                     class="item-response-edit"
                                                     aria-label="Edit response for <?= $this->e($checkTitle) ?>"
                                                     title="Edit response"
+                                                    <?= $readOnly ? 'hidden' : '' ?>
                                                 >✏️</button>
                                             </div>
                                             <div class="item-response-fields" hidden>
@@ -973,7 +1010,7 @@ final class DashboardDecisionViews
      * @param list<array<string, mixed>> $versions
      * @param array<string, mixed> $comparison
      */
-    private function renderVersionsSection(array $versions, array $comparison, int $currentId, string $csrfToken): string
+    private function renderVersionsSection(array $versions, array $comparison, int $currentId, string $csrfToken, bool $readOnly = false): string
     {
         ob_start();
         ?>
@@ -999,7 +1036,7 @@ final class DashboardDecisionViews
                     }
                 }
                 ?>
-                <?php if ($csrfToken !== '' && $olderCount > 0 && $currentId > 0): ?>
+                <?php if (!$readOnly && $csrfToken !== '' && $olderCount > 0 && $currentId > 0): ?>
                     <div class="version-bulk">
                         <p>Drop every older upload for this project and keep the version you have open.</p>
                         <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Delete <?= (int) $olderCount ?> older version<?= $olderCount === 1 ? '' : 's' ?> permanently? The current version (#<?= (int) $currentId ?>) will be kept.');">
@@ -1018,6 +1055,8 @@ final class DashboardDecisionViews
                                 <strong>
                                     <?php if ($versionId === $currentId): ?>
                                         Current · #<?= $versionId ?>
+                                    <?php elseif ($readOnly): ?>
+                                        Version #<?= $versionId ?>
                                     <?php else: ?>
                                         <a href="index.php?view=1&amp;id=<?= $versionId ?>">Version #<?= $versionId ?></a>
                                     <?php endif; ?>
@@ -1026,10 +1065,10 @@ final class DashboardDecisionViews
                                 <span><?= $this->e((string) ($version['original_filename'] ?? '')) ?></span>
                             </div>
                             <div class="version-actions">
-                                <?php if ($versionId !== $currentId): ?>
+                                <?php if (!$readOnly && $versionId !== $currentId): ?>
                                     <a class="button ghost" href="index.php?view=1&amp;id=<?= $versionId ?>">Open</a>
                                 <?php endif; ?>
-                                <?php if ($csrfToken !== ''): ?>
+                                <?php if (!$readOnly && $csrfToken !== ''): ?>
                                     <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Delete version #<?= $versionId ?> permanently?');">
                                         <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
                                         <input type="hidden" name="action" value="delete_assessment">
@@ -1088,6 +1127,93 @@ final class DashboardDecisionViews
                     <?php if (($comparison['changes'] ?? []) === [] && ($comparison['added'] ?? []) === [] && ($comparison['removed'] ?? []) === []): ?>
                         <p class="empty-panel">No status or risk changes versus the prior version.</p>
                     <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<array{id: int, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
+     */
+    private function renderShareSection(int $assessmentId, string $csrfToken, array $shareLinks, ?string $freshShareUrl): string
+    {
+        $activeLinks = array_values(array_filter($shareLinks, static fn (array $link): bool => !empty($link['is_active'])));
+        $hasActive = $activeLinks !== [];
+
+        ob_start();
+        ?>
+        <section class="table-card table-card-uplift share-link-card" id="share-link-panel">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">🔗</span>
+                    <div>
+                        <div class="eyebrow">Public access</div>
+                        <h3>Read-only share link</h3>
+                    </div>
+                </div>
+                <span class="result-count result-count-badge"><?= $hasActive ? 'Active' : 'Off' ?></span>
+            </div>
+            <p class="panel-help">Create a public link so people can view this assessment version without signing in. Recipients cannot edit responses, diagrams, or evaluations. Creating a new link revokes the previous one.</p>
+
+            <?php if ($freshShareUrl !== null && $freshShareUrl !== ''): ?>
+                <div class="share-link-fresh alert alert-success">
+                    <strong>Copy this link now</strong> — it will not be shown again.
+                    <div class="share-link-copy-row">
+                        <input type="text" class="share-link-url-input" id="share-link-url" readonly value="<?= $this->e($freshShareUrl) ?>">
+                        <button type="button" class="button button-primary" id="btn-copy-share-link">📋 Copy</button>
+                    </div>
+                    <p class="share-link-copy-status" id="share-link-copy-status" hidden></p>
+                </div>
+            <?php endif; ?>
+
+            <div class="share-link-actions">
+                <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
+                    <form method="post" action="index.php" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                        <input type="hidden" name="action" value="create_share_link">
+                        <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                        <button type="submit" class="button button-primary">
+                            <?= $hasActive ? '🔄 Create new link' : '🔗 Create share link' ?>
+                        </button>
+                    </form>
+                    <?php if ($hasActive): ?>
+                        <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Revoke the public share link? Anyone with the old URL will lose access.');">
+                            <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                            <input type="hidden" name="action" value="revoke_share_link">
+                            <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                            <input type="hidden" name="share_id" value="<?= (int) $activeLinks[0]['id'] ?>">
+                            <button type="submit" class="button danger-btn">🚫 Revoke link</button>
+                        </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($shareLinks === []): ?>
+                <p class="empty-panel project-empty-state">No share links yet for this version.</p>
+            <?php else: ?>
+                <div class="share-link-history">
+                    <div class="card-heading" style="padding-top: 8px;">
+                        <div>
+                            <div class="eyebrow">History</div>
+                            <h3>Recent share links</h3>
+                        </div>
+                    </div>
+                    <ul class="share-link-list">
+                        <?php foreach ($shareLinks as $link): ?>
+                            <li class="share-link-row <?= !empty($link['is_active']) ? 'is-active' : 'is-revoked' ?>">
+                                <div>
+                                    <strong><?= !empty($link['is_active']) ? 'Active' : 'Revoked / expired' ?></strong>
+                                    <span>Created <?= $this->e((string) ($link['created_at'] ?? '')) ?><?= ($link['created_by_username'] ?? '') !== '' ? ' · ' . $this->e((string) $link['created_by_username']) : '' ?></span>
+                                    <?php if (($link['last_accessed_at'] ?? null) !== null): ?>
+                                        <span>Last opened <?= $this->e((string) $link['last_accessed_at']) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
                 </div>
             <?php endif; ?>
         </section>

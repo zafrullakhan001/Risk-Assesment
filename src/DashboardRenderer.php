@@ -53,6 +53,8 @@ final class DashboardRenderer
      * @param list<array<string, mixed>> $evaluationHistory
      * @param array{name?: string, email?: string} $evaluatorDefaults
      * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $projectPictures
+     * @param list<array{id: int, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
+     * @param string|null $freshShareUrl Absolute URL shown once after creating a share link
      */
     public function render(
         Assessment $assessment,
@@ -71,7 +73,11 @@ final class DashboardRenderer
         array $itemResponseHistory = [],
         array $evaluationHistory = [],
         array $evaluatorDefaults = [],
-        array $projectPictures = []
+        array $projectPictures = [],
+        bool $readOnly = false,
+        string $shareToken = '',
+        array $shareLinks = [],
+        ?string $freshShareUrl = null
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -132,6 +138,14 @@ final class DashboardRenderer
 
         $progressJson = json_encode($progress, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
         $branding = Branding::current();
+        $effectiveCsrf = $readOnly ? '' : $csrfToken;
+        $bodyClasses = [];
+        if (!empty($evaluation['ready_to_golive'])) {
+            $bodyClasses[] = 'is-ready-golive';
+        }
+        if ($readOnly) {
+            $bodyClasses[] = 'is-readonly-share';
+        }
 
         ob_start();
         ?>
@@ -140,7 +154,10 @@ final class DashboardRenderer
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $this->e($solutionName) ?> · <?= $this->e($branding->brandTitle()) ?></title>
+    <title><?= $this->e($solutionName) ?><?= $readOnly ? ' (shared)' : '' ?> · <?= $this->e($branding->brandTitle()) ?></title>
+    <?php if ($readOnly): ?>
+        <meta name="robots" content="noindex, nofollow">
+    <?php endif; ?>
     <?php require dirname(__DIR__) . '/public/includes/theme-head.php'; ?>
     <?php require dirname(__DIR__) . '/public/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -149,23 +166,39 @@ final class DashboardRenderer
 </head>
 <body
     data-assessment-id="<?= (int) $assessmentId ?>"
-    data-csrf-token="<?= $this->e($csrfToken) ?>"
+    data-csrf-token="<?= $this->e($effectiveCsrf) ?>"
+    data-readonly="<?= $readOnly ? '1' : '0' ?>"
+    data-share-token="<?= $this->e($shareToken) ?>"
     data-progress="<?= $this->e($progressJson) ?>"
     data-golive-gates="<?= $this->e($goliveGatesJson) ?>"
-    class="<?= !empty($evaluation['ready_to_golive']) ? 'is-ready-golive' : '' ?>"
+    class="<?= $this->e(implode(' ', $bodyClasses)) ?>"
 >
     <div class="shell">
         <header class="topbar topbar-uplift">
-            <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
-                <?= $branding->renderMark() ?>
-                <div class="brand-text">
-                    <div class="brand-title"><?= $this->e($branding->brandTitle()) ?></div>
-                    <h1><?= $this->e($branding->brandSubtitle()) ?></h1>
+            <?php if ($readOnly): ?>
+                <div class="brand brand-link brand-static" title="Shared read-only view">
+                    <?= $branding->renderMark() ?>
+                    <div class="brand-text">
+                        <div class="brand-title"><?= $this->e($branding->brandTitle()) ?></div>
+                        <h1><?= $this->e($branding->brandSubtitle()) ?></h1>
+                    </div>
                 </div>
-            </a>
+            <?php else: ?>
+                <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
+                    <?= $branding->renderMark() ?>
+                    <div class="brand-text">
+                        <div class="brand-title"><?= $this->e($branding->brandTitle()) ?></div>
+                        <h1><?= $this->e($branding->brandSubtitle()) ?></h1>
+                    </div>
+                </a>
+            <?php endif; ?>
             <div class="topbar-actions">
-                <a class="button ghost home-link" href="index.php#find-projects">← Find projects</a>
-                <?php require dirname(__DIR__) . '/public/includes/updates-nav.php'; ?>
+                <?php if ($readOnly): ?>
+                    <span class="share-readonly-pill" title="Anyone with this link can view this assessment">🔒 Read-only share</span>
+                <?php else: ?>
+                    <a class="button ghost home-link" href="index.php#find-projects">← Find projects</a>
+                    <?php require dirname(__DIR__) . '/public/includes/updates-nav.php'; ?>
+                <?php endif; ?>
                 <?php require dirname(__DIR__) . '/public/includes/theme-controls.php'; ?>
                 <div class="updated">
                     <span class="live-dot"></span>
@@ -206,14 +239,19 @@ final class DashboardRenderer
                         <?= $this->renderRiskSpectrum($archProgress) ?>
                     </div>
                     <div class="hero-actions">
-                        <a class="button ghost" href="index.php#find-projects">🏠 Home · Find projects</a>
-                        <a class="button ghost" href="index.php#upload">📤 Upload another file</a>
-                        <a class="button button-primary" href="#risk-register">📋 View register</a>
+                        <?php if ($readOnly): ?>
+                            <span class="button ghost is-disabled" aria-disabled="true">🔒 Shared view</span>
+                            <a class="button button-primary" href="#risk-register">📋 View register</a>
+                        <?php else: ?>
+                            <a class="button ghost" href="index.php#find-projects">🏠 Home · Find projects</a>
+                            <a class="button ghost" href="index.php#upload">📤 Upload another file</a>
+                            <a class="button button-primary" href="#risk-register">📋 View register</a>
+                        <?php endif; ?>
                     </div>
                 </div>
             </section>
 
-            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison, $evaluation, $progress) ?>
+            <?= $decisionViews->renderDecisionDesk($insights, $assessmentId, $comparison, $evaluation, $progress, $readOnly) ?>
 
             <section class="meta-grid meta-grid-uplift">
                 <div class="meta-item meta-vendor"><span class="label">🏢 Vendor</span><strong><?= $this->e($metadata['vendor'] ?? '') ?></strong></div>
@@ -292,7 +330,8 @@ final class DashboardRenderer
                     $isAdaptive,
                     $changedKeys,
                     $responses,
-                    $assessmentId
+                    $assessmentId,
+                    $readOnly
                 ) ?>
             </div>
 
@@ -324,17 +363,18 @@ final class DashboardRenderer
                         true,
                         $changedKeys,
                         $responses,
-                        $assessmentId
+                        $assessmentId,
+                        $readOnly
                     ) ?>
                 </div>
             <?php endif; ?>
 
             <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $csrfToken, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl) ?>
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>
-                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams, $projectPictures) ?>
+                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams, $projectPictures, !$readOnly, $shareToken) ?>
             </div>
 
             <?php if ($hasGovernance): ?>
@@ -357,7 +397,9 @@ final class DashboardRenderer
                 </div>
             <?php endif; ?>
         </main>
-        <?= $this->renderAddItemDialog($assessmentId) ?>
+        <?php if (!$readOnly): ?>
+            <?= $this->renderAddItemDialog($assessmentId) ?>
+        <?php endif; ?>
         <?php require dirname(__DIR__) . '/public/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/theme.js') ?>"></script>
@@ -618,7 +660,8 @@ final class DashboardRenderer
         bool $extendedColumns,
         array $changedKeys = [],
         array $responses = [],
-        int $assessmentId = 0
+        int $assessmentId = 0,
+        bool $readOnly = false
     ): string {
         $tableId = $scope === 'due_diligence' ? 'dd-table' : 'risk-table';
         $prefix = $scope === 'due_diligence' ? 'dd-' : '';
@@ -668,7 +711,9 @@ final class DashboardRenderer
                 <option value="changed">Changed since last upload</option>
             </select>
             <button type="button" class="button ghost" id="<?= $prefix ?>clearFilters">↩️ Reset</button>
-            <button type="button" class="button ghost" data-filter-type="action_tab" data-filter-value="risks">✅ Respond in Actions</button>
+            <?php if (!$readOnly): ?>
+                <button type="button" class="button ghost" data-filter-type="action_tab" data-filter-value="risks">✅ Respond in Actions</button>
+            <?php endif; ?>
         </section>
 
         <section class="table-card table-card-uplift" id="<?= $this->e($registerId) ?>" data-filter-scope="<?= $this->e($scope) ?>">
@@ -682,16 +727,20 @@ final class DashboardRenderer
                 </div>
                 <div class="register-heading-actions">
                     <span class="result-count result-count-badge" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
-                    <button
-                        type="button"
-                        class="button button-primary register-add-row"
-                        data-item-type="<?= $this->e($itemType) ?>"
-                        <?= $assessmentId <= 0 ? 'disabled' : '' ?>
-                        title="<?= $assessmentId <= 0 ? 'Save this assessment first' : 'Add a manual row' ?>"
-                    >➕ Add row</button>
+                    <?php if (!$readOnly): ?>
+                        <button
+                            type="button"
+                            class="button button-primary register-add-row"
+                            data-item-type="<?= $this->e($itemType) ?>"
+                            <?= $assessmentId <= 0 ? 'disabled' : '' ?>
+                            title="<?= $assessmentId <= 0 ? 'Save this assessment first' : 'Add a manual row' ?>"
+                        >➕ Add row</button>
+                    <?php endif; ?>
                 </div>
             </div>
-            <p class="panel-help dashboard-readonly-hint">✏️ Use the pencil on actionable rows to record Taken care / Ignore / comments. ➕ Add manual rows or 🗑️ delete any row for this assessment only (not carried to the next Excel upload).</p>
+            <p class="panel-help dashboard-readonly-hint"><?= $readOnly
+                ? '👁️ Read-only shared view. Responses and comments are visible but cannot be changed here.'
+                : '✏️ Use the pencil on actionable rows to record Taken care / Ignore / comments. ➕ Add manual rows or 🗑️ delete any row for this assessment only (not carried to the next Excel upload).' ?></p>
             <div class="table-scroll">
                 <table id="<?= $this->e($tableId) ?>">
                     <thead>
@@ -841,6 +890,7 @@ final class DashboardRenderer
                                                     class="item-response-edit"
                                                     aria-label="Edit response for <?= $this->e($checkTitle) ?>"
                                                     title="Edit response"
+                                                    <?= $readOnly ? 'hidden' : '' ?>
                                                 >✏️</button>
                                             </div>
                                             <div class="item-response-fields" hidden>
@@ -872,7 +922,7 @@ final class DashboardRenderer
                                     <td><?= $this->e($sourceReference) ?></td>
                                 <?php endif; ?>
                                 <td class="col-row-actions">
-                                    <?php if ($itemId > 0 && $assessmentId > 0): ?>
+                                    <?php if (!$readOnly && $itemId > 0 && $assessmentId > 0): ?>
                                         <button
                                             type="button"
                                             class="register-row-delete"

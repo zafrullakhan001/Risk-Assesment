@@ -21,6 +21,7 @@ use RiskAssessment\ProjectImageConverter;
 use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
 use RiskAssessment\Repositories\ProjectPicturesRepository;
+use RiskAssessment\Repositories\ProjectShareRepository;
 
 $currentUser = $auth->requireAuth();
 $actor = Actor::fromUser($currentUser);
@@ -31,12 +32,14 @@ $changeLogRepository = new AssessmentChangeLogRepository($pdo);
 $projectLinksRepository = new ProjectLinksRepository($pdo);
 $projectMermaidRepository = new ProjectMermaidRepository($pdo);
 $projectPicturesRepository = new ProjectPicturesRepository($pdo);
+$projectShareRepository = new ProjectShareRepository($pdo);
 $projectImageConverter = new ProjectImageConverter();
 $findingStatusRepository = new FindingStatusRepository($pdo);
 $goliveGate = new GoliveGate();
 
 $error = '';
 $flash = '';
+$freshShareUrl = null;
 $dashboardHtml = '';
 $searchQuery = trim((string) ($_GET['q'] ?? ''));
 $searchPage = max(1, (int) ($_GET['page'] ?? 1));
@@ -925,6 +928,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($postedAction === 'create_share_link' || $postedAction === 'revoke_share_link') {
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0 || $repository->findById($targetId) === null) {
+                throw new RuntimeException('Assessment not found.');
+            }
+
+            if ($postedAction === 'create_share_link') {
+                $created = $projectShareRepository->create($targetId, $currentUser);
+                $_SESSION['fresh_share_url'] = ProjectShareRepository::absoluteUrl($created['token']);
+                $flash = 'Read-only share link created. Copy it from the Share tab — it is shown only once.';
+            } else {
+                $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+                if ($shareId > 0) {
+                    $projectShareRepository->revokeById($shareId, $targetId);
+                } else {
+                    $projectShareRepository->revokeAllForAssessment($targetId);
+                }
+                unset($_SESSION['fresh_share_url']);
+                $flash = 'Public share link revoked.';
+            }
+
+            header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=share&shared=1');
+            exit;
+        } catch (Throwable $exception) {
+            $error = $exception->getMessage();
+        }
+    } else {
     try {
         if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
             throw new RuntimeException('Invalid form submission. Please refresh and try again.');
@@ -1106,6 +1141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
+    }
 }
 
 if (isset($_GET['deleted'])) {
@@ -1124,6 +1160,15 @@ if (isset($_GET['deleted_older'])) {
     $flash = $removedCount === 1
         ? '1 older version deleted. Current version kept.'
         : $removedCount . ' older versions deleted. Current version kept.';
+}
+
+if (isset($_GET['shared']) && $flash === '') {
+    $flash = 'Share settings updated.';
+}
+
+if (isset($_SESSION['fresh_share_url'])) {
+    $freshShareUrl = (string) $_SESSION['fresh_share_url'];
+    unset($_SESSION['fresh_share_url']);
 }
 
 if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
@@ -1160,6 +1205,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $assessmentId);
                 $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             }
+            $shareLinks = $projectShareRepository->listForAssessment($assessmentId);
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -1178,7 +1224,11 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $itemResponseHistory,
                 $evaluationHistory,
                 $evaluatorDefaults,
-                $projectPictures
+                $projectPictures,
+                false,
+                '',
+                $shareLinks,
+                $freshShareUrl
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -1234,7 +1284,11 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $itemResponseHistory,
             $evaluationHistory,
             $evaluatorDefaults,
-            $projectPictures
+            $projectPictures,
+            false,
+            '',
+            $storedId > 0 ? $projectShareRepository->listForAssessment($storedId) : [],
+            $freshShareUrl
         );
     }
 }
@@ -1308,6 +1362,8 @@ $renderProjectDelete = static function (array $project): void {
             </a>
             <div class="topbar-actions">
                 <a class="button ghost home-link" href="#find-projects">Find by name</a>
+                <a class="button ghost home-link" href="#upload">Upload</a>
+                <a class="button ghost home-link" href="templates.php">📚 Templates</a>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/theme-controls.php'; ?>
                 <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
@@ -1334,6 +1390,12 @@ $renderProjectDelete = static function (array $project): void {
             <?php if ($flash !== ''): ?>
                 <div class="alert alert-success"><?= htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') ?></div>
             <?php endif; ?>
+
+            <nav class="home-section-tabs" aria-label="Home sections">
+                <a href="#find-projects">🔎 Find projects</a>
+                <a href="#upload">📤 Upload assessment</a>
+                <a href="templates.php">📚 Template library</a>
+            </nav>
 
             <section class="upload-card search-card" id="find-projects">
                 <h2><?= e($branding->heroHeadingPlain()) ?></h2>

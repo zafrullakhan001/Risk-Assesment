@@ -10,17 +10,26 @@ use RiskAssessment\Repositories\ProjectPicturesRepository;
 
 final class DashboardProjectResources
 {
+    private string $shareToken = '';
+
     /**
      * @param list<array{id: int, label: string, url: string, sort_order: int}> $links
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $diagrams
      * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $pictures
      */
-    public function render(int $assessmentId, array $links, array $diagrams, array $pictures = []): string
-    {
-        $canSave = $assessmentId > 0;
+    public function render(
+        int $assessmentId,
+        array $links,
+        array $diagrams,
+        array $pictures = [],
+        bool $canEdit = true,
+        string $shareToken = ''
+    ): string {
+        $canSave = $canEdit && $assessmentId > 0;
         $maxLinks = ProjectLinksRepository::MAX_LINKS;
         $maxDiagrams = ProjectMermaidRepository::MAX_DIAGRAMS;
         $maxPictures = ProjectPicturesRepository::MAX_PICTURES;
+        $this->shareToken = $shareToken;
 
         ob_start();
         ?>
@@ -30,15 +39,18 @@ final class DashboardProjectResources
             data-max-links="<?= (int) $maxLinks ?>"
             data-max-diagrams="<?= (int) $maxDiagrams ?>"
             data-max-pictures="<?= (int) $maxPictures ?>"
+            data-readonly="<?= $canSave ? '0' : '1' ?>"
         >
             <div class="project-resources-intro project-resources-hero">
                 <div class="project-resources-hero-copy">
                     <div class="eyebrow">✨ Project workspace</div>
                     <h2>📐 Diagram &amp; links</h2>
-                    <p>Save up to <?= (int) $maxDiagrams ?> Mermaid diagrams, <?= (int) $maxPictures ?> pictures, and <?= (int) $maxLinks ?> reference links for this assessment version.</p>
+                    <p><?= $canSave
+                        ? 'Save up to ' . (int) $maxDiagrams . ' Mermaid diagrams, ' . (int) $maxPictures . ' pictures, and ' . (int) $maxLinks . ' reference links for this assessment version.'
+                        : 'View Mermaid diagrams, pictures, and reference links for this assessment version.' ?></p>
                 </div>
                 <?php if (!$canSave): ?>
-                    <span class="result-count project-resources-badge">📁 Upload and save an assessment to persist changes</span>
+                    <span class="result-count project-resources-badge"><?= $shareToken !== '' ? '🔒 Read-only shared view' : '📁 Upload and save an assessment to persist changes' ?></span>
                 <?php else: ?>
                     <span class="result-count project-resources-badge is-live">💾 Changes save per project version</span>
                 <?php endif; ?>
@@ -339,6 +351,11 @@ final class DashboardProjectResources
     {
         if ($id <= 0 || $assessmentId <= 0) {
             return '';
+        }
+
+        if ($this->shareToken !== '') {
+            return 'share.php?t=' . rawurlencode($this->shareToken)
+                . '&action=view_project_picture&picture_id=' . $id;
         }
 
         return 'index.php?action=view_project_picture&assessment_id=' . $assessmentId . '&picture_id=' . $id;

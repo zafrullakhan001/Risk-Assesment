@@ -6,9 +6,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const assessmentId = Number(document.body.dataset.assessmentId || '0');
     const csrfToken = document.body.dataset.csrfToken || '';
+    const isReadOnly = document.body.dataset.readonly === '1' || root.dataset.readonly === '1';
     const maxLinks = Number.parseInt(root.dataset.maxLinks || '10', 10);
     const maxDiagrams = Number.parseInt(root.dataset.maxDiagrams || '10', 10);
     const maxPictures = Number.parseInt(root.dataset.maxPictures || '10', 10);
+
+    if (isReadOnly) {
+        // View-only: keep preview / open link / picture viewer; skip all save handlers below by early return after wiring view actions.
+    }
 
     const mermaidPreview = document.getElementById('mermaid-preview');
     const mermaidPreviewPanel = document.getElementById('mermaid-preview-panel');
