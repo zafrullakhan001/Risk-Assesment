@@ -43,7 +43,7 @@ final class DashboardRenderer
      * }|null $evaluation
      * @param list<array{id: int, label: string, url: string, sort_order: int}> $projectLinks
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $projectDiagrams
-     * @param array<string, string> $findingStatuses
+     * @param array<string, array{status?: string, comment?: string, servicenow_links?: list<string>}|string> $findingStatuses
      * @param array{verdict?: string, summary?: string} $executiveOverride
      * @param array<string, list<array<string, mixed>>> $itemResponseHistory
      * @param list<array<string, mixed>> $evaluationHistory
@@ -219,17 +219,17 @@ final class DashboardRenderer
             </section>
 
             <nav class="dash-tabs dash-tabs-uplift" role="tablist" aria-label="Workbook tabs">
-                <button type="button" class="dash-tab dash-tab-theme-architecture is-active" role="tab" aria-selected="true" data-tab="architecture">🏛️ Architecture checks</button>
+                <button type="button" class="dash-tab dash-tab-theme-architecture is-active" role="tab" aria-selected="true" data-tab="architecture" data-tooltip="Browse architecture control status, risk levels, charts, and the full risk register.">🏛️ Architecture checks</button>
                 <?php if ($hasDueDiligence): ?>
-                    <button type="button" class="dash-tab dash-tab-theme-diligence" role="tab" aria-selected="false" data-tab="due-diligence">🔍 Due diligence</button>
+                    <button type="button" class="dash-tab dash-tab-theme-diligence" role="tab" aria-selected="false" data-tab="due-diligence" data-tooltip="Review technology risk / due-diligence items, evidence notes, and extended coverage.">🔍 Due diligence</button>
                 <?php endif; ?>
-                <button type="button" class="dash-tab dash-tab-theme-actions" role="tab" aria-selected="false" data-tab="actions">✅ Actions</button>
-                <button type="button" class="dash-tab dash-tab-theme-project" role="tab" aria-selected="false" data-tab="project">📐 Diagram &amp; links</button>
+                <button type="button" class="dash-tab dash-tab-theme-actions" role="tab" aria-selected="false" data-tab="actions" data-tooltip="Record responses on risks, gaps, TBDs, and exceptions; manage sign-off, versions, and workload views.">✅ Actions</button>
+                <button type="button" class="dash-tab dash-tab-theme-project" role="tab" aria-selected="false" data-tab="project" data-tooltip="Add architecture diagrams, pictures, and useful project links for this assessment.">📐 Diagram &amp; links</button>
                 <?php if ($hasGovernance): ?>
-                    <button type="button" class="dash-tab dash-tab-theme-governance" role="tab" aria-selected="false" data-tab="governance">⚖️ Governance summary</button>
+                    <button type="button" class="dash-tab dash-tab-theme-governance" role="tab" aria-selected="false" data-tab="governance" data-tooltip="View governance fields, documented exceptions, and recommended compliance actions.">⚖️ Governance summary</button>
                 <?php endif; ?>
                 <?php if ($hasLegend): ?>
-                    <button type="button" class="dash-tab dash-tab-theme-legend" role="tab" aria-selected="false" data-tab="legend">📊 Scoring legend</button>
+                    <button type="button" class="dash-tab dash-tab-theme-legend" role="tab" aria-selected="false" data-tab="legend" data-tooltip="Reference status meanings, risk-level guidance, and the minimum evidence checklist.">📊 Scoring legend</button>
                 <?php endif; ?>
             </nav>
 
@@ -298,6 +298,7 @@ final class DashboardRenderer
                 </div>
             <?php endif; ?>
         </main>
+        <?= $this->renderAddItemDialog($assessmentId) ?>
         <?php require dirname(__DIR__) . '/public/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(dirname(__DIR__) . '/public/assets/js/theme.js') ?>"></script>
@@ -639,13 +640,23 @@ final class DashboardRenderer
                         <h3><?= $this->e($heading) ?></h3>
                     </div>
                 </div>
-                <span class="result-count result-count-badge" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
+                <div class="register-heading-actions">
+                    <span class="result-count result-count-badge" id="<?= $prefix ?>filter-count"><?= count($items) ?> shown</span>
+                    <button
+                        type="button"
+                        class="button button-primary register-add-row"
+                        data-item-type="<?= $this->e($itemType) ?>"
+                        <?= $assessmentId <= 0 ? 'disabled' : '' ?>
+                        title="<?= $assessmentId <= 0 ? 'Save this assessment first' : 'Add a manual row' ?>"
+                    >➕ Add row</button>
+                </div>
             </div>
-            <p class="panel-help dashboard-readonly-hint">👀 Dashboard view only. Record Taken care / Ignore / comments in the <strong>✅ Actions</strong> tab.</p>
+            <p class="panel-help dashboard-readonly-hint">✏️ Use the pencil on actionable rows to record Taken care / Ignore / comments. ➕ Add manual rows or 🗑️ delete any row for this assessment only (not carried to the next Excel upload).</p>
             <div class="table-scroll">
                 <table id="<?= $this->e($tableId) ?>">
                     <thead>
                         <tr>
+                            <th class="col-row-num">#</th>
                             <th>Section</th>
                             <th><?= $this->e($checkLabel) ?></th>
                             <th>Status</th>
@@ -659,17 +670,22 @@ final class DashboardRenderer
                                 <th>Review question</th>
                                 <th>Source</th>
                             <?php endif; ?>
+                            <th class="col-row-actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($items as $item): ?>
+                        <?php foreach ($items as $itemIndex => $item): ?>
                             <?php
+                            $rowNumber = $itemIndex + 1;
                             $owner = (string) ($item['owner'] ?? '');
                             $timeline = (string) ($item['remediation_timeline'] ?? '');
                             $mitigation = (string) ($item['mitigation'] ?? '');
                             $notes = (string) ($item['notes'] ?? '');
                             $status = (string) ($item['status'] ?? '');
                             $riskLevel = (string) ($item['risk_level'] ?? '');
+                            $itemId = (int) ($item['id'] ?? 0);
+                            $origin = strtolower(trim((string) ($item['origin'] ?? 'excel'))) === 'manual' ? 'manual' : 'excel';
+                            $isManual = $origin === 'manual';
                             $key = AssessmentComparer::itemKey(
                                 (string) ($item['item_type'] ?? $itemType),
                                 (string) ($item['section'] ?? ''),
@@ -681,23 +697,39 @@ final class DashboardRenderer
                             $responseAction = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open'));
                             $responseComment = (string) ($response['comment'] ?? '');
                             $responseLabel = $actionLabels[$responseAction] ?? 'Open';
+                            $reviewQuestion = (string) ($item['review_question'] ?? '');
+                            $sourceReference = (string) ($item['source_reference'] ?? '');
+                            $checkTitle = (string) ($item['check'] ?? '');
+                            $sectionName = (string) ($item['section'] ?? '');
+                            $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture';
+                            $sectionSub = $sectionName;
+                            if ($owner !== '') {
+                                $sectionSub .= ($sectionSub !== '' ? ' · ' : '') . $owner;
+                            }
+                            $commentPreview = $responseComment !== ''
+                                ? (mb_strlen($responseComment) > 90 ? mb_substr($responseComment, 0, 87) . '…' : $responseComment)
+                                : '';
+                            $updatedAt = (string) ($response['updated_at'] ?? '');
+                            $updatedByLabel = (string) ($response['updated_by_label'] ?? '');
                             $searchParts = [
-                                $item['section'] ?? '',
-                                $item['check'] ?? '',
+                                (string) $rowNumber,
+                                $sectionName,
+                                $checkTitle,
                                 $notes,
                                 $mitigation,
                                 $owner,
-                                $item['review_question'] ?? '',
-                                $item['source_reference'] ?? '',
+                                $reviewQuestion,
+                                $sourceReference,
                                 $responseComment,
                                 $responseLabel,
+                                $isManual ? 'manual' : '',
                             ];
                             $ownersAttr = strtolower(preg_replace('/\s*(?:\+|\/|,|;|\band\b)\s*/i', '|', $owner !== '' ? $owner : 'unassigned') ?? 'unassigned');
                             $timelineLane = $this->timelineLane($timeline);
                             ?>
                             <tr
-                                class="data-row<?= $isChanged ? ' row-changed' : '' ?><?= $isActionable ? ' row-actionable' : '' ?>"
-                                data-section="<?= $this->e($item['section'] ?? '') ?>"
+                                class="data-row<?= $isChanged ? ' row-changed' : '' ?><?= $isActionable ? ' row-actionable' : '' ?><?= $isManual ? ' row-manual' : '' ?>"
+                                data-section="<?= $this->e($sectionName) ?>"
                                 data-status="<?= $this->e($status) ?>"
                                 data-risk="<?= $this->e($riskLevel) ?>"
                                 data-owner="<?= $this->e($ownersAttr) ?>"
@@ -707,14 +739,23 @@ final class DashboardRenderer
                                 data-response="<?= $this->e($responseAction) ?>"
                                 data-has-comment="<?= $responseComment !== '' ? '1' : '0' ?>"
                                 data-item-key="<?= $this->e($key) ?>"
+                                data-item-id="<?= $itemId ?>"
+                                data-row-number="<?= $rowNumber ?>"
+                                data-origin="<?= $this->e($origin) ?>"
                                 data-missing-owner="<?= $owner === '' ? '1' : '0' ?>"
                                 data-missing-timeline="<?= $timeline === '' ? '1' : '0' ?>"
                                 data-missing-mitigation="<?= $mitigation === '' ? '1' : '0' ?>"
                                 data-search="<?= $this->e(strtolower(implode(' ', $searchParts))) ?>"
                             >
-                                <td><span class="section-name"><?= $this->e($item['section'] ?? '') ?></span><?php if ($isChanged): ?><span class="change-flag">Changed</span><?php endif; ?></td>
+                                <td class="col-row-num"><span class="row-number" title="<?= $this->e($sourceLabel) ?> row <?= $rowNumber ?>">#<?= $rowNumber ?></span></td>
+                                <td><span class="section-name"><?= $this->e($sectionName) ?></span><?php if ($isChanged): ?><span class="change-flag">Changed</span><?php endif; ?></td>
                                 <td>
-                                    <div class="check-name"><?= $this->e($item['check'] ?? '') ?></div>
+                                    <div class="check-name">
+                                        <?= $this->e($checkTitle) ?>
+                                        <?php if ($isManual): ?>
+                                            <span class="manual-row-badge" title="Added manually">Manual</span>
+                                        <?php endif; ?>
+                                    </div>
                                     <?php if ($owner !== ''): ?>
                                         <div class="subtext"><?= $this->e($owner) ?></div>
                                     <?php endif; ?>
@@ -723,10 +764,61 @@ final class DashboardRenderer
                                 <td><?= $this->pill($riskLevel, 'risk') ?></td>
                                 <td class="response-cell">
                                     <?php if ($isActionable): ?>
-                                        <span class="response-pill response-<?= $this->e($responseAction) ?>"><?= $this->e($responseLabel) ?></span>
-                                        <?php if ($responseComment !== ''): ?>
-                                            <div class="subtext clamp-text" data-expandable><?= $this->e($responseComment) ?></div>
-                                        <?php endif; ?>
+                                        <div
+                                            class="item-response"
+                                            data-item-key="<?= $this->e($key) ?>"
+                                            data-item-title="<?= $this->e($checkTitle) ?>"
+                                            data-item-sub="<?= $this->e($sectionSub) ?>"
+                                            data-item-source="<?= $this->e($sourceLabel) ?>"
+                                            data-item-section="<?= $this->e($sectionName) ?>"
+                                            data-item-status="<?= $this->e($status) ?>"
+                                            data-item-risk="<?= $this->e($riskLevel) ?>"
+                                            data-item-owner="<?= $this->e($owner) ?>"
+                                            data-item-timeline="<?= $this->e($timeline) ?>"
+                                            data-item-notes="<?= $this->e($notes) ?>"
+                                            data-item-mitigation="<?= $this->e($mitigation) ?>"
+                                            data-item-review-question="<?= $this->e($reviewQuestion) ?>"
+                                            data-item-source-ref="<?= $this->e($sourceReference) ?>"
+                                        >
+                                            <div class="item-response-summary">
+                                                <div class="item-response-summary-main">
+                                                    <span class="response-pill response-<?= $this->e($responseAction) ?>"><?= $this->e($responseLabel) ?></span>
+                                                    <?php if ($commentPreview !== ''): ?>
+                                                        <p class="item-response-comment-preview"><?= $this->e($commentPreview) ?></p>
+                                                    <?php else: ?>
+                                                        <p class="item-response-comment-preview is-empty">No comment yet</p>
+                                                    <?php endif; ?>
+                                                    <span class="item-response-attribution" <?= $updatedAt === '' && $updatedByLabel === '' ? 'hidden' : '' ?>>
+                                                        <?php if ($updatedByLabel !== ''): ?>
+                                                            Updated by <?= $this->e($updatedByLabel) ?><?= $updatedAt !== '' ? ' · ' . $this->e($updatedAt) : '' ?>
+                                                        <?php elseif ($updatedAt !== ''): ?>
+                                                            Updated <?= $this->e($updatedAt) ?> · Not yet attributed
+                                                        <?php endif; ?>
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="item-response-edit"
+                                                    aria-label="Edit response for <?= $this->e($checkTitle) ?>"
+                                                    title="Edit response"
+                                                >✏️</button>
+                                            </div>
+                                            <div class="item-response-fields" hidden>
+                                                <select class="item-response-action" aria-label="Response" tabindex="-1">
+                                                    <?php foreach ($actionLabels as $value => $label): ?>
+                                                        <option value="<?= $this->e($value) ?>" <?= $responseAction === $value ? 'selected' : '' ?>><?= $this->e($label) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <textarea
+                                                    class="item-response-comment"
+                                                    rows="2"
+                                                    maxlength="2000"
+                                                    placeholder="Comment (optional)"
+                                                    tabindex="-1"
+                                                ><?= $this->e($responseComment) ?></textarea>
+                                                <span class="item-response-save" hidden>Saved</span>
+                                            </div>
+                                        </div>
                                     <?php else: ?>
                                         <span class="response-na">—</span>
                                     <?php endif; ?>
@@ -736,18 +828,110 @@ final class DashboardRenderer
                                 <td><?= $this->e($owner) ?></td>
                                 <td><?= $this->e($timeline) ?></td>
                                 <?php if ($extendedColumns): ?>
-                                    <td><div class="clamp-text" data-expandable><?= $this->e($item['review_question'] ?? '') ?></div></td>
-                                    <td><?= $this->e($item['source_reference'] ?? '') ?></td>
+                                    <td><div class="clamp-text" data-expandable><?= $this->e($reviewQuestion) ?></div></td>
+                                    <td><?= $this->e($sourceReference) ?></td>
                                 <?php endif; ?>
+                                <td class="col-row-actions">
+                                    <?php if ($itemId > 0 && $assessmentId > 0): ?>
+                                        <button
+                                            type="button"
+                                            class="register-row-delete"
+                                            data-item-id="<?= $itemId ?>"
+                                            data-item-title="<?= $this->e($checkTitle) ?>"
+                                            aria-label="Delete <?= $this->e($checkTitle) ?>"
+                                            title="Delete row"
+                                        >🗑️</button>
+                                    <?php else: ?>
+                                        <span class="response-na">—</span>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
             <?php if ($assessmentId <= 0): ?>
-                <p class="response-hint">Save this assessment (upload) so Actions responses can be stored in the database.</p>
+                <p class="response-hint">Save this assessment (upload) so Actions responses and manual rows can be stored in the database.</p>
             <?php endif; ?>
         </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function renderAddItemDialog(int $assessmentId): string
+    {
+        ob_start();
+        ?>
+        <dialog class="response-dialog register-add-dialog" id="register-add-dialog" aria-labelledby="register-add-dialog-title">
+            <form method="dialog" class="response-dialog-form" id="register-add-dialog-form">
+                <div class="response-dialog-head">
+                    <div>
+                        <div class="eyebrow" id="register-add-dialog-eyebrow">➕ Add register row</div>
+                        <h3 id="register-add-dialog-title">Add manual row</h3>
+                        <p class="response-dialog-sub">Adds to this assessment only. A new Excel upload will not keep this row.</p>
+                    </div>
+                    <button type="button" class="button ghost-light response-dialog-close" id="register-add-dialog-close" aria-label="Close">✕</button>
+                </div>
+                <input type="hidden" id="register-add-item-type" value="architecture">
+                <div class="register-add-grid">
+                    <label class="response-dialog-field">
+                        <span>📁 Section</span>
+                        <input type="text" id="register-add-section" maxlength="255" required placeholder="e.g. IAM">
+                    </label>
+                    <label class="response-dialog-field">
+                        <span id="register-add-check-label">✅ Check</span>
+                        <input type="text" id="register-add-check" maxlength="500" required placeholder="Assessment item / check">
+                    </label>
+                    <label class="response-dialog-field">
+                        <span>🚦 Status</span>
+                        <select id="register-add-status" required>
+                            <?php foreach (['Pass', 'Gap', 'Risk', 'TBD', 'N/A'] as $statusOption): ?>
+                                <option value="<?= $this->e($statusOption) ?>" <?= $statusOption === 'TBD' ? 'selected' : '' ?>><?= $this->e($statusOption) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="response-dialog-field">
+                        <span>⚠️ Risk level</span>
+                        <select id="register-add-risk">
+                            <option value="">—</option>
+                            <?php foreach (['High', 'Med', 'Low'] as $riskOption): ?>
+                                <option value="<?= $this->e($riskOption) ?>"><?= $this->e($riskOption) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="response-dialog-field register-add-span-2">
+                        <span>📋 Notes / finding</span>
+                        <textarea id="register-add-notes" rows="3" maxlength="4000" placeholder="Finding or evidence notes"></textarea>
+                    </label>
+                    <label class="response-dialog-field register-add-span-2">
+                        <span>🛡️ Mitigation / controls</span>
+                        <textarea id="register-add-mitigation" rows="3" maxlength="4000" placeholder="Mitigation or controls"></textarea>
+                    </label>
+                    <label class="response-dialog-field">
+                        <span>👤 Owner</span>
+                        <input type="text" id="register-add-owner" maxlength="255" placeholder="Owner">
+                    </label>
+                    <label class="response-dialog-field">
+                        <span>🗓️ Timeline</span>
+                        <input type="text" id="register-add-timeline" maxlength="255" placeholder="e.g. Before go-live">
+                    </label>
+                    <label class="response-dialog-field register-add-dd-only register-add-span-2" hidden>
+                        <span>❓ Review question</span>
+                        <textarea id="register-add-review-question" rows="2" maxlength="2000" placeholder="Review question"></textarea>
+                    </label>
+                    <label class="response-dialog-field register-add-dd-only" hidden>
+                        <span>🔗 Source reference</span>
+                        <input type="text" id="register-add-source-ref" maxlength="500" placeholder="Source reference">
+                    </label>
+                </div>
+                <p class="response-dialog-status" id="register-add-dialog-status" hidden></p>
+                <div class="response-dialog-actions">
+                    <button type="button" class="button ghost" id="register-add-dialog-cancel">Cancel</button>
+                    <button type="submit" class="button button-primary" id="register-add-dialog-save" <?= $assessmentId <= 0 ? 'disabled' : '' ?>>💾 Save row</button>
+                </div>
+            </form>
+        </dialog>
         <?php
 
         return (string) ob_get_clean();
@@ -762,33 +946,43 @@ final class DashboardRenderer
     private function collectActionableItems(array $items, array $dueItems, array $responses): array
     {
         $out = [];
-        foreach (array_merge($items, $dueItems) as $item) {
-            $status = (string) ($item['status'] ?? '');
-            $riskLevel = (string) ($item['risk_level'] ?? '');
-            if (!\RiskAssessment\Repositories\ItemResponseRepository::isActionableStatus($status, $riskLevel)) {
-                continue;
+        $appendActionable = static function (array $sourceItems, array $responses) use (&$out): void {
+            foreach ($sourceItems as $index => $item) {
+                $status = (string) ($item['status'] ?? '');
+                $riskLevel = (string) ($item['risk_level'] ?? '');
+                if (!\RiskAssessment\Repositories\ItemResponseRepository::isActionableStatus($status, $riskLevel)) {
+                    continue;
+                }
+                $type = (string) ($item['item_type'] ?? 'architecture');
+                $key = AssessmentComparer::itemKey($type, (string) ($item['section'] ?? ''), (string) ($item['check'] ?? ''));
+                $response = $responses[$key] ?? ['action' => 'open', 'comment' => ''];
+                $out[] = [
+                    'key' => $key,
+                    'row_number' => $index + 1,
+                    'item_type' => $type,
+                    'section' => (string) ($item['section'] ?? ''),
+                    'check' => (string) ($item['check'] ?? ''),
+                    'status' => $status,
+                    'risk_level' => $riskLevel,
+                    'owner' => (string) ($item['owner'] ?? ''),
+                    'notes' => (string) ($item['notes'] ?? ''),
+                    'mitigation' => (string) ($item['mitigation'] ?? ''),
+                    'remediation_timeline' => (string) ($item['remediation_timeline'] ?? ''),
+                    'review_question' => (string) ($item['review_question'] ?? ''),
+                    'source_reference' => (string) ($item['source_reference'] ?? ''),
+                    'action' => \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open')),
+                    'comment' => (string) ($response['comment'] ?? ''),
+                    'updated_at' => (string) ($response['updated_at'] ?? ''),
+                    'updated_by_label' => (string) ($response['updated_by_label'] ?? ''),
+                    'updated_by_username' => (string) ($response['updated_by_username'] ?? ''),
+                    'updated_by_display_name' => (string) ($response['updated_by_display_name'] ?? ''),
+                    'updated_by_auth_source' => (string) ($response['updated_by_auth_source'] ?? ''),
+                    'history' => [],
+                ];
             }
-            $type = (string) ($item['item_type'] ?? 'architecture');
-            $key = AssessmentComparer::itemKey($type, (string) ($item['section'] ?? ''), (string) ($item['check'] ?? ''));
-            $response = $responses[$key] ?? ['action' => 'open', 'comment' => ''];
-            $out[] = [
-                'key' => $key,
-                'item_type' => $type,
-                'section' => (string) ($item['section'] ?? ''),
-                'check' => (string) ($item['check'] ?? ''),
-                'status' => $status,
-                'risk_level' => $riskLevel,
-                'owner' => (string) ($item['owner'] ?? ''),
-                'action' => \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($response['action'] ?? 'open')),
-                'comment' => (string) ($response['comment'] ?? ''),
-                'updated_at' => (string) ($response['updated_at'] ?? ''),
-                'updated_by_label' => (string) ($response['updated_by_label'] ?? ''),
-                'updated_by_username' => (string) ($response['updated_by_username'] ?? ''),
-                'updated_by_display_name' => (string) ($response['updated_by_display_name'] ?? ''),
-                'updated_by_auth_source' => (string) ($response['updated_by_auth_source'] ?? ''),
-                'history' => [],
-            ];
-        }
+        };
+        $appendActionable($items, $responses);
+        $appendActionable($dueItems, $responses);
 
         usort($out, static function (array $a, array $b): int {
             $rank = static function (array $row): int {

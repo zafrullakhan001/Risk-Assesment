@@ -195,6 +195,23 @@ final class ItemResponseRepository
         $statement->execute([':id' => $assessmentId]);
     }
 
+    public function deleteByKey(int $assessmentId, string $itemKey): void
+    {
+        $itemKey = trim($itemKey);
+        if ($assessmentId <= 0 || $itemKey === '') {
+            return;
+        }
+
+        $statement = $this->pdo->prepare(
+            'DELETE FROM item_responses
+             WHERE assessment_id = :assessment_id AND item_key = :item_key'
+        );
+        $statement->execute([
+            ':assessment_id' => $assessmentId,
+            ':item_key' => $itemKey,
+        ]);
+    }
+
     public static function normalizeAction(string $action): string
     {
         $action = strtolower(trim($action));

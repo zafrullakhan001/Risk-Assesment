@@ -292,6 +292,26 @@ final class AssessmentChangeLogRepository
         $statement->execute([':id' => $assessmentId]);
     }
 
+    public function deleteForEntity(int $assessmentId, string $entityType, string $entityKey): void
+    {
+        $entityKey = trim($entityKey);
+        if ($assessmentId <= 0 || $entityKey === '') {
+            return;
+        }
+
+        $statement = $this->pdo->prepare(
+            'DELETE FROM assessment_change_log
+             WHERE assessment_id = :assessment_id
+               AND entity_type = :entity_type
+               AND entity_key = :entity_key'
+        );
+        $statement->execute([
+            ':assessment_id' => $assessmentId,
+            ':entity_type' => $entityType,
+            ':entity_key' => $entityKey,
+        ]);
+    }
+
     /**
      * @param list<array<string, mixed>> $rows
      * @return list<array<string, mixed>>

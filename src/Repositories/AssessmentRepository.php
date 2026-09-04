@@ -49,11 +49,11 @@ final class AssessmentRepository
                 'INSERT INTO assessment_items (
                     assessment_id, item_type, section, check_name, status, risk_level,
                     notes, mitigation, owner, remediation_timeline, review_question,
-                    source_reference, sort_order
+                    source_reference, origin, sort_order
                 ) VALUES (
                     :assessment_id, :item_type, :section, :check_name, :status, :risk_level,
                     :notes, :mitigation, :owner, :remediation_timeline, :review_question,
-                    :source_reference, :sort_order
+                    :source_reference, :origin, :sort_order
                 )'
             );
 
@@ -72,6 +72,7 @@ final class AssessmentRepository
                     ':remediation_timeline' => $item['remediation_timeline'] ?? '',
                     ':review_question' => $item['review_question'] ?? '',
                     ':source_reference' => $item['source_reference'] ?? '',
+                    ':origin' => 'excel',
                     ':sort_order' => (int) ($item['sort_order'] ?? $index),
                 ]);
             }
@@ -497,8 +498,8 @@ final class AssessmentRepository
     private function fetchItems(int $assessmentId): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT item_type, section, check_name, status, risk_level, notes, mitigation, owner,
-                    remediation_timeline, review_question, source_reference, sort_order
+            'SELECT id, item_type, section, check_name, status, risk_level, notes, mitigation, owner,
+                    remediation_timeline, review_question, source_reference, origin, sort_order
              FROM assessment_items
              WHERE assessment_id = :assessment_id
              ORDER BY item_type ASC, sort_order ASC, id ASC'
@@ -507,23 +508,306 @@ final class AssessmentRepository
 
         $items = [];
         foreach ($statement->fetchAll() as $row) {
-            $items[] = [
-                'item_type' => (string) ($row['item_type'] ?? 'architecture'),
-                'section' => (string) ($row['section'] ?? ''),
-                'check' => (string) ($row['check_name'] ?? ''),
-                'status' => (string) ($row['status'] ?? ''),
-                'risk_level' => (string) ($row['risk_level'] ?? ''),
-                'notes' => (string) ($row['notes'] ?? ''),
-                'mitigation' => (string) ($row['mitigation'] ?? ''),
-                'owner' => (string) ($row['owner'] ?? ''),
-                'remediation_timeline' => (string) ($row['remediation_timeline'] ?? ''),
-                'review_question' => (string) ($row['review_question'] ?? ''),
-                'source_reference' => (string) ($row['source_reference'] ?? ''),
-                'sort_order' => (string) ($row['sort_order'] ?? '0'),
-            ];
+            $items[] = $this->mapItemRow($row);
         }
 
         return $items;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array<string, string>
+     */
+    public function addManualItem(int $assessmentId, array $fields): array
+    {
+        if ($assessmentId <= 0) {
+            throw new \InvalidArgumentException('Invalid assessment.');
+        }
+
+        $itemType = trim((string) ($fields['item_type'] ?? 'architecture'));
+        if (!in_array($itemType, ['architecture', 'due_diligence'], true)) {
+            throw new \InvalidArgumentException('Invalid item type.');
+        }
+
+        $section = trim((string) ($fields['section'] ?? ''));
+        $check = trim((string) ($fields['check'] ?? ''));
+        if ($section === '' || $check === '') {
+            throw new \InvalidArgumentException('Section and check are required.');
+        }
+
+        $status = $this->normalizeStatus((string) ($fields['status'] ?? ''));
+        $riskLevel = $this->normalizeRiskLevel((string) ($fields['risk_level'] ?? ''));
+
+        $sortStatement = $this->pdo->prepare(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort
+             FROM assessment_items
+             WHERE assessment_id = :assessment_id AND item_type = :item_type'
+        );
+        $sortStatement->execute([
+            ':assessment_id' => $assessmentId,
+            ':item_type' => $itemType,
+        ]);
+        $nextSort = (int) ($sortStatement->fetchColumn() ?: 0);
+
+        $statement = $this->pdo->prepare(
+            'INSERT INTO assessment_items (
+                assessment_id, item_type, section, check_name, status, risk_level,
+                notes, mitigation, owner, remediation_timeline, review_question,
+                source_reference, origin, sort_order
+            ) VALUES (
+                :assessment_id, :item_type, :section, :check_name, :status, :risk_level,
+                :notes, :mitigation, :owner, :remediation_timeline, :review_question,
+                :source_reference, :origin, :sort_order
+            )'
+        );
+        $statement->execute([
+            ':assessment_id' => $assessmentId,
+            ':item_type' => $itemType,
+            ':section' => $section,
+            ':check_name' => $check,
+            ':status' => $status,
+            ':risk_level' => $riskLevel,
+            ':notes' => trim((string) ($fields['notes'] ?? '')),
+            ':mitigation' => trim((string) ($fields['mitigation'] ?? '')),
+            ':owner' => trim((string) ($fields['owner'] ?? '')),
+            ':remediation_timeline' => trim((string) ($fields['remediation_timeline'] ?? '')),
+            ':review_question' => $itemType === 'due_diligence' ? trim((string) ($fields['review_question'] ?? '')) : '',
+            ':source_reference' => $itemType === 'due_diligence' ? trim((string) ($fields['source_reference'] ?? '')) : '',
+            ':origin' => 'manual',
+            ':sort_order' => $nextSort,
+        ]);
+
+        $itemId = (int) $this->pdo->lastInsertId();
+        $item = $this->findItemById($assessmentId, $itemId);
+        if ($item === null) {
+            throw new \RuntimeException('Unable to load the new row.');
+        }
+
+        return $item;
+    }
+
+    /** @return array<string, string>|null */
+    public function findItemById(int $assessmentId, int $itemId): ?array
+    {
+        if ($assessmentId <= 0 || $itemId <= 0) {
+            return null;
+        }
+
+        $statement = $this->pdo->prepare(
+            'SELECT id, item_type, section, check_name, status, risk_level, notes, mitigation, owner,
+                    remediation_timeline, review_question, source_reference, origin, sort_order
+             FROM assessment_items
+             WHERE assessment_id = :assessment_id AND id = :id
+             LIMIT 1'
+        );
+        $statement->execute([
+            ':assessment_id' => $assessmentId,
+            ':id' => $itemId,
+        ]);
+        $row = $statement->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        return $this->mapItemRow($row);
+    }
+
+    /** @return array<string, string>|null Deleted item, or null if not found */
+    public function deleteItem(int $assessmentId, int $itemId): ?array
+    {
+        $item = $this->findItemById($assessmentId, $itemId);
+        if ($item === null) {
+            return null;
+        }
+
+        $statement = $this->pdo->prepare(
+            'DELETE FROM assessment_items
+             WHERE assessment_id = :assessment_id AND id = :id'
+        );
+        $statement->execute([
+            ':assessment_id' => $assessmentId,
+            ':id' => $itemId,
+        ]);
+
+        return $item;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array<string, string>
+     */
+    public function addFinding(int $assessmentId, array $fields): array
+    {
+        if ($assessmentId <= 0) {
+            throw new \InvalidArgumentException('Invalid assessment.');
+        }
+
+        $finding = trim((string) ($fields['finding'] ?? ''));
+        if ($finding === '') {
+            throw new \InvalidArgumentException('Finding text is required.');
+        }
+        if (mb_strlen($finding) > 4000) {
+            $finding = mb_substr($finding, 0, 4000);
+        }
+
+        $workbook = $this->loadWorkbook($assessmentId);
+        $findings = array_values($workbook['findings'] ?? []);
+        $findingId = 'manual-' . bin2hex(random_bytes(8));
+
+        $row = [
+            'id' => $findingId,
+            'finding' => $finding,
+            'policy_reference' => $this->clipField((string) ($fields['policy_reference'] ?? ''), 500),
+            'impact' => $this->clipField((string) ($fields['impact'] ?? ''), 2000),
+            'mitigation' => $this->clipField((string) ($fields['mitigation'] ?? ''), 2000),
+            'owner' => $this->clipField((string) ($fields['owner'] ?? ''), 200),
+            'timeline' => $this->clipField((string) ($fields['timeline'] ?? ''), 200),
+            'origin' => 'manual',
+        ];
+        $findings[] = $row;
+        $workbook['findings'] = $findings;
+        $this->saveWorkbook($assessmentId, $workbook);
+
+        return $row;
+    }
+
+    /** @return array<string, mixed>|null Deleted finding, or null if not found */
+    public function deleteFinding(int $assessmentId, string $findingId): ?array
+    {
+        if ($assessmentId <= 0 || trim($findingId) === '') {
+            return null;
+        }
+
+        $findingId = trim($findingId);
+        $workbook = $this->loadWorkbook($assessmentId);
+        $findings = array_values($workbook['findings'] ?? []);
+        $deleted = null;
+        $remaining = [];
+
+        foreach ($findings as $index => $finding) {
+            if (!is_array($finding)) {
+                continue;
+            }
+            $id = trim((string) ($finding['id'] ?? ('finding-' . $index)));
+            if ($deleted === null && $id === $findingId) {
+                $deleted = $finding;
+                $deleted['id'] = $id;
+                continue;
+            }
+            $remaining[] = $finding;
+        }
+
+        if ($deleted === null) {
+            return null;
+        }
+
+        $workbook['findings'] = $remaining;
+        $this->saveWorkbook($assessmentId, $workbook);
+
+        return $deleted;
+    }
+
+    /** @return array<string, mixed> */
+    private function loadWorkbook(int $assessmentId): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT workbook_json FROM assessments WHERE id = :id LIMIT 1'
+        );
+        $statement->execute([':id' => $assessmentId]);
+        $raw = $statement->fetchColumn();
+        if ($raw === false) {
+            throw new \InvalidArgumentException('Assessment not found.');
+        }
+
+        $workbook = json_decode((string) $raw, true);
+        if (!is_array($workbook)) {
+            $workbook = [];
+        }
+        if (!isset($workbook['findings']) || !is_array($workbook['findings'])) {
+            $workbook['findings'] = [];
+        }
+
+        return $workbook;
+    }
+
+    /** @param array<string, mixed> $workbook */
+    private function saveWorkbook(int $assessmentId, array $workbook): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE assessments
+             SET workbook_json = :workbook_json
+             WHERE id = :id'
+        );
+        $statement->execute([
+            ':workbook_json' => json_encode($workbook, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
+            ':id' => $assessmentId,
+        ]);
+    }
+
+    private function clipField(string $value, int $max): string
+    {
+        $value = trim($value);
+        if (mb_strlen($value) > $max) {
+            return mb_substr($value, 0, $max);
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $row */
+    /** @return array<string, string> */
+    private function mapItemRow(array $row): array
+    {
+        $origin = strtolower(trim((string) ($row['origin'] ?? 'excel')));
+        if ($origin !== 'manual') {
+            $origin = 'excel';
+        }
+
+        return [
+            'id' => (string) ((int) ($row['id'] ?? 0)),
+            'item_type' => (string) ($row['item_type'] ?? 'architecture'),
+            'section' => (string) ($row['section'] ?? ''),
+            'check' => (string) ($row['check_name'] ?? ''),
+            'status' => (string) ($row['status'] ?? ''),
+            'risk_level' => (string) ($row['risk_level'] ?? ''),
+            'notes' => (string) ($row['notes'] ?? ''),
+            'mitigation' => (string) ($row['mitigation'] ?? ''),
+            'owner' => (string) ($row['owner'] ?? ''),
+            'remediation_timeline' => (string) ($row['remediation_timeline'] ?? ''),
+            'review_question' => (string) ($row['review_question'] ?? ''),
+            'source_reference' => (string) ($row['source_reference'] ?? ''),
+            'origin' => $origin,
+            'sort_order' => (string) ($row['sort_order'] ?? '0'),
+        ];
+    }
+
+    private function normalizeStatus(string $status): string
+    {
+        $status = trim($status);
+        $allowed = ['Pass', 'Gap', 'Risk', 'TBD', 'N/A'];
+        foreach ($allowed as $option) {
+            if (strcasecmp($status, $option) === 0) {
+                return $option;
+            }
+        }
+
+        return $status === '' ? 'TBD' : $status;
+    }
+
+    private function normalizeRiskLevel(string $riskLevel): string
+    {
+        $riskLevel = trim($riskLevel);
+        $allowed = ['High', 'Med', 'Low'];
+        foreach ($allowed as $option) {
+            if (strcasecmp($riskLevel, $option) === 0) {
+                return $option;
+            }
+        }
+        if (strcasecmp($riskLevel, 'medium') === 0) {
+            return 'Med';
+        }
+
+        return $riskLevel;
     }
 
     /** @param array<string, mixed> $row */

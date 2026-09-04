@@ -38,6 +38,12 @@ final class Database
         return self::$connection;
     }
 
+    /** Release the shared PDO handle so the SQLite file can be replaced (e.g. restore). */
+    public static function disconnect(): void
+    {
+        self::$connection = null;
+    }
+
     private static function migrate(PDO $pdo): void
     {
         $schemaPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'schema.sqlite.sql';
@@ -52,6 +58,7 @@ final class Database
         self::ensureColumn($pdo, 'assessment_items', 'item_type', "TEXT NOT NULL DEFAULT 'architecture'");
         self::ensureColumn($pdo, 'assessment_items', 'review_question', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessment_items', 'source_reference', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'assessment_items', 'origin', "TEXT NOT NULL DEFAULT 'excel'");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_items_item_type ON assessment_items (item_type)');
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS item_responses (
@@ -122,12 +129,16 @@ final class Database
                 assessment_id INTEGER NOT NULL,
                 finding_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT \'Open\',
+                comment TEXT NOT NULL DEFAULT \'\',
+                servicenow_links TEXT NOT NULL DEFAULT \'[]\',
                 updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
                 PRIMARY KEY (assessment_id, finding_id),
                 FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
             )'
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_finding_statuses_assessment_id ON finding_statuses (assessment_id)');
+        self::ensureColumn($pdo, 'finding_statuses', 'comment', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'finding_statuses', 'servicenow_links', "TEXT NOT NULL DEFAULT '[]'");
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,

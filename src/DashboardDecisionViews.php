@@ -254,6 +254,8 @@ final class DashboardDecisionViews
         $evalUpdatedBy = (string) ($evaluation['updated_by_label'] ?? '');
         $openExceptions = (int) ($insights['residual']['open_findings'] ?? 0);
         $evalSavedLabel = 'Not saved yet';
+        // Flip to true when the Owners / timelines / evidence overview is needed again.
+        $showWorkspaceTab = false;
         if ($evalUpdatedAt !== '') {
             $evalSavedLabel = '💾 Saved ' . $evalUpdatedAt;
             if ($evalUpdatedBy !== '') {
@@ -277,27 +279,29 @@ final class DashboardDecisionViews
             </div>
 
             <nav class="action-tabs action-tabs-uplift" role="tablist" aria-label="Action categories">
-                <button type="button" class="action-tab action-tab-risks is-active" role="tab" aria-selected="true" data-action-tab="risks">
+                <button type="button" class="action-tab action-tab-risks is-active" role="tab" aria-selected="true" data-action-tab="risks" data-tooltip="Assign Taken care / Ignore responses and comments for high-priority risk items.">
                     🔴 Risks <em><?= count($riskItems) ?></em>
                 </button>
-                <button type="button" class="action-tab action-tab-gaps" role="tab" aria-selected="false" data-action-tab="gaps">
+                <button type="button" class="action-tab action-tab-gaps" role="tab" aria-selected="false" data-action-tab="gaps" data-tooltip="Record decisions for gap findings that still need a response.">
                     🟠 Gaps <em><?= count($gapItems) ?></em>
                 </button>
-                <button type="button" class="action-tab action-tab-tbd" role="tab" aria-selected="false" data-action-tab="tbd">
+                <button type="button" class="action-tab action-tab-tbd" role="tab" aria-selected="false" data-action-tab="tbd" data-tooltip="Resolve items marked TBD — decide status and capture comments.">
                     ❓ TBD <em><?= count($tbdItems) ?></em>
                 </button>
-                <button type="button" class="action-tab action-tab-exceptions" role="tab" aria-selected="false" data-action-tab="exceptions">
+                <button type="button" class="action-tab action-tab-exceptions" role="tab" aria-selected="false" data-action-tab="exceptions" data-tooltip="Track accepted exceptions, mitigations, owners, and timelines.">
                     ⚠️ Exceptions <em><?= count($findings) ?></em>
                 </button>
-                <button type="button" class="action-tab action-tab-signoff" role="tab" aria-selected="false" data-action-tab="signoff">
+                <button type="button" class="action-tab action-tab-signoff" role="tab" aria-selected="false" data-action-tab="signoff" data-tooltip="Capture the evaluator’s final notes and ready-to-go-live decision.">
                     ✍️ Sign-off
                 </button>
-                <button type="button" class="action-tab action-tab-versions" role="tab" aria-selected="false" data-action-tab="versions">
+                <button type="button" class="action-tab action-tab-versions" role="tab" aria-selected="false" data-action-tab="versions" data-tooltip="Compare assessment versions and manage uploaded workbook history.">
                     🗂️ Versions <em><?= count($versions) ?></em>
                 </button>
-                <button type="button" class="action-tab action-tab-workspace" role="tab" aria-selected="false" data-action-tab="workspace">
-                    🧰 Workspace
-                </button>
+                <?php if ($showWorkspaceTab): ?>
+                    <button type="button" class="action-tab action-tab-workspace" role="tab" aria-selected="false" data-action-tab="workspace" data-tooltip="See owner workload, remediation timelines, and evidence completeness. Click a row to filter Actions.">
+                        🧰 Workspace
+                    </button>
+                <?php endif; ?>
             </nav>
 
             <div class="action-panel is-active" data-action-panel="risks" id="item-responses">
@@ -343,52 +347,181 @@ final class DashboardDecisionViews
                                 <h3>Governance findings</h3>
                             </div>
                         </div>
-                        <span class="result-count result-count-badge" id="exception-open-count"><?= $openExceptions ?> open</span>
+                        <div class="exception-heading-actions">
+                            <span class="result-count result-count-badge" id="exception-open-count"><?= $openExceptions ?> open</span>
+                            <?php if ($currentId > 0): ?>
+                                <button type="button" class="button button-secondary exception-add-row" id="exception-add-row">
+                                    ➕ Add exception
+                                </button>
+                            <?php endif; ?>
+                        </div>
                     </div>
+                    <?php if ($currentId <= 0): ?>
+                        <p class="panel-help">📁 Upload and open a saved assessment to manage exceptions, comments, and ServiceNow links.</p>
+                    <?php endif; ?>
                     <?php if ($findings === []): ?>
-                        <p class="empty-panel project-empty-state">✨ No documented exceptions in this workbook.</p>
-                    <?php else: ?>
-                        <p class="panel-help">📝 Update exception status as findings are approved, closed, or expire. Changes save as soon as you pick a status.</p>
-                        <div class="table-scroll">
+                        <p class="empty-panel project-empty-state" id="exception-empty">✨ No documented exceptions yet. Add one to track a governance finding.</p>
+                        <div class="table-scroll" id="exception-table-wrap" hidden>
                             <table id="exception-table">
                                 <thead>
                                     <tr>
                                         <th>Status</th>
                                         <th>Finding</th>
-                                        <th>Policy</th>
+                                        <th>Notes &amp; links</th>
                                         <th>Owner</th>
                                         <th>Timeline</th>
+                                        <th class="col-actions">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <p class="panel-help">📝 Update status inline, or use ✏️ to add comments and up to 5 ServiceNow links. Add or remove rows as needed.</p>
+                        <div class="table-scroll" id="exception-table-wrap">
+                            <table id="exception-table">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Finding</th>
+                                        <th>Notes &amp; links</th>
+                                        <th>Owner</th>
+                                        <th>Timeline</th>
+                                        <th class="col-actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($findings as $finding): ?>
-                                        <tr data-finding-id="<?= $this->e((string) $finding['id']) ?>">
-                                            <td>
-                                                <div class="exception-status-wrap">
-                                                    <select class="exception-status" data-finding-id="<?= $this->e((string) $finding['id']) ?>" aria-label="Exception status">
-                                                        <?php foreach (\RiskAssessment\Repositories\FindingStatusRepository::STATUSES as $status): ?>
-                                                            <option value="<?= $this->e($status) ?>" <?= ($finding['status'] ?? 'Open') === $status ? 'selected' : '' ?>><?= $this->e($status) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                    <span class="exception-status-save" hidden></span>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="clamp-text" data-expandable><?= $this->e((string) $finding['finding']) ?></div>
-                                                <?php if (($finding['mitigation'] ?? '') !== ''): ?>
-                                                    <div class="subtext clamp-text" data-expandable><?= $this->e((string) $finding['mitigation']) ?></div>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td><?= $this->e((string) ($finding['policy_reference'] ?? '')) ?></td>
-                                            <td><?= $this->e((string) ($finding['owner'] ?? '')) ?></td>
-                                            <td><?= $this->e((string) ($finding['timeline'] ?? '')) ?></td>
-                                        </tr>
+                                        <?= $this->renderExceptionRow($finding) ?>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
                         </div>
                     <?php endif; ?>
                 </section>
+
+                <dialog class="response-dialog exception-edit-dialog" id="exception-edit-dialog" aria-labelledby="exception-edit-title">
+                    <form method="dialog" class="response-dialog-form" id="exception-edit-form">
+                        <div class="response-dialog-head">
+                            <div>
+                                <div class="eyebrow">⚠️ Exception details</div>
+                                <h3 id="exception-edit-title">Edit exception</h3>
+                                <p class="response-dialog-sub" id="exception-edit-sub"></p>
+                            </div>
+                            <button type="button" class="button ghost-light response-dialog-close" id="exception-edit-close" aria-label="Close">✕</button>
+                        </div>
+                        <section class="response-dialog-details" id="exception-edit-details">
+                            <div class="response-dialog-details-banner">
+                                <span class="response-dialog-details-icon" aria-hidden="true">⚠️</span>
+                                <div>
+                                    <strong>Governance finding</strong>
+                                    <p class="response-dialog-details-lead">Record comments and ServiceNow exception links for this finding.</p>
+                                </div>
+                            </div>
+                            <div class="response-dialog-details-meta">
+                                <div class="response-dialog-detail-chip" data-exception-detail="policy" hidden>
+                                    <span class="response-dialog-detail-label">📜 Policy</span>
+                                    <span class="response-dialog-detail-value" id="exception-edit-policy"></span>
+                                </div>
+                                <div class="response-dialog-detail-chip" data-exception-detail="owner" hidden>
+                                    <span class="response-dialog-detail-label">👤 Owner</span>
+                                    <span class="response-dialog-detail-value" id="exception-edit-owner"></span>
+                                </div>
+                                <div class="response-dialog-detail-chip" data-exception-detail="timeline" hidden>
+                                    <span class="response-dialog-detail-label">🗓️ Timeline</span>
+                                    <span class="response-dialog-detail-value" id="exception-edit-timeline"></span>
+                                </div>
+                            </div>
+                            <div class="response-dialog-detail-block" data-exception-detail="finding" hidden>
+                                <span class="response-dialog-detail-label">📋 Finding</span>
+                                <p class="response-dialog-detail-text" id="exception-edit-finding-text"></p>
+                            </div>
+                            <div class="response-dialog-detail-block" data-exception-detail="mitigation" hidden>
+                                <span class="response-dialog-detail-label">🛡️ Mitigation</span>
+                                <p class="response-dialog-detail-text" id="exception-edit-mitigation"></p>
+                            </div>
+                            <div class="response-dialog-detail-block" data-exception-detail="impact" hidden>
+                                <span class="response-dialog-detail-label">💥 Impact</span>
+                                <p class="response-dialog-detail-text" id="exception-edit-impact"></p>
+                            </div>
+                        </section>
+                        <label class="response-dialog-field">
+                            <span>Status</span>
+                            <select id="exception-edit-status" required>
+                                <?php foreach (\RiskAssessment\Repositories\FindingStatusRepository::STATUSES as $statusOption): ?>
+                                    <option value="<?= $this->e($statusOption) ?>"><?= $this->e($statusOption) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="response-dialog-field">
+                            <span>User comments</span>
+                            <textarea
+                                id="exception-edit-comment"
+                                rows="6"
+                                maxlength="<?= (int) \RiskAssessment\Repositories\FindingStatusRepository::MAX_COMMENT_LENGTH ?>"
+                                placeholder="Record notes, decisions, and context for this exception"
+                            ></textarea>
+                        </label>
+                        <div class="exception-sn-block" id="exception-edit-sn-block">
+                            <div class="exception-sn-head">
+                                <span>ServiceNow exception links</span>
+                                <span class="exception-sn-count" id="exception-edit-sn-count">0 / <?= (int) \RiskAssessment\Repositories\FindingStatusRepository::MAX_LINKS ?></span>
+                            </div>
+                            <div class="exception-sn-list" id="exception-edit-sn-list"></div>
+                            <button type="button" class="button button-secondary exception-sn-add" id="exception-edit-sn-add">
+                                ➕ Add link
+                            </button>
+                        </div>
+                        <p class="response-dialog-status" id="exception-edit-status-msg" hidden></p>
+                        <div class="response-dialog-actions">
+                            <button type="button" class="button ghost" id="exception-edit-cancel">Cancel</button>
+                            <button type="submit" class="button button-primary" id="exception-edit-save">💾 Save exception</button>
+                        </div>
+                    </form>
+                </dialog>
+
+                <dialog class="response-dialog exception-add-dialog" id="exception-add-dialog">
+                    <form method="dialog" id="exception-add-form" class="response-dialog-form">
+                        <div class="response-dialog-head">
+                            <div>
+                                <div class="eyebrow" id="exception-add-eyebrow">➕ Add exception</div>
+                                <h3 id="exception-add-title">New governance finding</h3>
+                            </div>
+                            <button type="submit" value="cancel" class="response-dialog-close" aria-label="Close">✕</button>
+                        </div>
+                        <div class="exception-add-grid">
+                            <label class="exception-add-full">
+                                <span>Finding / control</span>
+                                <textarea name="finding" id="exception-add-finding" rows="3" maxlength="4000" required placeholder="Describe the exception or control gap"></textarea>
+                            </label>
+                            <label>
+                                <span>Policy / reference</span>
+                                <input type="text" name="policy_reference" id="exception-add-policy" maxlength="500" placeholder="Policy or control reference">
+                            </label>
+                            <label>
+                                <span>Owner</span>
+                                <input type="text" name="owner" id="exception-add-owner" maxlength="200" placeholder="Owner">
+                            </label>
+                            <label>
+                                <span>Timeline</span>
+                                <input type="text" name="timeline" id="exception-add-timeline" maxlength="200" placeholder="e.g. Before go-live">
+                            </label>
+                            <label class="exception-add-full">
+                                <span>Impact</span>
+                                <textarea name="impact" id="exception-add-impact" rows="2" maxlength="2000" placeholder="Business or security impact (optional)"></textarea>
+                            </label>
+                            <label class="exception-add-full">
+                                <span>Required exception / mitigation</span>
+                                <textarea name="mitigation" id="exception-add-mitigation" rows="2" maxlength="2000" placeholder="Mitigation or compensating control (optional)"></textarea>
+                            </label>
+                        </div>
+                        <p class="exception-add-status" id="exception-add-status" hidden></p>
+                        <div class="response-dialog-actions">
+                            <button type="submit" value="cancel" class="button button-secondary">Cancel</button>
+                            <button type="button" class="button button-primary" id="exception-add-save">Add exception</button>
+                        </div>
+                    </form>
+                </dialog>
             </div>
 
             <div class="action-panel" data-action-panel="signoff" hidden>
@@ -474,26 +607,89 @@ final class DashboardDecisionViews
                 <?= $this->renderVersionsSection($versions, $comparison, $currentId, $csrfToken) ?>
             </div>
 
-            <div class="action-panel" data-action-panel="workspace" hidden>
-                <div class="actions-grid">
-                    <?= $this->renderOwnersSection($owners) ?>
-                    <?= $this->renderTimelinesSection($timelines) ?>
-                    <?= $this->renderEvidenceSection($evidence) ?>
+            <?php if ($showWorkspaceTab): ?>
+                <div class="action-panel" data-action-panel="workspace" hidden>
+                    <div class="dash-panel-intro workspace-panel-intro">
+                        <div class="dash-panel-intro-copy">
+                            <span class="dash-panel-intro-icon" aria-hidden="true">🧰</span>
+                            <div>
+                                <div class="eyebrow">Readiness overview</div>
+                                <h2>Actionability workspace</h2>
+                                <p>This tab does not record responses. Use it to see who owns open work, when remediation is due, and how complete evidence is — then click a row to jump into Risks, Gaps, or TBD.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="actions-grid">
+                        <?= $this->renderOwnersSection($owners) ?>
+                        <?= $this->renderTimelinesSection($timelines) ?>
+                        <?= $this->renderEvidenceSection($evidence) ?>
+                    </div>
                 </div>
-            </div>
+            <?php endif; ?>
 
             <dialog class="response-dialog" id="item-response-dialog" aria-labelledby="response-dialog-title">
                 <form method="dialog" class="response-dialog-form" id="item-response-dialog-form">
                     <div class="response-dialog-head">
                         <div>
-                            <div class="eyebrow">Recorded response</div>
+                            <div class="eyebrow" id="response-dialog-eyebrow">📝 Recorded response</div>
                             <h3 id="response-dialog-title">Edit response</h3>
                             <p class="response-dialog-sub" id="response-dialog-sub"></p>
                         </div>
                         <button type="button" class="button ghost-light response-dialog-close" id="response-dialog-close" aria-label="Close">✕</button>
                     </div>
+                    <section class="response-dialog-details" id="response-dialog-details" hidden>
+                        <div class="response-dialog-details-banner">
+                            <span class="response-dialog-details-icon" id="response-dialog-details-icon" aria-hidden="true">🏛️</span>
+                            <div>
+                                <div class="eyebrow">Risk context</div>
+                                <p class="response-dialog-details-lead">Review the finding and controls before you respond.</p>
+                            </div>
+                        </div>
+                        <div class="response-dialog-details-meta" id="response-dialog-details-meta">
+                            <div class="response-dialog-detail-chip" data-detail="source" hidden>
+                                <span class="response-dialog-detail-label">📦 Source</span>
+                                <span class="response-dialog-detail-value" id="response-dialog-detail-source"></span>
+                            </div>
+                            <div class="response-dialog-detail-chip" data-detail="section" hidden>
+                                <span class="response-dialog-detail-label">📁 Section</span>
+                                <span class="response-dialog-detail-value" id="response-dialog-detail-section"></span>
+                            </div>
+                            <div class="response-dialog-detail-chip" data-detail="status" hidden>
+                                <span class="response-dialog-detail-label">🚦 Status</span>
+                                <span class="response-dialog-detail-value" id="response-dialog-detail-status"></span>
+                            </div>
+                            <div class="response-dialog-detail-chip" data-detail="risk" hidden>
+                                <span class="response-dialog-detail-label">⚠️ Risk level</span>
+                                <span class="response-dialog-detail-value" id="response-dialog-detail-risk"></span>
+                            </div>
+                            <div class="response-dialog-detail-chip" data-detail="owner" hidden>
+                                <span class="response-dialog-detail-label">👤 Owner</span>
+                                <span class="response-dialog-detail-value" id="response-dialog-detail-owner"></span>
+                            </div>
+                            <div class="response-dialog-detail-chip" data-detail="timeline" hidden>
+                                <span class="response-dialog-detail-label">🗓️ Timeline</span>
+                                <span class="response-dialog-detail-value" id="response-dialog-detail-timeline"></span>
+                            </div>
+                        </div>
+                        <div class="response-dialog-detail-block" data-detail="notes" hidden>
+                            <span class="response-dialog-detail-label">📋 Notes / finding</span>
+                            <p class="response-dialog-detail-text" id="response-dialog-detail-notes"></p>
+                        </div>
+                        <div class="response-dialog-detail-block" data-detail="mitigation" hidden>
+                            <span class="response-dialog-detail-label">🛡️ Mitigation / controls</span>
+                            <p class="response-dialog-detail-text" id="response-dialog-detail-mitigation"></p>
+                        </div>
+                        <div class="response-dialog-detail-block" data-detail="review-question" hidden>
+                            <span class="response-dialog-detail-label">❓ Review question</span>
+                            <p class="response-dialog-detail-text" id="response-dialog-detail-review-question"></p>
+                        </div>
+                        <div class="response-dialog-detail-block" data-detail="source-ref" hidden>
+                            <span class="response-dialog-detail-label">🔗 Source reference</span>
+                            <p class="response-dialog-detail-text" id="response-dialog-detail-source-ref"></p>
+                        </div>
+                    </section>
                     <label class="response-dialog-field">
-                        <span>Our response</span>
+                        <span>✅ Our response</span>
                         <select id="response-dialog-action" required>
                             <?php foreach ($actionLabels as $value => $label): ?>
                                 <option value="<?= $this->e($value) ?>"><?= $this->e($label) ?></option>
@@ -501,8 +697,8 @@ final class DashboardDecisionViews
                         </select>
                     </label>
                     <label class="response-dialog-field">
-                        <span>Comment</span>
-                        <textarea id="response-dialog-comment" rows="4" maxlength="2000" placeholder="Comment (optional)"></textarea>
+                        <span>💬 Comment</span>
+                        <textarea id="response-dialog-comment" rows="4" maxlength="2000" placeholder="Add context, decision rationale, or next steps (optional)"></textarea>
                     </label>
                     <p class="item-response-attribution response-dialog-attribution" id="response-dialog-attribution" hidden></p>
                     <div
@@ -517,7 +713,7 @@ final class DashboardDecisionViews
                     >
                         <div class="history-panel-head">
                             <h4 class="history-panel-title">
-                                Activity log
+                                🗂️ Activity log
                                 <em class="history-panel-count" hidden>0</em>
                             </h4>
                             <label class="history-panel-search-wrap">
@@ -531,7 +727,7 @@ final class DashboardDecisionViews
                             </label>
                         </div>
                         <div class="history-panel-list" role="feed" aria-live="polite"></div>
-                        <p class="history-panel-empty" hidden>No history posts yet for this action item.</p>
+                        <p class="history-panel-empty" hidden>📭 No history posts yet for this action item.</p>
                         <div class="history-panel-footer">
                             <span class="history-panel-meta"></span>
                             <nav class="history-panel-pagination" aria-label="Activity log pages" hidden>
@@ -640,6 +836,7 @@ final class DashboardDecisionViews
                         <thead>
                             <tr>
                                 <th class="col-select">Sel</th>
+                                <th class="col-row-num">#</th>
                                 <th>Item</th>
                                 <th>Source</th>
                                 <th>Status</th>
@@ -651,15 +848,18 @@ final class DashboardDecisionViews
                             <?php foreach ($items as $row): ?>
                                 <?php
                                 $key = (string) ($row['key'] ?? '');
+                                $rowNumber = (int) ($row['row_number'] ?? 0);
                                 $action = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($row['action'] ?? 'open'));
                                 $comment = (string) ($row['comment'] ?? '');
                                 $itemType = (string) ($row['item_type'] ?? 'architecture');
+                                $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture';
                                 $updatedAt = (string) ($row['updated_at'] ?? '');
                                 $updatedByLabel = (string) ($row['updated_by_label'] ?? '');
                                 $history = is_array($row['history'] ?? null) ? $row['history'] : [];
                                 ?>
                                 <tr
                                     data-item-key="<?= $this->e($key) ?>"
+                                    data-row-number="<?= $rowNumber ?>"
                                     data-response="<?= $this->e($action) ?>"
                                     data-actionable="1"
                                     data-has-comment="<?= $comment !== '' ? '1' : '0' ?>"
@@ -667,11 +867,18 @@ final class DashboardDecisionViews
                                     <td class="col-select">
                                         <input type="checkbox" class="row-select" value="<?= $this->e($key) ?>" aria-label="Select <?= $this->e((string) ($row['check'] ?? '')) ?>">
                                     </td>
+                                    <td class="col-row-num">
+                                        <?php if ($rowNumber > 0): ?>
+                                            <span class="row-number" title="<?= $this->e($sourceLabel) ?> row <?= $rowNumber ?>">#<?= $rowNumber ?></span>
+                                        <?php else: ?>
+                                            <span class="response-na">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <strong><?= $this->e((string) ($row['check'] ?? '')) ?></strong>
                                         <div class="subtext"><?= $this->e((string) ($row['section'] ?? '')) ?><?php if (($row['owner'] ?? '') !== ''): ?> · <?= $this->e((string) $row['owner']) ?><?php endif; ?></div>
                                     </td>
-                                    <td><?= $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture' ?></td>
+                                    <td><?= $this->e($sourceLabel) ?></td>
                                     <td><?= $this->e((string) ($row['status'] ?? '')) ?></td>
                                     <td><?= $this->e((string) ($row['risk_level'] ?? '')) ?></td>
                                     <td class="response-cell">
@@ -682,15 +889,33 @@ final class DashboardDecisionViews
                                             : '';
                                         $checkTitle = (string) ($row['check'] ?? '');
                                         $sectionSub = (string) ($row['section'] ?? '');
-                                        if (($row['owner'] ?? '') !== '') {
-                                            $sectionSub .= ($sectionSub !== '' ? ' · ' : '') . (string) $row['owner'];
+                                        $owner = (string) ($row['owner'] ?? '');
+                                        if ($owner !== '') {
+                                            $sectionSub .= ($sectionSub !== '' ? ' · ' : '') . $owner;
                                         }
+                                        $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture';
+                                        $sectionName = (string) ($row['section'] ?? '');
+                                        $notes = (string) ($row['notes'] ?? '');
+                                        $mitigation = (string) ($row['mitigation'] ?? '');
+                                        $timeline = (string) ($row['remediation_timeline'] ?? '');
+                                        $reviewQuestion = (string) ($row['review_question'] ?? '');
+                                        $sourceReference = (string) ($row['source_reference'] ?? '');
                                         ?>
                                         <div
                                             class="item-response"
                                             data-item-key="<?= $this->e($key) ?>"
                                             data-item-title="<?= $this->e($checkTitle) ?>"
                                             data-item-sub="<?= $this->e($sectionSub) ?>"
+                                            data-item-source="<?= $this->e($sourceLabel) ?>"
+                                            data-item-section="<?= $this->e($sectionName) ?>"
+                                            data-item-status="<?= $this->e((string) ($row['status'] ?? '')) ?>"
+                                            data-item-risk="<?= $this->e((string) ($row['risk_level'] ?? '')) ?>"
+                                            data-item-owner="<?= $this->e($owner) ?>"
+                                            data-item-timeline="<?= $this->e($timeline) ?>"
+                                            data-item-notes="<?= $this->e($notes) ?>"
+                                            data-item-mitigation="<?= $this->e($mitigation) ?>"
+                                            data-item-review-question="<?= $this->e($reviewQuestion) ?>"
+                                            data-item-source-ref="<?= $this->e($sourceReference) ?>"
                                         >
                                             <div class="item-response-summary">
                                                 <div class="item-response-summary-main">
@@ -882,25 +1107,55 @@ final class DashboardDecisionViews
                     <span class="card-icon" aria-hidden="true">👥</span>
                     <div>
                         <div class="eyebrow">Actionability</div>
-                        <h3>Owner workload</h3>
+                        <h3>
+                            Owner workload
+                            <button type="button" class="section-help" data-tooltip="Open items grouped by assigned owner. Click a row to filter Actions to that owner’s work." aria-label="What is Owner workload?">?</button>
+                        </h3>
+                        <p class="section-stat-legend" aria-label="Number meanings">
+                            <span class="has-tooltip" data-tooltip="Total open or actionable items assigned to this owner."><b>n</b> total</span>
+                            <span class="has-tooltip" data-tooltip="Items with High risk level for this owner."><em>H</em> High risk</span>
+                            <span class="has-tooltip" data-tooltip="Items with Risk status (not High) for this owner."><em>R</em> Risk status</span>
+                            <span class="has-tooltip" data-tooltip="Items still marked TBD for this owner."><em>T</em> TBD</span>
+                        </p>
                     </div>
                 </div>
             </div>
             <div class="owner-list">
+                <?php if ($owners === []): ?>
+                    <p class="empty-panel">No owners listed on open items yet.</p>
+                <?php endif; ?>
                 <?php foreach ($owners as $owner): ?>
+                    <?php
+                    $ownerName = (string) $owner['owner'];
+                    $ownerTotal = (int) $owner['total'];
+                    $ownerHigh = (int) $owner['high'];
+                    $ownerRisk = (int) $owner['risk'];
+                    $ownerTbd = (int) $owner['tbd'];
+                    $rowTip = sprintf(
+                        '%s — %d total item%s: %d High risk (H), %d Risk status (R), %d TBD (T). Click to filter Actions.',
+                        $ownerName,
+                        $ownerTotal,
+                        $ownerTotal === 1 ? '' : 's',
+                        $ownerHigh,
+                        $ownerRisk,
+                        $ownerTbd
+                    );
+                    ?>
                     <button
                         type="button"
-                        class="owner-row"
+                        class="owner-row has-tooltip"
                         data-filter-type="owner"
-                        data-filter-value="<?= $this->e((string) $owner['owner']) ?>"
+                        data-filter-value="<?= $this->e($ownerName) ?>"
+                        data-tooltip="<?= $this->e($rowTip) ?>"
                     >
-                        <span class="owner-name"><?= $this->e((string) $owner['owner']) ?></span>
-                        <span class="owner-stats">
-                            <b><?= (int) $owner['total'] ?></b>
-                            <em><?= (int) $owner['high'] ?>H</em>
-                            <em><?= (int) $owner['risk'] ?>R</em>
-                            <em><?= (int) $owner['tbd'] ?>T</em>
+                        <span class="owner-name"><?= $this->e($ownerName) ?></span>
+                        <span class="owner-stats" aria-hidden="true">
+                            <b><?= $ownerTotal ?></b>
+                            <em><?= $ownerHigh ?>H</em>
+                            <em><?= $ownerRisk ?>R</em>
+                            <em><?= $ownerTbd ?>T</em>
                         </span>
+                        <span class="visually-hidden"><?= $this->e($rowTip) ?></span>
                     </button>
                 <?php endforeach; ?>
             </div>
@@ -926,28 +1181,57 @@ final class DashboardDecisionViews
                     <span class="card-icon" aria-hidden="true">⏱️</span>
                     <div>
                         <div class="eyebrow">Timeline heat</div>
-                        <h3>Remediation lanes</h3>
+                        <h3>
+                            Remediation lanes
+                            <button type="button" class="section-help" data-tooltip="Open items grouped by remediation timeline. The number is the item count in that lane; the bar shows High / Risk / TBD mix. Click a lane to filter Actions." aria-label="What are Remediation lanes?">?</button>
+                        </h3>
+                        <p class="section-stat-legend" aria-label="Bar color meanings">
+                            <span class="has-tooltip legend-swatch legend-high" data-tooltip="Red segment: High risk items in this timeline.">High</span>
+                            <span class="has-tooltip legend-swatch legend-risk" data-tooltip="Orange segment: Risk-status items in this timeline.">Risk</span>
+                            <span class="has-tooltip legend-swatch legend-tbd" data-tooltip="Gray segment: TBD items in this timeline.">TBD</span>
+                            <span class="has-tooltip legend-swatch legend-other" data-tooltip="Green segment: remaining items in this timeline that are not High, Risk, or TBD.">Other</span>
+                        </p>
                     </div>
                 </div>
             </div>
             <div class="timeline-lanes">
                 <?php foreach ($timelines as $lane): ?>
+                    <?php
+                    $laneLabel = (string) $lane['label'];
+                    $laneTotal = (int) $lane['total'];
+                    $laneHigh = (int) $lane['high'];
+                    $laneRisk = (int) $lane['risk'];
+                    $laneTbd = (int) $lane['tbd'];
+                    $laneOther = max(0, $laneTotal - $laneHigh - $laneRisk - $laneTbd);
+                    $laneTip = sprintf(
+                        '%s — %d item%s: %d High, %d Risk, %d TBD, %d other. Click to filter Actions.',
+                        $laneLabel,
+                        $laneTotal,
+                        $laneTotal === 1 ? '' : 's',
+                        $laneHigh,
+                        $laneRisk,
+                        $laneTbd,
+                        $laneOther
+                    );
+                    ?>
                     <button
                         type="button"
-                        class="timeline-lane"
+                        class="timeline-lane has-tooltip"
                         data-filter-type="timeline"
                         data-filter-value="<?= $this->e((string) $lane['lane']) ?>"
+                        data-tooltip="<?= $this->e($laneTip) ?>"
                     >
                         <div class="timeline-lane-head">
-                            <strong><?= $this->e((string) $lane['label']) ?></strong>
-                            <span><?= (int) $lane['total'] ?></span>
+                            <strong><?= $this->e($laneLabel) ?></strong>
+                            <span><?= $laneTotal ?></span>
                         </div>
-                        <div class="bar-track">
-                            <span class="bar-fill bar-risk" style="width: <?= round(((int) $lane['high'] / $maxTimeline) * 100, 2) ?>%"></span>
-                            <span class="bar-fill bar-gap" style="width: <?= round(((int) $lane['risk'] / $maxTimeline) * 100, 2) ?>%"></span>
-                            <span class="bar-fill bar-tbd" style="width: <?= round(((int) $lane['tbd'] / $maxTimeline) * 100, 2) ?>%"></span>
-                            <span class="bar-fill bar-pass" style="width: <?= round((max(0, (int) $lane['total'] - (int) $lane['high'] - (int) $lane['risk'] - (int) $lane['tbd']) / $maxTimeline) * 100, 2) ?>%"></span>
+                        <div class="bar-track" aria-hidden="true">
+                            <span class="bar-fill bar-risk" style="width: <?= round(($laneHigh / $maxTimeline) * 100, 2) ?>%"></span>
+                            <span class="bar-fill bar-gap" style="width: <?= round(($laneRisk / $maxTimeline) * 100, 2) ?>%"></span>
+                            <span class="bar-fill bar-tbd" style="width: <?= round(($laneTbd / $maxTimeline) * 100, 2) ?>%"></span>
+                            <span class="bar-fill bar-pass" style="width: <?= round(($laneOther / $maxTimeline) * 100, 2) ?>%"></span>
                         </div>
+                        <span class="visually-hidden"><?= $this->e($laneTip) ?></span>
                     </button>
                 <?php endforeach; ?>
             </div>
@@ -960,7 +1244,19 @@ final class DashboardDecisionViews
     /** @param array<string, mixed> $evidence */
     private function renderEvidenceSection(array $evidence): string
     {
-        $total = max(1, (int) ($evidence['total'] ?? 0));
+        $covered = (int) ($evidence['covered'] ?? 0);
+        $partial = (int) ($evidence['partial'] ?? 0);
+        $missing = (int) ($evidence['missing'] ?? 0);
+        $evidenceTotal = (int) ($evidence['total'] ?? 0);
+        $total = max(1, $evidenceTotal);
+        $badgeTip = sprintf(
+            '%d of %d checklist items have full evidence. %d partial, %d missing.',
+            $covered,
+            $evidenceTotal,
+            $partial,
+            $missing
+        );
+
         ob_start();
         ?>
         <section class="table-card table-card-uplift chart-card-tone-workspace">
@@ -969,19 +1265,44 @@ final class DashboardDecisionViews
                     <span class="card-icon" aria-hidden="true">✅</span>
                     <div>
                         <div class="eyebrow">Trust / completeness</div>
-                        <h3>Evidence checklist</h3>
+                        <h3>
+                            Evidence checklist
+                            <button type="button" class="section-help" data-tooltip="Shows how complete supporting evidence is across key trust items. Covered = documented, Partial = incomplete notes, Missing = no evidence yet." aria-label="What is Evidence checklist?">?</button>
+                        </h3>
+                        <p class="section-stat-legend" aria-label="Evidence status meanings">
+                            <span class="has-tooltip legend-swatch legend-covered" data-tooltip="Green: evidence is documented for this checklist item.">Covered</span>
+                            <span class="has-tooltip legend-swatch legend-partial" data-tooltip="Amber: some evidence notes exist but are incomplete.">Partial</span>
+                            <span class="has-tooltip legend-swatch legend-missing" data-tooltip="Red: no usable evidence recorded yet.">Missing</span>
+                        </p>
                     </div>
                 </div>
-                <span class="result-count result-count-badge"><?= (int) ($evidence['covered'] ?? 0) ?>/<?= (int) ($evidence['total'] ?? 0) ?> covered</span>
+                <span
+                    class="result-count result-count-badge has-tooltip"
+                    data-tooltip="<?= $this->e($badgeTip) ?>"
+                ><?= $covered ?>/<?= $evidenceTotal ?> covered</span>
             </div>
-            <div class="evidence-meter">
-                <span class="ev-covered" style="width: <?= round(((int) ($evidence['covered'] ?? 0) / $total) * 100, 2) ?>%"></span>
-                <span class="ev-partial" style="width: <?= round(((int) ($evidence['partial'] ?? 0) / $total) * 100, 2) ?>%"></span>
-                <span class="ev-missing" style="width: <?= round(((int) ($evidence['missing'] ?? 0) / $total) * 100, 2) ?>%"></span>
+            <div
+                class="evidence-meter has-tooltip"
+                data-tooltip="<?= $this->e($badgeTip) ?>"
+                role="img"
+                aria-label="<?= $this->e($badgeTip) ?>"
+            >
+                <span class="ev-covered" style="width: <?= round(($covered / $total) * 100, 2) ?>%"></span>
+                <span class="ev-partial" style="width: <?= round(($partial / $total) * 100, 2) ?>%"></span>
+                <span class="ev-missing" style="width: <?= round(($missing / $total) * 100, 2) ?>%"></span>
             </div>
             <ul class="evidence-list">
                 <?php foreach (($evidence['items'] ?? []) as $item): ?>
-                    <li class="evidence-<?= $this->e((string) $item['status']) ?>">
+                    <?php
+                    $status = (string) ($item['status'] ?? '');
+                    $statusTip = match ($status) {
+                        'covered' => 'Covered: evidence is documented.',
+                        'partial' => 'Partial: evidence notes are incomplete.',
+                        'missing' => 'Missing: no usable evidence yet.',
+                        default => 'Evidence status for this checklist item.',
+                    };
+                    ?>
+                    <li class="evidence-<?= $this->e($status) ?> has-tooltip" data-tooltip="<?= $this->e($statusTip) ?>">
                         <strong><?= $this->e((string) $item['item']) ?></strong>
                         <span><?= $this->e((string) $item['evidence']) ?></span>
                     </li>
@@ -1145,6 +1466,92 @@ final class DashboardDecisionViews
                 </nav>
             </div>
         </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param array<string, mixed> $finding
+     */
+    private function renderExceptionRow(array $finding): string
+    {
+        $findingId = (string) ($finding['id'] ?? '');
+        $status = \RiskAssessment\Repositories\FindingStatusRepository::normalizeStatus((string) ($finding['status'] ?? 'Open'));
+        $comment = (string) ($finding['comment'] ?? '');
+        $links = is_array($finding['servicenow_links'] ?? null) ? $finding['servicenow_links'] : [];
+        $links = \RiskAssessment\Repositories\FindingStatusRepository::normalizeLinks($links);
+        $commentPreview = $comment !== ''
+            ? (mb_strlen($comment) > 90 ? mb_substr($comment, 0, 87) . '…' : $comment)
+            : '';
+        $linkCount = count($links);
+
+        ob_start();
+        ?>
+        <tr
+            data-finding-id="<?= $this->e($findingId) ?>"
+            class="exception-row"
+            data-finding-text="<?= $this->e((string) ($finding['finding'] ?? '')) ?>"
+            data-policy="<?= $this->e((string) ($finding['policy_reference'] ?? '')) ?>"
+            data-owner="<?= $this->e((string) ($finding['owner'] ?? '')) ?>"
+            data-timeline="<?= $this->e((string) ($finding['timeline'] ?? '')) ?>"
+            data-mitigation="<?= $this->e((string) ($finding['mitigation'] ?? '')) ?>"
+            data-impact="<?= $this->e((string) ($finding['impact'] ?? '')) ?>"
+            data-comment="<?= $this->e($comment) ?>"
+            data-servicenow-links="<?= $this->e(json_encode(array_values($links), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]') ?>"
+        >
+            <td>
+                <div class="exception-status-wrap">
+                    <select class="exception-status" data-finding-id="<?= $this->e($findingId) ?>" aria-label="Exception status">
+                        <?php foreach (\RiskAssessment\Repositories\FindingStatusRepository::STATUSES as $option): ?>
+                            <option value="<?= $this->e($option) ?>" <?= $status === $option ? 'selected' : '' ?>><?= $this->e($option) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="exception-status-save" hidden></span>
+                </div>
+            </td>
+            <td class="exception-finding-cell">
+                <div class="clamp-text" data-expandable><?= $this->e((string) ($finding['finding'] ?? '')) ?></div>
+                <?php if (($finding['policy_reference'] ?? '') !== ''): ?>
+                    <div class="subtext">Policy: <?= $this->e((string) $finding['policy_reference']) ?></div>
+                <?php endif; ?>
+                <?php if (($finding['mitigation'] ?? '') !== ''): ?>
+                    <div class="subtext clamp-text" data-expandable><?= $this->e((string) $finding['mitigation']) ?></div>
+                <?php endif; ?>
+            </td>
+            <td class="exception-notes-preview-cell">
+                <div class="exception-notes-preview">
+                    <?php if ($commentPreview !== ''): ?>
+                        <p class="exception-comment-preview"><?= $this->e($commentPreview) ?></p>
+                    <?php else: ?>
+                        <p class="exception-comment-preview is-empty">No comments yet</p>
+                    <?php endif; ?>
+                    <span class="exception-link-preview <?= $linkCount === 0 ? 'is-empty' : '' ?>">
+                        <?= $linkCount === 0 ? 'No ServiceNow links' : $linkCount . ' ServiceNow link' . ($linkCount === 1 ? '' : 's') ?>
+                    </span>
+                </div>
+            </td>
+            <td><?= $this->e((string) ($finding['owner'] ?? '')) ?></td>
+            <td><?= $this->e((string) ($finding['timeline'] ?? '')) ?></td>
+            <td class="col-actions">
+                <div class="exception-row-actions">
+                    <button
+                        type="button"
+                        class="button button-secondary exception-edit-row"
+                        data-finding-id="<?= $this->e($findingId) ?>"
+                        title="Edit exception details"
+                        aria-label="Edit exception details"
+                    >✏️</button>
+                    <button
+                        type="button"
+                        class="button button-secondary exception-delete-row"
+                        data-finding-id="<?= $this->e($findingId) ?>"
+                        title="Delete exception"
+                        aria-label="Delete exception"
+                    >🗑️</button>
+                </div>
+            </td>
+        </tr>
         <?php
 
         return (string) ob_get_clean();

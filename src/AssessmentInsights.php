@@ -10,11 +10,11 @@ final class AssessmentInsights
 {
     /**
      * @param array<string, array{action?: string, comment?: string}> $responses
-     * @param array<string, string> $findingStatuses
+     * @param array<string, array{status?: string, comment?: string, servicenow_links?: list<string>}|string> $findingStatuses
      * @return array{
      *   readiness: array{score: int, band: string, verdict: string, summary: string, auto_verdict?: string, auto_summary?: string, custom_verdict?: string, custom_summary?: string, is_custom?: bool},
      *   residual: array{high: int, risk: int, tbd: int, gap: int, open_findings: int},
-     *   findings: list<array<string, string>>,
+     *   findings: list<array<string, mixed>>,
      *   owners: list<array{owner: string, total: int, high: int, risk: int, tbd: int, gap: int}>,
      *   timelines: list<array{lane: string, label: string, total: int, high: int, risk: int, tbd: int}>,
      *   blockers: list<array{type: string, label: string, count: int, filter_type: string, filter_value: string}>,
@@ -199,13 +199,13 @@ final class AssessmentInsights
             $blockers[] = ['type' => 'exception', 'label' => 'Open exceptions', 'count' => $openFindings, 'filter_type' => 'action_tab', 'filter_value' => 'exceptions'];
         }
         if ($missingOwner > 0) {
-            $blockers[] = ['type' => 'owner', 'label' => 'Missing owner', 'count' => $missingOwner, 'filter_type' => 'action_tab', 'filter_value' => 'workspace'];
+            $blockers[] = ['type' => 'owner', 'label' => 'Missing owner', 'count' => $missingOwner, 'filter_type' => 'action_tab', 'filter_value' => 'exceptions'];
         }
         if ($missingTimeline > 0) {
-            $blockers[] = ['type' => 'timeline', 'label' => 'Missing timeline', 'count' => $missingTimeline, 'filter_type' => 'action_tab', 'filter_value' => 'workspace'];
+            $blockers[] = ['type' => 'timeline', 'label' => 'Missing timeline', 'count' => $missingTimeline, 'filter_type' => 'action_tab', 'filter_value' => 'exceptions'];
         }
         if ($missingMitigation > 0) {
-            $blockers[] = ['type' => 'mitigation', 'label' => 'Missing mitigation', 'count' => $missingMitigation, 'filter_type' => 'action_tab', 'filter_value' => 'workspace'];
+            $blockers[] = ['type' => 'mitigation', 'label' => 'Missing mitigation', 'count' => $missingMitigation, 'filter_type' => 'action_tab', 'filter_value' => 'exceptions'];
         }
 
         return [
@@ -263,8 +263,8 @@ final class AssessmentInsights
     }
 
     /** @param list<array<string, mixed>> $findings */
-    /** @param array<string, string> $findingStatuses */
-    /** @return list<array<string, string>> */
+    /** @param array<string, array{status?: string, comment?: string, servicenow_links?: list<string>}|string> $findingStatuses */
+    /** @return list<array<string, mixed>> */
     private function normalizeFindings(array $findings, array $findingStatuses = []): array
     {
         $normalized = [];
@@ -278,10 +278,20 @@ final class AssessmentInsights
             }
             $findingId = (string) ($finding['id'] ?? ('finding-' . $index));
             $status = trim((string) ($finding['status'] ?? 'Open'));
+            $comment = '';
+            $links = [];
             if (isset($findingStatuses[$findingId])) {
-                $status = $findingStatuses[$findingId];
+                $meta = $findingStatuses[$findingId];
+                if (is_array($meta)) {
+                    $status = (string) ($meta['status'] ?? $status);
+                    $comment = (string) ($meta['comment'] ?? '');
+                    $links = is_array($meta['servicenow_links'] ?? null) ? $meta['servicenow_links'] : [];
+                } else {
+                    $status = (string) $meta;
+                }
             }
             $status = \RiskAssessment\Repositories\FindingStatusRepository::normalizeStatus($status);
+            $links = \RiskAssessment\Repositories\FindingStatusRepository::normalizeLinks($links);
             $normalized[] = [
                 'id' => $findingId,
                 'finding' => $text,
@@ -290,7 +300,10 @@ final class AssessmentInsights
                 'mitigation' => trim((string) ($finding['mitigation'] ?? '')),
                 'owner' => trim((string) ($finding['owner'] ?? '')),
                 'timeline' => trim((string) ($finding['timeline'] ?? '')),
+                'origin' => trim((string) ($finding['origin'] ?? 'excel')),
                 'status' => $status,
+                'comment' => $comment,
+                'servicenow_links' => $links,
             ];
         }
 

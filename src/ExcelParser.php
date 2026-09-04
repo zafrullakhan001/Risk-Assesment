@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace RiskAssessment;
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Table;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RiskAssessment\Models\Assessment;
 
@@ -15,6 +17,14 @@ final class ExcelParser
     private const METADATA_ROW_END = 7;
     private const ARCHITECTURE_HEADER_ROW = 8;
     private const ARCHITECTURE_DATA_START = 9;
+
+    private const TABLE_RISK_REGISTER = 'RiskRegisterTable';
+    private const TABLE_DUE_DILIGENCE = 'DueDiligenceExtensionTable';
+    private const TABLE_STATUS_LEGEND = 'StatusLegendTable';
+    private const TABLE_RISK_LEGEND = 'RiskLevelLegendTable';
+    private const TABLE_EVIDENCE_CHECKLIST = 'EvidenceChecklistTable';
+    private const TABLE_DD_SUMMARY = 'DueDiligenceSummaryTable';
+    private const TABLE_EXCEPTION_REGISTER = 'ExceptionRegisterTable';
 
     private const METADATA_MAP = [
         'solutionname' => 'solution_name',
@@ -37,8 +47,7 @@ final class ExcelParser
         $architectureSheet = $this->findArchitectureSheet($spreadsheet);
 
         $metadata = $this->parseMetadata($architectureSheet);
-        $columnMap = $this->parseArchitectureHeaderRow($architectureSheet);
-        $items = $this->parseArchitectureDataRows($architectureSheet, $columnMap);
+        $items = $this->parseArchitectureItems($architectureSheet);
 
         if ($items === []) {
             throw new \InvalidArgumentException('No risk assessment rows were found in the spreadsheet.');
@@ -86,9 +95,19 @@ final class ExcelParser
 
     private function findArchitectureSheet(Spreadsheet $spreadsheet): Worksheet
     {
+        $tableSheet = $this->findSheetWithTable($spreadsheet, self::TABLE_RISK_REGISTER);
+        if ($tableSheet !== null) {
+            return $tableSheet;
+        }
+
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             $title = strtolower($sheet->getTitle());
-            if (str_contains($title, 'sheet1') || str_contains($title, 'architecture') || str_contains($title, 'data sheet')) {
+            if (
+                str_contains($title, 'risk register')
+                || str_contains($title, 'sheet1')
+                || str_contains($title, 'architecture')
+                || str_contains($title, 'data sheet')
+            ) {
                 if ($this->looksLikeArchitectureSheet($sheet)) {
                     return $sheet;
                 }
@@ -105,8 +124,14 @@ final class ExcelParser
 
     private function looksLikeArchitectureSheet(Worksheet $sheet): bool
     {
-        $header = strtolower($this->cellValue($sheet, 'A', self::ARCHITECTURE_HEADER_ROW));
-        $check = strtolower($this->cellValue($sheet, 'B', self::ARCHITECTURE_HEADER_ROW));
+        $headerRow = self::ARCHITECTURE_HEADER_ROW;
+        $table = $this->findTableOnSheet($sheet, self::TABLE_RISK_REGISTER);
+        if ($table !== null) {
+            $headerRow = $this->tableBounds($table)['headerRow'];
+        }
+
+        $header = strtolower($this->cellValue($sheet, 'A', $headerRow));
+        $check = strtolower($this->cellValue($sheet, 'B', $headerRow));
 
         return $header === 'section' && str_starts_with($check, 'check');
     }
@@ -192,15 +217,49 @@ final class ExcelParser
         return $metadata;
     }
 
-    /** @return array<string, string> */
-    private function parseArchitectureHeaderRow(Worksheet $sheet): array
+    /** @return list<array<string, string>> */
+    private function parseArchitectureItems(Worksheet $sheet): array
     {
-        $highestColumn = $sheet->getHighestColumn(self::ARCHITECTURE_HEADER_ROW);
+        $table = $this->findTableOnSheet($sheet, self::TABLE_RISK_REGISTER);
+        if ($table !== null) {
+            $bounds = $this->tableBounds($table);
+            $columnMap = $this->mapArchitectureColumns($sheet, $bounds['headerRow'], $bounds['startCol'], $bounds['endCol']);
+            return $this->parseArchitectureDataRows(
+                $sheet,
+                $columnMap,
+                $bounds['dataStart'],
+                $bounds['dataEnd'],
+                false
+            );
+        }
+
+        $columnMap = $this->mapArchitectureColumns(
+            $sheet,
+            self::ARCHITECTURE_HEADER_ROW,
+            1,
+            Coordinate::columnIndexFromString($sheet->getHighestColumn(self::ARCHITECTURE_HEADER_ROW))
+        );
+
+        return $this->parseArchitectureDataRows(
+            $sheet,
+            $columnMap,
+            self::ARCHITECTURE_DATA_START,
+            $sheet->getHighestRow(),
+            true
+        );
+    }
+
+    /**
+     * @return array<string, string> column letter => field
+     */
+    private function mapArchitectureColumns(Worksheet $sheet, int $headerRow, int $startColIndex, int $endColIndex): array
+    {
         $columnMap = [];
         $foundFields = [];
 
-        foreach ($this->columnRange('A', $highestColumn) as $column) {
-            $header = $this->cellValue($sheet, $column, self::ARCHITECTURE_HEADER_ROW);
+        for ($colIndex = $startColIndex; $colIndex <= $endColIndex; $colIndex++) {
+            $column = Coordinate::stringFromColumnIndex($colIndex);
+            $header = $this->cellValue($sheet, $column, $headerRow);
             if ($header === '') {
                 continue;
             }
@@ -238,21 +297,28 @@ final class ExcelParser
      * @param array<string, string> $columnMap
      * @return list<array<string, string>>
      */
-    private function parseArchitectureDataRows(Worksheet $sheet, array $columnMap): array
-    {
+    private function parseArchitectureDataRows(
+        Worksheet $sheet,
+        array $columnMap,
+        int $dataStart,
+        int $dataEnd,
+        bool $stopOnEmptyRow
+    ): array {
         $items = [];
         $currentSection = '';
-        $highestRow = $sheet->getHighestRow();
         $sortOrder = 0;
 
-        for ($row = self::ARCHITECTURE_DATA_START; $row <= $highestRow; $row++) {
+        for ($row = $dataStart; $row <= $dataEnd; $row++) {
             $rowValues = [];
             foreach ($columnMap as $column => $field) {
                 $rowValues[$field] = $this->cellValue($sheet, $column, $row);
             }
 
             if ($this->isEmptyRow($rowValues)) {
-                break;
+                if ($stopOnEmptyRow) {
+                    break;
+                }
+                continue;
             }
 
             $section = trim($rowValues['section'] ?? '');
@@ -289,23 +355,61 @@ final class ExcelParser
      */
     private function parseDueDiligenceExtension(Worksheet $sheet): array
     {
-        $headerRow = $this->findHeaderRow($sheet, ['category', 'assessmentitem', 'status'], 1, 12);
-        if ($headerRow === null) {
-            return [[], ''];
+        $context = $this->findDueDiligenceContext($sheet);
+        $table = $this->findTableOnSheet($sheet, self::TABLE_DUE_DILIGENCE);
+
+        if ($table !== null) {
+            $bounds = $this->tableBounds($table);
+            $columnMap = $this->mapDueDiligenceColumns($sheet, $bounds['headerRow'], $bounds['startCol'], $bounds['endCol']);
+            if (!in_array('check', $columnMap, true)) {
+                return [[], $context];
+            }
+
+            return [
+                $this->parseDueDiligenceDataRows($sheet, $columnMap, $bounds['dataStart'], $bounds['dataEnd']),
+                $context,
+            ];
         }
 
-        $context = '';
-        for ($row = 1; $row < $headerRow; $row++) {
+        $headerRow = $this->findHeaderRow($sheet, ['category', 'assessmentitem', 'status'], 1, 12);
+        if ($headerRow === null) {
+            return [[], $context];
+        }
+
+        $endColIndex = Coordinate::columnIndexFromString($sheet->getHighestColumn($headerRow));
+        $columnMap = $this->mapDueDiligenceColumns($sheet, $headerRow, 1, $endColIndex);
+        if (!in_array('check', $columnMap, true)) {
+            return [[], $context];
+        }
+
+        return [
+            $this->parseDueDiligenceDataRows($sheet, $columnMap, $headerRow + 1, $sheet->getHighestRow()),
+            $context,
+        ];
+    }
+
+    private function findDueDiligenceContext(Worksheet $sheet): string
+    {
+        $scanEnd = min(12, $sheet->getHighestRow());
+        for ($row = 1; $row <= $scanEnd; $row++) {
             $value = $this->cellValue($sheet, 'A', $row);
             if (stripos($value, 'Current assessment context') !== false) {
-                $context = $value;
-                break;
+                return $value;
             }
         }
 
+        return '';
+    }
+
+    /**
+     * @return array<string, string> column letter => field
+     */
+    private function mapDueDiligenceColumns(Worksheet $sheet, int $headerRow, int $startColIndex, int $endColIndex): array
+    {
         $columnMap = [];
-        $highestColumn = $sheet->getHighestColumn($headerRow);
-        foreach ($this->columnRange('A', $highestColumn) as $column) {
+
+        for ($colIndex = $startColIndex; $colIndex <= $endColIndex; $colIndex++) {
+            $column = Coordinate::stringFromColumnIndex($colIndex);
             $header = $this->cellValue($sheet, $column, $headerRow);
             if ($header === '') {
                 continue;
@@ -331,15 +435,23 @@ final class ExcelParser
             }
         }
 
-        if (!in_array('check', $columnMap, true)) {
-            return [[], $context];
-        }
+        return $columnMap;
+    }
 
+    /**
+     * @param array<string, string> $columnMap
+     * @return list<array<string, string>>
+     */
+    private function parseDueDiligenceDataRows(
+        Worksheet $sheet,
+        array $columnMap,
+        int $dataStart,
+        int $dataEnd
+    ): array {
         $items = [];
         $sortOrder = 0;
-        $highestRow = $sheet->getHighestRow();
 
-        for ($row = $headerRow + 1; $row <= $highestRow; $row++) {
+        for ($row = $dataStart; $row <= $dataEnd; $row++) {
             $rowValues = [
                 'section' => '',
                 'check' => '',
@@ -382,13 +494,166 @@ final class ExcelParser
             ];
         }
 
-        return [$items, $context];
+        return $items;
     }
 
     /**
      * @return array{0: list<array<string, string>>, 1: list<array<string, string>>, 2: string}
      */
     private function parseJsonDueDiligenceSummary(Worksheet $sheet): array
+    {
+        $summaryTable = $this->findTableOnSheet($sheet, self::TABLE_DD_SUMMARY);
+        $exceptionTable = $this->findTableOnSheet($sheet, self::TABLE_EXCEPTION_REGISTER);
+
+        if ($summaryTable !== null || $exceptionTable !== null) {
+            $fields = $summaryTable !== null
+                ? $this->parseSummaryFieldsFromTable($sheet, $summaryTable)
+                : [];
+            $findings = $exceptionTable !== null
+                ? $this->parseFindingsFromTable($sheet, $exceptionTable)
+                : [];
+            $note = $this->parseSummaryNote($sheet);
+
+            return [$fields, $findings, $note];
+        }
+
+        return $this->parseJsonDueDiligenceSummaryLegacy($sheet);
+    }
+
+    /** @return list<array<string, string>> */
+    private function parseSummaryFieldsFromTable(Worksheet $sheet, Table $table): array
+    {
+        $bounds = $this->tableBounds($table);
+        $columnMap = [];
+
+        for ($colIndex = $bounds['startCol']; $colIndex <= $bounds['endCol']; $colIndex++) {
+            $column = Coordinate::stringFromColumnIndex($colIndex);
+            $normalized = $this->normalizeKey($this->cellValue($sheet, $column, $bounds['headerRow']));
+            $field = match (true) {
+                str_contains($normalized, 'jsonfield') || $normalized === 'field' || $normalized === 'label' => 'label',
+                $normalized === 'value' => 'value',
+                str_contains($normalized, 'assessmentuse') || $normalized === 'use' => 'use',
+                default => null,
+            };
+            if ($field !== null) {
+                $columnMap[$column] = $field;
+            }
+        }
+
+        if (!in_array('label', $columnMap, true)) {
+            return [];
+        }
+
+        $fields = [];
+        for ($row = $bounds['dataStart']; $row <= $bounds['dataEnd']; $row++) {
+            $label = '';
+            $value = '';
+            $use = '';
+            foreach ($columnMap as $column => $field) {
+                $cell = $this->cellValue($sheet, $column, $row);
+                if ($field === 'label') {
+                    $label = $cell;
+                } elseif ($field === 'value') {
+                    $value = $cell;
+                } elseif ($field === 'use') {
+                    $use = $cell;
+                }
+            }
+
+            if ($label === '') {
+                continue;
+            }
+
+            // Skip blank Value+Use pairs (blank template placeholders).
+            if ($value === '' && $use === '') {
+                continue;
+            }
+
+            $fields[] = [
+                'label' => $label,
+                'value' => $value,
+                'use' => $use,
+            ];
+        }
+
+        return $fields;
+    }
+
+    /** @return list<array<string, string>> */
+    private function parseFindingsFromTable(Worksheet $sheet, Table $table): array
+    {
+        $bounds = $this->tableBounds($table);
+        $columnMap = [];
+
+        for ($colIndex = $bounds['startCol']; $colIndex <= $bounds['endCol']; $colIndex++) {
+            $column = Coordinate::stringFromColumnIndex($colIndex);
+            $normalized = $this->normalizeKey($this->cellValue($sheet, $column, $bounds['headerRow']));
+            $field = match (true) {
+                str_contains($normalized, 'finding') || str_contains($normalized, 'control') => 'finding',
+                str_contains($normalized, 'policy') || str_contains($normalized, 'reference') => 'policy_reference',
+                $normalized === 'impact' => 'impact',
+                str_contains($normalized, 'exception') || str_contains($normalized, 'mitigation') => 'mitigation',
+                $normalized === 'owner' => 'owner',
+                $normalized === 'timeline' => 'timeline',
+                default => null,
+            };
+            if ($field !== null && !in_array($field, $columnMap, true)) {
+                $columnMap[$column] = $field;
+            }
+        }
+
+        if (!in_array('finding', $columnMap, true)) {
+            return [];
+        }
+
+        $findings = [];
+        for ($row = $bounds['dataStart']; $row <= $bounds['dataEnd']; $row++) {
+            $rowData = [
+                'finding' => '',
+                'policy_reference' => '',
+                'impact' => '',
+                'mitigation' => '',
+                'owner' => '',
+                'timeline' => '',
+            ];
+            foreach ($columnMap as $column => $field) {
+                $rowData[$field] = $this->cellValue($sheet, $column, $row);
+            }
+
+            if (trim($rowData['finding']) === '') {
+                continue;
+            }
+
+            $findings[] = $rowData;
+        }
+
+        return $findings;
+    }
+
+    private function parseSummaryNote(Worksheet $sheet): string
+    {
+        $note = '';
+        $highestRow = $sheet->getHighestRow();
+        $inNote = false;
+
+        for ($row = 1; $row <= $highestRow; $row++) {
+            $a = $this->cellValue($sheet, 'A', $row);
+            if (str_contains(strtolower($a), 'risk interpretation note')) {
+                $inNote = true;
+                continue;
+            }
+            if ($inNote && $a !== '') {
+                $note = trim($note === '' ? $a : $note . ' ' . $a);
+            }
+        }
+
+        return $note;
+    }
+
+    /**
+     * @return array{0: list<array<string, string>>, 1: list<array<string, string>>, 2: string}
+     */
+    private function parseJsonDueDiligenceSummaryLegacy(Worksheet $sheet): array
     {
         $fields = [];
         $findings = [];
@@ -457,7 +722,6 @@ final class ExcelParser
                 continue;
             }
 
-            // Skip title/intro rows before the field table.
             if ($b === '' && $c === '') {
                 continue;
             }
@@ -478,6 +742,116 @@ final class ExcelParser
 
     /** @return array{statuses: list<array<string, string>>, risk_levels: list<array<string, string>>, checklist: list<string>} */
     private function parseScoringLegend(Worksheet $sheet): array
+    {
+        $statusTable = $this->findTableOnSheet($sheet, self::TABLE_STATUS_LEGEND);
+        $riskTable = $this->findTableOnSheet($sheet, self::TABLE_RISK_LEGEND);
+        $checklistTable = $this->findTableOnSheet($sheet, self::TABLE_EVIDENCE_CHECKLIST);
+
+        if ($statusTable !== null || $riskTable !== null || $checklistTable !== null) {
+            return [
+                'statuses' => $statusTable !== null ? $this->parseStatusLegendTable($sheet, $statusTable) : [],
+                'risk_levels' => $riskTable !== null ? $this->parseRiskLegendTable($sheet, $riskTable) : [],
+                'checklist' => $checklistTable !== null ? $this->parseEvidenceChecklistTable($sheet, $checklistTable) : [],
+            ];
+        }
+
+        return $this->parseScoringLegendLegacy($sheet);
+    }
+
+    /** @return list<array<string, string>> */
+    private function parseStatusLegendTable(Worksheet $sheet, Table $table): array
+    {
+        $bounds = $this->tableBounds($table);
+        $statuses = [];
+
+        for ($row = $bounds['dataStart']; $row <= $bounds['dataEnd']; $row++) {
+            $statusRaw = $this->cellValue($sheet, Coordinate::stringFromColumnIndex($bounds['startCol']), $row);
+            $status = Assessment::normalizeStatus($statusRaw);
+            if (!in_array($status, ['Pass', 'Gap', 'Risk', 'TBD', 'N/A'], true)) {
+                continue;
+            }
+
+            $meaningCol = Coordinate::stringFromColumnIndex($bounds['startCol'] + 1);
+            $actionCol = Coordinate::stringFromColumnIndex(min($bounds['startCol'] + 2, $bounds['endCol']));
+            $statuses[] = [
+                'status' => $status,
+                'meaning' => $this->cellValue($sheet, $meaningCol, $row),
+                'action' => $this->cellValue($sheet, $actionCol, $row),
+            ];
+        }
+
+        return $statuses;
+    }
+
+    /** @return list<array<string, string>> */
+    private function parseRiskLegendTable(Worksheet $sheet, Table $table): array
+    {
+        $bounds = $this->tableBounds($table);
+        $riskLevels = [];
+
+        for ($row = $bounds['dataStart']; $row <= $bounds['dataEnd']; $row++) {
+            $riskRaw = $this->cellValue($sheet, Coordinate::stringFromColumnIndex($bounds['startCol']), $row);
+            $risk = Assessment::normalizeRiskLevel($riskRaw);
+            if (!in_array($risk, ['Low', 'Med', 'High'], true)) {
+                continue;
+            }
+
+            $useCol = Coordinate::stringFromColumnIndex(min($bounds['startCol'] + 1, $bounds['endCol']));
+            $riskLevels[] = [
+                'risk_level' => $risk,
+                'use_when' => $this->cellValue($sheet, $useCol, $row),
+            ];
+        }
+
+        return $riskLevels;
+    }
+
+    /** @return list<string> */
+    private function parseEvidenceChecklistTable(Worksheet $sheet, Table $table): array
+    {
+        $bounds = $this->tableBounds($table);
+        $requirementCol = null;
+
+        for ($colIndex = $bounds['startCol']; $colIndex <= $bounds['endCol']; $colIndex++) {
+            $column = Coordinate::stringFromColumnIndex($colIndex);
+            $normalized = $this->normalizeKey($this->cellValue($sheet, $column, $bounds['headerRow']));
+            if (
+                str_contains($normalized, 'evidencerequirement')
+                || str_contains($normalized, 'requirement')
+                || $normalized === 'evidenceitem' && $requirementCol === null
+            ) {
+                if (str_contains($normalized, 'requirement') || str_contains($normalized, 'evidencerequirement')) {
+                    $requirementCol = $column;
+                    break;
+                }
+            }
+        }
+
+        // Prefer the second column when headers are Evidence item | Evidence requirement.
+        if ($requirementCol === null && $bounds['endCol'] > $bounds['startCol']) {
+            $requirementCol = Coordinate::stringFromColumnIndex($bounds['startCol'] + 1);
+        } elseif ($requirementCol === null) {
+            $requirementCol = Coordinate::stringFromColumnIndex($bounds['startCol']);
+        }
+
+        $checklist = [];
+        for ($row = $bounds['dataStart']; $row <= $bounds['dataEnd']; $row++) {
+            $value = $this->cellValue($sheet, $requirementCol, $row);
+            if ($value === '') {
+                continue;
+            }
+            $normalized = $this->normalizeKey($value);
+            if ($normalized === 'evidencerequirement' || $normalized === 'evidenceitem') {
+                continue;
+            }
+            $checklist[] = $value;
+        }
+
+        return $checklist;
+    }
+
+    /** @return array{statuses: list<array<string, string>>, risk_levels: list<array<string, string>>, checklist: list<string>} */
+    private function parseScoringLegendLegacy(Worksheet $sheet): array
     {
         $statuses = [];
         $riskLevels = [];
@@ -525,6 +899,10 @@ final class ExcelParser
             }
 
             if ($mode === 'checklist' && $b !== '') {
+                $normalizedB = $this->normalizeKey($b);
+                if ($normalizedB === 'evidencerequirement' || $normalizedB === 'evidenceitem') {
+                    continue;
+                }
                 $checklist[] = $b;
             }
         }
@@ -533,6 +911,48 @@ final class ExcelParser
             'statuses' => $statuses,
             'risk_levels' => $riskLevels,
             'checklist' => $checklist,
+        ];
+    }
+
+    private function findSheetWithTable(Spreadsheet $spreadsheet, string $tableName): ?Worksheet
+    {
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            if ($this->findTableOnSheet($sheet, $tableName) !== null) {
+                return $sheet;
+            }
+        }
+
+        return null;
+    }
+
+    private function findTableOnSheet(Worksheet $sheet, string $tableName): ?Table
+    {
+        foreach ($sheet->getTableCollection() as $table) {
+            if (strcasecmp($table->getName(), $tableName) === 0) {
+                return $table;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{headerRow: int, dataStart: int, dataEnd: int, startCol: int, endCol: int}
+     */
+    private function tableBounds(Table $table): array
+    {
+        $boundaries = Coordinate::rangeBoundaries($table->getRange());
+        $startCol = (int) $boundaries[0][0];
+        $headerRow = (int) $boundaries[0][1];
+        $endCol = (int) $boundaries[1][0];
+        $endRow = (int) $boundaries[1][1];
+
+        return [
+            'headerRow' => $headerRow,
+            'dataStart' => $headerRow + 1,
+            'dataEnd' => $endRow,
+            'startCol' => $startCol,
+            'endCol' => $endCol,
         ];
     }
 

@@ -103,10 +103,12 @@ final class Assessment
                 $summary['by_status']['Other']++;
             }
 
-            if (isset($summary['by_risk'][$risk])) {
-                $summary['by_risk'][$risk]++;
-            } else {
-                $summary['by_risk']['Other']++;
+            if ($risk !== '') {
+                if (isset($summary['by_risk'][$risk])) {
+                    $summary['by_risk'][$risk]++;
+                } else {
+                    $summary['by_risk']['Other']++;
+                }
             }
 
             if (!isset($summary['by_section'][$section])) {
@@ -163,7 +165,7 @@ final class Assessment
             'risk' => 'Risk',
             'tbd' => 'TBD',
             'na', 'n/a', 'notapplicable' => 'N/A',
-            default => $value !== '' ? $value : 'Other',
+            default => $value !== '' ? $value : 'TBD',
         };
     }
 
@@ -176,7 +178,7 @@ final class Assessment
             'low' => 'Low',
             'med', 'medium' => 'Med',
             'high' => 'High',
-            default => $value !== '' ? $value : 'Other',
+            default => $value !== '' ? $value : '',
         };
     }
 }

@@ -9,5 +9,6 @@ $adminTab = $adminTab ?? 'home';
     <a class="<?= $adminTab === 'users' ? 'is-active' : '' ?>" href="users.php">Users</a>
     <a class="<?= $adminTab === 'authentication' ? 'is-active' : '' ?>" href="authentication.php">Authentication</a>
     <a class="<?= $adminTab === 'branding' ? 'is-active' : '' ?>" href="branding.php">Branding</a>
+    <a class="<?= $adminTab === 'maintenance' ? 'is-active' : '' ?>" href="maintenance.php">🗄️ SQLite</a>
     <a class="<?= $adminTab === 'updates' ? 'is-active' : '' ?>" href="updates.php">App updates</a>
 </nav>

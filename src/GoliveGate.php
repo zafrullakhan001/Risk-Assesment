@@ -10,7 +10,7 @@ final class GoliveGate
 {
     /**
      * @param array<string, array{action?: string, comment?: string}> $responses
-     * @param array<string, string> $findingStatuses
+     * @param array<string, array{status?: string, comment?: string, servicenow_links?: list<string>}|string> $findingStatuses
      * @return array{
      *   ready_allowed: bool,
      *   rules: list<array{

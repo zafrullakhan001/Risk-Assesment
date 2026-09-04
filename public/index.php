@@ -203,6 +203,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($postedAction === 'add_assessment_item' || $postedAction === 'delete_assessment_item') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before changing register rows.');
+            }
+
+            if ($postedAction === 'add_assessment_item') {
+                $item = $repository->addManualItem($targetId, [
+                    'item_type' => (string) ($_POST['item_type'] ?? 'architecture'),
+                    'section' => (string) ($_POST['section'] ?? ''),
+                    'check' => (string) ($_POST['check'] ?? ''),
+                    'status' => (string) ($_POST['status'] ?? ''),
+                    'risk_level' => (string) ($_POST['risk_level'] ?? ''),
+                    'notes' => (string) ($_POST['notes'] ?? ''),
+                    'mitigation' => (string) ($_POST['mitigation'] ?? ''),
+                    'owner' => (string) ($_POST['owner'] ?? ''),
+                    'remediation_timeline' => (string) ($_POST['remediation_timeline'] ?? ''),
+                    'review_question' => (string) ($_POST['review_question'] ?? ''),
+                    'source_reference' => (string) ($_POST['source_reference'] ?? ''),
+                ]);
+                $itemKey = AssessmentComparer::itemKey(
+                    (string) ($item['item_type'] ?? 'architecture'),
+                    (string) ($item['section'] ?? ''),
+                    (string) ($item['check'] ?? '')
+                );
+                echo json_encode([
+                    'ok' => true,
+                    'item' => $item,
+                    'item_key' => $itemKey,
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $itemId = filter_var($_POST['item_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($itemId <= 0) {
+                throw new RuntimeException('Invalid row to delete.');
+            }
+
+            $deleted = $repository->deleteItem($targetId, $itemId);
+            if ($deleted === null) {
+                throw new RuntimeException('Row not found.');
+            }
+
+            $itemKey = AssessmentComparer::itemKey(
+                (string) ($deleted['item_type'] ?? 'architecture'),
+                (string) ($deleted['section'] ?? ''),
+                (string) ($deleted['check'] ?? '')
+            );
+            $responseRepository->deleteByKey($targetId, $itemKey);
+            $changeLogRepository->deleteForEntity(
+                $targetId,
+                AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE,
+                $itemKey
+            );
+
+            echo json_encode([
+                'ok' => true,
+                'item_id' => $itemId,
+                'item_key' => $itemKey,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
     if ($postedAction === 'save_project_mermaid') {
         header('Content-Type: application/json; charset=utf-8');
         try {
@@ -399,12 +472,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
             $findingId = trim((string) ($_POST['finding_id'] ?? ''));
             $status = (string) ($_POST['status'] ?? 'Open');
+            $hasComment = array_key_exists('comment', $_POST);
+            $hasLinks = array_key_exists('servicenow_links', $_POST);
+            $comment = $hasComment ? (string) ($_POST['comment'] ?? '') : null;
+            $links = null;
+            if ($hasLinks) {
+                $rawLinks = $_POST['servicenow_links'] ?? '[]';
+                if (is_string($rawLinks)) {
+                    $decoded = json_decode($rawLinks, true);
+                    $links = is_array($decoded) ? $decoded : [];
+                } elseif (is_array($rawLinks)) {
+                    $links = $rawLinks;
+                } else {
+                    $links = [];
+                }
+            }
 
             if ($targetId <= 0 || $findingId === '') {
                 throw new RuntimeException('Invalid exception status payload.');
             }
 
-            if (!$findingStatusRepository->upsert($targetId, $findingId, $status)) {
+            if (!$findingStatusRepository->upsert($targetId, $findingId, $status, $comment, $links)) {
                 throw new RuntimeException('Unable to save exception status.');
             }
 
@@ -418,11 +506,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $evaluation = $evaluationRepository->findByAssessmentId($targetId);
             $notes = (string) ($evaluation['notes'] ?? '');
             $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+            $saved = $findingStatuses[$findingId] ?? [
+                'status' => FindingStatusRepository::normalizeStatus($status),
+                'comment' => FindingStatusRepository::normalizeComment((string) ($comment ?? '')),
+                'servicenow_links' => FindingStatusRepository::normalizeLinks($links ?? []),
+            ];
 
             echo json_encode([
                 'ok' => true,
-                'status' => FindingStatusRepository::normalizeStatus($status),
+                'status' => $saved['status'],
+                'comment' => $saved['comment'],
+                'servicenow_links' => $saved['servicenow_links'],
                 'gates' => $gate,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'add_finding' || $postedAction === 'delete_finding') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before changing exceptions.');
+            }
+
+            if ($postedAction === 'add_finding') {
+                $finding = $repository->addFinding($targetId, [
+                    'finding' => (string) ($_POST['finding'] ?? ''),
+                    'policy_reference' => (string) ($_POST['policy_reference'] ?? ''),
+                    'impact' => (string) ($_POST['impact'] ?? ''),
+                    'mitigation' => (string) ($_POST['mitigation'] ?? ''),
+                    'owner' => (string) ($_POST['owner'] ?? ''),
+                    'timeline' => (string) ($_POST['timeline'] ?? ''),
+                ]);
+                $findingId = (string) ($finding['id'] ?? '');
+                $findingStatusRepository->upsert($targetId, $findingId, 'Open', '', []);
+
+                $responses = $responseRepository->listForAssessment($targetId);
+                $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
+                $record = $repository->findById($targetId);
+                if ($record === null) {
+                    throw new RuntimeException('Assessment not found.');
+                }
+                $evaluation = $evaluationRepository->findByAssessmentId($targetId);
+                $notes = (string) ($evaluation['notes'] ?? '');
+                $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+                $meta = $findingStatuses[$findingId] ?? [
+                    'status' => 'Open',
+                    'comment' => '',
+                    'servicenow_links' => [],
+                ];
+
+                echo json_encode([
+                    'ok' => true,
+                    'finding' => array_merge($finding, [
+                        'status' => $meta['status'],
+                        'comment' => $meta['comment'],
+                        'servicenow_links' => $meta['servicenow_links'],
+                    ]),
+                    'gates' => $gate,
+                    'open_findings' => (int) ($gate['residual']['open_findings'] ?? 0),
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $findingId = trim((string) ($_POST['finding_id'] ?? ''));
+            if ($findingId === '') {
+                throw new RuntimeException('Invalid exception to delete.');
+            }
+
+            $deleted = $repository->deleteFinding($targetId, $findingId);
+            if ($deleted === null) {
+                throw new RuntimeException('Exception not found.');
+            }
+            $findingStatusRepository->deleteOne($targetId, $findingId);
+
+            $responses = $responseRepository->listForAssessment($targetId);
+            $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
+            $record = $repository->findById($targetId);
+            if ($record === null) {
+                throw new RuntimeException('Assessment not found.');
+            }
+            $evaluation = $evaluationRepository->findByAssessmentId($targetId);
+            $notes = (string) ($evaluation['notes'] ?? '');
+            $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+
+            echo json_encode([
+                'ok' => true,
+                'finding_id' => $findingId,
+                'gates' => $gate,
+                'open_findings' => (int) ($gate['residual']['open_findings'] ?? 0),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);
@@ -1108,7 +1289,7 @@ $totalProjects = $repository->countAll();
 
             <section class="upload-card" id="upload">
                 <h2>Upload assessment</h2>
-                <p>Drop one or more Architecture Risk Assessment workbooks, including Due Diligence Extension, Governance Summary, and Scoring Legend tabs.</p>
+                <p>Drop one or more Architecture Risk Assessment workbooks (table-based Risk Register format). Include Due Diligence Extension, Governance Summary, and Scoring Legend tabs as needed. Expanding Excel tables in the workbook adds rows on the next upload.</p>
                 <ul class="format-list">
                     <li>Architecture sheet: metadata in rows 2–7, headers in row 8, checks from row 9</li>
                     <li>Due Diligence Extension: category items with status, risk, actions, and sources</li>

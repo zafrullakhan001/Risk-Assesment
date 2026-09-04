@@ -390,6 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const exceptionKey = `ra-exceptions-${assessmentId}`;
     const savedExceptions = JSON.parse(localStorage.getItem(exceptionKey) || '{}');
+    const EXCEPTION_MAX_LINKS = 5;
+    const EXCEPTION_STATUSES = ['Open', 'Approved', 'Closed', 'Expired'];
 
     const parseIntSafe = (value) => {
         const n = Number.parseInt(String(value ?? '').trim(), 10);
@@ -514,7 +516,201 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     window.refreshGoliveGates = refreshGoliveGates;
 
-    const persistFindingStatus = async (findingId, status) => {
+    const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const collectExceptionLinks = (root) => {
+        const values = [];
+        root.querySelectorAll('.exception-sn-link').forEach((input) => {
+            const url = (input.value || '').trim();
+            if (!url || values.includes(url)) {
+                return;
+            }
+            values.push(url);
+        });
+        return values.slice(0, EXCEPTION_MAX_LINKS);
+    };
+
+    const refreshExceptionSnUi = (block) => {
+        if (!block) {
+            return;
+        }
+        const rows = block.querySelectorAll('.exception-sn-row');
+        const count = rows.length;
+        const countLabel = block.querySelector('.exception-sn-count');
+        if (countLabel) {
+            countLabel.textContent = `${count} / ${EXCEPTION_MAX_LINKS}`;
+        }
+        const addBtn = block.querySelector('.exception-sn-add');
+        if (addBtn) {
+            addBtn.hidden = count >= EXCEPTION_MAX_LINKS;
+        }
+        rows.forEach((row) => {
+            const input = row.querySelector('.exception-sn-link');
+            const open = row.querySelector('.exception-sn-open');
+            const url = (input?.value || '').trim();
+            if (open) {
+                if (url) {
+                    open.href = url;
+                    open.hidden = false;
+                } else {
+                    open.hidden = true;
+                }
+            }
+        });
+    };
+
+    const createExceptionSnRow = (url = '') => {
+        const wrap = document.createElement('div');
+        wrap.className = 'exception-sn-row';
+        wrap.innerHTML = `
+            <input type="url" class="exception-sn-link" maxlength="2000" placeholder="https://…service-now.com/…" value="${escapeHtml(url)}">
+            <a class="exception-sn-open" href="${escapeHtml(url || '#')}" target="_blank" rel="noopener noreferrer" title="Open link" ${url ? '' : 'hidden'}>↗</a>
+            <button type="button" class="button button-secondary exception-sn-remove" title="Remove link" aria-label="Remove link">✕</button>
+        `;
+        return wrap;
+    };
+
+    const parseExceptionLinks = (raw) => {
+        if (Array.isArray(raw)) {
+            return raw.filter((url) => typeof url === 'string' && url.trim() !== '').slice(0, EXCEPTION_MAX_LINKS);
+        }
+        if (typeof raw !== 'string' || raw.trim() === '') {
+            return [];
+        }
+        try {
+            const decoded = JSON.parse(raw);
+            return Array.isArray(decoded)
+                ? decoded.filter((url) => typeof url === 'string' && url.trim() !== '').slice(0, EXCEPTION_MAX_LINKS)
+                : [];
+        } catch (error) {
+            return [];
+        }
+    };
+
+    const commentPreviewText = (comment) => {
+        const text = String(comment || '').trim();
+        if (!text) {
+            return '';
+        }
+        return text.length > 90 ? `${text.slice(0, 87)}…` : text;
+    };
+
+    const updateExceptionRowPreview = (row, comment, links) => {
+        if (!row) {
+            return;
+        }
+        row.dataset.comment = comment || '';
+        row.dataset.servicenowLinks = JSON.stringify(Array.isArray(links) ? links : []);
+        const preview = row.querySelector('.exception-comment-preview');
+        if (preview) {
+            const short = commentPreviewText(comment);
+            preview.textContent = short || 'No comments yet';
+            preview.classList.toggle('is-empty', !short);
+        }
+        const linkPreview = row.querySelector('.exception-link-preview');
+        if (linkPreview) {
+            const count = Array.isArray(links) ? links.length : 0;
+            linkPreview.textContent = count === 0
+                ? 'No ServiceNow links'
+                : `${count} ServiceNow link${count === 1 ? '' : 's'}`;
+            linkPreview.classList.toggle('is-empty', count === 0);
+        }
+    };
+
+    const buildExceptionRowHtml = (finding) => {
+        const id = escapeHtml(finding.id || '');
+        const status = EXCEPTION_STATUSES.includes(finding.status) ? finding.status : 'Open';
+        const links = Array.isArray(finding.servicenow_links) ? finding.servicenow_links.slice(0, EXCEPTION_MAX_LINKS) : [];
+        const comment = finding.comment || '';
+        const preview = commentPreviewText(comment);
+        const statusOptions = EXCEPTION_STATUSES.map((option) => (
+            `<option value="${option}" ${option === status ? 'selected' : ''}>${option}</option>`
+        )).join('');
+        const policy = finding.policy_reference
+            ? `<div class="subtext">Policy: ${escapeHtml(finding.policy_reference)}</div>`
+            : '';
+        const mitigation = finding.mitigation
+            ? `<div class="subtext clamp-text" data-expandable>${escapeHtml(finding.mitigation)}</div>`
+            : '';
+
+        return `
+            <tr
+                data-finding-id="${id}"
+                class="exception-row"
+                data-finding-text="${escapeHtml(finding.finding || '')}"
+                data-policy="${escapeHtml(finding.policy_reference || '')}"
+                data-owner="${escapeHtml(finding.owner || '')}"
+                data-timeline="${escapeHtml(finding.timeline || '')}"
+                data-mitigation="${escapeHtml(finding.mitigation || '')}"
+                data-impact="${escapeHtml(finding.impact || '')}"
+                data-comment="${escapeHtml(comment)}"
+                data-servicenow-links="${escapeHtml(JSON.stringify(links))}"
+            >
+                <td>
+                    <div class="exception-status-wrap">
+                        <select class="exception-status" data-finding-id="${id}" aria-label="Exception status">${statusOptions}</select>
+                        <span class="exception-status-save" hidden></span>
+                    </div>
+                </td>
+                <td class="exception-finding-cell">
+                    <div class="clamp-text" data-expandable>${escapeHtml(finding.finding || '')}</div>
+                    ${policy}
+                    ${mitigation}
+                </td>
+                <td class="exception-notes-preview-cell">
+                    <div class="exception-notes-preview">
+                        <p class="exception-comment-preview ${preview ? '' : 'is-empty'}">${escapeHtml(preview || 'No comments yet')}</p>
+                        <span class="exception-link-preview ${links.length ? '' : 'is-empty'}">${
+                            links.length === 0
+                                ? 'No ServiceNow links'
+                                : `${links.length} ServiceNow link${links.length === 1 ? '' : 's'}`
+                        }</span>
+                    </div>
+                </td>
+                <td>${escapeHtml(finding.owner || '')}</td>
+                <td>${escapeHtml(finding.timeline || '')}</td>
+                <td class="col-actions">
+                    <div class="exception-row-actions">
+                        <button type="button" class="button button-secondary exception-edit-row" data-finding-id="${id}" title="Edit exception details" aria-label="Edit exception details">✏️</button>
+                        <button type="button" class="button button-secondary exception-delete-row" data-finding-id="${id}" title="Delete exception" aria-label="Delete exception">🗑️</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    };
+
+    const updateExceptionTabCount = () => {
+        const count = document.querySelectorAll('#exception-table tbody tr.exception-row').length;
+        const tab = document.querySelector('.action-tab[data-action-tab="exceptions"] em');
+        if (tab) {
+            tab.textContent = String(count);
+        }
+        const empty = document.getElementById('exception-empty');
+        const wrap = document.getElementById('exception-table-wrap');
+        if (empty) {
+            empty.hidden = count > 0;
+        }
+        if (wrap) {
+            wrap.hidden = count === 0;
+        }
+    };
+
+    const updateExceptionOpenCount = () => {
+        const openCount = Array.from(document.querySelectorAll('.exception-status'))
+            .filter((node) => node.value === 'Open').length;
+        const countLabel = document.getElementById('exception-open-count');
+        if (countLabel) {
+            countLabel.textContent = `${openCount} open`;
+        }
+        return openCount;
+    };
+
+    const persistFindingStatus = async (findingId, status, extras = null) => {
         const body = new URLSearchParams({
             action: 'save_finding_status',
             csrf_token: csrfToken,
@@ -522,6 +718,12 @@ document.addEventListener('DOMContentLoaded', () => {
             finding_id: findingId,
             status,
         });
+        if (extras && typeof extras.comment === 'string') {
+            body.set('comment', extras.comment);
+        }
+        if (extras && Array.isArray(extras.servicenow_links)) {
+            body.set('servicenow_links', JSON.stringify(extras.servicenow_links));
+        }
 
         const response = await fetch('index.php', {
             method: 'POST',
@@ -642,27 +844,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    document.querySelectorAll('.exception-status').forEach((select) => {
+    const bindExceptionStatusSelect = (select) => {
         const findingId = select.dataset.findingId;
-        if (!findingId) {
+        if (!findingId || select.dataset.bound === '1') {
             return;
         }
+        select.dataset.bound = '1';
         if (Number(assessmentId) <= 0 && savedExceptions[findingId]) {
-            select.value = savedExceptions[findingId];
+            const saved = savedExceptions[findingId];
+            select.value = typeof saved === 'string' ? saved : (saved.status || select.value);
         }
         let saveGeneration = 0;
         select.addEventListener('change', async () => {
-            const openCount = Array.from(document.querySelectorAll('.exception-status'))
-                .filter((node) => node.value === 'Open').length;
-            const countLabel = document.getElementById('exception-open-count');
-            if (countLabel) {
-                countLabel.textContent = `${openCount} open`;
-            }
-
+            updateExceptionOpenCount();
             updateExecSummaryFromExceptions();
 
             const generation = ++saveGeneration;
             const status = select.value;
+            const row = select.closest('tr.exception-row');
 
             if (Number(assessmentId) > 0) {
                 setExceptionSaveLabel(select, 'Saving…');
@@ -690,14 +889,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
                     setExceptionSaveLabel(select, error.message || 'Save failed', true);
-                    if (countLabel) {
-                        countLabel.textContent = `${openCount} open`;
-                    }
+                    updateExceptionOpenCount();
                 }
                 return;
             }
 
-            savedExceptions[findingId] = status;
+            savedExceptions[findingId] = {
+                ...(typeof savedExceptions[findingId] === 'object' ? savedExceptions[findingId] : {}),
+                status,
+                comment: row?.dataset.comment || '',
+                servicenow_links: parseExceptionLinks(row?.dataset.servicenowLinks || '[]'),
+            };
             localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
             setExceptionSaveLabel(select, 'Saved locally');
             window.setTimeout(() => {
@@ -707,8 +909,427 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 1200);
             refreshGoliveGates();
         });
+    };
+
+    const bindExceptionRow = (row) => {
+        if (!row || row.dataset.exceptionBound === '1') {
+            return;
+        }
+        row.dataset.exceptionBound = '1';
+
+        const select = row.querySelector('.exception-status');
+        if (select) {
+            bindExceptionStatusSelect(select);
+        }
+
+        const findingId = row.dataset.findingId || '';
+        if (Number(assessmentId) <= 0 && savedExceptions[findingId] && typeof savedExceptions[findingId] === 'object') {
+            const comment = savedExceptions[findingId].comment || '';
+            const links = Array.isArray(savedExceptions[findingId].servicenow_links)
+                ? savedExceptions[findingId].servicenow_links
+                : [];
+            updateExceptionRowPreview(row, comment, links);
+        }
+    };
+
+    document.querySelectorAll('#exception-table tbody tr.exception-row').forEach(bindExceptionRow);
+
+    const exceptionEditDialog = document.getElementById('exception-edit-dialog');
+    const exceptionEditForm = document.getElementById('exception-edit-form');
+    const exceptionEditStatus = document.getElementById('exception-edit-status');
+    const exceptionEditComment = document.getElementById('exception-edit-comment');
+    const exceptionEditSnBlock = document.getElementById('exception-edit-sn-block');
+    const exceptionEditSnList = document.getElementById('exception-edit-sn-list');
+    const exceptionEditStatusMsg = document.getElementById('exception-edit-status-msg');
+    const exceptionEditSave = document.getElementById('exception-edit-save');
+    let exceptionEditRow = null;
+
+    if (exceptionEditDialog && exceptionEditDialog.parentElement !== document.body) {
+        document.body.appendChild(exceptionEditDialog);
+    }
+
+    const setExceptionEditStatus = (message, isError = false) => {
+        if (!exceptionEditStatusMsg) {
+            return;
+        }
+        exceptionEditStatusMsg.hidden = !message;
+        exceptionEditStatusMsg.textContent = message || '';
+        exceptionEditStatusMsg.classList.toggle('is-error', !!isError);
+    };
+
+    const setExceptionEditDetail = (key, value) => {
+        const chip = exceptionEditDialog?.querySelector(`[data-exception-detail="${key}"]`);
+        const text = String(value || '').trim();
+        if (!chip) {
+            return false;
+        }
+        const valueEl = chip.querySelector('.response-dialog-detail-value, .response-dialog-detail-text');
+        if (valueEl) {
+            valueEl.textContent = text;
+        }
+        chip.hidden = text === '';
+        return text !== '';
+    };
+
+    const fillExceptionEditSnList = (links) => {
+        if (!exceptionEditSnList) {
+            return;
+        }
+        exceptionEditSnList.innerHTML = '';
+        const items = Array.isArray(links) && links.length ? links : [''];
+        items.slice(0, EXCEPTION_MAX_LINKS).forEach((url) => {
+            exceptionEditSnList.appendChild(createExceptionSnRow(url));
+        });
+        refreshExceptionSnUi(exceptionEditSnBlock);
+    };
+
+    const closeExceptionEditDialog = () => {
+        if (exceptionEditDialog && typeof exceptionEditDialog.close === 'function' && exceptionEditDialog.open) {
+            exceptionEditDialog.close();
+        }
+        exceptionEditRow = null;
+        setExceptionEditStatus('');
+    };
+
+    const openExceptionEditDialog = (row) => {
+        if (!exceptionEditDialog || !row) {
+            return;
+        }
+        exceptionEditRow = row;
+        const findingText = row.dataset.findingText || '';
+        const title = document.getElementById('exception-edit-title');
+        const sub = document.getElementById('exception-edit-sub');
+        if (title) {
+            title.textContent = findingText
+                ? (findingText.length > 80 ? `${findingText.slice(0, 77)}…` : findingText)
+                : 'Edit exception';
+        }
+        if (sub) {
+            const bits = [row.dataset.owner, row.dataset.timeline].filter(Boolean);
+            sub.textContent = bits.join(' · ');
+            sub.hidden = bits.length === 0;
+        }
+
+        setExceptionEditDetail('finding', findingText);
+        setExceptionEditDetail('policy', row.dataset.policy || '');
+        setExceptionEditDetail('owner', row.dataset.owner || '');
+        setExceptionEditDetail('timeline', row.dataset.timeline || '');
+        setExceptionEditDetail('mitigation', row.dataset.mitigation || '');
+        setExceptionEditDetail('impact', row.dataset.impact || '');
+
+        if (exceptionEditStatus) {
+            exceptionEditStatus.value = row.querySelector('.exception-status')?.value || 'Open';
+        }
+        if (exceptionEditComment) {
+            exceptionEditComment.value = row.dataset.comment || '';
+        }
+        fillExceptionEditSnList(parseExceptionLinks(row.dataset.servicenowLinks || '[]'));
+        setExceptionEditStatus('');
+
+        if (typeof exceptionEditDialog.showModal === 'function') {
+            exceptionEditDialog.showModal();
+        } else {
+            exceptionEditDialog.setAttribute('open', 'open');
+        }
+        exceptionEditStatus?.focus();
+    };
+
+    exceptionEditDialog?.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+        if (target.closest('#exception-edit-sn-add')) {
+            if (!exceptionEditSnList || exceptionEditSnList.querySelectorAll('.exception-sn-row').length >= EXCEPTION_MAX_LINKS) {
+                return;
+            }
+            exceptionEditSnList.appendChild(createExceptionSnRow(''));
+            refreshExceptionSnUi(exceptionEditSnBlock);
+            exceptionEditSnList.querySelector('.exception-sn-row:last-child .exception-sn-link')?.focus();
+            return;
+        }
+        if (target.closest('.exception-sn-remove')) {
+            const rowEl = target.closest('.exception-sn-row');
+            if (!rowEl || !exceptionEditSnList) {
+                return;
+            }
+            rowEl.remove();
+            if (exceptionEditSnList.querySelectorAll('.exception-sn-row').length === 0) {
+                exceptionEditSnList.appendChild(createExceptionSnRow(''));
+            }
+            refreshExceptionSnUi(exceptionEditSnBlock);
+        }
     });
 
+    exceptionEditDialog?.addEventListener('input', (event) => {
+        const target = event.target;
+        if (target instanceof Element && target.classList.contains('exception-sn-link')) {
+            refreshExceptionSnUi(exceptionEditSnBlock);
+        }
+    });
+
+    document.getElementById('exception-edit-close')?.addEventListener('click', closeExceptionEditDialog);
+    document.getElementById('exception-edit-cancel')?.addEventListener('click', closeExceptionEditDialog);
+    exceptionEditDialog?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeExceptionEditDialog();
+    });
+
+    exceptionEditForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const row = exceptionEditRow;
+        const findingId = row?.dataset.findingId || '';
+        if (!row || !findingId) {
+            return;
+        }
+        const status = exceptionEditStatus?.value || 'Open';
+        const comment = exceptionEditComment?.value || '';
+        const links = collectExceptionLinks(exceptionEditSnBlock || exceptionEditDialog);
+        setExceptionEditStatus('Saving…');
+        if (exceptionEditSave) {
+            exceptionEditSave.disabled = true;
+        }
+        try {
+            if (Number(assessmentId) > 0) {
+                const payload = await persistFindingStatus(findingId, status, {
+                    comment,
+                    servicenow_links: links,
+                });
+                const savedComment = typeof payload.comment === 'string' ? payload.comment : comment;
+                const savedLinks = Array.isArray(payload.servicenow_links) ? payload.servicenow_links : links;
+                const select = row.querySelector('.exception-status');
+                if (select && payload.status) {
+                    select.value = payload.status;
+                } else if (select) {
+                    select.value = status;
+                }
+                updateExceptionRowPreview(row, savedComment, savedLinks);
+                updateExceptionOpenCount();
+                updateExecSummaryFromExceptions();
+                if (payload.gates) {
+                    applyGoliveGates(payload.gates);
+                } else {
+                    refreshGoliveGates();
+                }
+            } else {
+                const select = row.querySelector('.exception-status');
+                if (select) {
+                    select.value = status;
+                }
+                updateExceptionRowPreview(row, comment, links);
+                savedExceptions[findingId] = {
+                    status,
+                    comment,
+                    servicenow_links: links,
+                };
+                localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
+                updateExceptionOpenCount();
+                updateExecSummaryFromExceptions();
+                refreshGoliveGates();
+            }
+            closeExceptionEditDialog();
+        } catch (error) {
+            setExceptionEditStatus(error.message || 'Save failed', true);
+        } finally {
+            if (exceptionEditSave) {
+                exceptionEditSave.disabled = false;
+            }
+        }
+    });
+
+    const exceptionTracker = document.getElementById('exception-tracker');
+    exceptionTracker?.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const editBtn = target.closest('.exception-edit-row');
+        if (editBtn) {
+            const row = editBtn.closest('tr.exception-row');
+            if (row) {
+                openExceptionEditDialog(row);
+            }
+            return;
+        }
+
+        const deleteBtn = target.closest('.exception-delete-row');
+        if (deleteBtn) {
+            const row = deleteBtn.closest('tr.exception-row');
+            const findingId = row?.dataset.findingId || deleteBtn.dataset.findingId || '';
+            if (!row || !findingId) {
+                return;
+            }
+            if (!window.confirm('Delete this exception row? This cannot be undone.')) {
+                return;
+            }
+            if (Number(assessmentId) <= 0) {
+                row.remove();
+                delete savedExceptions[findingId];
+                localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
+                updateExceptionTabCount();
+                updateExceptionOpenCount();
+                updateExecSummaryFromExceptions();
+                refreshGoliveGates();
+                return;
+            }
+            deleteBtn.disabled = true;
+            try {
+                const body = new URLSearchParams({
+                    action: 'delete_finding',
+                    csrf_token: csrfToken,
+                    assessment_id: String(assessmentId),
+                    finding_id: findingId,
+                });
+                const response = await fetch('index.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body,
+                });
+                const text = await response.text();
+                let payload = {};
+                try {
+                    payload = text ? JSON.parse(text) : {};
+                } catch (error) {
+                    throw new Error('Delete failed');
+                }
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || 'Delete failed');
+                }
+                row.remove();
+                updateExceptionTabCount();
+                updateExceptionOpenCount();
+                updateExecSummaryFromExceptions();
+                if (payload.gates) {
+                    applyGoliveGates(payload.gates);
+                } else {
+                    refreshGoliveGates();
+                }
+            } catch (error) {
+                window.alert(error.message || 'Delete failed');
+                deleteBtn.disabled = false;
+            }
+        }
+    });
+
+    const exceptionAddDialog = document.getElementById('exception-add-dialog');
+    const exceptionAddForm = document.getElementById('exception-add-form');
+    const exceptionAddStatus = document.getElementById('exception-add-status');
+    const exceptionAddSave = document.getElementById('exception-add-save');
+    const exceptionAddBtn = document.getElementById('exception-add-row');
+
+    if (exceptionAddDialog && exceptionAddDialog.parentElement !== document.body) {
+        document.body.appendChild(exceptionAddDialog);
+    }
+
+    const setExceptionAddStatus = (message, isError = false) => {
+        if (!exceptionAddStatus) {
+            return;
+        }
+        exceptionAddStatus.hidden = !message;
+        exceptionAddStatus.textContent = message || '';
+        exceptionAddStatus.classList.toggle('is-error', !!isError);
+    };
+
+    const closeExceptionAddDialog = () => {
+        if (exceptionAddDialog && typeof exceptionAddDialog.close === 'function' && exceptionAddDialog.open) {
+            exceptionAddDialog.close();
+        }
+        setExceptionAddStatus('');
+    };
+
+    const openExceptionAddDialog = () => {
+        if (!exceptionAddDialog || Number(assessmentId) <= 0) {
+            return;
+        }
+        exceptionAddForm?.reset();
+        setExceptionAddStatus('');
+        if (typeof exceptionAddDialog.showModal === 'function') {
+            exceptionAddDialog.showModal();
+        } else {
+            exceptionAddDialog.setAttribute('open', 'open');
+        }
+        document.getElementById('exception-add-finding')?.focus();
+    };
+
+    exceptionAddBtn?.addEventListener('click', openExceptionAddDialog);
+
+    exceptionAddSave?.addEventListener('click', async () => {
+        if (Number(assessmentId) <= 0) {
+            return;
+        }
+        const finding = document.getElementById('exception-add-finding')?.value.trim() || '';
+        if (!finding) {
+            setExceptionAddStatus('Finding text is required.', true);
+            document.getElementById('exception-add-finding')?.focus();
+            return;
+        }
+        exceptionAddSave.disabled = true;
+        setExceptionAddStatus('Saving…');
+        try {
+            const body = new URLSearchParams({
+                action: 'add_finding',
+                csrf_token: csrfToken,
+                assessment_id: String(assessmentId),
+                finding,
+                policy_reference: document.getElementById('exception-add-policy')?.value || '',
+                impact: document.getElementById('exception-add-impact')?.value || '',
+                mitigation: document.getElementById('exception-add-mitigation')?.value || '',
+                owner: document.getElementById('exception-add-owner')?.value || '',
+                timeline: document.getElementById('exception-add-timeline')?.value || '',
+            });
+            const response = await fetch('index.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body,
+            });
+            const text = await response.text();
+            let payload = {};
+            try {
+                payload = text ? JSON.parse(text) : {};
+            } catch (error) {
+                throw new Error('Add failed');
+            }
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || 'Add failed');
+            }
+
+            const tbody = document.querySelector('#exception-table tbody');
+            if (tbody && payload.finding) {
+                tbody.insertAdjacentHTML('beforeend', buildExceptionRowHtml(payload.finding));
+                const newRow = tbody.querySelector(`tr[data-finding-id="${CSS.escape(payload.finding.id)}"]`);
+                if (newRow) {
+                    bindExceptionRow(newRow);
+                }
+            }
+            updateExceptionTabCount();
+            updateExceptionOpenCount();
+            updateExecSummaryFromExceptions();
+            if (payload.gates) {
+                applyGoliveGates(payload.gates);
+            } else {
+                refreshGoliveGates();
+            }
+            closeExceptionAddDialog();
+        } catch (error) {
+            setExceptionAddStatus(error.message || 'Add failed', true);
+        } finally {
+            exceptionAddSave.disabled = false;
+        }
+    });
+
+    updateExceptionTabCount();
+    updateExceptionOpenCount();
     updateExecSummaryFromExceptions();
     if (initialGoliveGates && Array.isArray(initialGoliveGates.rules)) {
         applyGoliveGates(initialGoliveGates);
@@ -1351,7 +1972,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const responseDialogHistory = document.getElementById('response-dialog-history');
     const responseDialogStatus = document.getElementById('response-dialog-status');
     const responseDialogSave = document.getElementById('response-dialog-save');
+    const responseDialogDetails = document.getElementById('response-dialog-details');
     let responseDialogWidget = null;
+
+    // Keep the dialog outside tab panels — Actions panel is display:none when
+    // Architecture / Due diligence is active, which would hide showModal().
+    if (responseDialog && responseDialog.parentElement !== document.body) {
+        document.body.appendChild(responseDialog);
+    }
 
     const setResponseDialogStatus = (message, isError = false) => {
         if (!responseDialogStatus) {
@@ -1360,6 +1988,109 @@ document.addEventListener('DOMContentLoaded', () => {
         responseDialogStatus.hidden = !message;
         responseDialogStatus.textContent = message || '';
         responseDialogStatus.classList.toggle('is-error', !!isError);
+    };
+
+    const fillResponseDialogDetail = (key, value, { tone = '', display = null } = {}) => {
+        if (!responseDialogDetails) {
+            return false;
+        }
+        const chipOrBlock = responseDialogDetails.querySelector(`[data-detail="${key}"]`);
+        const valueEl = document.getElementById(`response-dialog-detail-${key}`);
+        const text = (value || '').trim();
+        if (chipOrBlock) {
+            [...chipOrBlock.classList].forEach((cls) => {
+                if (cls.startsWith('tone-')) {
+                    chipOrBlock.classList.remove(cls);
+                }
+            });
+            chipOrBlock.hidden = text === '';
+            chipOrBlock.classList.toggle('is-empty', text === '');
+            if (tone && text !== '') {
+                chipOrBlock.classList.add(`tone-${tone}`);
+            }
+        }
+        if (valueEl) {
+            valueEl.textContent = text === '' ? '' : (display ?? text);
+        }
+        return text !== '';
+    };
+
+    const statusDialogMeta = (status) => {
+        const key = String(status || '').trim().toLowerCase();
+        const map = {
+            pass: { emoji: '✅', tone: 'pass' },
+            gap: { emoji: '🟠', tone: 'gap' },
+            risk: { emoji: '🔴', tone: 'risk' },
+            tbd: { emoji: '❓', tone: 'tbd' },
+            'n/a': { emoji: '➖', tone: 'na' },
+            na: { emoji: '➖', tone: 'na' },
+        };
+        return map[key] || { emoji: '📌', tone: 'neutral' };
+    };
+
+    const riskDialogMeta = (risk) => {
+        const key = String(risk || '').trim().toLowerCase();
+        const map = {
+            high: { emoji: '🔴', tone: 'risk-high' },
+            med: { emoji: '🟡', tone: 'risk-med' },
+            medium: { emoji: '🟡', tone: 'risk-med' },
+            low: { emoji: '🟢', tone: 'risk-low' },
+        };
+        return map[key] || { emoji: '⚪', tone: 'neutral' };
+    };
+
+    const populateResponseDialogDetails = (widget) => {
+        if (!responseDialogDetails || !widget) {
+            return;
+        }
+        const source = (widget.dataset.itemSource || '').trim();
+        const section = (widget.dataset.itemSection || '').trim();
+        const status = (widget.dataset.itemStatus || '').trim();
+        const risk = (widget.dataset.itemRisk || '').trim();
+        const owner = (widget.dataset.itemOwner || '').trim();
+        const timeline = (widget.dataset.itemTimeline || '').trim();
+        const notes = (widget.dataset.itemNotes || '').trim();
+        const mitigation = (widget.dataset.itemMitigation || '').trim();
+        const reviewQuestion = (widget.dataset.itemReviewQuestion || '').trim();
+        const sourceRef = (widget.dataset.itemSourceRef || '').trim();
+        const statusMeta = statusDialogMeta(status);
+        const riskMeta = riskDialogMeta(risk);
+        const sourceIcon = source.toLowerCase().includes('due') ? '🔍' : '🏛️';
+
+        const detailsIcon = document.getElementById('response-dialog-details-icon');
+        if (detailsIcon) {
+            detailsIcon.textContent = sourceIcon;
+        }
+
+        responseDialogDetails.className = 'response-dialog-details';
+        if (riskMeta.tone !== 'neutral') {
+            responseDialogDetails.classList.add(`accent-${riskMeta.tone}`);
+        } else if (statusMeta.tone !== 'neutral') {
+            responseDialogDetails.classList.add(`accent-status-${statusMeta.tone}`);
+        }
+
+        const hasAny = [
+            fillResponseDialogDetail('source', source, {
+                tone: source.toLowerCase().includes('due') ? 'diligence' : 'architecture',
+                display: `${sourceIcon} ${source}`,
+            }),
+            fillResponseDialogDetail('section', section, { tone: 'section' }),
+            fillResponseDialogDetail('status', status, {
+                tone: statusMeta.tone,
+                display: `${statusMeta.emoji} ${status}`,
+            }),
+            fillResponseDialogDetail('risk', risk, {
+                tone: riskMeta.tone,
+                display: `${riskMeta.emoji} ${risk}`,
+            }),
+            fillResponseDialogDetail('owner', owner, { tone: 'owner' }),
+            fillResponseDialogDetail('timeline', timeline, { tone: 'timeline' }),
+            fillResponseDialogDetail('notes', notes, { tone: 'notes' }),
+            fillResponseDialogDetail('mitigation', mitigation, { tone: 'mitigation' }),
+            fillResponseDialogDetail('review-question', reviewQuestion, { tone: 'question' }),
+            fillResponseDialogDetail('source-ref', sourceRef, { tone: 'reference' }),
+        ].some(Boolean);
+        responseDialogDetails.hidden = !hasAny;
     };
 
     const closeResponseDialog = () => {
@@ -1386,6 +2117,7 @@ document.addEventListener('DOMContentLoaded', () => {
             responseDialogSub.textContent = widget.dataset.itemSub || '';
             responseDialogSub.hidden = !widget.dataset.itemSub;
         }
+        populateResponseDialogDetails(widget);
         if (responseDialogAction) {
             responseDialogAction.value = action;
         }
@@ -1632,7 +2364,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const actionTabButtons = Array.from(document.querySelectorAll('.action-tab'));
     const actionPanels = Array.from(document.querySelectorAll('.action-panel'));
     const activateActionTab = (tabName, pushState = true) => {
-        const target = tabName || 'risks';
+        let target = tabName || 'risks';
+        const hasTab = actionTabButtons.some((button) => button.dataset.actionTab === target);
+        if (!hasTab) {
+            target = 'risks';
+        }
         actionTabButtons.forEach((button) => {
             const isActive = button.dataset.actionTab === target;
             button.classList.toggle('is-active', isActive);
@@ -2104,4 +2840,166 @@ document.addEventListener('DOMContentLoaded', () => {
         activateActionTab('signoff', false);
         document.getElementById('final-evaluation')?.scrollIntoView({ behavior: 'smooth' });
     }
+
+    const registerAddDialog = document.getElementById('register-add-dialog');
+    const registerAddForm = document.getElementById('register-add-dialog-form');
+    const registerAddItemType = document.getElementById('register-add-item-type');
+    const registerAddStatusEl = document.getElementById('register-add-dialog-status');
+    const registerAddCheckLabel = document.getElementById('register-add-check-label');
+    const registerAddDdFields = Array.from(document.querySelectorAll('.register-add-dd-only'));
+
+    if (registerAddDialog && registerAddDialog.parentElement !== document.body) {
+        document.body.appendChild(registerAddDialog);
+    }
+
+    const setRegisterAddStatus = (message, isError = false) => {
+        if (!registerAddStatusEl) {
+            return;
+        }
+        registerAddStatusEl.hidden = !message;
+        registerAddStatusEl.textContent = message || '';
+        registerAddStatusEl.classList.toggle('is-error', !!isError);
+    };
+
+    const closeRegisterAddDialog = () => {
+        if (registerAddDialog && typeof registerAddDialog.close === 'function' && registerAddDialog.open) {
+            registerAddDialog.close();
+        }
+        setRegisterAddStatus('');
+    };
+
+    const openRegisterAddDialog = (itemType) => {
+        if (!registerAddDialog || Number(assessmentId) <= 0) {
+            return;
+        }
+        const type = itemType === 'due_diligence' ? 'due_diligence' : 'architecture';
+        if (registerAddItemType) {
+            registerAddItemType.value = type;
+        }
+        const isDd = type === 'due_diligence';
+        if (registerAddCheckLabel) {
+            registerAddCheckLabel.textContent = isDd ? '✅ Assessment item' : '✅ Check';
+        }
+        registerAddDdFields.forEach((field) => {
+            field.hidden = !isDd;
+        });
+        const eyebrow = document.getElementById('register-add-dialog-eyebrow');
+        const title = document.getElementById('register-add-dialog-title');
+        if (eyebrow) {
+            eyebrow.textContent = isDd ? '➕ Add due diligence row' : '➕ Add architecture row';
+        }
+        if (title) {
+            title.textContent = isDd ? 'Add due diligence row' : 'Add architecture row';
+        }
+        registerAddForm?.reset();
+        if (registerAddItemType) {
+            registerAddItemType.value = type;
+        }
+        const statusSelect = document.getElementById('register-add-status');
+        if (statusSelect) {
+            statusSelect.value = 'TBD';
+        }
+        setRegisterAddStatus('');
+        if (typeof registerAddDialog.showModal === 'function') {
+            registerAddDialog.showModal();
+        } else {
+            registerAddDialog.setAttribute('open', 'open');
+        }
+        document.getElementById('register-add-section')?.focus();
+    };
+
+    document.querySelectorAll('.register-add-row').forEach((button) => {
+        button.addEventListener('click', () => {
+            openRegisterAddDialog(button.dataset.itemType || 'architecture');
+        });
+    });
+
+    document.getElementById('register-add-dialog-close')?.addEventListener('click', closeRegisterAddDialog);
+    document.getElementById('register-add-dialog-cancel')?.addEventListener('click', closeRegisterAddDialog);
+    registerAddDialog?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeRegisterAddDialog();
+    });
+
+    registerAddForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (Number(assessmentId) <= 0) {
+            setRegisterAddStatus('Save this assessment first.', true);
+            return;
+        }
+        const saveBtn = document.getElementById('register-add-dialog-save');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+        }
+        setRegisterAddStatus('Saving…');
+        try {
+            const body = new URLSearchParams({
+                action: 'add_assessment_item',
+                csrf_token: csrfToken,
+                assessment_id: String(assessmentId),
+                item_type: registerAddItemType?.value || 'architecture',
+                section: document.getElementById('register-add-section')?.value || '',
+                check: document.getElementById('register-add-check')?.value || '',
+                status: document.getElementById('register-add-status')?.value || 'TBD',
+                risk_level: document.getElementById('register-add-risk')?.value || '',
+                notes: document.getElementById('register-add-notes')?.value || '',
+                mitigation: document.getElementById('register-add-mitigation')?.value || '',
+                owner: document.getElementById('register-add-owner')?.value || '',
+                remediation_timeline: document.getElementById('register-add-timeline')?.value || '',
+                review_question: document.getElementById('register-add-review-question')?.value || '',
+                source_reference: document.getElementById('register-add-source-ref')?.value || '',
+            });
+            const response = await fetch('index.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body,
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || 'Unable to add row.');
+            }
+            setRegisterAddStatus('Saved. Reloading…');
+            window.location.reload();
+        } catch (error) {
+            setRegisterAddStatus(error instanceof Error ? error.message : 'Unable to add row.', true);
+            if (saveBtn) {
+                saveBtn.disabled = false;
+            }
+        }
+    });
+
+    document.querySelectorAll('.register-row-delete').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const itemId = button.dataset.itemId || '';
+            const title = button.dataset.itemTitle || 'this row';
+            if (!itemId || Number(assessmentId) <= 0) {
+                return;
+            }
+            if (!window.confirm(`Delete “${title}”? This removes it from the current assessment only.`)) {
+                return;
+            }
+            button.disabled = true;
+            try {
+                const body = new URLSearchParams({
+                    action: 'delete_assessment_item',
+                    csrf_token: csrfToken,
+                    assessment_id: String(assessmentId),
+                    item_id: String(itemId),
+                });
+                const response = await fetch('index.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                    body,
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || 'Unable to delete row.');
+                }
+                window.location.reload();
+            } catch (error) {
+                button.disabled = false;
+                window.alert(error instanceof Error ? error.message : 'Unable to delete row.');
+            }
+        });
+    });
 });

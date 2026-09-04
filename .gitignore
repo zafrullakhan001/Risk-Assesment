@@ -6,6 +6,9 @@
 !/uploads/.htaccess
 /database/*.sqlite
 /database/*.sqlite-journal
+/database/*.sqlite.retired-*
+/database/snapshots/*
+!/database/snapshots/.gitkeep
 /database/.encryption_key
 /database/updater.lock
 composer.phar

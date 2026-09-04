@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS assessment_items (
     remediation_timeline TEXT NOT NULL DEFAULT '',
     review_question TEXT NOT NULL DEFAULT '',
     source_reference TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT 'excel',
     sort_order INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
 );
@@ -134,6 +135,8 @@ CREATE TABLE IF NOT EXISTS finding_statuses (
     assessment_id INTEGER NOT NULL,
     finding_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'Open',
+    comment TEXT NOT NULL DEFAULT '',
+    servicenow_links TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (assessment_id, finding_id),
     FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE

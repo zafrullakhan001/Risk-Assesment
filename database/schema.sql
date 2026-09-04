@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS assessment_items (
     remediation_timeline VARCHAR(255) NOT NULL DEFAULT '',
     review_question TEXT NULL,
     source_reference VARCHAR(500) NOT NULL DEFAULT '',
+    origin VARCHAR(32) NOT NULL DEFAULT 'excel',
     sort_order INT UNSIGNED NOT NULL DEFAULT 0,
     CONSTRAINT fk_assessment_items_assessment
         FOREIGN KEY (assessment_id) REFERENCES assessments (id)
