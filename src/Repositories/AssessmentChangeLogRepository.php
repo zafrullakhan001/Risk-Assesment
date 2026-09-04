@@ -160,13 +160,11 @@ final class AssessmentChangeLogRepository
              FROM assessment_change_log
              ' . $whereSql . '
              ORDER BY id DESC
-             LIMIT :limit OFFSET :offset'
+             LIMIT ' . $perPage . ' OFFSET ' . $offset
         );
         foreach ($params as $key => $value) {
             $statement->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
-        $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
-        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
         $statement->execute();
 
         return [

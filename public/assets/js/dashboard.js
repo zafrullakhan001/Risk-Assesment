@@ -1126,9 +1126,27 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         let searchTimer = null;
 
+        const updatePager = () => {
+            if (!paginationEl) {
+                return;
+            }
+            const showPager = state.totalPages > 1;
+            paginationEl.hidden = !showPager;
+            if (pageEl) {
+                pageEl.textContent = `Page ${state.page} / ${state.totalPages}`;
+            }
+            if (prevBtn) {
+                prevBtn.disabled = state.page <= 1 || state.loading;
+            }
+            if (nextBtn) {
+                nextBtn.disabled = state.page >= state.totalPages || state.loading;
+            }
+        };
+
         const setLoading = (loading) => {
             state.loading = loading;
             panel.classList.toggle('is-loading', loading);
+            updatePager();
         };
 
         const renderEntries = (entries) => {
@@ -1139,6 +1157,7 @@ document.addEventListener('DOMContentLoaded', () => {
             entries.forEach((entry) => {
                 listEl.appendChild(renderHistoryPost(entry));
             });
+            listEl.scrollTop = 0;
             if (emptyEl) {
                 emptyEl.hidden = entries.length > 0 || state.total > 0;
                 if (state.total === 0) {
@@ -1166,19 +1185,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     metaEl.textContent = `Showing ${from}–${to} of ${state.total}`;
                 }
             }
-            if (paginationEl) {
-                const showPager = state.totalPages > 1;
-                paginationEl.hidden = !showPager;
-                if (pageEl) {
-                    pageEl.textContent = `Page ${state.page} / ${state.totalPages}`;
-                }
-                if (prevBtn) {
-                    prevBtn.disabled = state.page <= 1 || state.loading;
-                }
-                if (nextBtn) {
-                    nextBtn.disabled = state.page >= state.totalPages || state.loading;
-                }
-            }
+            updatePager();
             panel.hidden = false;
         };
 

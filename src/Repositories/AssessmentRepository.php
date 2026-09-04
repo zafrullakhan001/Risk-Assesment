@@ -380,6 +380,9 @@ final class AssessmentRepository
             $deleteMermaid = $this->pdo->prepare('DELETE FROM project_mermaid_diagrams WHERE assessment_id = :id');
             $deleteMermaid->execute([':id' => $id]);
 
+            $deletePictures = $this->pdo->prepare('DELETE FROM project_pictures WHERE assessment_id = :id');
+            $deletePictures->execute([':id' => $id]);
+
             $deleteFindingStatuses = $this->pdo->prepare('DELETE FROM finding_statuses WHERE assessment_id = :id');
             $deleteFindingStatuses->execute([':id' => $id]);
 

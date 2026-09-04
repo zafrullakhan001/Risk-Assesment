@@ -16,8 +16,10 @@ use RiskAssessment\Repositories\AssessmentRepository;
 use RiskAssessment\Repositories\FinalEvaluationRepository;
 use RiskAssessment\Repositories\FindingStatusRepository;
 use RiskAssessment\Repositories\ItemResponseRepository;
+use RiskAssessment\ProjectImageConverter;
 use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
+use RiskAssessment\Repositories\ProjectPicturesRepository;
 
 $currentUser = $auth->requireAuth();
 $actor = Actor::fromUser($currentUser);
@@ -27,6 +29,8 @@ $evaluationRepository = new FinalEvaluationRepository($pdo);
 $changeLogRepository = new AssessmentChangeLogRepository($pdo);
 $projectLinksRepository = new ProjectLinksRepository($pdo);
 $projectMermaidRepository = new ProjectMermaidRepository($pdo);
+$projectPicturesRepository = new ProjectPicturesRepository($pdo);
+$projectImageConverter = new ProjectImageConverter();
 $findingStatusRepository = new FindingStatusRepository($pdo);
 $goliveGate = new GoliveGate();
 
@@ -46,6 +50,25 @@ $searchFrom = $searchTotal === 0 ? 0 : (($searchPage - 1) * $searchPerPage) + 1;
 $searchTo = min($searchTotal, $searchPage * $searchPerPage);
 
 $assessmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
+
+if (($_GET['action'] ?? '') === 'view_project_picture') {
+    $pictureId = filter_input(INPUT_GET, 'picture_id', FILTER_VALIDATE_INT) ?: 0;
+    $targetId = filter_input(INPUT_GET, 'assessment_id', FILTER_VALIDATE_INT) ?: 0;
+    $picture = $projectPicturesRepository->findForView((int) $pictureId, (int) $targetId);
+    if ($picture === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Picture not found.';
+        exit;
+    }
+
+    header('Content-Type: ' . $picture['mime_type']);
+    header('Content-Length: ' . (string) strlen($picture['bytes']));
+    header('Cache-Control: private, max-age=3600');
+    header('X-Content-Type-Options: nosniff');
+    echo $picture['bytes'];
+    exit;
+}
 
 if (isset($_SESSION['dashboard_html']) && ($_GET['view'] ?? '') === '1' && $assessmentId <= 0) {
     $dashboardHtml = (string) $_SESSION['dashboard_html'];
@@ -248,6 +271,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode([
                 'ok' => true,
                 'links' => $saved,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'upload_project_picture') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before uploading pictures.');
+            }
+
+            if (!isset($_FILES['picture']) || !is_array($_FILES['picture'])) {
+                throw new RuntimeException('Choose a picture to upload.');
+            }
+
+            $converted = $projectImageConverter->fromUploadedFile($_FILES['picture']);
+            $title = trim((string) ($_POST['title'] ?? ''));
+            if ($title === '') {
+                $title = $projectImageConverter->titleFromFilename($converted['original_filename']);
+            }
+
+            $saved = $projectPicturesRepository->addForAssessment($targetId, [
+                'title' => $title,
+                'mime_type' => $converted['mime_type'],
+                'base64' => $converted['base64'],
+                'original_filename' => $converted['original_filename'],
+            ]);
+            if ($saved === null) {
+                throw new RuntimeException('Unable to save the picture.');
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'picture' => $saved,
+                'view_url' => $projectPicturesRepository->viewUrl($targetId, $saved['id']),
+                'count' => $projectPicturesRepository->countForAssessment($targetId),
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'save_project_picture_titles') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $rawTitles = $_POST['pictures'] ?? '[]';
+            if (is_string($rawTitles)) {
+                $decoded = json_decode($rawTitles, true);
+                $titles = is_array($decoded) ? $decoded : [];
+            } elseif (is_array($rawTitles)) {
+                $titles = $rawTitles;
+            } else {
+                $titles = [];
+            }
+
+            if ($targetId <= 0) {
+                throw new RuntimeException('Open a saved assessment before saving picture titles.');
+            }
+
+            if (!$projectPicturesRepository->updateTitlesForAssessment($targetId, $titles)) {
+                throw new RuntimeException('Unable to save picture titles.');
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'pictures' => $projectPicturesRepository->listForAssessment($targetId),
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'delete_project_picture') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $pictureId = filter_var($_POST['picture_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0 || $pictureId <= 0) {
+                throw new RuntimeException('Invalid picture delete request.');
+            }
+
+            if (!$projectPicturesRepository->deleteOne($pictureId, $targetId)) {
+                throw new RuntimeException('Unable to delete that picture.');
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'count' => $projectPicturesRepository->countForAssessment($targetId),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             http_response_code(400);
@@ -737,6 +870,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $evaluation = $evaluationRepository->findByAssessmentId($assessmentId);
             $projectLinks = $projectLinksRepository->listForAssessment($assessmentId);
             $projectDiagrams = $projectMermaidRepository->listForAssessment($assessmentId);
+            $projectPictures = $projectPicturesRepository->listForAssessment($assessmentId);
             $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             $itemResponseHistory = $changeLogRepository->listItemResponseHistory($assessmentId);
             $evaluationHistory = $changeLogRepository->listForEntity(
@@ -766,7 +900,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $record['executive_override'] ?? $repository->findExecutiveOverride($assessmentId),
                 $itemResponseHistory,
                 $evaluationHistory,
-                $evaluatorDefaults
+                $evaluatorDefaults,
+                $projectPictures
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -793,6 +928,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
         $evaluation = $storedId > 0 ? $evaluationRepository->findByAssessmentId($storedId) : null;
         $projectLinks = $storedId > 0 ? $projectLinksRepository->listForAssessment($storedId) : [];
         $projectDiagrams = $storedId > 0 ? $projectMermaidRepository->listForAssessment($storedId) : [];
+        $projectPictures = $storedId > 0 ? $projectPicturesRepository->listForAssessment($storedId) : [];
         $findingStatuses = $storedId > 0 ? $findingStatusRepository->listForAssessment($storedId) : [];
         $itemResponseHistory = $storedId > 0 ? $changeLogRepository->listItemResponseHistory($storedId) : [];
         $evaluationHistory = $storedId > 0
@@ -820,7 +956,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $storedId > 0 ? $repository->findExecutiveOverride($storedId) : [],
             $itemResponseHistory,
             $evaluationHistory,
-            $evaluatorDefaults
+            $evaluatorDefaults,
+            $projectPictures
         );
     }
 }

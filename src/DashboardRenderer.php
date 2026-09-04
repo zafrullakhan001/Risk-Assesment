@@ -48,6 +48,7 @@ final class DashboardRenderer
      * @param array<string, list<array<string, mixed>>> $itemResponseHistory
      * @param list<array<string, mixed>> $evaluationHistory
      * @param array{name?: string, email?: string} $evaluatorDefaults
+     * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $projectPictures
      */
     public function render(
         Assessment $assessment,
@@ -65,7 +66,8 @@ final class DashboardRenderer
         array $executiveOverride = [],
         array $itemResponseHistory = [],
         array $evaluationHistory = [],
-        array $evaluatorDefaults = []
+        array $evaluatorDefaults = [],
+        array $projectPictures = []
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -279,7 +281,7 @@ final class DashboardRenderer
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>
-                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams) ?>
+                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams, $projectPictures) ?>
             </div>
 
             <?php if ($hasGovernance): ?>

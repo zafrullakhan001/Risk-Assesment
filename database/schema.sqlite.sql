@@ -116,6 +116,20 @@ CREATE TABLE IF NOT EXISTS project_mermaid_diagrams (
 
 CREATE INDEX IF NOT EXISTS idx_project_mermaid_diagrams_assessment_id ON project_mermaid_diagrams (assessment_id);
 
+CREATE TABLE IF NOT EXISTS project_pictures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assessment_id INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT 'image/png',
+    image_base64 TEXT NOT NULL DEFAULT '',
+    original_filename TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_pictures_assessment_id ON project_pictures (assessment_id);
+
 CREATE TABLE IF NOT EXISTS finding_statuses (
     assessment_id INTEGER NOT NULL,
     finding_id TEXT NOT NULL,

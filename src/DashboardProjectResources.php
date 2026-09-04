@@ -6,18 +6,21 @@ namespace RiskAssessment;
 
 use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
+use RiskAssessment\Repositories\ProjectPicturesRepository;
 
 final class DashboardProjectResources
 {
     /**
      * @param list<array{id: int, label: string, url: string, sort_order: int}> $links
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $diagrams
+     * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $pictures
      */
-    public function render(int $assessmentId, array $links, array $diagrams): string
+    public function render(int $assessmentId, array $links, array $diagrams, array $pictures = []): string
     {
         $canSave = $assessmentId > 0;
         $maxLinks = ProjectLinksRepository::MAX_LINKS;
         $maxDiagrams = ProjectMermaidRepository::MAX_DIAGRAMS;
+        $maxPictures = ProjectPicturesRepository::MAX_PICTURES;
 
         ob_start();
         ?>
@@ -26,12 +29,13 @@ final class DashboardProjectResources
             id="project-resources"
             data-max-links="<?= (int) $maxLinks ?>"
             data-max-diagrams="<?= (int) $maxDiagrams ?>"
+            data-max-pictures="<?= (int) $maxPictures ?>"
         >
             <div class="project-resources-intro project-resources-hero">
                 <div class="project-resources-hero-copy">
                     <div class="eyebrow">✨ Project workspace</div>
                     <h2>📐 Diagram &amp; links</h2>
-                    <p>Save up to <?= (int) $maxDiagrams ?> Mermaid architecture diagrams and <?= (int) $maxLinks ?> reference links for this assessment version.</p>
+                    <p>Save up to <?= (int) $maxDiagrams ?> Mermaid diagrams, <?= (int) $maxPictures ?> pictures, and <?= (int) $maxLinks ?> reference links for this assessment version.</p>
                 </div>
                 <?php if (!$canSave): ?>
                     <span class="result-count project-resources-badge">📁 Upload and save an assessment to persist changes</span>
@@ -85,6 +89,97 @@ final class DashboardProjectResources
                         <?= $this->renderDiagramRow('', '', $canSave) ?>
                     </template>
                 </section>
+
+                <section class="table-card project-pictures-card project-resource-card project-resource-card-pictures" id="project-pictures" data-picture-view="files">
+                    <div class="card-heading project-resource-heading">
+                        <div class="project-resource-heading-main">
+                            <span class="project-resource-icon" aria-hidden="true">🖼️</span>
+                            <div>
+                                <div class="eyebrow">Architecture pictures</div>
+                                <h3>Project pictures</h3>
+                            </div>
+                        </div>
+                        <span class="result-count project-count-badge project-count-pictures" id="project-pictures-count"><?= count($pictures) ?>/<?= (int) $maxPictures ?></span>
+                    </div>
+                    <p class="panel-help">📷 Drag and drop JPG or PNG files here. Other picture formats are converted to JPG or PNG, stored as base64, and opened only when you view them.</p>
+                    <div class="project-pictures-toolbar project-resource-toolbar">
+                        <button type="button" class="button ghost-light btn-accent-rose" id="btn-picture-browse"<?= count($pictures) >= $maxPictures || !$canSave ? ' disabled' : '' ?>>📁 Choose pictures</button>
+                        <?php if ($canSave): ?>
+                            <button type="button" class="button button-primary btn-accent-rose-solid" id="btn-pictures-save" hidden>💾 Save titles</button>
+                        <?php endif; ?>
+                        <div class="project-picture-view-switcher" id="project-picture-view-switcher" role="tablist" aria-label="Picture view">
+                            <button type="button" class="project-picture-view-btn is-active" role="tab" aria-selected="true" data-picture-view="files">📂 Files</button>
+                            <button type="button" class="project-picture-view-btn" role="tab" aria-selected="false" data-picture-view="cards">🖼️ Cards</button>
+                        </div>
+                        <span class="project-resource-status" id="pictures-save-status" hidden></span>
+                    </div>
+                    <div
+                        class="project-picture-dropzone<?= $canSave ? '' : ' is-disabled' ?>"
+                        id="project-picture-dropzone"
+                        tabindex="0"
+                        <?= $canSave ? '' : ' aria-disabled="true"' ?>
+                    >
+                        <input
+                            type="file"
+                            id="project-picture-file"
+                            class="project-picture-file"
+                            accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,image/jpeg,image/png,image/gif,image/webp,image/bmp"
+                            multiple
+                            hidden
+                            <?= $canSave ? '' : ' disabled' ?>
+                        >
+                        <span class="project-picture-dropzone-icon" aria-hidden="true">📥</span>
+                        <strong>Drop pictures here</strong>
+                        <span>JPG and PNG stay as-is. GIF, WEBP, BMP, and similar files are converted to PNG. Max 2 MB each.</span>
+                    </div>
+                    <p class="empty-panel project-empty-state" id="project-pictures-empty"<?= $pictures === [] ? '' : ' hidden' ?>>🖼️ No pictures yet. Drag and drop an image or use <strong>📁 Choose pictures</strong>.</p>
+                    <div class="project-picture-filelist-wrap" id="project-picture-filelist-wrap"<?= $pictures === [] ? ' hidden' : '' ?>>
+                        <div class="project-picture-filelist-head">
+                            <span>📂 Saved files</span>
+                            <span class="project-picture-filelist-hint">Click a filename to open and view it</span>
+                        </div>
+                        <ul class="project-picture-filelist" id="project-picture-filelist">
+                            <?php foreach ($pictures as $picture): ?>
+                                <?= $this->renderPictureFileRow(
+                                    (int) $picture['id'],
+                                    (string) $picture['title'],
+                                    (string) $picture['mime_type'],
+                                    (string) $picture['original_filename'],
+                                    $assessmentId
+                                ) ?>
+                            <?php endforeach; ?>
+                        </ul>
+                        <template id="project-picture-file-row-template">
+                            <?= $this->renderPictureFileRow(0, '', 'image/png', '', $assessmentId) ?>
+                        </template>
+                    </div>
+                    <div class="project-pictures-list" id="project-pictures-list" hidden>
+                        <?php foreach ($pictures as $picture): ?>
+                            <?= $this->renderPictureCard(
+                                (int) $picture['id'],
+                                (string) $picture['title'],
+                                (string) $picture['mime_type'],
+                                (string) $picture['original_filename'],
+                                $assessmentId,
+                                $canSave
+                            ) ?>
+                        <?php endforeach; ?>
+                    </div>
+                    <template id="project-picture-card-template">
+                        <?= $this->renderPictureCard(0, '', 'image/png', '', $assessmentId, $canSave) ?>
+                    </template>
+                </section>
+
+                <dialog class="project-picture-viewer" id="project-picture-viewer">
+                    <div class="project-picture-viewer-head">
+                        <div class="project-picture-viewer-copy">
+                            <strong id="project-picture-viewer-title">Picture</strong>
+                            <span id="project-picture-viewer-filename" class="project-picture-viewer-filename"></span>
+                        </div>
+                        <button type="button" class="button ghost-light" id="project-picture-viewer-close">Close</button>
+                    </div>
+                    <img id="project-picture-viewer-image" alt="">
+                </dialog>
 
                 <section class="table-card project-links-card project-resource-card project-resource-card-links" id="project-links">
                     <div class="card-heading project-resource-heading">
@@ -151,6 +246,102 @@ final class DashboardProjectResources
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    private function renderPictureCard(
+        int $id,
+        string $title,
+        string $mimeType,
+        string $originalFilename,
+        int $assessmentId,
+        bool $canEdit
+    ): string {
+        $viewUrl = $this->pictureViewUrl($assessmentId, $id);
+        $formatLabel = $mimeType === 'image/jpeg' ? 'JPG' : 'PNG';
+        $displayName = $originalFilename !== '' ? $originalFilename : ($title !== '' ? $title : 'Picture');
+
+        ob_start();
+        ?>
+        <article
+            class="project-picture-card"
+            data-picture-id="<?= (int) $id ?>"
+            data-view-url="<?= $this->e($viewUrl) ?>"
+            data-filename="<?= $this->e($originalFilename) ?>"
+        >
+            <button type="button" class="project-picture-thumb-btn" <?= $viewUrl === '' ? ' disabled' : '' ?>>
+                <?php if ($viewUrl !== ''): ?>
+                    <img class="project-picture-thumb" src="<?= $this->e($viewUrl) ?>" alt="" loading="lazy">
+                <?php else: ?>
+                    <span class="project-picture-thumb is-empty" aria-hidden="true">🖼️</span>
+                <?php endif; ?>
+            </button>
+            <div class="project-picture-card-body">
+                <label>
+                    <span>🏷️ Title</span>
+                    <input type="text" class="project-picture-title" maxlength="200" value="<?= $this->e($title) ?>" placeholder="Architecture photo"<?= $canEdit ? '' : ' readonly' ?>>
+                </label>
+                <div class="project-picture-meta">
+                    <span class="project-picture-format"><?= $this->e($formatLabel) ?></span>
+                    <button
+                        type="button"
+                        class="project-picture-filename project-picture-filename-open"
+                        title="View <?= $this->e($displayName) ?>"
+                        <?= $originalFilename === '' || $viewUrl === '' ? ' hidden' : '' ?>
+                    ><?= $this->e($displayName) ?></button>
+                </div>
+                <div class="project-picture-actions">
+                    <button type="button" class="button ghost-light btn-accent-rose project-picture-view" <?= $viewUrl === '' ? ' disabled' : '' ?>>👁️ View</button>
+                    <?php if ($canEdit): ?>
+                        <button type="button" class="button danger-btn project-picture-remove" title="Remove picture" aria-label="Remove picture">🗑️</button>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </article>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function renderPictureFileRow(
+        int $id,
+        string $title,
+        string $mimeType,
+        string $originalFilename,
+        int $assessmentId
+    ): string {
+        $viewUrl = $this->pictureViewUrl($assessmentId, $id);
+        $formatLabel = $mimeType === 'image/jpeg' ? 'JPG' : 'PNG';
+        $displayName = $originalFilename !== '' ? $originalFilename : ($title !== '' ? $title : 'Picture');
+
+        ob_start();
+        ?>
+        <li
+            class="project-picture-file-row"
+            data-picture-id="<?= (int) $id ?>"
+            data-view-url="<?= $this->e($viewUrl) ?>"
+            data-filename="<?= $this->e($displayName) ?>"
+        >
+            <button type="button" class="project-picture-file-open" <?= $viewUrl === '' ? ' disabled' : '' ?>>
+                <span class="project-picture-file-icon" aria-hidden="true">📄</span>
+                <span class="project-picture-file-name"><?= $this->e($displayName) ?></span>
+                <span class="project-picture-format"><?= $this->e($formatLabel) ?></span>
+                <?php if ($title !== '' && $title !== $displayName): ?>
+                    <span class="project-picture-file-title"><?= $this->e($title) ?></span>
+                <?php endif; ?>
+            </button>
+        </li>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function pictureViewUrl(int $assessmentId, int $id): string
+    {
+        if ($id <= 0 || $assessmentId <= 0) {
+            return '';
+        }
+
+        return 'index.php?action=view_project_picture&assessment_id=' . $assessmentId . '&picture_id=' . $id;
     }
 
     private function renderLinkRow(string $label, string $url, bool $canEdit): string
