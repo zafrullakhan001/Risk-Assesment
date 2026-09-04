@@ -58,7 +58,6 @@ final class DashboardDecisionViews
                     <div class="exec-copy-head">
                         <div class="eyebrow">📋 Executive summary</div>
                         <span class="exec-custom-pill" id="exec-custom-pill" <?= $isCustomSummary ? '' : 'hidden' ?>>✏️ Customized</span>
-                        <button type="button" class="button ghost-light exec-edit-btn" id="btn-edit-exec-summary">✏️ Edit</button>
                     </div>
                     <div class="exec-copy-view" id="exec-summary-view">
                         <h3 id="exec-verdict"><?= $this->e((string) $readiness['verdict']) ?></h3>
@@ -107,12 +106,13 @@ final class DashboardDecisionViews
                         </div>
                     <?php endif; ?>
                 </div>
-                <div class="exec-actions no-print-hide">
-                    <button type="button" class="button button-primary" id="btn-presentation">🎬 Presentation mode</button>
-                    <button type="button" class="button ghost-light" id="btn-print">🖨️ Print one-pager</button>
-                    <button type="button" class="button ghost-light" id="btn-export-csv">📥 Export CSV</button>
-                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="risks">✅ Open Actions</button>
-                    <button type="button" class="button ghost-light" data-filter-type="action_tab" data-filter-value="signoff">✍️ Final evaluation</button>
+                <div class="exec-actions no-print-hide" role="toolbar" aria-label="Executive summary actions">
+                    <button type="button" class="button ghost-light exec-action-btn exec-edit-btn" id="btn-edit-exec-summary" title="Edit" aria-label="Edit">✏️</button>
+                    <button type="button" class="button button-primary exec-action-btn" id="btn-presentation" title="Presentation mode" aria-label="Presentation mode">🎬</button>
+                    <button type="button" class="button ghost-light exec-action-btn" id="btn-print" title="Print one-pager" aria-label="Print one-pager">🖨️</button>
+                    <button type="button" class="button ghost-light exec-action-btn" id="btn-export-csv" title="Export CSV" aria-label="Export CSV">📥</button>
+                    <button type="button" class="button ghost-light exec-action-btn" data-filter-type="action_tab" data-filter-value="risks" title="Open Actions" aria-label="Open Actions">✅</button>
+                    <button type="button" class="button ghost-light exec-action-btn" data-filter-type="action_tab" data-filter-value="signoff" title="Final evaluation" aria-label="Final evaluation">✍️</button>
                 </div>
             </article>
 

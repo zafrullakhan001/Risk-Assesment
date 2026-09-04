@@ -213,6 +213,10 @@ final class AdaptiveExcelParser
             }
         }
 
+        if (($metadata['date'] ?? '') !== '') {
+            $metadata['date'] = AssessmentDate::normalize($metadata['date']);
+        }
+
         return $metadata;
     }
 

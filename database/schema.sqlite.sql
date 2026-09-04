@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS assessments (
     workbook_json TEXT NOT NULL DEFAULT '{}',
     custom_executive_verdict TEXT NOT NULL DEFAULT '',
     custom_executive_summary TEXT NOT NULL DEFAULT '',
+    owner_user_id INTEGER,
+    owner_username TEXT NOT NULL DEFAULT '',
+    owner_display_name TEXT NOT NULL DEFAULT '',
+    owner_auth_source TEXT NOT NULL DEFAULT '',
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

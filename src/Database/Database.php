@@ -55,6 +55,11 @@ final class Database
         self::ensureColumn($pdo, 'assessments', 'workbook_json', "TEXT NOT NULL DEFAULT '{}'");
         self::ensureColumn($pdo, 'assessments', 'custom_executive_verdict', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessments', 'custom_executive_summary', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'assessments', 'owner_user_id', 'INTEGER');
+        self::ensureColumn($pdo, 'assessments', 'owner_username', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'assessments', 'owner_display_name', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'assessments', 'owner_auth_source', "TEXT NOT NULL DEFAULT ''");
+        self::backfillMissingProjectOwners($pdo);
         self::ensureColumn($pdo, 'assessment_items', 'item_type', "TEXT NOT NULL DEFAULT 'architecture'");
         self::ensureColumn($pdo, 'assessment_items', 'review_question', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessment_items', 'source_reference', "TEXT NOT NULL DEFAULT ''");
@@ -210,6 +215,74 @@ final class Database
         self::seedAuthSettings($pdo);
         self::seedDefaultAdmin($pdo);
         self::migrateLegacyMermaidDiagrams($pdo);
+        self::normalizeExcelSerialAssessmentDates($pdo);
+    }
+
+    private static function normalizeExcelSerialAssessmentDates(PDO $pdo): void
+    {
+        $statement = $pdo->query(
+            "SELECT id, assessment_date
+             FROM assessments
+             WHERE assessment_date GLOB '[0-9]*'
+               AND assessment_date NOT LIKE '%-%'
+               AND assessment_date != ''"
+        );
+        if ($statement === false) {
+            return;
+        }
+
+        $update = $pdo->prepare('UPDATE assessments SET assessment_date = :date WHERE id = :id');
+        foreach ($statement->fetchAll() as $row) {
+            $normalized = \RiskAssessment\AssessmentDate::normalize((string) ($row['assessment_date'] ?? ''));
+            if ($normalized === '' || $normalized === (string) $row['assessment_date']) {
+                continue;
+            }
+            $update->execute([
+                ':date' => $normalized,
+                ':id' => (int) $row['id'],
+            ]);
+        }
+    }
+
+    private static function backfillMissingProjectOwners(PDO $pdo): void
+    {
+        $empty = $pdo->query("SELECT COUNT(*) FROM assessments WHERE IFNULL(owner_username, '') = ''");
+        if ($empty === false || (int) $empty->fetchColumn() === 0) {
+            return;
+        }
+
+        $users = $pdo->query(
+            'SELECT id, username, display_name, auth_source
+             FROM users
+             WHERE is_disabled = 0 AND is_approved = 1
+             ORDER BY is_admin DESC, id ASC
+             LIMIT 2'
+        );
+        $rows = $users === false ? [] : $users->fetchAll();
+        if (count($rows) !== 1) {
+            return;
+        }
+
+        $user = $rows[0];
+        $authSource = strtolower(trim((string) ($user['auth_source'] ?? 'local')));
+        if ($authSource !== 'ldap') {
+            $authSource = 'local';
+        }
+
+        $update = $pdo->prepare(
+            "UPDATE assessments
+             SET owner_user_id = :id,
+                 owner_username = :username,
+                 owner_display_name = :display_name,
+                 owner_auth_source = :auth_source
+             WHERE IFNULL(owner_username, '') = ''"
+        );
+        $update->execute([
+            ':id' => (int) ($user['id'] ?? 0),
+            ':username' => (string) ($user['username'] ?? ''),
+            ':display_name' => (string) ($user['display_name'] ?? ''),
+            ':auth_source' => $authSource,
+        ]);
     }
 
     private static function seedAuthSettings(PDO $pdo): void

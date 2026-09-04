@@ -351,9 +351,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (presentationBtn) {
         presentationBtn.addEventListener('click', () => {
             document.body.classList.toggle('is-presentation');
-            presentationBtn.textContent = document.body.classList.contains('is-presentation')
-                ? 'Exit presentation'
-                : 'Presentation mode';
+            const isPresentation = document.body.classList.contains('is-presentation');
+            const label = isPresentation ? 'Exit presentation' : 'Presentation mode';
+            presentationBtn.textContent = isPresentation ? '⏹' : '🎬';
+            presentationBtn.setAttribute('title', label);
+            presentationBtn.setAttribute('aria-label', label);
         });
     }
 

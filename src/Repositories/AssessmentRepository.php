@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace RiskAssessment\Repositories;
 
 use PDO;
+use RiskAssessment\Actor;
+use RiskAssessment\AssessmentDate;
 use RiskAssessment\Models\Assessment;
 
 final class AssessmentRepository
@@ -14,9 +16,19 @@ final class AssessmentRepository
     ) {
     }
 
-    public function save(Assessment $assessment, string $filePath, string $originalFilename): int
+    /**
+     * @param array{user_id?: int, username?: string, display_name?: string, auth_source?: string}|null $owner
+     */
+    public function save(Assessment $assessment, string $filePath, string $originalFilename, ?array $owner = null): int
     {
         $metadata = $assessment->metadata;
+        $ownerUserId = (int) ($owner['user_id'] ?? 0);
+        $ownerUsername = trim((string) ($owner['username'] ?? ''));
+        $ownerDisplayName = trim((string) ($owner['display_name'] ?? ''));
+        $ownerAuthSource = strtolower(trim((string) ($owner['auth_source'] ?? '')));
+        if ($ownerAuthSource !== 'ldap') {
+            $ownerAuthSource = $ownerUsername !== '' || $ownerDisplayName !== '' ? 'local' : '';
+        }
 
         $this->pdo->beginTransaction();
 
@@ -24,10 +36,12 @@ final class AssessmentRepository
             $statement = $this->pdo->prepare(
                 'INSERT INTO assessments (
                     solution_name, vendor, scope, architecture_model, reviewer,
-                    assessment_date, file_path, original_filename, workbook_json, uploaded_at
+                    assessment_date, file_path, original_filename, workbook_json,
+                    owner_user_id, owner_username, owner_display_name, owner_auth_source, uploaded_at
                 ) VALUES (
                     :solution_name, :vendor, :scope, :architecture_model, :reviewer,
-                    :assessment_date, :file_path, :original_filename, :workbook_json, datetime(\'now\')
+                    :assessment_date, :file_path, :original_filename, :workbook_json,
+                    :owner_user_id, :owner_username, :owner_display_name, :owner_auth_source, datetime(\'now\')
                 )'
             );
 
@@ -37,10 +51,14 @@ final class AssessmentRepository
                 ':scope' => $metadata['scope'] ?? '',
                 ':architecture_model' => $metadata['architecture_model'] ?? '',
                 ':reviewer' => $metadata['reviewer'] ?? '',
-                ':assessment_date' => $metadata['date'] ?? '',
+                ':assessment_date' => AssessmentDate::normalize((string) ($metadata['date'] ?? '')),
                 ':file_path' => $filePath,
                 ':original_filename' => $originalFilename,
                 ':workbook_json' => json_encode($assessment->workbook, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
+                ':owner_user_id' => $ownerUserId > 0 ? $ownerUserId : null,
+                ':owner_username' => $ownerUsername,
+                ':owner_display_name' => $ownerDisplayName,
+                ':owner_auth_source' => $ownerAuthSource,
             ]);
 
             $assessmentId = (int) $this->pdo->lastInsertId();
@@ -203,22 +221,30 @@ final class AssessmentRepository
     }
 
     /**
-     * Search across project/assessment fields with pagination.
+     * Search across project/assessment fields with pagination, sorting, and column filters.
      *
+     * @param array<string, string> $filters
      * @return list<array<string, mixed>>
      */
-    public function searchProjects(string $query, int $page = 1, int $perPage = 20): array
-    {
+    public function searchProjects(
+        string $query,
+        int $page = 1,
+        int $perPage = 10,
+        string $sort = 'uploaded',
+        string $dir = 'desc',
+        array $filters = []
+    ): array {
         $page = max(1, $page);
         $perPage = max(1, min(100, $perPage));
         $offset = ($page - 1) * $perPage;
 
-        [$whereSql, $params] = $this->projectSearchWhere($query);
+        [$whereSql, $params] = $this->projectSearchWhere($query, $filters);
+        $orderSql = $this->projectListOrderBy($sort, $dir);
 
         $sql = 'SELECT ' . self::projectListColumns() . '
              FROM ' . self::projectListFrom() . '
              ' . $whereSql . '
-             ORDER BY a.uploaded_at DESC, a.id DESC
+             ORDER BY ' . $orderSql . '
              LIMIT :limit OFFSET :offset';
 
         $statement = $this->pdo->prepare($sql);
@@ -232,9 +258,12 @@ final class AssessmentRepository
         return $statement->fetchAll();
     }
 
-    public function countProjects(string $query = ''): int
+    /**
+     * @param array<string, string> $filters
+     */
+    public function countProjects(string $query = '', array $filters = []): int
     {
-        [$whereSql, $params] = $this->projectSearchWhere($query);
+        [$whereSql, $params] = $this->projectSearchWhere($query, $filters);
 
         $sql = 'SELECT COUNT(*) FROM ' . self::projectListFrom() . ' ' . $whereSql;
         $statement = $this->pdo->prepare($sql);
@@ -252,48 +281,201 @@ final class AssessmentRepository
     }
 
     /**
+     * @param array<string, string> $filters
      * @return array{0: string, 1: array<string, string|int>}
      */
-    private function projectSearchWhere(string $query): array
+    private function projectSearchWhere(string $query, array $filters = []): array
     {
+        $conditions = [];
+        $params = [];
+
         $query = trim($query);
-        if ($query === '') {
+        if ($query !== '') {
+            $like = '%' . $query . '%';
+            $searchConditions = [
+                'a.solution_name LIKE :q',
+                'a.vendor LIKE :q',
+                'IFNULL(a.scope, \'\') LIKE :q',
+                'IFNULL(a.architecture_model, \'\') LIKE :q',
+                'a.reviewer LIKE :q',
+                'a.original_filename LIKE :q',
+                'a.custom_executive_verdict LIKE :q',
+                'a.custom_executive_summary LIKE :q',
+                'IFNULL(a.assessment_date, \'\') LIKE :q',
+                'a.uploaded_at LIKE :q',
+                'IFNULL(e.evaluator_name, \'\') LIKE :q',
+                'IFNULL(e.evaluator_email, \'\') LIKE :q',
+                'IFNULL(e.notes, \'\') LIKE :q',
+                'LOWER(COALESCE(json_extract(a.workbook_json, \'$.format\'), \'classic\')) LIKE :q',
+                'IFNULL(a.owner_username, \'\') LIKE :q',
+                'IFNULL(a.owner_display_name, \'\') LIKE :q',
+            ];
+            $params[':q'] = $like;
+
+            if (ctype_digit($query)) {
+                $searchConditions[] = 'a.id = :exact_id';
+                $params[':exact_id'] = (int) $query;
+            }
+
+            $normalized = strtolower(preg_replace('/\s+/', ' ', $query) ?? $query);
+            if (in_array($normalized, ['ready', 'go-live', 'golive', 'ready to go-live', 'ready to golive'], true)) {
+                $searchConditions[] = '(e.ready_to_golive = 1 AND e.updated_at IS NOT NULL AND e.updated_at != \'\')';
+            } elseif (in_array($normalized, ['not ready', 'not ready to go-live', 'not ready to golive'], true)) {
+                $searchConditions[] = '(e.updated_at IS NOT NULL AND e.updated_at != \'\' AND IFNULL(e.ready_to_golive, 0) = 0)';
+            } elseif (in_array($normalized, ['no final', 'no final assessment', 'unevaluated'], true)) {
+                $searchConditions[] = '(e.assessment_id IS NULL OR e.updated_at IS NULL OR e.updated_at = \'\')';
+            } elseif (in_array($normalized, ['adaptive', 'adaptive template'], true)) {
+                $searchConditions[] = "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), '')) = 'adaptive'";
+            } elseif (in_array($normalized, ['classic', 'classic template', 'matured', 'matured template', 'mature', 'table template'], true)) {
+                $searchConditions[] = "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), 'classic')) != 'adaptive'";
+            }
+
+            $conditions[] = '(' . implode(' OR ', $searchConditions) . ')';
+        }
+
+        $filterMap = [
+            'project' => 'a.solution_name LIKE :f_project',
+            'vendor' => 'a.vendor LIKE :f_vendor',
+            'id' => "CAST(a.id AS TEXT) LIKE :f_id",
+            'template' => "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), 'classic')) LIKE :f_template",
+            'owner' => "(IFNULL(a.owner_display_name, '') LIKE :f_owner OR IFNULL(a.owner_username, '') LIKE :f_owner)",
+            'status' => '',
+            'assessed' => 'IFNULL(a.assessment_date, \'\') LIKE :f_assessed',
+            'uploaded' => 'a.uploaded_at LIKE :f_uploaded',
+        ];
+
+        foreach ($filterMap as $key => $sql) {
+            $raw = trim((string) ($filters[$key] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            $param = ':f_' . $key;
+            if ($key === 'status') {
+                $statusSql = $this->statusFilterCondition($raw, $param);
+                if ($statusSql === null) {
+                    continue;
+                }
+                $conditions[] = $statusSql['sql'];
+                if (str_contains($statusSql['sql'], $param)) {
+                    $params[$param] = $statusSql['value'];
+                }
+                continue;
+            }
+            if ($key === 'template') {
+                $templateSql = $this->templateFilterCondition($raw, $param);
+                if ($templateSql === null) {
+                    continue;
+                }
+                $conditions[] = $templateSql['sql'];
+                if (str_contains($templateSql['sql'], $param)) {
+                    $params[$param] = $templateSql['value'];
+                }
+                continue;
+            }
+            $conditions[] = $sql;
+            $params[$param] = '%' . $raw . '%';
+        }
+
+        if ($conditions === []) {
             return ['', []];
         }
 
-        $like = '%' . $query . '%';
-        $conditions = [
-            'a.solution_name LIKE :q',
-            'a.vendor LIKE :q',
-            'IFNULL(a.scope, \'\') LIKE :q',
-            'IFNULL(a.architecture_model, \'\') LIKE :q',
-            'a.reviewer LIKE :q',
-            'a.original_filename LIKE :q',
-            'a.custom_executive_verdict LIKE :q',
-            'a.custom_executive_summary LIKE :q',
-            'IFNULL(a.assessment_date, \'\') LIKE :q',
-            'a.uploaded_at LIKE :q',
-            'IFNULL(e.evaluator_name, \'\') LIKE :q',
-            'IFNULL(e.evaluator_email, \'\') LIKE :q',
-            'IFNULL(e.notes, \'\') LIKE :q',
+        return ['WHERE ' . implode(' AND ', $conditions), $params];
+    }
+
+    /** @return array{sql: string, value: string}|null */
+    private function statusFilterCondition(string $raw, string $param): ?array
+    {
+        $normalized = strtolower(preg_replace('/\s+/', ' ', trim($raw)) ?? trim($raw));
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (in_array($normalized, ['not ready', 'not ready to go-live', 'not ready to golive'], true)
+            || str_starts_with($normalized, 'not ready')) {
+            return [
+                'sql' => '(e.updated_at IS NOT NULL AND e.updated_at != \'\' AND IFNULL(e.ready_to_golive, 0) = 0)',
+                'value' => $normalized,
+            ];
+        }
+        if (in_array($normalized, ['no final', 'no final assessment', 'unevaluated', 'none'], true)
+            || str_starts_with($normalized, 'no final')) {
+            return [
+                'sql' => '(e.assessment_id IS NULL OR e.updated_at IS NULL OR e.updated_at = \'\')',
+                'value' => $normalized,
+            ];
+        }
+        if (in_array($normalized, ['ready', 'go-live', 'golive', 'ready to go-live', 'ready to golive'], true)
+            || str_starts_with($normalized, 'ready')) {
+            return [
+                'sql' => '(e.ready_to_golive = 1 AND e.updated_at IS NOT NULL AND e.updated_at != \'\')',
+                'value' => $normalized,
+            ];
+        }
+
+        return [
+            'sql' => "(CASE
+                WHEN e.updated_at IS NULL OR e.updated_at = '' THEN 'No final assessment'
+                WHEN e.ready_to_golive = 1 THEN 'Ready to go-live'
+                ELSE 'Not ready to go-live'
+             END) LIKE {$param}",
+            'value' => '%' . $raw . '%',
         ];
-        $params = [':q' => $like];
+    }
 
-        if (ctype_digit($query)) {
-            $conditions[] = 'a.id = :exact_id';
-            $params[':exact_id'] = (int) $query;
+    /** @return array{sql: string, value: string}|null */
+    private function templateFilterCondition(string $raw, string $param): ?array
+    {
+        $normalized = strtolower(preg_replace('/\s+/', ' ', trim($raw)) ?? trim($raw));
+        if ($normalized === '') {
+            return null;
         }
 
-        $normalized = strtolower(preg_replace('/\s+/', ' ', $query) ?? $query);
-        if (in_array($normalized, ['ready', 'go-live', 'golive', 'ready to go-live', 'ready to golive'], true)) {
-            $conditions[] = '(e.ready_to_golive = 1 AND e.updated_at IS NOT NULL AND e.updated_at != \'\')';
-        } elseif (in_array($normalized, ['not ready', 'not ready to go-live', 'not ready to golive'], true)) {
-            $conditions[] = '(e.updated_at IS NOT NULL AND e.updated_at != \'\' AND IFNULL(e.ready_to_golive, 0) = 0)';
-        } elseif (in_array($normalized, ['no final', 'no final assessment', 'unevaluated'], true)) {
-            $conditions[] = '(e.assessment_id IS NULL OR e.updated_at IS NULL OR e.updated_at = \'\')';
+        if (in_array($normalized, ['adaptive', 'adaptive template'], true) || str_contains($normalized, 'adaptive')) {
+            return [
+                'sql' => "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), '')) = 'adaptive'",
+                'value' => $normalized,
+            ];
+        }
+        if (in_array($normalized, ['classic', 'classic template', 'matured', 'matured template', 'mature', 'table'], true)
+            || str_contains($normalized, 'matured')
+            || str_contains($normalized, 'classic')) {
+            return [
+                'sql' => "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), 'classic')) != 'adaptive'",
+                'value' => $normalized,
+            ];
         }
 
-        return ['WHERE ' . implode(' OR ', $conditions), $params];
+        return [
+            'sql' => "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), 'classic')) LIKE {$param}",
+            'value' => '%' . $normalized . '%',
+        ];
+    }
+
+    private function projectListOrderBy(string $sort, string $dir): string
+    {
+        $dirSql = strtolower($dir) === 'asc' ? 'ASC' : 'DESC';
+        $sort = strtolower(trim($sort));
+
+        $columns = [
+            'project' => 'LOWER(a.solution_name)',
+            'vendor' => 'LOWER(a.vendor)',
+            'id' => 'a.id',
+            'template' => "LOWER(COALESCE(json_extract(a.workbook_json, '$.format'), 'classic'))",
+            'owner' => "LOWER(COALESCE(NULLIF(a.owner_display_name, ''), NULLIF(a.owner_username, ''), ''))",
+            'status' => "CASE
+                WHEN e.updated_at IS NULL OR e.updated_at = '' THEN 0
+                WHEN e.ready_to_golive = 1 THEN 2
+                ELSE 1
+             END",
+            'assessed' => "IFNULL(a.assessment_date, '')",
+            'uploaded' => 'a.uploaded_at',
+        ];
+
+        $orderExpr = $columns[$sort] ?? 'a.uploaded_at';
+        $tieBreak = $sort === 'id' ? '' : ', a.id DESC';
+
+        return $orderExpr . ' ' . $dirSql . $tieBreak;
     }
 
     /** @return array{assessment: Assessment, source_filename: string, uploaded_at: string, id: int}|null */
@@ -447,6 +629,8 @@ final class AssessmentRepository
     private static function projectListColumns(): string
     {
         return 'a.id, a.solution_name, a.vendor, a.assessment_date, a.uploaded_at, a.original_filename,
+                LOWER(COALESCE(json_extract(a.workbook_json, \'$.format\'), \'classic\')) AS workbook_format,
+                a.owner_user_id, a.owner_username, a.owner_display_name, a.owner_auth_source,
                 e.ready_to_golive, e.evaluator_name, e.updated_at AS evaluation_updated_at';
     }
 
@@ -486,11 +670,77 @@ final class AssessmentRepository
         }
 
         return [
-                'key' => 'not-ready',
+            'key' => 'not-ready',
             'label' => 'Not ready to go-live',
             'title' => $evaluator !== ''
                 ? 'Final assessment: not ready to go-live · ' . $evaluator
                 : 'Final assessment: not ready to go-live',
+        ];
+    }
+
+    /**
+     * Compact workbook template label for project list cards, strips, and table rows.
+     *
+     * @param array<string, mixed> $project
+     * @return array{key: string, label: string, title: string}
+     */
+    public static function templateCardStatus(array $project): array
+    {
+        $format = strtolower(trim((string) ($project['workbook_format'] ?? '')));
+        if ($format === 'adaptive') {
+            return [
+                'key' => 'adaptive',
+                'label' => 'Adaptive template',
+                'title' => 'Adaptive Architecture template (classify → route → material findings).',
+            ];
+        }
+
+        if ($format === '' || $format === 'classic' || $format === 'table') {
+            return [
+                'key' => 'classic',
+                'label' => 'Matured template',
+                'title' => 'Matured table-based Risk Register template.',
+            ];
+        }
+
+        $safeKey = preg_replace('/[^a-z0-9]+/', '-', $format) ?: 'other';
+
+        return [
+            'key' => $safeKey,
+            'label' => ucfirst($format) . ' template',
+            'title' => ucfirst($format) . ' workbook template.',
+        ];
+    }
+
+    /**
+     * Project owner is the user who first uploaded the workbook.
+     *
+     * @param array<string, mixed> $project
+     * @return array{key: string, label: string, title: string}
+     */
+    public static function ownerCardStatus(array $project): array
+    {
+        $label = Actor::labelFromRow($project, 'owner');
+        if ($label === '') {
+            return [
+                'key' => 'none',
+                'label' => 'Unknown owner',
+                'title' => 'Owner was not recorded when this workbook was uploaded.',
+            ];
+        }
+
+        $short = trim((string) ($project['owner_display_name'] ?? ''));
+        if ($short === '') {
+            $short = trim((string) ($project['owner_username'] ?? ''));
+        }
+        if ($short === '') {
+            $short = $label;
+        }
+
+        return [
+            'key' => 'known',
+            'label' => $short,
+            'title' => 'Project owner (initial uploader): ' . $label,
         ];
     }
 

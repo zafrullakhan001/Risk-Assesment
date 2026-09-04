@@ -6,6 +6,7 @@ require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\Actor;
 use RiskAssessment\AssessmentComparer;
+use RiskAssessment\AssessmentDate;
 use RiskAssessment\AssessmentInsights;
 use RiskAssessment\DashboardRenderer;
 use RiskAssessment\ExcelParser;
@@ -39,15 +40,110 @@ $flash = '';
 $dashboardHtml = '';
 $searchQuery = trim((string) ($_GET['q'] ?? ''));
 $searchPage = max(1, (int) ($_GET['page'] ?? 1));
-$searchPerPage = 20;
-$searchTotal = $repository->countProjects($searchQuery);
+$searchPerPage = 10;
+$allowedSorts = ['project', 'vendor', 'id', 'template', 'owner', 'status', 'assessed', 'uploaded'];
+$searchSort = strtolower(trim((string) ($_GET['sort'] ?? 'uploaded')));
+if (!in_array($searchSort, $allowedSorts, true)) {
+    $searchSort = 'uploaded';
+}
+$searchDir = strtolower(trim((string) ($_GET['dir'] ?? 'desc'))) === 'asc' ? 'asc' : 'desc';
+$searchFilters = [
+    'project' => trim((string) ($_GET['f_project'] ?? '')),
+    'vendor' => trim((string) ($_GET['f_vendor'] ?? '')),
+    'id' => trim((string) ($_GET['f_id'] ?? '')),
+    'template' => trim((string) ($_GET['f_template'] ?? '')),
+    'owner' => trim((string) ($_GET['f_owner'] ?? '')),
+    'status' => trim((string) ($_GET['f_status'] ?? '')),
+    'assessed' => trim((string) ($_GET['f_assessed'] ?? '')),
+    'uploaded' => trim((string) ($_GET['f_uploaded'] ?? '')),
+];
+$activeFilters = array_filter($searchFilters, static fn (string $value): bool => $value !== '');
+$searchTotal = $repository->countProjects($searchQuery, $searchFilters);
 $searchTotalPages = max(1, (int) ceil($searchTotal / $searchPerPage));
 if ($searchPage > $searchTotalPages) {
     $searchPage = $searchTotalPages;
 }
-$searchResults = $repository->searchProjects($searchQuery, $searchPage, $searchPerPage);
+$searchResults = $repository->searchProjects(
+    $searchQuery,
+    $searchPage,
+    $searchPerPage,
+    $searchSort,
+    $searchDir,
+    $searchFilters
+);
 $searchFrom = $searchTotal === 0 ? 0 : (($searchPage - 1) * $searchPerPage) + 1;
 $searchTo = min($searchTotal, $searchPage * $searchPerPage);
+
+$projectListQueryParams = static function (
+    array $overrides = []
+) use (
+    $searchQuery,
+    $searchPage,
+    $searchSort,
+    $searchDir,
+    $searchFilters
+): array {
+    $params = [
+        'q' => $searchQuery,
+        'page' => $searchPage,
+        'sort' => $searchSort,
+        'dir' => $searchDir,
+    ];
+    foreach ($searchFilters as $key => $value) {
+        if ($value !== '') {
+            $params['f_' . $key] = $value;
+        }
+    }
+    foreach ($overrides as $key => $value) {
+        if ($value === null || $value === '') {
+            unset($params[$key]);
+        } else {
+            $params[$key] = $value;
+        }
+    }
+    if (($params['q'] ?? '') === '') {
+        unset($params['q']);
+    }
+    if ((int) ($params['page'] ?? 1) <= 1) {
+        unset($params['page']);
+    }
+    if (($params['sort'] ?? 'uploaded') === 'uploaded' && ($params['dir'] ?? 'desc') === 'desc') {
+        unset($params['sort'], $params['dir']);
+    }
+    return $params;
+};
+
+$projectListUrl = static function (array $overrides = []) use ($projectListQueryParams): string {
+    $params = $projectListQueryParams($overrides);
+    $query = http_build_query($params);
+    return 'index.php' . ($query !== '' ? '?' . $query : '') . '#find-projects';
+};
+
+$sortHeaderUrl = static function (string $column) use ($searchSort, $searchDir, $projectListUrl): string {
+    $nextDir = ($searchSort === $column && $searchDir === 'asc') ? 'desc' : 'asc';
+    if ($searchSort !== $column) {
+        $nextDir = in_array($column, ['assessed', 'uploaded', 'id'], true) ? 'desc' : 'asc';
+    }
+    return $projectListUrl([
+        'sort' => $column,
+        'dir' => $nextDir,
+        'page' => 1,
+    ]);
+};
+
+$sortAria = static function (string $column) use ($searchSort, $searchDir): string {
+    if ($searchSort !== $column) {
+        return 'none';
+    }
+    return $searchDir === 'asc' ? 'ascending' : 'descending';
+};
+
+$sortClass = static function (string $column) use ($searchSort, $searchDir): string {
+    if ($searchSort !== $column) {
+        return 'is-sortable';
+    }
+    return 'is-sortable is-sorted is-sorted-' . $searchDir;
+};
 
 $assessmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
 
@@ -945,7 +1041,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
                     $assessment = $parser->parse($destination);
-                    $savedId = $repository->save($assessment, $destination, $originalName);
+                    $savedId = $repository->save($assessment, $destination, $originalName, $actor);
                     $priorVersion = $repository->findPreviousVersion($assessment->getMetadata('solution_name'), $savedId);
                     if ($priorVersion !== null) {
                         $findingStatusRepository->copyMissingFromAssessment((int) $priorVersion['id'], $savedId);
@@ -1149,6 +1245,25 @@ if ($dashboardHtml !== '') {
 }
 
 $totalProjects = $repository->countAll();
+
+$renderProjectDelete = static function (array $project): void {
+    ?>
+    <form method="post" class="inline-form project-delete-form" onsubmit="return confirm('Delete this saved version permanently?');">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string) $_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+        <input type="hidden" name="action" value="delete_assessment">
+        <input type="hidden" name="assessment_id" value="<?= (int) $project['id'] ?>">
+        <button type="submit" class="project-delete-btn" title="Delete this saved version" aria-label="Delete this saved version">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+        </button>
+    </form>
+    <?php
+};
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1161,6 +1276,25 @@ $totalProjects = $repository->countAll();
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
+    <script>
+    (function () {
+        try {
+            var view = localStorage.getItem('project-list-view-v2');
+            if (!view) {
+                view = 'table';
+            }
+            if (view === 'list') {
+                view = 'strip';
+            }
+            if (view !== 'table' && view !== 'strip' && view !== 'cards') {
+                view = 'table';
+            }
+            document.documentElement.setAttribute('data-project-list-view', view);
+        } catch (error) {
+            document.documentElement.setAttribute('data-project-list-view', 'table');
+        }
+    })();
+    </script>
 </head>
 <body>
     <div class="shell upload-page">
@@ -1203,7 +1337,7 @@ $totalProjects = $repository->countAll();
 
             <section class="upload-card search-card" id="find-projects">
                 <h2><?= e($branding->heroHeadingPlain()) ?></h2>
-                <p>Search any project field: name, vendor, scope, reviewer, architecture, filename, evaluator, executive summary, dates, or go-live status (try “ready”, “not ready”, “no final”). Leave blank to browse all saved versions.</p>
+                <p>Search any project field: name, vendor, owner, scope, reviewer, architecture, filename, evaluator, executive summary, dates, template format (try “adaptive” or “matured”), or go-live status (try “ready”, “not ready”, “no final”). Leave blank to browse all saved versions.</p>
                 <form method="get" class="search-form" action="index.php#find-projects">
                     <div class="search-wrap search-wrap-wide">
                         <span>Find</span>
@@ -1211,56 +1345,179 @@ $totalProjects = $repository->countAll();
                             type="search"
                             name="q"
                             value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>"
-                            placeholder="Name, vendor, reviewer, evaluator, filename…"
+                            placeholder="Name, vendor, owner, reviewer, evaluator…"
                             autofocus
                         >
                     </div>
                     <button type="submit" class="button button-primary">Find project</button>
                 </form>
 
-                <?php if ($searchResults === []): ?>
-                    <p class="empty-results">No saved projects found<?= $searchQuery !== '' ? ' for that search.' : ' yet.' ?></p>
+                <?php if ($searchTotal === 0 && $searchQuery === '' && $activeFilters === []): ?>
+                    <p class="empty-results">No saved projects found yet.</p>
                 <?php else: ?>
-                    <p class="search-result-meta">Showing <?= (int) $searchFrom ?>–<?= (int) $searchTo ?> of <?= (int) $searchTotal ?><?= $searchQuery !== '' ? ' matching “' . htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') . '”' : '' ?></p>
-                    <div class="project-list">
+                    <div class="project-list-toolbar">
+                        <p class="search-result-meta">Showing <?= (int) $searchFrom ?>–<?= (int) $searchTo ?> of <?= (int) $searchTotal ?><?= $searchQuery !== '' ? ' matching “' . htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') . '”' : '' ?><?= $activeFilters !== [] ? ' · filtered' : '' ?> · 10 per page</p>
+                        <div class="project-list-toolbar-actions">
+                            <button
+                                type="button"
+                                class="button ghost project-filter-toggle<?= $activeFilters !== [] ? ' is-active' : '' ?>"
+                                id="project-filter-toggle"
+                                aria-controls="project-table-filters"
+                                aria-expanded="<?= $activeFilters !== [] ? 'true' : 'false' ?>"
+                            ><?= $activeFilters !== [] ? 'Hide filters' : 'Show filters' ?></button>
+                            <div class="project-list-view-switcher" id="project-list-view-switcher" role="tablist" aria-label="Project list view">
+                                <button type="button" class="project-list-view-btn" role="tab" aria-selected="false" data-project-view="cards">▦ Cards</button>
+                                <button type="button" class="project-list-view-btn is-active" role="tab" aria-selected="true" data-project-view="table">⊞ Table</button>
+                                <button type="button" class="project-list-view-btn" role="tab" aria-selected="false" data-project-view="strip">▬ Strip</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="project-list" id="project-list" data-project-view="table">
+                        <?php if ($searchResults === []): ?>
+                            <p class="empty-results">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></p>
+                        <?php endif; ?>
                         <?php foreach ($searchResults as $project): ?>
-                            <?php $goliveStatus = AssessmentRepository::goliveCardStatus($project); ?>
-                            <div class="project-item project-item-row">
+                            <?php
+                            $goliveStatus = AssessmentRepository::goliveCardStatus($project);
+                            $templateStatus = AssessmentRepository::templateCardStatus($project);
+                            $ownerStatus = AssessmentRepository::ownerCardStatus($project);
+                            $assessedLabel = AssessmentDate::display((string) ($project['assessment_date'] ?? ''));
+                            ?>
+                            <div class="project-item project-item-row is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
                                 <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
-                                    <div>
+                                    <div class="project-item-main">
                                         <strong><?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                        <span><?= htmlspecialchars((string) $project['vendor'], ENT_QUOTES, 'UTF-8') ?> · #<?= (int) $project['id'] ?></span>
-                                        <em class="project-status is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($goliveStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
-                                            <?= htmlspecialchars($goliveStatus['label'], ENT_QUOTES, 'UTF-8') ?>
-                                        </em>
+                                        <span class="project-item-vendor"><?= htmlspecialchars((string) $project['vendor'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="project-item-id">#<?= (int) $project['id'] ?></span>
+                                        <span class="project-item-owner is-<?= htmlspecialchars($ownerStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($ownerStatus['title'], ENT_QUOTES, 'UTF-8') ?>">Owner · <?= htmlspecialchars($ownerStatus['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="project-item-badges">
+                                            <em class="project-template is-<?= htmlspecialchars($templateStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($templateStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= htmlspecialchars($templateStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                            </em>
+                                            <em class="project-status is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($goliveStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= htmlspecialchars($goliveStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                            </em>
+                                        </span>
                                     </div>
                                     <div class="project-meta">
-                                        <span><?= htmlspecialchars((string) ($project['assessment_date'] ?: 'No date'), ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span><?= htmlspecialchars($assessedLabel, ENT_QUOTES, 'UTF-8') ?></span>
                                         <span><?= htmlspecialchars((string) $project['uploaded_at'], ENT_QUOTES, 'UTF-8') ?></span>
                                     </div>
                                 </a>
-                                <form method="post" class="inline-form" onsubmit="return confirm('Delete this saved version permanently?');">
-                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-                                    <input type="hidden" name="action" value="delete_assessment">
-                                    <input type="hidden" name="assessment_id" value="<?= (int) $project['id'] ?>">
-                                    <button type="submit" class="button danger-btn">Delete</button>
-                                </form>
+                                <?php $renderProjectDelete($project); ?>
                             </div>
                         <?php endforeach; ?>
                     </div>
+                    <div class="project-table-wrap table-scroll" id="project-table-wrap">
+                        <form method="get" class="project-table-filter-form" action="index.php#find-projects">
+                            <?php if ($searchQuery !== ''): ?>
+                                <input type="hidden" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
+                            <?php endif; ?>
+                            <input type="hidden" name="sort" value="<?= htmlspecialchars($searchSort, ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="dir" value="<?= htmlspecialchars($searchDir, ENT_QUOTES, 'UTF-8') ?>">
+                            <table class="project-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('project'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('project'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('project'), ENT_QUOTES, 'UTF-8') ?>">Project</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('vendor'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('vendor'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('vendor'), ENT_QUOTES, 'UTF-8') ?>">Vendor</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('id'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('id'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('id'), ENT_QUOTES, 'UTF-8') ?>">ID</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('template'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('template'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('template'), ENT_QUOTES, 'UTF-8') ?>">Template</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('owner'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('owner'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('owner'), ENT_QUOTES, 'UTF-8') ?>">Owner</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('status'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('status'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('status'), ENT_QUOTES, 'UTF-8') ?>">Status</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('assessed'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('assessed'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('assessed'), ENT_QUOTES, 'UTF-8') ?>">Assessed</a>
+                                        </th>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('uploaded'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('uploaded'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('uploaded'), ENT_QUOTES, 'UTF-8') ?>">Uploaded</a>
+                                        </th>
+                                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                                    </tr>
+                                    <tr class="project-table-filters<?= $activeFilters === [] ? ' is-collapsed' : '' ?>" id="project-table-filters"<?= $activeFilters === [] ? ' hidden' : '' ?>>
+                                        <th scope="col"><input type="search" name="f_project" value="<?= htmlspecialchars($searchFilters['project'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by project"></th>
+                                        <th scope="col"><input type="search" name="f_vendor" value="<?= htmlspecialchars($searchFilters['vendor'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
+                                        <th scope="col"><input type="search" name="f_id" value="<?= htmlspecialchars($searchFilters['id'], ENT_QUOTES, 'UTF-8') ?>" placeholder="#" aria-label="Filter by ID"></th>
+                                        <th scope="col"><input type="search" name="f_template" value="<?= htmlspecialchars($searchFilters['template'], ENT_QUOTES, 'UTF-8') ?>" placeholder="adaptive / matured" aria-label="Filter by template"></th>
+                                        <th scope="col"><input type="search" name="f_owner" value="<?= htmlspecialchars($searchFilters['owner'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
+                                        <th scope="col"><input type="search" name="f_status" value="<?= htmlspecialchars($searchFilters['status'], ENT_QUOTES, 'UTF-8') ?>" placeholder="ready / no final" aria-label="Filter by status"></th>
+                                        <th scope="col"><input type="search" name="f_assessed" value="<?= htmlspecialchars($searchFilters['assessed'], ENT_QUOTES, 'UTF-8') ?>" placeholder="YYYY-MM-DD" aria-label="Filter by assessed date"></th>
+                                        <th scope="col"><input type="search" name="f_uploaded" value="<?= htmlspecialchars($searchFilters['uploaded'], ENT_QUOTES, 'UTF-8') ?>" placeholder="YYYY-MM-DD" aria-label="Filter by uploaded date"></th>
+                                        <th scope="col" class="project-table-filter-actions">
+                                            <button type="submit" class="button ghost project-filter-apply">Filter</button>
+                                            <?php if ($activeFilters !== []): ?>
+                                                <a class="button ghost project-filter-clear" href="<?= htmlspecialchars($projectListUrl([
+                                                    'f_project' => null,
+                                                    'f_vendor' => null,
+                                                    'f_id' => null,
+                                                    'f_template' => null,
+                                                    'f_owner' => null,
+                                                    'f_status' => null,
+                                                    'f_assessed' => null,
+                                                    'f_uploaded' => null,
+                                                    'page' => 1,
+                                                ]), ENT_QUOTES, 'UTF-8') ?>">Clear</a>
+                                            <?php endif; ?>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($searchResults === []): ?>
+                                        <tr class="project-table-empty">
+                                            <td colspan="9">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
+                                        </tr>
+                                    <?php endif; ?>
+                                    <?php foreach ($searchResults as $project): ?>
+                                        <?php
+                                        $goliveStatus = AssessmentRepository::goliveCardStatus($project);
+                                        $templateStatus = AssessmentRepository::templateCardStatus($project);
+                                        $ownerStatus = AssessmentRepository::ownerCardStatus($project);
+                                        $assessedLabel = AssessmentDate::display((string) ($project['assessment_date'] ?? ''));
+                                        ?>
+                                        <tr class="is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <td class="project-table-name">
+                                                <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
+                                                    <?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
+                                            </td>
+                                            <td><?= htmlspecialchars((string) ($project['vendor'] !== '' ? $project['vendor'] : '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td class="project-table-id">#<?= (int) $project['id'] ?></td>
+                                            <td>
+                                                <em class="project-template is-<?= htmlspecialchars($templateStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($templateStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                    <?= htmlspecialchars($templateStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                                </em>
+                                            </td>
+                                            <td class="project-table-owner" title="<?= htmlspecialchars($ownerStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= htmlspecialchars($ownerStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                            </td>
+                                            <td>
+                                                <em class="project-status is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($goliveStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                    <?= htmlspecialchars($goliveStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                                </em>
+                                            </td>
+                                            <td class="project-table-date"><?= htmlspecialchars($assessedLabel, ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td class="project-table-date"><?= htmlspecialchars((string) $project['uploaded_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td class="project-table-actions"><?php $renderProjectDelete($project); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </form>
+                    </div>
                     <?php if ($searchTotalPages > 1): ?>
-                        <?php
-                        $pageQuery = static function (int $page) use ($searchQuery): string {
-                            $params = ['page' => $page];
-                            if ($searchQuery !== '') {
-                                $params['q'] = $searchQuery;
-                            }
-                            return 'index.php?' . http_build_query($params) . '#find-projects';
-                        };
-                        ?>
                         <nav class="pagination" aria-label="Project list pages">
                             <?php if ($searchPage > 1): ?>
-                                <a class="button ghost" href="<?= htmlspecialchars($pageQuery($searchPage - 1), ENT_QUOTES, 'UTF-8') ?>">← Previous</a>
+                                <a class="button ghost" href="<?= htmlspecialchars($projectListUrl(['page' => $searchPage - 1]), ENT_QUOTES, 'UTF-8') ?>">← Previous</a>
                             <?php else: ?>
                                 <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
                             <?php endif; ?>
@@ -1273,12 +1530,12 @@ $totalProjects = $repository->countAll();
                                     <?php if ($pageNum === $searchPage): ?>
                                         <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
                                     <?php else: ?>
-                                        <a class="pagination-page" href="<?= htmlspecialchars($pageQuery($pageNum), ENT_QUOTES, 'UTF-8') ?>"><?= $pageNum ?></a>
+                                        <a class="pagination-page" href="<?= htmlspecialchars($projectListUrl(['page' => $pageNum]), ENT_QUOTES, 'UTF-8') ?>"><?= $pageNum ?></a>
                                     <?php endif; ?>
                                 <?php endfor; ?>
                             </span>
                             <?php if ($searchPage < $searchTotalPages): ?>
-                                <a class="button ghost" href="<?= htmlspecialchars($pageQuery($searchPage + 1), ENT_QUOTES, 'UTF-8') ?>">Next →</a>
+                                <a class="button ghost" href="<?= htmlspecialchars($projectListUrl(['page' => $searchPage + 1]), ENT_QUOTES, 'UTF-8') ?>">Next →</a>
                             <?php else: ?>
                                 <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
                             <?php endif; ?>
@@ -1326,6 +1583,7 @@ $totalProjects = $repository->countAll();
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
+    <script src="assets/js/project-list.js?v=<?= filemtime(__DIR__ . '/assets/js/project-list.js') ?>"></script>
     <script src="assets/js/upload.js?v=<?= filemtime(__DIR__ . '/assets/js/upload.js') ?>"></script>
 </body>
 </html>
