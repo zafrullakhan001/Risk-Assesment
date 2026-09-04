@@ -318,6 +318,97 @@ final class LdapAuth
     }
 
     /**
+     * Look up a directory user with the service account (no user password).
+     *
+     * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
+     */
+    public function lookupUser(string $username, int $serverIndex = 0): array
+    {
+        if (!extension_loaded('ldap')) {
+            throw new RuntimeException('PHP LDAP extension is not loaded. Enable it in php.ini.');
+        }
+        $username = trim($username);
+        if ($username === '') {
+            throw new RuntimeException('LDAP username is required.');
+        }
+
+        $server = $this->serverAt($serverIndex);
+
+        return $this->lookupUserAgainst($server, $username);
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
+     */
+    public function lookupUserAgainstServer(array $server, string $username): array
+    {
+        return $this->lookupUserAgainst(array_merge(self::defaultServer(), $server), trim($username));
+    }
+
+    /**
+     * Search directory users by username, display name, email, or common name (substring match).
+     *
+     * @return list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>
+     */
+    public function searchUsers(string $query, int $limit = 25, int $serverIndex = 0): array
+    {
+        if (!extension_loaded('ldap')) {
+            throw new RuntimeException('PHP LDAP extension is not loaded. Enable it in php.ini.');
+        }
+        $query = trim($query);
+        if (strlen($query) < 2) {
+            throw new RuntimeException('Enter at least 2 characters to search the directory.');
+        }
+        $limit = max(1, min(100, $limit));
+        $server = $this->serverAt($serverIndex);
+
+        return $this->searchUsersAgainst($server, $query, $limit);
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>
+     */
+    public function searchUsersAgainstServer(array $server, string $query, int $limit = 25): array
+    {
+        return $this->searchUsersAgainst(
+            array_merge(self::defaultServer(), $server),
+            trim($query),
+            max(1, min(100, $limit))
+        );
+    }
+
+    /**
+     * Resolve an LDAP group DN and return member user profiles (direct members; nested groups expanded once).
+     *
+     * @return array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>}
+     */
+    public function lookupGroupMembers(string $groupDn, int $serverIndex = 0): array
+    {
+        if (!extension_loaded('ldap')) {
+            throw new RuntimeException('PHP LDAP extension is not loaded. Enable it in php.ini.');
+        }
+        $groupDn = trim($groupDn);
+        if ($groupDn === '') {
+            throw new RuntimeException('LDAP group DN is required.');
+        }
+
+        $server = $this->serverAt($serverIndex);
+
+        return $this->lookupGroupMembersAgainst($server, $groupDn);
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>}
+     */
+    public function lookupGroupMembersAgainstServer(array $server, string $groupDn): array
+    {
+        return $this->lookupGroupMembersAgainst(array_merge(self::defaultServer(), $server), trim($groupDn));
+    }
+
+    /**
      * @param array<string, mixed> $server
      * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
      */
@@ -346,11 +437,7 @@ final class LdapAuth
 
         $connection = $this->connect($server);
         try {
-            $bindDn = trim((string) ($server['bind_dn'] ?? ''));
-            $bindPassword = $this->decryptSecret((string) ($server['bind_password'] ?? ''));
-            if (!@ldap_bind($connection, $bindDn !== '' ? $bindDn : null, $bindDn !== '' ? $bindPassword : null)) {
-                throw new RuntimeException($this->explainBindFailure($connection, 'LDAP service bind failed'));
-            }
+            $this->serviceBind($connection, $server);
 
             $template = trim((string) ($server['user_dn_template'] ?? ''));
             $userEntry = null;
@@ -361,40 +448,17 @@ final class LdapAuth
                 if (!@ldap_bind($connection, $userDn, $password)) {
                     throw new RuntimeException('LDAP user bind failed.');
                 }
-                $attributes = $this->attributeList($server);
-                $result = @ldap_read($connection, $userDn, '(objectClass=*)', $attributes);
-                if ($result !== false) {
-                    $entries = @ldap_get_entries($connection, $result);
-                    if (is_array($entries) && (int) ($entries['count'] ?? 0) > 0) {
-                        $userEntry = $entries[0];
-                    }
+                // Re-bind as service account to read attributes if needed
+                $this->serviceBind($connection, $server);
+                $found = $this->readEntry($connection, $server, $userDn);
+                if ($found !== null) {
+                    $userEntry = $found['entry'];
+                    $userDn = $found['dn'];
                 }
             } else {
-                $searchBase = trim((string) ($server['user_search_base'] ?? ''));
-                if ($searchBase === '') {
-                    throw new RuntimeException('LDAP user search base is not configured.');
-                }
-
-                $filterTemplate = trim((string) ($server['user_filter'] ?? '(sAMAccountName={username})'));
-                $filter = str_replace('{username}', $this->escapeFilter($username), $filterTemplate);
-                $attributes = $this->attributeList($server);
-                $scope = strtolower((string) ($server['search_scope'] ?? 'sub'));
-                $result = match ($scope) {
-                    'base' => @ldap_read($connection, $searchBase, $filter, $attributes),
-                    'one' => @ldap_list($connection, $searchBase, $filter, $attributes),
-                    default => @ldap_search($connection, $searchBase, $filter, $attributes),
-                };
-                if ($result === false) {
-                    throw new RuntimeException('LDAP search failed: ' . ldap_error($connection));
-                }
-
-                $entries = @ldap_get_entries($connection, $result);
-                if (!is_array($entries) || (int) ($entries['count'] ?? 0) < 1) {
-                    throw new RuntimeException('User not found in the directory.');
-                }
-
-                $userEntry = $entries[0];
-                $userDn = (string) ($userEntry['dn'] ?? '');
+                $found = $this->searchUserEntry($connection, $server, $username);
+                $userEntry = $found['entry'];
+                $userDn = $found['dn'];
                 if ($userDn === '' || !@ldap_bind($connection, $userDn, $password)) {
                     throw new RuntimeException('Invalid LDAP username or password.');
                 }
@@ -409,6 +473,521 @@ final class LdapAuth
                 @ldap_unbind($connection);
             }
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{username: string, email: string, display_name: string, dn: string, groups: list<string>}
+     */
+    private function lookupUserAgainst(array $server, string $username): array
+    {
+        $host = trim((string) ($server['server'] ?? ''));
+        if ($host === '') {
+            throw new RuntimeException('LDAP server host is not configured.');
+        }
+        if ($username === '') {
+            throw new RuntimeException('LDAP username is required.');
+        }
+
+        if (!$this->nativeLdapUsable()) {
+            $result = $this->runCliWorker('lookup', [
+                'server' => $server,
+                'username' => $username,
+            ]);
+            if (empty($result['success']) || !is_array($result['profile'] ?? null)) {
+                throw new RuntimeException((string) ($result['message'] ?? 'LDAP user lookup failed.'));
+            }
+
+            /** @var array{username: string, email: string, display_name: string, dn: string, groups: list<string>} $profile */
+            $profile = $result['profile'];
+
+            return $profile;
+        }
+
+        $connection = $this->connect($server);
+        try {
+            $this->serviceBind($connection, $server);
+            $found = $this->findUserByUsername($connection, $server, $username);
+            $loginName = $this->usernameFromEntry($found['entry'], $username);
+
+            return $this->extractProfile($server, $loginName, $found['entry'], $found['dn']);
+        } finally {
+            if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
+                @ldap_unbind($connection);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>
+     */
+    private function searchUsersAgainst(array $server, string $query, int $limit): array
+    {
+        $host = trim((string) ($server['server'] ?? ''));
+        if ($host === '') {
+            throw new RuntimeException('LDAP server host is not configured.');
+        }
+        if (strlen($query) < 2) {
+            throw new RuntimeException('Enter at least 2 characters to search the directory.');
+        }
+
+        if (!$this->nativeLdapUsable()) {
+            $result = $this->runCliWorker('search', [
+                'server' => $server,
+                'query' => $query,
+                'limit' => $limit,
+            ]);
+            if (empty($result['success']) || !is_array($result['results'] ?? null)) {
+                throw new RuntimeException((string) ($result['message'] ?? 'LDAP user search failed.'));
+            }
+
+            /** @var list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}> $results */
+            $results = [];
+            foreach ($result['results'] as $row) {
+                if (is_array($row) && isset($row['username'])) {
+                    $results[] = [
+                        'username' => (string) $row['username'],
+                        'email' => (string) ($row['email'] ?? ''),
+                        'display_name' => (string) ($row['display_name'] ?? ''),
+                        'dn' => (string) ($row['dn'] ?? ''),
+                        'groups' => is_array($row['groups'] ?? null)
+                            ? array_values(array_filter($row['groups'], 'is_string'))
+                            : [],
+                    ];
+                }
+            }
+
+            return $results;
+        }
+
+        $searchBase = trim((string) ($server['user_search_base'] ?? ''));
+        if ($searchBase === '') {
+            throw new RuntimeException('LDAP user search base is not configured.');
+        }
+
+        $escaped = $this->escapeFilter($query);
+        $term = '*' . $escaped . '*';
+        $filter = '(&'
+            . '(|(objectClass=user)(objectClass=person)(objectClass=inetOrgPerson)(objectClass=organizationalPerson))'
+            . '(!(objectClass=computer))'
+            . '(|(sAMAccountName=' . $term . ')'
+            . '(uid=' . $term . ')'
+            . '(displayName=' . $term . ')'
+            . '(cn=' . $term . ')'
+            . '(mail=' . $term . ')'
+            . '(givenName=' . $term . ')'
+            . '(sn=' . $term . ')'
+            . '(userPrincipalName=' . $term . '))'
+            . ')';
+
+        $connection = $this->connect($server);
+        try {
+            $this->serviceBind($connection, $server);
+            $attributes = $this->attributeList($server);
+            $scope = strtolower((string) ($server['search_scope'] ?? 'sub'));
+            $result = match ($scope) {
+                'base' => @ldap_read($connection, $searchBase, $filter, $attributes, 0, $limit),
+                'one' => @ldap_list($connection, $searchBase, $filter, $attributes, 0, $limit),
+                default => @ldap_search($connection, $searchBase, $filter, $attributes, 0, $limit),
+            };
+            if ($result === false) {
+                throw new RuntimeException('LDAP search failed: ' . ldap_error($connection));
+            }
+
+            $entries = @ldap_get_entries($connection, $result);
+            if (!is_array($entries)) {
+                return [];
+            }
+
+            $profiles = [];
+            $seen = [];
+            $count = (int) ($entries['count'] ?? 0);
+            for ($i = 0; $i < $count; $i++) {
+                $entry = $entries[$i];
+                if (!is_array($entry) || !$this->isLikelyUserEntry($entry)) {
+                    continue;
+                }
+                $dn = (string) ($entry['dn'] ?? '');
+                $loginName = $this->usernameFromEntry($entry, '');
+                if ($loginName === '') {
+                    continue;
+                }
+                $key = strtolower($loginName);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $profiles[] = $this->extractProfile($server, $loginName, $entry, $dn);
+                if (count($profiles) >= $limit) {
+                    break;
+                }
+            }
+
+            usort(
+                $profiles,
+                static function (array $a, array $b): int {
+                    $nameCmp = strcasecmp((string) $a['display_name'], (string) $b['display_name']);
+                    if ($nameCmp !== 0) {
+                        return $nameCmp;
+                    }
+
+                    return strcasecmp((string) $a['username'], (string) $b['username']);
+                }
+            );
+
+            return $profiles;
+        } finally {
+            if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
+                @ldap_unbind($connection);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>}
+     */
+    private function lookupGroupMembersAgainst(array $server, string $groupDn): array
+    {
+        $host = trim((string) ($server['server'] ?? ''));
+        if ($host === '') {
+            throw new RuntimeException('LDAP server host is not configured.');
+        }
+        if ($groupDn === '') {
+            throw new RuntimeException('LDAP group DN is required.');
+        }
+
+        if (!$this->nativeLdapUsable()) {
+            $result = $this->runCliWorker('lookup_group', [
+                'server' => $server,
+                'group_dn' => $groupDn,
+            ]);
+            if (empty($result['success']) || !is_array($result['group'] ?? null)) {
+                throw new RuntimeException((string) ($result['message'] ?? 'LDAP group lookup failed.'));
+            }
+
+            /** @var array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>} $group */
+            $group = $result['group'];
+
+            return $group;
+        }
+
+        $connection = $this->connect($server);
+        try {
+            $this->serviceBind($connection, $server);
+
+            $groupEntry = $this->readEntry($connection, $server, $groupDn, ['cn', 'name', 'member', 'objectClass', 'distinguishedName']);
+            if ($groupEntry === null) {
+                throw new RuntimeException('LDAP group DN was not found: ' . $groupDn);
+            }
+            if (!$this->entryHasObjectClass($groupEntry['entry'], ['group', 'groupOfNames', 'groupOfUniqueNames', 'posixGroup'])) {
+                // Still allow if it has member attributes (some directories omit objectClass in returned attrs).
+                $members = $this->attributeValues($groupEntry['entry'], 'member');
+                $uniqueMembers = $this->attributeValues($groupEntry['entry'], 'uniqueMember');
+                $memberUid = $this->attributeValues($groupEntry['entry'], 'memberUid');
+                if ($members === [] && $uniqueMembers === [] && $memberUid === []) {
+                    throw new RuntimeException('The DN does not look like a group and has no members: ' . $groupDn);
+                }
+            }
+
+            $groupName = $this->firstAttribute($groupEntry['entry'], 'cn')
+                ?: $this->firstAttribute($groupEntry['entry'], 'name')
+                ?: $groupDn;
+
+            $memberDns = array_values(array_unique(array_merge(
+                $this->attributeValues($groupEntry['entry'], 'member'),
+                $this->attributeValues($groupEntry['entry'], 'uniqueMember')
+            )));
+            $memberUids = $this->attributeValues($groupEntry['entry'], 'memberUid');
+
+            // Nested groups: expand one level of group members into user DNs.
+            $resolvedDns = [];
+            foreach ($memberDns as $memberDn) {
+                $nested = $this->readEntry($connection, $server, $memberDn, ['objectClass', 'member', 'uniqueMember', 'sAMAccountName', 'uid', 'cn', 'mail', 'displayName', 'memberOf', 'userPrincipalName']);
+                if ($nested === null) {
+                    continue;
+                }
+                if ($this->entryHasObjectClass($nested['entry'], ['group', 'groupOfNames', 'groupOfUniqueNames', 'posixGroup'])
+                    && !$this->isLikelyUserEntry($nested['entry'])) {
+                    foreach (array_merge(
+                        $this->attributeValues($nested['entry'], 'member'),
+                        $this->attributeValues($nested['entry'], 'uniqueMember')
+                    ) as $nestedDn) {
+                        $resolvedDns[] = $nestedDn;
+                    }
+                    continue;
+                }
+                $resolvedDns[] = $memberDn;
+            }
+
+            // Also find users that list this group in memberOf (AD / some directories).
+            $searchBase = trim((string) ($server['user_search_base'] ?? ''));
+            if ($searchBase !== '') {
+                $escapedGroupDn = $this->escapeFilter($groupEntry['dn']);
+                $attributes = $this->attributeList($server);
+                foreach ([
+                    '(memberOf=' . $escapedGroupDn . ')',
+                    // Active Directory nested-group matching rule (ignored on non-AD directories).
+                    '(memberOf:1.2.840.113556.1.4.1941:=' . $escapedGroupDn . ')',
+                ] as $filter) {
+                    $result = @ldap_search($connection, $searchBase, $filter, $attributes);
+                    if ($result === false) {
+                        continue;
+                    }
+                    $entries = @ldap_get_entries($connection, $result);
+                    if (!is_array($entries)) {
+                        continue;
+                    }
+                    $count = (int) ($entries['count'] ?? 0);
+                    for ($i = 0; $i < $count; $i++) {
+                        $dn = (string) ($entries[$i]['dn'] ?? '');
+                        if ($dn !== '') {
+                            $resolvedDns[] = $dn;
+                        }
+                    }
+                }
+            }
+
+            $profiles = [];
+            $seenUsernames = [];
+
+            foreach (array_values(array_unique($resolvedDns)) as $dn) {
+                $entry = $this->readEntry($connection, $server, $dn);
+                if ($entry === null || !$this->isLikelyUserEntry($entry['entry'])) {
+                    continue;
+                }
+                $loginName = $this->usernameFromEntry($entry['entry'], '');
+                if ($loginName === '') {
+                    continue;
+                }
+                $key = strtolower($loginName);
+                if (isset($seenUsernames[$key])) {
+                    continue;
+                }
+                $seenUsernames[$key] = true;
+                $profiles[] = $this->extractProfile($server, $loginName, $entry['entry'], $entry['dn']);
+            }
+
+            foreach ($memberUids as $uid) {
+                $uid = trim($uid);
+                if ($uid === '') {
+                    continue;
+                }
+                $key = strtolower($uid);
+                if (isset($seenUsernames[$key])) {
+                    continue;
+                }
+                try {
+                    $found = $this->findUserByUsername($connection, $server, $uid);
+                    $loginName = $this->usernameFromEntry($found['entry'], $uid);
+                    $seenUsernames[strtolower($loginName)] = true;
+                    $profiles[] = $this->extractProfile($server, $loginName, $found['entry'], $found['dn']);
+                } catch (Throwable) {
+                    // Skip unresolved posix memberUid values.
+                }
+            }
+
+            if ($profiles === []) {
+                throw new RuntimeException('No user members were found for that LDAP group.');
+            }
+
+            return [
+                'dn' => $groupEntry['dn'],
+                'name' => $groupName,
+                'members' => $profiles,
+            ];
+        } finally {
+            if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
+                @ldap_unbind($connection);
+            }
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function serverAt(int $serverIndex): array
+    {
+        $servers = $this->servers();
+        if ($servers === []) {
+            throw new RuntimeException('No LDAP server is configured.');
+        }
+        if (!isset($servers[$serverIndex])) {
+            $serverIndex = 0;
+        }
+
+        return $servers[$serverIndex];
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param array<string, mixed> $server
+     */
+    private function serviceBind($connection, array $server): void
+    {
+        $bindDn = trim((string) ($server['bind_dn'] ?? ''));
+        $bindPassword = $this->decryptSecret((string) ($server['bind_password'] ?? ''));
+        if (!@ldap_bind($connection, $bindDn !== '' ? $bindDn : null, $bindDn !== '' ? $bindPassword : null)) {
+            throw new RuntimeException($this->explainBindFailure($connection, 'LDAP service bind failed'));
+        }
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param array<string, mixed> $server
+     * @return array{entry: array<string, mixed>, dn: string}
+     */
+    private function findUserByUsername($connection, array $server, string $username): array
+    {
+        $template = trim((string) ($server['user_dn_template'] ?? ''));
+        if ($template !== '') {
+            $userDn = str_replace('{username}', $this->escapeDn($username), $template);
+            $found = $this->readEntry($connection, $server, $userDn);
+            if ($found === null) {
+                throw new RuntimeException('User not found in the directory.');
+            }
+
+            return $found;
+        }
+
+        return $this->searchUserEntry($connection, $server, $username);
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param array<string, mixed> $server
+     * @return array{entry: array<string, mixed>, dn: string}
+     */
+    private function searchUserEntry($connection, array $server, string $username): array
+    {
+        $searchBase = trim((string) ($server['user_search_base'] ?? ''));
+        if ($searchBase === '') {
+            throw new RuntimeException('LDAP user search base is not configured.');
+        }
+
+        $filterTemplate = trim((string) ($server['user_filter'] ?? '(sAMAccountName={username})'));
+        $filter = str_replace('{username}', $this->escapeFilter($username), $filterTemplate);
+        $attributes = $this->attributeList($server);
+        $scope = strtolower((string) ($server['search_scope'] ?? 'sub'));
+        $result = match ($scope) {
+            'base' => @ldap_read($connection, $searchBase, $filter, $attributes),
+            'one' => @ldap_list($connection, $searchBase, $filter, $attributes),
+            default => @ldap_search($connection, $searchBase, $filter, $attributes),
+        };
+        if ($result === false) {
+            throw new RuntimeException('LDAP search failed: ' . ldap_error($connection));
+        }
+
+        $entries = @ldap_get_entries($connection, $result);
+        if (!is_array($entries) || (int) ($entries['count'] ?? 0) < 1) {
+            throw new RuntimeException('User not found in the directory.');
+        }
+
+        $userEntry = $entries[0];
+        $userDn = (string) ($userEntry['dn'] ?? '');
+        if ($userDn === '') {
+            throw new RuntimeException('User not found in the directory.');
+        }
+
+        return ['entry' => $userEntry, 'dn' => $userDn];
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param array<string, mixed> $server
+     * @param list<string>|null $attributes
+     * @return array{entry: array<string, mixed>, dn: string}|null
+     */
+    private function readEntry($connection, array $server, string $dn, ?array $attributes = null): ?array
+    {
+        $dn = trim($dn);
+        if ($dn === '') {
+            return null;
+        }
+        $attrs = $attributes ?? $this->attributeList($server);
+        $result = @ldap_read($connection, $dn, '(objectClass=*)', $attrs);
+        if ($result === false) {
+            return null;
+        }
+        $entries = @ldap_get_entries($connection, $result);
+        if (!is_array($entries) || (int) ($entries['count'] ?? 0) < 1) {
+            return null;
+        }
+        $entry = $entries[0];
+        $resolvedDn = (string) ($entry['dn'] ?? $dn);
+
+        return ['entry' => $entry, 'dn' => $resolvedDn];
+    }
+
+    /** @param array<string, mixed> $entry */
+    private function usernameFromEntry(array $entry, string $fallback): string
+    {
+        foreach (['samaccountname', 'uid', 'userprincipalname', 'cn'] as $attr) {
+            $value = $this->firstAttribute($entry, $attr);
+            if ($value === '') {
+                continue;
+            }
+            if ($attr === 'userprincipalname' && str_contains($value, '@')) {
+                return (string) strstr($value, '@', true);
+            }
+
+            return $value;
+        }
+
+        return $fallback;
+    }
+
+    /** @param array<string, mixed> $entry */
+    private function isLikelyUserEntry(array $entry): bool
+    {
+        if ($this->entryHasObjectClass($entry, ['computer'])) {
+            return false;
+        }
+        if ($this->firstAttribute($entry, 'samaccountname') !== ''
+            || $this->firstAttribute($entry, 'uid') !== ''
+            || $this->firstAttribute($entry, 'userprincipalname') !== '') {
+            return true;
+        }
+
+        return $this->entryHasObjectClass($entry, ['user', 'person', 'inetOrgPerson', 'organizationalPerson', 'posixAccount']);
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @param list<string> $classes
+     */
+    private function entryHasObjectClass(array $entry, array $classes): bool
+    {
+        $values = array_map('strtolower', $this->attributeValues($entry, 'objectClass'));
+        foreach ($classes as $class) {
+            if (in_array(strtolower($class), $values, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @return list<string>
+     */
+    private function attributeValues(array $entry, string $name): array
+    {
+        $name = strtolower($name);
+        $values = [];
+        foreach ($entry as $key => $value) {
+            if (!is_string($key) || strtolower($key) !== $name || !is_array($value)) {
+                continue;
+            }
+            foreach ($value as $index => $item) {
+                if ($index === 'count' || !is_string($item) || $item === '') {
+                    continue;
+                }
+                $values[] = $item;
+            }
+        }
+
+        return $values;
     }
 
     /**
@@ -637,7 +1216,7 @@ final class LdapAuth
     {
         $raw = (string) ($server['user_attributes'] ?? 'sAMAccountName,mail,displayName,memberOf');
         $attributes = array_values(array_filter(array_map('trim', explode(',', $raw))));
-        foreach (['mail', 'displayName', 'memberOf', 'userPrincipalName', 'cn'] as $required) {
+        foreach (['mail', 'displayName', 'memberOf', 'userPrincipalName', 'cn', 'objectClass', 'sAMAccountName', 'uid'] as $required) {
             if (!in_array($required, $attributes, true) && !in_array(strtolower($required), array_map('strtolower', $attributes), true)) {
                 $attributes[] = $required;
             }

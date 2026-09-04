@@ -52,6 +52,40 @@ try {
         exit(0);
     }
 
+    if ($action === 'lookup') {
+        $server = $payload['server'] ?? null;
+        $username = (string) ($payload['username'] ?? '');
+        if (!is_array($server) || $username === '') {
+            throw new RuntimeException('server and username are required.');
+        }
+        $profile = $ldap->lookupUserAgainstServer($server, $username);
+        echo json_encode(['success' => true, 'profile' => $profile], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit(0);
+    }
+
+    if ($action === 'lookup_group') {
+        $server = $payload['server'] ?? null;
+        $groupDn = (string) ($payload['group_dn'] ?? '');
+        if (!is_array($server) || $groupDn === '') {
+            throw new RuntimeException('server and group_dn are required.');
+        }
+        $group = $ldap->lookupGroupMembersAgainstServer($server, $groupDn);
+        echo json_encode(['success' => true, 'group' => $group], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit(0);
+    }
+
+    if ($action === 'search') {
+        $server = $payload['server'] ?? null;
+        $query = (string) ($payload['query'] ?? '');
+        $limit = (int) ($payload['limit'] ?? 25);
+        if (!is_array($server) || $query === '') {
+            throw new RuntimeException('server and query are required.');
+        }
+        $results = $ldap->searchUsersAgainstServer($server, $query, $limit);
+        echo json_encode(['success' => true, 'results' => $results], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit(0);
+    }
+
     throw new RuntimeException('Unknown action.');
 } catch (Throwable $exception) {
     echo json_encode([
