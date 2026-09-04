@@ -30,6 +30,15 @@ document.addEventListener('DOMContentLoaded', () => {
             next.set('tab', tabName);
             const query = next.toString();
             window.history.replaceState({}, '', `${window.location.pathname}?${query}${window.location.hash}`);
+            const tabs = document.querySelector('.dash-tabs');
+            if (tabs) {
+                const topbarHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-sticky-height')) || 0;
+                const stickY = Math.max(0, tabs.offsetTop - topbarHeight);
+                if (window.scrollY > stickY) {
+                    window.scrollTo({ top: stickY, behavior: 'smooth' });
+                }
+            }
+            window.requestAnimationFrame(() => window.syncStickyOffsets?.());
         }
     };
 
@@ -1640,13 +1649,17 @@ document.addEventListener('DOMContentLoaded', () => {
             next.set('action_tab', target);
             window.history.replaceState({}, '', `${window.location.pathname}?${next.toString()}`);
         }
+        window.requestAnimationFrame(() => window.syncStickyOffsets?.());
         window.refreshBulkSelectionBars?.();
     };
     window.activateActionTab = activateActionTab;
 
     actionTabButtons.forEach((button) => {
         button.addEventListener('click', () => {
+            const scrollY = window.scrollY;
             activateActionTab(button.dataset.actionTab || 'risks');
+            button.focus({ preventScroll: true });
+            window.scrollTo({ top: scrollY, left: window.scrollX, behavior: 'instant' });
         });
     });
 

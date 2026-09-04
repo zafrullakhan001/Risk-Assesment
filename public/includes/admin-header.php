@@ -22,10 +22,10 @@ $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
 </head>
 <body>
     <div class="shell upload-page admin-page">
-        <header class="topbar">
+        <header class="topbar topbar-uplift">
             <a class="brand brand-link" href="../index.php#find-projects" title="Find projects by name">
                 <?php require dirname(__DIR__) . '/includes/brand-mark.php'; ?>
-                <div>
+                <div class="brand-text">
                     <div class="brand-title"><?= e(\RiskAssessment\Branding::current()->brandTitle()) ?></div>
                     <h1>Admin</h1>
                 </div>

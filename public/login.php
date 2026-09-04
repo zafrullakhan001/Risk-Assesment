@@ -81,10 +81,10 @@ $ldapOn = $auth->ldapEnabled();
 </head>
 <body>
     <div class="shell upload-page login-page">
-        <header class="topbar">
+        <header class="topbar topbar-uplift">
             <div class="brand">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
-                <div>
+                <div class="brand-text">
                     <div class="brand-title"><?= e(\RiskAssessment\Branding::current()->brandTitle()) ?></div>
                     <h1><?= $needsSetup ? 'First-time setup' : 'Sign in' ?></h1>
                 </div>

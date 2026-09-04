@@ -28,6 +28,42 @@
         return 'xxl';
     };
 
+    const stickyHeight = (element) => {
+        if (!element || element.offsetParent === null) {
+            return '0px';
+        }
+        return `${Math.ceil(element.getBoundingClientRect().height)}px`;
+    };
+
+    const syncStickyOffsets = () => {
+        const topbar = document.querySelector('.topbar');
+        const tabs = document.querySelector('.dash-tabs');
+        const actionTabs = document.querySelector('.action-tabs');
+        if (topbar) {
+            root.style.setProperty('--topbar-sticky-height', `${Math.ceil(topbar.getBoundingClientRect().height)}px`);
+        }
+        root.style.setProperty('--dash-tabs-sticky-height', stickyHeight(tabs));
+        root.style.setProperty('--action-tabs-sticky-height', stickyHeight(actionTabs));
+    };
+
+    const watchStickyOffsets = () => {
+        syncStickyOffsets();
+        if (typeof ResizeObserver !== 'function') {
+            return;
+        }
+        const observer = new ResizeObserver(() => {
+            syncStickyOffsets();
+        });
+        ['.topbar', '.dash-tabs', '.action-tabs'].forEach((selector) => {
+            const element = document.querySelector(selector);
+            if (element) {
+                observer.observe(element);
+            }
+        });
+    };
+
+    window.syncStickyOffsets = syncStickyOffsets;
+
     const applySize = (pref) => {
         const nextPref = allowedSizes.includes(pref) ? pref : 'auto';
         const size = nextPref === 'auto' ? autoSize() : nextPref;
@@ -36,6 +72,7 @@
         root.setAttribute('data-size', size);
         root.classList.toggle('is-compact', size === 's' || size === 'm');
         syncSizeButtons();
+        window.requestAnimationFrame(syncStickyOffsets);
     };
 
     const setTheme = (theme) => {
@@ -76,6 +113,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         syncThemeButtons();
         applySize(getSizePref());
+        watchStickyOffsets();
 
         document.querySelectorAll('[data-theme-set]').forEach((button) => {
             button.addEventListener('click', () => {

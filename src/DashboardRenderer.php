@@ -136,10 +136,10 @@ final class DashboardRenderer
     class="<?= !empty($evaluation['ready_to_golive']) ? 'is-ready-golive' : '' ?>"
 >
     <div class="shell">
-        <header class="topbar">
+        <header class="topbar topbar-uplift">
             <a class="brand brand-link" href="index.php#find-projects" title="Back to find projects">
                 <?= $branding->renderMark() ?>
-                <div>
+                <div class="brand-text">
                     <div class="brand-title"><?= $this->e($branding->brandTitle()) ?></div>
                     <h1><?= $this->e($branding->brandSubtitle()) ?></h1>
                 </div>

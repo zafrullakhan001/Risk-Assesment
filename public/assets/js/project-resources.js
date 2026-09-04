@@ -405,9 +405,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (pictureFileListWrap) {
             pictureFileListWrap.hidden = !showFiles;
+            pictureFileListWrap.setAttribute('aria-hidden', showFiles ? 'false' : 'true');
         }
         if (picturesList) {
             picturesList.hidden = !showCards;
+            picturesList.setAttribute('aria-hidden', showCards ? 'false' : 'true');
         }
         if (picturesEmpty) {
             picturesEmpty.hidden = count > 0;

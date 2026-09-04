@@ -983,10 +983,10 @@ $totalProjects = $repository->countAll();
 </head>
 <body>
     <div class="shell upload-page">
-        <header class="topbar">
+        <header class="topbar topbar-uplift">
             <a class="brand brand-link" href="index.php#find-projects" title="Find projects by name">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
-                <div>
+                <div class="brand-text">
                     <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
                     <h1><?= e($branding->brandSubtitle()) ?></h1>
                 </div>

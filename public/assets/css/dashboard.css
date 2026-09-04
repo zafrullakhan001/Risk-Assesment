@@ -46,6 +46,9 @@
     --shell-max: 1440px;
     --page-pad-x: 24px;
     --page-pad-b: 32px;
+    --topbar-sticky-height: calc(var(--brand-mark-size, 56px) + 42px);
+    --dash-tabs-sticky-height: 0px;
+    --action-tabs-sticky-height: 0px;
 }
 
 [data-theme="indigo"] {
@@ -96,6 +99,7 @@
 
 html {
     scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--topbar-sticky-height) + var(--dash-tabs-sticky-height) + var(--action-tabs-sticky-height) + 12px);
 }
 
 body {
@@ -167,14 +171,40 @@ html[data-size="xxl"] {
 }
 
 /* Top bar */
-.topbar {
+.topbar,
+.topbar-uplift {
+    position: sticky;
+    top: 0;
+    z-index: 50;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    min-height: calc(var(--brand-mark-size, 56px) + 24px);
-    padding: 14px 0;
-    border-bottom: 1px solid var(--line);
+    min-height: calc(var(--brand-mark-size, 56px) + 20px);
+    margin: 0 0 14px;
+    padding: 10px 16px;
+    border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line));
+    border-radius: 0 0 var(--radius) var(--radius);
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--card) 92%, transparent) 0%,
+            color-mix(in srgb, var(--paper) 78%, transparent) 100%
+        );
+    backdrop-filter: blur(18px) saturate(1.25);
+    -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    box-shadow:
+        0 1px 0 color-mix(in srgb, #fff 60%, transparent) inset,
+        var(--shadow),
+        0 2px 0 color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+[data-theme="indigo"] .topbar,
+[data-theme="indigo"] .topbar-uplift {
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.05) inset,
+        var(--shadow),
+        0 2px 0 color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
 .topbar-actions {
@@ -187,9 +217,10 @@ html[data-size="xxl"] {
 
 .brand {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 16px;
     min-width: 0;
 }
 
@@ -237,6 +268,26 @@ a.brand-link:hover h1 {
     width: auto;
     max-width: calc(var(--brand-mark-size, 56px) * 2.4);
     height: var(--brand-mark-size, 56px);
+}
+
+.brand-text {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-self: stretch;
+    min-width: 0;
+    padding-left: 16px;
+}
+
+.brand-text::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 1px;
+    background: color-mix(in srgb, var(--primary) 38%, var(--line));
 }
 
 .brand-title {
@@ -363,7 +414,7 @@ a.brand-link:hover h1 {
     overflow: hidden;
     margin: 0 0 14px;
     padding: 22px 24px 18px;
-    border-radius: 0 0 18px 18px;
+    border-radius: var(--radius);
     color: #f8fafc;
     background:
         radial-gradient(ellipse 50% 80% at 90% 20%, rgba(103, 232, 249, 0.18), transparent 55%),
@@ -944,6 +995,9 @@ a.brand-link:hover h1 {
 
 /* Tabs */
 .dash-tabs {
+    position: sticky;
+    top: var(--topbar-sticky-height);
+    z-index: 40;
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
@@ -951,8 +1005,9 @@ a.brand-link:hover h1 {
     padding: 4px;
     border-radius: var(--radius);
     border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--card) 88%, transparent);
-    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 
 .dash-tabs-uplift {
@@ -960,7 +1015,7 @@ a.brand-link:hover h1 {
     padding: 6px;
     margin-bottom: 16px;
     background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 6%, var(--card)), var(--card));
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow);
 }
 
 .dash-tab {
@@ -1163,7 +1218,8 @@ a.brand-link:hover h1 {
     margin-bottom: 14px;
     border-radius: var(--radius);
     border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    background: color-mix(in srgb, var(--card) 94%, var(--paper));
+    box-shadow: var(--shadow);
 }
 
 .action-tabs-uplift .action-tab {
@@ -1958,7 +2014,7 @@ tbody tr.row-highlight {
 
 /* Compact overrides */
 html.is-compact .shell { padding: 0 var(--page-pad-x) var(--page-pad-b); }
-html.is-compact .topbar { min-height: calc(var(--brand-mark-size, 56px) + 16px); padding: 8px 0; }
+html.is-compact .topbar { min-height: calc(var(--brand-mark-size, 56px) + 12px); padding: 8px 12px; }
 html.is-compact .topbar h1 { font-size: 14px; }
 html.is-compact .hero-compact { padding: 16px 18px 14px; margin-bottom: 10px; }
 html.is-compact .hero-compact h2 { font-size: clamp(22px, 3vw, 32px); }
@@ -2075,7 +2131,8 @@ html[data-size="xxl"] .login-card {
     .shell { padding: 0 14px 20px; }
     .display-controls { width: 100%; }
     .size-controls .theme-btn { min-width: 28px; padding-left: 6px; padding-right: 6px; }
-    .topbar { flex-direction: column; align-items: flex-start; }
+    .topbar { flex-direction: column; align-items: stretch; }
+    .topbar-actions { justify-content: flex-start; }
     .hero-head { flex-direction: column; }
     .hero-art { align-self: flex-end; }
     .chart-panel,
@@ -2533,9 +2590,19 @@ html[data-size="xxl"] .login-card {
 .actions-intro h2 { margin: 0; font-size: 1.35rem; }
 .actions-intro p { margin: 4px 0 0; color: var(--ink-soft); font-size: 13px; max-width: 58ch; }
 .action-tabs {
-    display: flex; flex-wrap: wrap; gap: 6px;
-    padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--card) 88%, var(--primary-soft));
+    position: sticky;
+    top: calc(var(--topbar-sticky-height) + var(--dash-tabs-sticky-height));
+    z-index: 39;
+    overflow-anchor: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 .action-tab {
     appearance: none; border: 1px solid transparent; background: transparent; color: var(--ink-soft);
@@ -2735,6 +2802,19 @@ body.is-presentation .charts-grid { grid-template-columns: repeat(3, minmax(0, 1
 .print-only-block { display: none; }
 body.is-presentation .print-only-block { display: block; }
 @media print {
+    .topbar,
+    .topbar-uplift {
+        position: static;
+        margin: 0 0 12px;
+        padding: 8px 0;
+        border: 0;
+        border-bottom: 1px solid #ccc;
+        border-radius: 0;
+        background: none;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
     .topbar-actions, .toolbar, .dash-tabs, .exec-actions, .exec-edit-btn, .exec-summary-editor, .exec-custom-pill, .theme-controls, .display-controls, .hero-actions { display: none !important; }
     #exec-summary-view { display: block !important; }
     .print-only-block { display: block !important; }
@@ -3152,6 +3232,15 @@ body.is-presentation .print-only-block { display: block; }
     background: color-mix(in srgb, #be123c 14%, var(--card));
     color: #be123c;
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+#project-pictures[data-picture-view="files"] #project-pictures-list,
+#project-pictures[data-picture-view="cards"] #project-picture-filelist-wrap,
+#project-pictures[data-picture-view="files"] #btn-pictures-save,
+.project-picture-filelist-wrap[hidden],
+.project-pictures-list[hidden],
+#project-pictures-empty[hidden],
+#btn-pictures-save[hidden] {
+    display: none !important;
 }
 .project-picture-filelist-wrap {
     margin-bottom: 16px;
@@ -4059,12 +4148,19 @@ body.is-presentation .print-only-block { display: block; }
 
 .branding-preview-bar {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 16px;
     padding: 14px 16px;
-    background: var(--paper);
-    border-bottom: 1px solid var(--line);
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--card) 92%, transparent) 0%,
+            color-mix(in srgb, var(--paper) 78%, transparent) 100%
+        );
+    border-bottom: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line));
+    box-shadow: 0 2px 0 color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .branding-preview-bar strong {

@@ -70,7 +70,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <div class="branding-preview" id="branding-preview">
                     <div class="branding-preview-bar">
                         <?= $branding->renderMark() ?>
-                        <div>
+                        <div class="brand-text">
                             <div class="brand-title" data-preview="brand_title"><?= e($values['brand_title']) ?></div>
                             <strong data-preview="brand_subtitle"><?= e($values['brand_subtitle']) ?></strong>
                         </div>
