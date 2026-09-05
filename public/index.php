@@ -1480,14 +1480,14 @@ $renderProjectDelete = static function (array $project): void {
                             <table class="project-table">
                                 <thead>
                                     <tr>
+                                        <th scope="col" class="<?= htmlspecialchars($sortClass('id'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('id'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('id'), ENT_QUOTES, 'UTF-8') ?>">ID</a>
+                                        </th>
                                         <th scope="col" class="<?= htmlspecialchars($sortClass('project'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('project'), ENT_QUOTES, 'UTF-8') ?>">
                                             <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('project'), ENT_QUOTES, 'UTF-8') ?>">Project</a>
                                         </th>
                                         <th scope="col" class="<?= htmlspecialchars($sortClass('vendor'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('vendor'), ENT_QUOTES, 'UTF-8') ?>">
                                             <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('vendor'), ENT_QUOTES, 'UTF-8') ?>">Vendor</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('id'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('id'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('id'), ENT_QUOTES, 'UTF-8') ?>">ID</a>
                                         </th>
                                         <th scope="col" class="<?= htmlspecialchars($sortClass('template'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('template'), ENT_QUOTES, 'UTF-8') ?>">
                                             <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('template'), ENT_QUOTES, 'UTF-8') ?>">Template</a>
@@ -1507,9 +1507,9 @@ $renderProjectDelete = static function (array $project): void {
                                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                                     </tr>
                                     <tr class="project-table-filters<?= $activeFilters === [] ? ' is-collapsed' : '' ?>" id="project-table-filters"<?= $activeFilters === [] ? ' hidden' : '' ?>>
+                                        <th scope="col"><input type="search" name="f_id" value="<?= htmlspecialchars($searchFilters['id'], ENT_QUOTES, 'UTF-8') ?>" placeholder="#" aria-label="Filter by ID"></th>
                                         <th scope="col"><input type="search" name="f_project" value="<?= htmlspecialchars($searchFilters['project'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by project"></th>
                                         <th scope="col"><input type="search" name="f_vendor" value="<?= htmlspecialchars($searchFilters['vendor'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
-                                        <th scope="col"><input type="search" name="f_id" value="<?= htmlspecialchars($searchFilters['id'], ENT_QUOTES, 'UTF-8') ?>" placeholder="#" aria-label="Filter by ID"></th>
                                         <th scope="col"><input type="search" name="f_template" value="<?= htmlspecialchars($searchFilters['template'], ENT_QUOTES, 'UTF-8') ?>" placeholder="adaptive / matured" aria-label="Filter by template"></th>
                                         <th scope="col"><input type="search" name="f_owner" value="<?= htmlspecialchars($searchFilters['owner'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
                                         <th scope="col"><input type="search" name="f_status" value="<?= htmlspecialchars($searchFilters['status'], ENT_QUOTES, 'UTF-8') ?>" placeholder="ready / no final" aria-label="Filter by status"></th>
@@ -1547,13 +1547,13 @@ $renderProjectDelete = static function (array $project): void {
                                         $assessedLabel = AssessmentDate::display((string) ($project['assessment_date'] ?? ''));
                                         ?>
                                         <tr class="is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <td class="project-table-id">#<?= (int) $project['id'] ?></td>
                                             <td class="project-table-name">
                                                 <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
                                                     <?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?>
                                                 </a>
                                             </td>
                                             <td><?= htmlspecialchars((string) ($project['vendor'] !== '' ? $project['vendor'] : '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td class="project-table-id">#<?= (int) $project['id'] ?></td>
                                             <td>
                                                 <em class="project-template is-<?= htmlspecialchars($templateStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($templateStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
                                                     <?= htmlspecialchars($templateStatus['label'], ENT_QUOTES, 'UTF-8') ?>

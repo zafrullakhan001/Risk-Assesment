@@ -52,7 +52,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($hash === false) {
                 throw new RuntimeException('Unable to create the user.');
             }
-            $id = $usersRepo->createLocal($username, $email, $hash, $makeAdmin, true, $displayName);
+            $id = $usersRepo->createLocal(
+                $username,
+                $email,
+                $hash,
+                $makeAdmin,
+                true,
+                $displayName,
+                '',
+                (int) $currentUser['id'],
+                (string) $currentUser['username']
+            );
             $usersRepo->logAudit(
                 'user.created',
                 (int) $currentUser['id'],
@@ -93,7 +103,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('A local user already uses that username or email. Choose a different account or rename the local user.');
             }
             $wasExisting = $existing !== null;
-            $user = $usersRepo->upsertLdapUser($profile, true, true, true);
+            $user = $usersRepo->upsertLdapUser(
+                $profile,
+                true,
+                true,
+                true,
+                (int) $currentUser['id'],
+                (string) $currentUser['username']
+            );
             if ($makeAdmin) {
                 $usersRepo->setAdmin((int) $user['id'], true);
                 $usersRepo->setApproved((int) $user['id'], true);
@@ -147,7 +164,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         continue;
                     }
                     $wasExisting = $existing !== null;
-                    $user = $usersRepo->upsertLdapUser($profile, true, true, true);
+                    $user = $usersRepo->upsertLdapUser(
+                        $profile,
+                        true,
+                        true,
+                        true,
+                        (int) $currentUser['id'],
+                        (string) $currentUser['username']
+                    );
                     if ($makeAdmin) {
                         $usersRepo->setAdmin((int) $user['id'], true);
                         $usersRepo->setApproved((int) $user['id'], true);
@@ -278,8 +302,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$allUsers = $usersRepo->listAll();
-$audit = $usersRepo->recentAudit(40);
+$userQuery = trim((string) ($_GET['uq'] ?? ''));
+$userPerPage = 25;
+$userTotal = $usersRepo->countSearch($userQuery);
+$userTotalPages = max(1, (int) ceil($userTotal / $userPerPage));
+$userPage = max(1, min($userTotalPages, (int) ($_GET['upage'] ?? 1)));
+$allUsers = $usersRepo->searchUsers($userQuery, $userPage, $userPerPage);
+
+$auditQuery = trim((string) ($_GET['aq'] ?? ''));
+$auditPerPage = 25;
+$auditTotal = $usersRepo->countAudit($auditQuery);
+$auditTotalPages = max(1, (int) ceil($auditTotal / $auditPerPage));
+$auditPage = max(1, min($auditTotalPages, (int) ($_GET['apage'] ?? 1)));
+$audit = $usersRepo->searchAudit($auditQuery, $auditPage, $auditPerPage);
+
+$usersPageUrl = static function (array $overrides = [], string $hash = '') use ($userQuery, $userPage, $auditQuery, $auditPage): string {
+    $params = array_merge(
+        [
+            'uq' => $userQuery,
+            'upage' => $userPage,
+            'aq' => $auditQuery,
+            'apage' => $auditPage,
+        ],
+        $overrides
+    );
+    if (trim((string) ($params['uq'] ?? '')) === '') {
+        unset($params['uq']);
+    }
+    if ((int) ($params['upage'] ?? 1) <= 1) {
+        unset($params['upage']);
+    }
+    if (trim((string) ($params['aq'] ?? '')) === '') {
+        unset($params['aq']);
+    }
+    if ((int) ($params['apage'] ?? 1) <= 1) {
+        unset($params['apage']);
+    }
+    $query = http_build_query($params);
+
+    return 'users.php' . ($query !== '' ? '?' . $query : '') . ($hash !== '' ? $hash : '');
+};
 
 $adminTitle = 'Users';
 $adminTab = 'users';
@@ -483,11 +545,36 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <?php endif; ?>
             </section>
 
-            <section class="upload-card">
+            <section class="upload-card" id="all-users">
                 <h2>All users</h2>
-                <?php if ($allUsers === []): ?>
-                    <p class="empty-results">No users yet.</p>
+                <form method="get" class="settings-form" action="users.php#all-users" style="margin-bottom: 1rem;">
+                    <?php if ($auditQuery !== ''): ?>
+                        <input type="hidden" name="aq" value="<?= e($auditQuery) ?>">
+                    <?php endif; ?>
+                    <?php if ($auditPage > 1): ?>
+                        <input type="hidden" name="apage" value="<?= (int) $auditPage ?>">
+                    <?php endif; ?>
+                    <div class="settings-grid">
+                        <label class="settings-field settings-span-all">
+                            <span>Search users</span>
+                            <input type="search" name="uq" value="<?= e($userQuery) ?>" maxlength="120" placeholder="Username, email, name, added by, ldap/local, admin…" autocomplete="off">
+                        </label>
+                    </div>
+                    <div class="settings-actions">
+                        <button type="submit" class="button button-primary">🔎 Search</button>
+                        <?php if ($userQuery !== ''): ?>
+                            <a class="button ghost" href="<?= e($usersPageUrl(['uq' => '', 'upage' => 1], '#all-users')) ?>">Clear</a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+                <?php if ($userTotal === 0): ?>
+                    <p class="empty-results"><?= $userQuery !== '' ? 'No users matched your search.' : 'No users yet.' ?></p>
                 <?php else: ?>
+                    <p class="settings-hint">
+                        Showing <?= e((string) ((($userPage - 1) * $userPerPage) + 1)) ?>–<?= e((string) min($userTotal, $userPage * $userPerPage)) ?>
+                        of <?= e((string) $userTotal) ?>
+                        <?= $userQuery !== '' ? ' matching' : '' ?> user<?= $userTotal === 1 ? '' : 's' ?>.
+                    </p>
                     <div class="admin-table-wrap">
                         <table class="admin-table">
                             <thead>
@@ -496,6 +583,8 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                     <th>Source</th>
                                     <th>Role</th>
                                     <th>Status</th>
+                                    <th>Added</th>
+                                    <th>Added by</th>
                                     <th>Last login</th>
                                     <th>Actions</th>
                                 </tr>
@@ -521,28 +610,96 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                 <span class="token-ok">Active</span>
                                             <?php endif; ?>
                                         </td>
+                                        <td><?= e((string) ($user['created_at'] !== '' ? $user['created_at'] : '—')) ?></td>
+                                        <td><?= e((string) (($user['created_by_username'] ?? '') !== '' ? $user['created_by_username'] : '—')) ?></td>
                                         <td><?= e((string) ($user['last_login'] ?: '—')) ?></td>
                                         <td>
                                             <div class="user-actions">
                                                 <?php if (empty($user['is_approved'])): ?>
-                                                    <form method="post"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>"><input type="hidden" name="action" value="approve"><button type="submit" class="button ghost">Approve</button></form>
+                                                    <form method="post">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="approve">
+                                                        <button type="submit" class="user-action-btn is-approve" title="Approve user" aria-label="Approve user">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php else: ?>
-                                                    <form method="post"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>"><input type="hidden" name="action" value="reject"><button type="submit" class="button ghost">Unapprove</button></form>
+                                                    <form method="post">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="reject">
+                                                        <button type="submit" class="user-action-btn is-unapprove" title="Unapprove user" aria-label="Unapprove user">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <circle cx="12" cy="12" r="10"></circle>
+                                                                <line x1="15" y1="9" x2="9" y2="15"></line>
+                                                                <line x1="9" y1="9" x2="15" y2="15"></line>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php endif; ?>
                                                 <?php if (!empty($user['is_disabled'])): ?>
-                                                    <form method="post"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>"><input type="hidden" name="action" value="enable"><button type="submit" class="button ghost">Enable</button></form>
+                                                    <form method="post">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="enable">
+                                                        <button type="submit" class="user-action-btn is-enable" title="Enable user" aria-label="Enable user">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                                                <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php else: ?>
-                                                    <form method="post"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>"><input type="hidden" name="action" value="disable"><button type="submit" class="button ghost">Disable</button></form>
+                                                    <form method="post">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="disable">
+                                                        <button type="submit" class="user-action-btn is-disable" title="Disable user" aria-label="Disable user">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php endif; ?>
                                                 <?php if (empty($user['is_admin'])): ?>
-                                                    <form method="post"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>"><input type="hidden" name="action" value="promote"><button type="submit" class="button ghost">Make admin</button></form>
+                                                    <form method="post">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="promote">
+                                                        <button type="submit" class="user-action-btn is-admin" title="Make administrator" aria-label="Make administrator">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                                                <polyline points="9 12 11 14 15 10"></polyline>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php else: ?>
-                                                    <form method="post"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>"><input type="hidden" name="action" value="demote"><button type="submit" class="button ghost">Remove admin</button></form>
+                                                    <form method="post">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="demote">
+                                                        <button type="submit" class="user-action-btn is-admin" title="Remove administrator" aria-label="Remove administrator">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"></path>
+                                                                <path d="M4.73 4.73 4 5v7c0 6 8 10 8 10a33.4 33.4 0 0 0 5.94-2.82"></path>
+                                                                <line x1="1" y1="1" x2="23" y2="23"></line>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php endif; ?>
                                                 <?php if (($user['auth_source'] ?? '') === 'local'): ?>
-                                                    <details class="inline-details">
-                                                        <summary>Reset password</summary>
-                                                        <form method="post" class="updater-form updater-form-stack">
+                                                    <details class="inline-details user-reset-details">
+                                                        <summary class="user-action-btn is-key" title="Reset password" aria-label="Reset password">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                                                            </svg>
+                                                        </summary>
+                                                        <form method="post" class="updater-form updater-form-stack user-reset-panel">
                                                             <?= csrf_field() ?>
                                                             <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
                                                             <input type="hidden" name="action" value="reset_password">
@@ -556,7 +713,15 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                     <?= csrf_field() ?>
                                                     <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
                                                     <input type="hidden" name="action" value="delete">
-                                                    <button type="submit" class="button danger-btn">Delete</button>
+                                                    <button type="submit" class="user-action-btn is-danger" title="Delete user" aria-label="Delete user">
+                                                        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                                            <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                                                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                                                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                                                        </svg>
+                                                    </button>
                                                 </form>
                                             </div>
                                         </td>
@@ -565,14 +730,66 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </tbody>
                         </table>
                     </div>
+                    <?php if ($userTotalPages > 1): ?>
+                        <nav class="pagination" aria-label="User list pages">
+                            <?php if ($userPage > 1): ?>
+                                <a class="button ghost" href="<?= e($usersPageUrl(['upage' => $userPage - 1], '#all-users')) ?>">← Previous</a>
+                            <?php else: ?>
+                                <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                            <?php endif; ?>
+                            <span class="pagination-pages">
+                                <?php
+                                $windowStart = max(1, $userPage - 2);
+                                $windowEnd = min($userTotalPages, $userPage + 2);
+                                for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
+                                ?>
+                                    <?php if ($pageNum === $userPage): ?>
+                                        <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
+                                    <?php else: ?>
+                                        <a class="pagination-page" href="<?= e($usersPageUrl(['upage' => $pageNum], '#all-users')) ?>"><?= $pageNum ?></a>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+                            </span>
+                            <?php if ($userPage < $userTotalPages): ?>
+                                <a class="button ghost" href="<?= e($usersPageUrl(['upage' => $userPage + 1], '#all-users')) ?>">Next →</a>
+                            <?php else: ?>
+                                <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                            <?php endif; ?>
+                        </nav>
+                    <?php endif; ?>
                 <?php endif; ?>
             </section>
 
-            <section class="upload-card">
+            <section class="upload-card" id="audit-log">
                 <h2>Audit log</h2>
-                <?php if ($audit === []): ?>
-                    <p class="empty-results">No events yet.</p>
+                <form method="get" class="settings-form" action="users.php#audit-log" style="margin-bottom: 1rem;">
+                    <?php if ($userQuery !== ''): ?>
+                        <input type="hidden" name="uq" value="<?= e($userQuery) ?>">
+                    <?php endif; ?>
+                    <?php if ($userPage > 1): ?>
+                        <input type="hidden" name="upage" value="<?= (int) $userPage ?>">
+                    <?php endif; ?>
+                    <div class="settings-grid">
+                        <label class="settings-field settings-span-all">
+                            <span>Search events</span>
+                            <input type="search" name="aq" value="<?= e($auditQuery) ?>" maxlength="120" placeholder="Event, actor, target, IP, or date" autocomplete="off">
+                        </label>
+                    </div>
+                    <div class="settings-actions">
+                        <button type="submit" class="button button-primary">🔎 Search</button>
+                        <?php if ($auditQuery !== ''): ?>
+                            <a class="button ghost" href="<?= e($usersPageUrl(['aq' => '', 'apage' => 1], '#audit-log')) ?>">Clear</a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+                <?php if ($auditTotal === 0): ?>
+                    <p class="empty-results"><?= $auditQuery !== '' ? 'No audit events matched your search.' : 'No events yet.' ?></p>
                 <?php else: ?>
+                    <p class="settings-hint">
+                        Showing <?= e((string) ((($auditPage - 1) * $auditPerPage) + 1)) ?>–<?= e((string) min($auditTotal, $auditPage * $auditPerPage)) ?>
+                        of <?= e((string) $auditTotal) ?>
+                        <?= $auditQuery !== '' ? ' matching' : '' ?> event<?= $auditTotal === 1 ? '' : 's' ?>.
+                    </p>
                     <div class="admin-table-wrap">
                         <table class="admin-table">
                             <thead>
@@ -597,6 +814,33 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </tbody>
                         </table>
                     </div>
+                    <?php if ($auditTotalPages > 1): ?>
+                        <nav class="pagination" aria-label="Audit log pages">
+                            <?php if ($auditPage > 1): ?>
+                                <a class="button ghost" href="<?= e($usersPageUrl(['apage' => $auditPage - 1], '#audit-log')) ?>">← Previous</a>
+                            <?php else: ?>
+                                <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                            <?php endif; ?>
+                            <span class="pagination-pages">
+                                <?php
+                                $windowStart = max(1, $auditPage - 2);
+                                $windowEnd = min($auditTotalPages, $auditPage + 2);
+                                for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
+                                ?>
+                                    <?php if ($pageNum === $auditPage): ?>
+                                        <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
+                                    <?php else: ?>
+                                        <a class="pagination-page" href="<?= e($usersPageUrl(['apage' => $pageNum], '#audit-log')) ?>"><?= $pageNum ?></a>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+                            </span>
+                            <?php if ($auditPage < $auditTotalPages): ?>
+                                <a class="button ghost" href="<?= e($usersPageUrl(['apage' => $auditPage + 1], '#audit-log')) ?>">Next →</a>
+                            <?php else: ?>
+                                <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                            <?php endif; ?>
+                        </nav>
+                    <?php endif; ?>
                 <?php endif; ?>
             </section>
 <?php

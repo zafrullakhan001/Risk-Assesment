@@ -283,14 +283,14 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <nav class="dash-tabs dash-tabs-uplift" role="tablist" aria-label="Workbook tabs">
-                <button type="button" class="dash-tab dash-tab-theme-architecture is-active" role="tab" aria-selected="true" data-tab="architecture" data-tooltip="<?= $isAdaptive ? 'Material architecture findings from the Risk Register (not the full scenario catalog).' : 'Browse architecture control status, risk levels, charts, and the full risk register.' ?>"><?= $isAdaptive ? '📋 Material findings' : '🏛️ Architecture checks' ?></button>
                 <?php if ($hasRouter): ?>
-                    <button type="button" class="dash-tab dash-tab-theme-router" role="tab" aria-selected="false" data-tab="router" data-tooltip="Browse the adaptive question router: selected, conditional, and excluded scenarios by module.">🧭 Question Router</button>
+                    <button type="button" class="dash-tab dash-tab-theme-router is-active" role="tab" aria-selected="true" data-tab="router" data-tooltip="Start here: browse selected, conditional, and excluded scenarios by module. Material findings and due diligence flow from these routing decisions.">🧭 Question Router</button>
                 <?php endif; ?>
+                <button type="button" class="dash-tab dash-tab-theme-architecture<?= $hasRouter ? '' : ' is-active' ?>" role="tab" aria-selected="<?= $hasRouter ? 'false' : 'true' ?>" data-tab="architecture" data-tooltip="<?= $isAdaptive ? 'Material Gap, Risk, and Decision Required findings from the Architecture Risk Register. Respond to them under Actions → Material findings.' : 'Browse architecture control status, risk levels, charts, and the full risk register.' ?>"><?= $isAdaptive ? '📋 Material findings' : '🏛️ Architecture checks' ?></button>
                 <?php if ($hasDueDiligence): ?>
-                    <button type="button" class="dash-tab dash-tab-theme-diligence" role="tab" aria-selected="false" data-tab="due-diligence" data-tooltip="Review technology risk / due-diligence items, evidence notes, and extended coverage.">🔍 Due diligence</button>
+                    <button type="button" class="dash-tab dash-tab-theme-diligence" role="tab" aria-selected="false" data-tab="due-diligence" data-tooltip="<?= $isAdaptive ? 'Evidence and control-attestation items for the detected architecture. Respond to them under Actions → Due diligence.' : 'Review technology risk / due-diligence items, evidence notes, and extended coverage.' ?>">🔍 Due diligence</button>
                 <?php endif; ?>
-                <button type="button" class="dash-tab dash-tab-theme-actions" role="tab" aria-selected="false" data-tab="actions" data-tooltip="Record responses on risks, gaps, TBDs, and exceptions; manage sign-off, versions, and workload views.">✅ Actions</button>
+                <button type="button" class="dash-tab dash-tab-theme-actions" role="tab" aria-selected="false" data-tab="actions" data-tooltip="<?= $isAdaptive ? 'Respond to actionable items from Material findings and Due diligence (shown as source sub-tabs), then sign off and manage versions.' : 'Record responses on risks, gaps, TBDs, and exceptions; manage sign-off, versions, and workload views.' ?>">✅ Actions</button>
                 <button type="button" class="dash-tab dash-tab-theme-project" role="tab" aria-selected="false" data-tab="project" data-tooltip="Add architecture diagrams, pictures, and useful project links for this assessment.">📐 Diagram &amp; links</button>
                 <?php if ($hasGovernance): ?>
                     <button type="button" class="dash-tab dash-tab-theme-governance" role="tab" aria-selected="false" data-tab="governance" data-tooltip="View governance fields, documented exceptions, and recommended compliance actions.">⚖️ Governance summary</button>
@@ -300,13 +300,23 @@ final class DashboardRenderer
                 <?php endif; ?>
             </nav>
 
-            <div class="dash-panel dash-panel-theme-architecture is-active" data-panel="architecture">
+            <?php if ($hasRouter && $adaptiveViews !== null): ?>
+                <?= $adaptiveViews->renderRouterPanel(
+                    $workbook,
+                    fn (array $slices, string $id, string $center, string $label, bool $hero = false): string => $this->renderDonutChart($slices, $id, $center, $label, $hero),
+                    fn (array $slices, string $type): string => $this->renderChartLegend($slices, $type),
+                    fn (string $icon, string $eyebrow, string $title, string $help): string => $this->renderPanelIntro($icon, $eyebrow, $title, $help),
+                    true
+                ) ?>
+            <?php endif; ?>
+
+            <div class="dash-panel dash-panel-theme-architecture<?= $hasRouter ? '' : ' is-active' ?>" data-panel="architecture"<?= $hasRouter ? ' hidden' : '' ?>>
                 <?= $this->renderPanelIntro(
                     $isAdaptive ? '📋' : '🏛️',
                     $isAdaptive ? 'Material findings' : 'Architecture review',
                     $isAdaptive ? 'Architecture Risk Register' : 'Architecture checks',
                     $isAdaptive
-                        ? 'Material Gap, Risk, and Decision Required findings only — the Question Router holds the full scenario catalog.'
+                        ? 'Material Gap, Risk, and Decision Required findings only — the Question Router holds the full scenario catalog. Respond to actionable rows under Actions → Material findings.'
                         : 'Browse status, risk levels, charts, and the full register for every architecture control.'
                 ) ?>
                 <?= $this->renderKpis($summary, 'architecture', $archProgress) ?>
@@ -335,18 +345,9 @@ final class DashboardRenderer
                 ) ?>
             </div>
 
-            <?php if ($hasRouter && $adaptiveViews !== null): ?>
-                <?= $adaptiveViews->renderRouterPanel(
-                    $workbook,
-                    fn (array $slices, string $id, string $center, string $label, bool $hero = false): string => $this->renderDonutChart($slices, $id, $center, $label, $hero),
-                    fn (array $slices, string $type): string => $this->renderChartLegend($slices, $type),
-                    fn (string $icon, string $eyebrow, string $title, string $help): string => $this->renderPanelIntro($icon, $eyebrow, $title, $help)
-                ) ?>
-            <?php endif; ?>
-
             <?php if ($hasDueDiligence): ?>
                 <div class="dash-panel dash-panel-theme-diligence" data-panel="due-diligence" hidden>
-                    <?= $this->renderPanelIntro('🔍', 'Extended review', 'Due diligence', $isAdaptive ? 'Evidence and control-attestation layer for the detected solution architecture.' : 'Technology risk template items, evidence notes, and extended diligence coverage.') ?>
+                    <?= $this->renderPanelIntro('🔍', 'Extended review', 'Due diligence', $isAdaptive ? 'Evidence and control-attestation layer for the detected solution architecture. Actionable rows are answered under Actions → Due diligence.' : 'Technology risk template items, evidence notes, and extended diligence coverage.') ?>
                     <?php if (($workbook['context'] ?? '') !== ''): ?>
                         <div class="context-banner context-banner-uplift">💡 <?= $this->e((string) $workbook['context']) ?></div>
                     <?php endif; ?>
@@ -370,7 +371,7 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl, $isAdaptive) ?>
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>
@@ -679,7 +680,7 @@ final class DashboardRenderer
                 <input type="search" id="<?= $prefix ?>filter-search" placeholder="Search check, notes, owner, mitigation...">
             </div>
             <select id="<?= $prefix ?>filter-section">
-                <option value="">All sections</option>
+                <option value=""><?= $scope === 'due_diligence' ? 'All categories' : 'All sections' ?></option>
                 <?php foreach (array_keys($summary['by_section'] ?? []) as $section): ?>
                     <option value="<?= $this->e((string) $section) ?>"><?= $this->e((string) $section) ?></option>
                 <?php endforeach; ?>
@@ -746,7 +747,7 @@ final class DashboardRenderer
                     <thead>
                         <tr>
                             <th class="col-row-num">#</th>
-                            <th>Section</th>
+                            <th><?= $scope === 'due_diligence' ? 'Category' : 'Section' ?></th>
                             <th><?= $this->e($checkLabel) ?></th>
                             <th>Status</th>
                             <th>Risk level</th>
@@ -790,7 +791,9 @@ final class DashboardRenderer
                             $sourceReference = (string) ($item['source_reference'] ?? '');
                             $checkTitle = (string) ($item['check'] ?? '');
                             $sectionName = (string) ($item['section'] ?? '');
-                            $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture';
+                            $sourceLabel = $itemType === 'due_diligence'
+                                ? 'Due diligence'
+                                : ($extendedColumns ? 'Material findings' : 'Architecture');
                             $sectionSub = $sectionName;
                             if ($owner !== '') {
                                 $sectionSub .= ($sectionSub !== '' ? ' · ' : '') . $owner;

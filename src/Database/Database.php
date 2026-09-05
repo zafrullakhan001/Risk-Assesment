@@ -165,12 +165,17 @@ final class Database
                 notes TEXT NOT NULL DEFAULT \'\',
                 last_login TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                created_by_user_id INTEGER,
+                created_by_username TEXT NOT NULL DEFAULT \'\',
                 UNIQUE (username),
                 UNIQUE (email)
             )'
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_users_auth_source ON users (auth_source)');
+        self::ensureColumn($pdo, 'users', 'created_by_user_id', 'INTEGER');
+        self::ensureColumn($pdo, 'users', 'created_by_username', "TEXT NOT NULL DEFAULT ''");
+        self::backfillUserCreatedBy($pdo);
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS user_audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,8 +364,8 @@ final class Database
 
         $statement = $pdo->prepare(
             'INSERT INTO users (username, email, password_hash, is_admin, is_approved, is_disabled,
-                                auth_source, display_name, notes, created_at)
-             VALUES (:username, :email, :password_hash, 1, 1, 0, \'local\', :display_name, :notes, datetime(\'now\'))'
+                                auth_source, display_name, notes, created_at, created_by_username)
+             VALUES (:username, :email, :password_hash, 1, 1, 0, \'local\', :display_name, :notes, datetime(\'now\'), :created_by_username)'
         );
         $statement->execute([
             ':username' => \RiskAssessment\Auth::DEFAULT_ADMIN_USERNAME,
@@ -368,7 +373,51 @@ final class Database
             ':password_hash' => $hash,
             ':display_name' => 'Administrator',
             ':notes' => 'Default administrator — change this password after first sign-in.',
+            ':created_by_username' => 'system',
         ]);
+    }
+
+    private static function backfillUserCreatedBy(PDO $pdo): void
+    {
+        // Prefer earliest provisioning audit event when one exists (never write NULL into NOT NULL column).
+        $pdo->exec(
+            "UPDATE users
+             SET created_by_user_id = (
+                     SELECT actor_id FROM user_audit_log
+                     WHERE target_user_id = users.id
+                       AND event IN ('user.created', 'user.ldap_provisioned', 'user.registered')
+                       AND IFNULL(actor_username, '') != ''
+                     ORDER BY id ASC
+                     LIMIT 1
+                 ),
+                 created_by_username = (
+                     SELECT actor_username FROM user_audit_log
+                     WHERE target_user_id = users.id
+                       AND event IN ('user.created', 'user.ldap_provisioned', 'user.registered')
+                       AND IFNULL(actor_username, '') != ''
+                     ORDER BY id ASC
+                     LIMIT 1
+                 )
+             WHERE IFNULL(created_by_username, '') = ''
+               AND EXISTS (
+                     SELECT 1 FROM user_audit_log
+                     WHERE target_user_id = users.id
+                       AND event IN ('user.created', 'user.ldap_provisioned', 'user.registered')
+                       AND IFNULL(actor_username, '') != ''
+               )"
+        );
+
+        $pdo->exec(
+            "UPDATE users
+             SET created_by_username = CASE
+                    WHEN auth_source = 'ldap' THEN 'LDAP login'
+                    WHEN notes LIKE 'First administrator%' THEN 'system'
+                    WHEN notes LIKE 'Default administrator%' THEN 'system'
+                    WHEN notes LIKE 'Recovered via CLI%' THEN 'CLI'
+                    ELSE 'unknown'
+                 END
+             WHERE IFNULL(created_by_username, '') = ''"
+        );
     }
 
     private static function migrateLegacyMermaidDiagrams(PDO $pdo): void

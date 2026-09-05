@@ -167,6 +167,8 @@ CREATE TABLE IF NOT EXISTS users (
     notes TEXT NOT NULL DEFAULT '',
     last_login TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by_user_id INTEGER,
+    created_by_username TEXT NOT NULL DEFAULT '',
     UNIQUE (username),
     UNIQUE (email)
 );

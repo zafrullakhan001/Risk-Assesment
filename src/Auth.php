@@ -252,7 +252,7 @@ final class Auth
             throw new RuntimeException('Unable to create the account.');
         }
 
-        $id = $this->users->createLocal($username, $email, $hash, false, false);
+        $id = $this->users->createLocal($username, $email, $hash, false, false, '', '', null, 'self-registration');
         $this->users->logAudit('user.registered', $id, $username, $id, $username, ['source' => 'self_register']);
 
         $user = $this->users->findById($id);
@@ -289,7 +289,7 @@ final class Auth
             throw new RuntimeException('Unable to create the administrator account.');
         }
 
-        $id = $this->users->createLocal($username, $email, $hash, true, true, $username, 'First administrator');
+        $id = $this->users->createLocal($username, $email, $hash, true, true, $username, 'First administrator', null, 'system');
         $user = $this->users->findById($id);
         if ($user === null) {
             throw new RuntimeException('Unable to load the administrator account.');

@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS users (
     notes TEXT,
     last_login DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by_user_id INT UNSIGNED NULL,
+    created_by_username VARCHAR(255) NOT NULL DEFAULT '',
     UNIQUE KEY uq_users_username (username),
     UNIQUE KEY uq_users_email (email),
     INDEX idx_users_auth_source (auth_source)

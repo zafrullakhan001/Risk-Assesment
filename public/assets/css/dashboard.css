@@ -1374,6 +1374,197 @@ a.brand-link:hover h1 {
     box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
+.action-source-block {
+    display: grid;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, #0f766e 18%, var(--line));
+    background:
+        linear-gradient(135deg, color-mix(in srgb, #0f766e 8%, var(--card)), color-mix(in srgb, #0369a1 6%, var(--card)));
+}
+
+.action-source-label .eyebrow {
+    margin: 0 0 2px;
+}
+
+.action-source-label p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 13px;
+    max-width: 64ch;
+}
+
+.action-source-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.action-source-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.action-source-tab em {
+    font-style: normal;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-soft);
+    font-size: 12px;
+}
+
+.action-source-tab:hover {
+    transform: translateY(-1px);
+    background: var(--primary-soft);
+}
+
+.action-source-tab.is-active {
+    border-color: color-mix(in srgb, #0f766e 35%, var(--line));
+    background: color-mix(in srgb, #0f766e 12%, var(--card));
+    box-shadow: 0 4px 14px color-mix(in srgb, #0f766e 16%, transparent);
+}
+
+.action-source-tab.is-active em {
+    background: color-mix(in srgb, #0f766e 16%, var(--card));
+    color: #0f766e;
+}
+
+.action-source-architecture.is-active {
+    border-color: color-mix(in srgb, #0e7490 35%, var(--line));
+    background: color-mix(in srgb, #0e7490 12%, var(--card));
+}
+
+.action-source-architecture.is-active em {
+    background: color-mix(in srgb, #0e7490 16%, var(--card));
+    color: #0e7490;
+}
+
+.action-source-diligence.is-active {
+    border-color: color-mix(in srgb, #0369a1 35%, var(--line));
+    background: color-mix(in srgb, #0369a1 12%, var(--card));
+}
+
+.action-source-diligence.is-active em {
+    background: color-mix(in srgb, #0369a1 16%, var(--card));
+    color: #0369a1;
+}
+
+.action-source-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.action-source-pill-architecture {
+    background: color-mix(in srgb, #0e7490 14%, var(--card));
+    color: #0e7490;
+}
+
+.action-source-pill-diligence {
+    background: color-mix(in srgb, #0369a1 14%, var(--card));
+    color: #0369a1;
+}
+
+.action-section-filters {
+    display: grid;
+    gap: 6px;
+    padding-top: 4px;
+    border-top: 1px dashed color-mix(in srgb, #0f766e 20%, var(--line));
+}
+
+.action-section-filters-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.action-section-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.action-section-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--card) 92%, var(--paper));
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.action-section-chip em {
+    font-style: normal;
+    font-weight: 700;
+    font-size: 11px;
+    color: var(--ink-soft);
+}
+
+.action-section-chip:hover {
+    transform: translateY(-1px);
+    background: var(--primary-soft);
+}
+
+.action-section-chip.is-active {
+    border-color: color-mix(in srgb, #0f766e 40%, var(--line));
+    background: color-mix(in srgb, #0f766e 12%, var(--card));
+}
+
+.action-section-chip-architecture.is-active {
+    border-color: color-mix(in srgb, #0e7490 40%, var(--line));
+    background: color-mix(in srgb, #0e7490 12%, var(--card));
+}
+
+.action-section-chip-diligence.is-active {
+    border-color: color-mix(in srgb, #0369a1 40%, var(--line));
+    background: color-mix(in srgb, #0369a1 12%, var(--card));
+}
+
+.action-section-label {
+    display: inline-block;
+    max-width: 18ch;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+#action-risks-table .col-section,
+#action-gaps-table .col-section,
+#action-tbd-table .col-section {
+    min-width: 9rem;
+    max-width: 14rem;
+}
+
 .action-tab-risks.is-active { background: color-mix(in srgb, #be123c 14%, var(--card)); border-color: color-mix(in srgb, #be123c 30%, var(--line)); }
 .action-tab-gaps.is-active { background: color-mix(in srgb, #c2410c 14%, var(--card)); border-color: color-mix(in srgb, #c2410c 30%, var(--line)); }
 .action-tab-tbd.is-active { background: color-mix(in srgb, #64748b 14%, var(--card)); border-color: color-mix(in srgb, #64748b 30%, var(--line)); }
@@ -5072,6 +5263,150 @@ body.is-presentation .print-only-block { display: block; }
     align-items: center;
 }
 
+.user-actions > form {
+    margin: 0;
+}
+
+.user-action-btn {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    color: var(--ink-soft);
+    cursor: pointer;
+    list-style: none;
+}
+
+.user-action-btn::-webkit-details-marker {
+    display: none;
+}
+
+.user-action-btn svg {
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.user-action-btn:hover,
+.user-action-btn:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    background: color-mix(in srgb, var(--primary) 10%, var(--card));
+    color: var(--primary-dark);
+}
+
+.user-action-btn.is-approve {
+    border-color: color-mix(in srgb, #16a34a 30%, var(--line));
+    background: color-mix(in srgb, #86efac 14%, var(--card));
+    color: #15803d;
+}
+
+.user-action-btn.is-approve:hover,
+.user-action-btn.is-approve:focus-visible {
+    border-color: #16a34a;
+    background: #16a34a;
+    color: #fff;
+}
+
+.user-action-btn.is-unapprove,
+.user-action-btn.is-disable {
+    border-color: color-mix(in srgb, #d97706 30%, var(--line));
+    background: color-mix(in srgb, #fcd34d 14%, var(--card));
+    color: #b45309;
+}
+
+.user-action-btn.is-unapprove:hover,
+.user-action-btn.is-unapprove:focus-visible,
+.user-action-btn.is-disable:hover,
+.user-action-btn.is-disable:focus-visible {
+    border-color: #d97706;
+    background: #d97706;
+    color: #fff;
+}
+
+.user-action-btn.is-enable {
+    border-color: color-mix(in srgb, #0284c7 30%, var(--line));
+    background: color-mix(in srgb, #38bdf8 12%, var(--card));
+    color: #0369a1;
+}
+
+.user-action-btn.is-enable:hover,
+.user-action-btn.is-enable:focus-visible {
+    border-color: #0284c7;
+    background: #0284c7;
+    color: #fff;
+}
+
+.user-action-btn.is-admin {
+    border-color: color-mix(in srgb, #7c3aed 30%, var(--line));
+    background: color-mix(in srgb, #c4b5fd 14%, var(--card));
+    color: #6d28d9;
+}
+
+.user-action-btn.is-admin:hover,
+.user-action-btn.is-admin:focus-visible {
+    border-color: #7c3aed;
+    background: #7c3aed;
+    color: #fff;
+}
+
+.user-action-btn.is-key {
+    border-color: color-mix(in srgb, #0d9488 30%, var(--line));
+    background: color-mix(in srgb, #5eead4 12%, var(--card));
+    color: #0f766e;
+}
+
+.user-action-btn.is-key:hover,
+.user-action-btn.is-key:focus-visible,
+.user-reset-details[open] > .user-action-btn.is-key {
+    border-color: #0d9488;
+    background: #0d9488;
+    color: #fff;
+}
+
+.user-action-btn.is-danger {
+    border-color: color-mix(in srgb, var(--risk) 28%, var(--line));
+    background: color-mix(in srgb, var(--risk-soft) 55%, var(--card));
+    color: var(--risk);
+}
+
+.user-action-btn.is-danger:hover,
+.user-action-btn.is-danger:focus-visible {
+    border-color: var(--risk);
+    background: var(--risk);
+    color: #fff;
+}
+
+.user-reset-details {
+    position: relative;
+}
+
+.user-reset-details > summary.user-action-btn {
+    display: inline-flex;
+}
+
+.user-reset-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    min-width: 220px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
 .inline-details summary {
     cursor: pointer;
     color: var(--primary-dark);
@@ -5080,7 +5415,7 @@ body.is-presentation .print-only-block { display: block; }
 }
 
 .inline-details[open] {
-    min-width: 220px;
+    min-width: 0;
 }
 
 @media (max-width: 720px) {

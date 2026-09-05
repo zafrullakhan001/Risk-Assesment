@@ -86,7 +86,7 @@ $ldapOn = $auth->ldapEnabled();
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div class="brand-text">
                     <div class="brand-title"><?= e(\RiskAssessment\Branding::current()->brandTitle()) ?></div>
-                    <h1><?= $needsSetup ? 'First-time setup' : 'Sign in' ?></h1>
+                    <h1><?= e(\RiskAssessment\Branding::current()->brandSubtitle()) ?></h1>
                 </div>
             </div>
             <div class="topbar-actions">

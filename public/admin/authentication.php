@@ -117,7 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $profile,
                     $settings->get('ldap_auto_create_users', '1') === '1',
                     $settings->get('ldap_auto_update_users', '1') === '1',
-                    $settings->get('ldap_auto_approve', '1') === '1'
+                    $settings->get('ldap_auto_approve', '1') === '1',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username']
                 );
                 $status = (string) ($user['status'] ?? 'unknown');
                 $provisionNote = 'Local account ready: '

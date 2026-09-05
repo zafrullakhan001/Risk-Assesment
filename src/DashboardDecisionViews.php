@@ -227,7 +227,8 @@ final class DashboardDecisionViews
         array $evaluatorDefaults = [],
         bool $readOnly = false,
         array $shareLinks = [],
-        ?string $freshShareUrl = null
+        ?string $freshShareUrl = null,
+        bool $isAdaptive = false
     ): string {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
@@ -240,9 +241,17 @@ final class DashboardDecisionViews
         $gapItems = [];
         $tbdItems = [];
         $openResponses = 0;
+        $archSourceCount = 0;
+        $ddSourceCount = 0;
         foreach ($actionableItems as $row) {
             if (($row['action'] ?? 'open') === 'open') {
                 $openResponses++;
+            }
+            $itemType = (string) ($row['item_type'] ?? 'architecture');
+            if ($itemType === 'due_diligence') {
+                $ddSourceCount++;
+            } else {
+                $archSourceCount++;
             }
             $status = strtolower(trim((string) ($row['status'] ?? '')));
             if ($status === 'gap') {
@@ -253,6 +262,27 @@ final class DashboardDecisionViews
                 $riskItems[] = $row;
             }
         }
+
+        $archSourceLabel = $isAdaptive ? 'Material findings' : 'Architecture';
+        $ddSourceLabel = 'Due diligence';
+        $showSourceTabs = $archSourceCount > 0 && $ddSourceCount > 0;
+
+        $archSections = [];
+        $ddSections = [];
+        foreach ($actionableItems as $row) {
+            $section = trim((string) ($row['section'] ?? ''));
+            if ($section === '') {
+                continue;
+            }
+            $itemType = (string) ($row['item_type'] ?? 'architecture');
+            if ($itemType === 'due_diligence') {
+                $ddSections[$section] = ($ddSections[$section] ?? 0) + 1;
+            } else {
+                $archSections[$section] = ($archSections[$section] ?? 0) + 1;
+            }
+        }
+        ksort($archSections, SORT_NATURAL | SORT_FLAG_CASE);
+        ksort($ddSections, SORT_NATURAL | SORT_FLAG_CASE);
 
         $evaluation = $evaluation ?? [];
         $evaluatorName = (string) ($evaluation['evaluator_name'] ?? '');
@@ -285,23 +315,79 @@ final class DashboardDecisionViews
                     <div>
                         <div class="eyebrow">Response workspace</div>
                         <h2>Actions</h2>
-                        <p><?= $readOnly
-                            ? 'View recorded decisions on risks, gaps, TBDs, and exceptions. Editing is disabled on shared links.'
-                            : 'Record decisions on risks, gaps, TBDs, and exceptions here. Other tabs stay as dashboards.' ?></p>
+                        <p><?php if ($readOnly): ?>
+                            View recorded decisions on risks, gaps, TBDs, and exceptions. Editing is disabled on shared links.
+                        <?php elseif ($isAdaptive): ?>
+                            Respond to actionable items that come from <strong>Material findings</strong> and <strong>Due diligence</strong>. Use the source sub-tabs below to switch between those registers, then Risks / Gaps / TBD to categorize the work.
+                        <?php else: ?>
+                            Record decisions on risks, gaps, TBDs, and exceptions here. Other tabs stay as dashboards.
+                        <?php endif; ?></p>
                     </div>
                 </div>
                 <span class="result-count project-resources-badge" id="response-open-count"><?= (int) $openResponses ?> item responses open</span>
             </div>
 
+            <?php if ($showSourceTabs || $isAdaptive): ?>
+                <div class="action-source-block">
+                    <div class="action-source-label">
+                        <span class="eyebrow">Finding sources</span>
+                        <p>Items below come from the registers above. Pick a source, then a section<?= $isAdaptive ? ' / category' : '' ?>, then a response category.</p>
+                    </div>
+                    <nav class="action-source-tabs" role="tablist" aria-label="Finding sources for Actions">
+                        <button type="button" class="action-source-tab is-active" role="tab" aria-selected="true" data-action-source="all" data-tooltip="Show actionable items from every register.">
+                            📚 All sources <em><?= $archSourceCount + $ddSourceCount ?></em>
+                        </button>
+                        <button type="button" class="action-source-tab action-source-architecture" role="tab" aria-selected="false" data-action-source="architecture" data-tooltip="Only items from the <?= $this->e($archSourceLabel) ?> register.">
+                            <?= $isAdaptive ? '📋' : '🏛️' ?> <?= $this->e($archSourceLabel) ?> <em><?= $archSourceCount ?></em>
+                        </button>
+                        <button type="button" class="action-source-tab action-source-diligence" role="tab" aria-selected="false" data-action-source="due_diligence" data-tooltip="Only items from the Due diligence register (grouped by category/section).">
+                            🔍 <?= $this->e($ddSourceLabel) ?> <em><?= $ddSourceCount ?></em>
+                        </button>
+                    </nav>
+                    <div class="action-section-filters" id="action-section-filters" aria-label="Filter Actions by section">
+                        <span class="action-section-filters-label">Sections</span>
+                        <div class="action-section-chips">
+                            <button type="button" class="action-section-chip is-active" data-action-section="" data-action-section-source="all">
+                                All sections
+                            </button>
+                            <?php foreach ($archSections as $section => $count): ?>
+                                <button
+                                    type="button"
+                                    class="action-section-chip action-section-chip-architecture"
+                                    data-action-section="<?= $this->e($section) ?>"
+                                    data-action-section-source="architecture"
+                                    hidden
+                                    title="<?= $this->e($archSourceLabel) ?>"
+                                >
+                                    <?= $this->e($section) ?> <em><?= (int) $count ?></em>
+                                </button>
+                            <?php endforeach; ?>
+                            <?php foreach ($ddSections as $section => $count): ?>
+                                <button
+                                    type="button"
+                                    class="action-section-chip action-section-chip-diligence"
+                                    data-action-section="<?= $this->e($section) ?>"
+                                    data-action-section-source="due_diligence"
+                                    hidden
+                                    title="Due diligence category"
+                                >
+                                    <?= $this->e($section) ?> <em><?= (int) $count ?></em>
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <nav class="action-tabs action-tabs-uplift" role="tablist" aria-label="Action categories">
                 <button type="button" class="action-tab action-tab-risks is-active" role="tab" aria-selected="true" data-action-tab="risks" data-tooltip="Assign Taken care / Ignore responses and comments for high-priority risk items.">
-                    🔴 Risks <em><?= count($riskItems) ?></em>
+                    🔴 Risks <em data-action-count="risks"><?= count($riskItems) ?></em>
                 </button>
                 <button type="button" class="action-tab action-tab-gaps" role="tab" aria-selected="false" data-action-tab="gaps" data-tooltip="Record decisions for gap findings that still need a response.">
-                    🟠 Gaps <em><?= count($gapItems) ?></em>
+                    🟠 Gaps <em data-action-count="gaps"><?= count($gapItems) ?></em>
                 </button>
                 <button type="button" class="action-tab action-tab-tbd" role="tab" aria-selected="false" data-action-tab="tbd" data-tooltip="Resolve items marked TBD — decide status and capture comments.">
-                    ❓ TBD <em><?= count($tbdItems) ?></em>
+                    ❓ TBD <em data-action-count="tbd"><?= count($tbdItems) ?></em>
                 </button>
                 <button type="button" class="action-tab action-tab-exceptions" role="tab" aria-selected="false" data-action-tab="exceptions" data-tooltip="Track accepted exceptions, mitigations, owners, and timelines.">
                     ⚠️ Exceptions <em><?= count($findings) ?></em>
@@ -332,7 +418,8 @@ final class DashboardDecisionViews
                     'action-risks-table',
                     $riskItems,
                     $actionLabels,
-                    $readOnly
+                    $readOnly,
+                    $isAdaptive
                 ) ?>
             </div>
 
@@ -344,7 +431,8 @@ final class DashboardDecisionViews
                     'action-gaps-table',
                     $gapItems,
                     $actionLabels,
-                    $readOnly
+                    $readOnly,
+                    $isAdaptive
                 ) ?>
             </div>
 
@@ -356,7 +444,8 @@ final class DashboardDecisionViews
                     'action-tbd-table',
                     $tbdItems,
                     $actionLabels,
-                    $readOnly
+                    $readOnly,
+                    $isAdaptive
                 ) ?>
             </div>
 
@@ -829,8 +918,10 @@ final class DashboardDecisionViews
         string $tableId,
         array $items,
         array $actionLabels,
-        bool $readOnly = false
+        bool $readOnly = false,
+        bool $isAdaptive = false
     ): string {
+        $archSourceLabel = $isAdaptive ? 'Material findings' : 'Architecture';
         ob_start();
         ?>
         <section class="table-card table-card-uplift">
@@ -842,12 +933,13 @@ final class DashboardDecisionViews
                         <h3><?= $this->e($heading) ?></h3>
                     </div>
                 </div>
-                <span class="result-count result-count-badge"><?= count($items) ?> item<?= count($items) === 1 ? '' : 's' ?></span>
+                <span class="result-count result-count-badge" data-workbench-count="<?= $this->e($scope) ?>"><?= count($items) ?> item<?= count($items) === 1 ? '' : 's' ?></span>
             </div>
             <?php if ($items === []): ?>
                 <p class="empty-panel project-empty-state">✨ No items in this category right now.</p>
             <?php else: ?>
                 <p class="panel-help">📋 <?= $this->e($help) ?><?= $readOnly ? '.' : '. Select listed rows to update them together, or edit one at a time.' ?></p>
+                <p class="empty-panel project-empty-state action-source-empty" data-action-source-empty="<?= $this->e($scope) ?>" hidden>✨ No items from this source in this category.</p>
                 <?php if (!$readOnly): ?>
                 <div class="bulk-response-bar" data-bulk-scope="<?= $this->e($scope) ?>" data-bulk-table="<?= $this->e($tableId) ?>">
                     <label class="bulk-select-all">
@@ -871,6 +963,7 @@ final class DashboardDecisionViews
                             <tr>
                                 <?php if (!$readOnly): ?><th class="col-select">Sel</th><?php endif; ?>
                                 <th class="col-row-num">#</th>
+                                <th>Section / category</th>
                                 <th>Item</th>
                                 <th>Source</th>
                                 <th>Status</th>
@@ -886,13 +979,17 @@ final class DashboardDecisionViews
                                 $action = \RiskAssessment\Repositories\ItemResponseRepository::normalizeAction((string) ($row['action'] ?? 'open'));
                                 $comment = (string) ($row['comment'] ?? '');
                                 $itemType = (string) ($row['item_type'] ?? 'architecture');
-                                $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture';
+                                $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : $archSourceLabel;
+                                $sectionName = trim((string) ($row['section'] ?? ''));
+                                $owner = (string) ($row['owner'] ?? '');
                                 $updatedAt = (string) ($row['updated_at'] ?? '');
                                 $updatedByLabel = (string) ($row['updated_by_label'] ?? '');
                                 $history = is_array($row['history'] ?? null) ? $row['history'] : [];
                                 ?>
                                 <tr
                                     data-item-key="<?= $this->e($key) ?>"
+                                    data-item-type="<?= $this->e($itemType) ?>"
+                                    data-section="<?= $this->e($sectionName) ?>"
                                     data-row-number="<?= $rowNumber ?>"
                                     data-response="<?= $this->e($action) ?>"
                                     data-actionable="1"
@@ -910,11 +1007,20 @@ final class DashboardDecisionViews
                                             <span class="response-na">—</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td class="col-section">
+                                        <?php if ($sectionName !== ''): ?>
+                                            <span class="action-section-label"><?= $this->e($sectionName) ?></span>
+                                        <?php else: ?>
+                                            <span class="response-na">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <strong><?= $this->e((string) ($row['check'] ?? '')) ?></strong>
-                                        <div class="subtext"><?= $this->e((string) ($row['section'] ?? '')) ?><?php if (($row['owner'] ?? '') !== ''): ?> · <?= $this->e((string) $row['owner']) ?><?php endif; ?></div>
+                                        <?php if ($owner !== ''): ?>
+                                            <div class="subtext"><?= $this->e($owner) ?></div>
+                                        <?php endif; ?>
                                     </td>
-                                    <td><?= $this->e($sourceLabel) ?></td>
+                                    <td><span class="action-source-pill action-source-pill-<?= $itemType === 'due_diligence' ? 'diligence' : 'architecture' ?>"><?= $this->e($sourceLabel) ?></span></td>
                                     <td><?= $this->e((string) ($row['status'] ?? '')) ?></td>
                                     <td><?= $this->e((string) ($row['risk_level'] ?? '')) ?></td>
                                     <td class="response-cell">
@@ -924,13 +1030,10 @@ final class DashboardDecisionViews
                                             ? (mb_strlen($comment) > 90 ? mb_substr($comment, 0, 87) . '…' : $comment)
                                             : '';
                                         $checkTitle = (string) ($row['check'] ?? '');
-                                        $sectionSub = (string) ($row['section'] ?? '');
-                                        $owner = (string) ($row['owner'] ?? '');
+                                        $sectionSub = $sectionName;
                                         if ($owner !== '') {
                                             $sectionSub .= ($sectionSub !== '' ? ' · ' : '') . $owner;
                                         }
-                                        $sourceLabel = $itemType === 'due_diligence' ? 'Due diligence' : 'Architecture';
-                                        $sectionName = (string) ($row['section'] ?? '');
                                         $notes = (string) ($row['notes'] ?? '');
                                         $mitigation = (string) ($row['mitigation'] ?? '');
                                         $timeline = (string) ($row['remediation_timeline'] ?? '');

@@ -550,6 +550,7 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                         <table class="project-table template-table">
                             <thead>
                                 <tr>
+                                    <th scope="col" class="col-row-num">#</th>
                                     <th scope="col">🏷️ Name</th>
                                     <th scope="col">📗 Workbook</th>
                                     <th scope="col">🤖 AI prompt</th>
@@ -561,13 +562,17 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                             <tbody>
                                 <?php foreach ($templateRows as $index => $row): ?>
                                     <?php
+                                    $templateNumber = $index + 1;
                                     $uploader = $row['uploaded_by_display_name'] !== ''
                                         ? $row['uploaded_by_display_name']
                                         : ($row['uploaded_by_username'] !== '' ? $row['uploaded_by_username'] : '—');
                                     $hasPrompt = $row['prompt_path'] !== '' && is_file($row['prompt_path']);
                                     $toneClass = ['is-tone-teal', 'is-tone-sky', 'is-tone-violet', 'is-tone-mint', 'is-tone-amber'][$index % 5];
                                     ?>
-                                    <tr class="template-row <?= $toneClass ?>" data-template-row="<?= (int) $row['id'] ?>">
+                                    <tr class="template-row <?= $toneClass ?>" data-template-row="<?= (int) $row['id'] ?>" data-row-number="<?= $templateNumber ?>">
+                                        <td class="col-row-num">
+                                            <span class="row-number" title="Template <?= $templateNumber ?>">#<?= $templateNumber ?></span>
+                                        </td>
                                         <td class="project-table-name">
                                             <div class="template-name-display">
                                                 <strong><?= e($row['name']) ?></strong>
@@ -625,7 +630,7 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                         </td>
                                     </tr>
                                     <tr class="template-edit-row" id="template-edit-<?= (int) $row['id'] ?>" hidden>
-                                        <td colspan="6">
+                                        <td colspan="7">
                                             <form
                                                 method="post"
                                                 enctype="multipart/form-data"

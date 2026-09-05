@@ -19,7 +19,8 @@ final class UserRepository
     {
         $statement = $this->pdo->prepare(
             'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at
+                    auth_source, display_name, notes, last_login, created_at,
+                    created_by_user_id, created_by_username
              FROM users WHERE id = :id LIMIT 1'
         );
         $statement->execute([':id' => $id]);
@@ -33,7 +34,8 @@ final class UserRepository
     {
         $statement = $this->pdo->prepare(
             'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at
+                    auth_source, display_name, notes, last_login, created_at,
+                    created_by_user_id, created_by_username
              FROM users
              WHERE LOWER(username) = LOWER(:username) OR LOWER(email) = LOWER(:email)
              LIMIT 1'
@@ -52,7 +54,8 @@ final class UserRepository
     {
         $statement = $this->pdo->query(
             'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at
+                    auth_source, display_name, notes, last_login, created_at,
+                    created_by_user_id, created_by_username
              FROM users
              ORDER BY is_admin DESC, username COLLATE NOCASE ASC'
         );
@@ -68,6 +71,95 @@ final class UserRepository
         }
 
         return $users;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function searchUsers(string $query = '', int $page = 1, int $perPage = 25): array
+    {
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $offset = ($page - 1) * $perPage;
+        [$whereSql, $params] = $this->userSearchWhere($query);
+
+        $sql = 'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
+                    auth_source, display_name, notes, last_login, created_at,
+                    created_by_user_id, created_by_username
+             FROM users
+             ' . $whereSql . '
+             ORDER BY is_admin DESC, username COLLATE NOCASE ASC
+             LIMIT :limit OFFSET :offset';
+        $statement = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $statement->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $statement->execute();
+
+        $users = [];
+        foreach ($statement->fetchAll() as $row) {
+            if (is_array($row)) {
+                $users[] = $this->normalize($row);
+            }
+        }
+
+        return $users;
+    }
+
+    public function countSearch(string $query = ''): int
+    {
+        [$whereSql, $params] = $this->userSearchWhere($query);
+        $statement = $this->pdo->prepare('SELECT COUNT(*) FROM users ' . $whereSql);
+        foreach ($params as $key => $value) {
+            $statement->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $statement->execute();
+
+        return (int) $statement->fetchColumn();
+    }
+
+    /**
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function userSearchWhere(string $query): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return ['', []];
+        }
+
+        $like = '%' . $query . '%';
+        $conditions = [
+            'username LIKE :q',
+            'email LIKE :q',
+            'IFNULL(display_name, \'\') LIKE :q',
+            'IFNULL(notes, \'\') LIKE :q',
+            'auth_source LIKE :q',
+            'IFNULL(last_login, \'\') LIKE :q',
+            'IFNULL(created_at, \'\') LIKE :q',
+            'IFNULL(created_by_username, \'\') LIKE :q',
+        ];
+        $params = [':q' => $like];
+
+        $normalized = strtolower($query);
+        if (in_array($normalized, ['admin', 'administrator'], true)) {
+            $conditions[] = 'is_admin = 1';
+        } elseif (in_array($normalized, ['user', 'users'], true)) {
+            $conditions[] = 'is_admin = 0';
+        } elseif (in_array($normalized, ['pending', 'unapproved'], true)) {
+            $conditions[] = 'is_approved = 0';
+        } elseif (in_array($normalized, ['active', 'approved'], true)) {
+            $conditions[] = '(is_approved = 1 AND is_disabled = 0)';
+        } elseif (in_array($normalized, ['disabled', 'inactive'], true)) {
+            $conditions[] = 'is_disabled = 1';
+        } elseif (in_array($normalized, ['ldap', 'local'], true)) {
+            $conditions[] = 'LOWER(auth_source) = :auth_exact';
+            $params[':auth_exact'] = $normalized;
+        }
+
+        return ['WHERE (' . implode(' OR ', $conditions) . ')', $params];
     }
 
     public function count(): int
@@ -119,13 +211,17 @@ final class UserRepository
         bool $isAdmin,
         bool $isApproved,
         string $displayName = '',
-        string $notes = ''
+        string $notes = '',
+        ?int $createdByUserId = null,
+        string $createdByUsername = ''
     ): int {
         $statement = $this->pdo->prepare(
             'INSERT INTO users (username, email, password_hash, is_admin, is_approved, is_disabled,
-                                auth_source, display_name, notes, created_at)
+                                auth_source, display_name, notes, created_at,
+                                created_by_user_id, created_by_username)
              VALUES (:username, :email, :password_hash, :is_admin, :is_approved, 0,
-                     \'local\', :display_name, :notes, datetime(\'now\'))'
+                     \'local\', :display_name, :notes, datetime(\'now\'),
+                     :created_by_user_id, :created_by_username)'
         );
         $statement->execute([
             ':username' => $username,
@@ -135,6 +231,8 @@ final class UserRepository
             ':is_approved' => $isApproved ? 1 : 0,
             ':display_name' => $displayName,
             ':notes' => $notes,
+            ':created_by_user_id' => $createdByUserId,
+            ':created_by_username' => $createdByUsername,
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -144,8 +242,14 @@ final class UserRepository
      * @param array{username: string, email: string, display_name?: string} $ldapUser
      * @return array<string, mixed>
      */
-    public function upsertLdapUser(array $ldapUser, bool $autoCreate, bool $autoUpdate, bool $autoApprove): array
-    {
+    public function upsertLdapUser(
+        array $ldapUser,
+        bool $autoCreate,
+        bool $autoUpdate,
+        bool $autoApprove,
+        ?int $createdByUserId = null,
+        string $createdByUsername = ''
+    ): array {
         $existing = $this->findByUsernameOrEmail($ldapUser['username']);
         if ($existing === null && $ldapUser['email'] !== '') {
             $existing = $this->findByUsernameOrEmail($ldapUser['email']);
@@ -183,12 +287,18 @@ final class UserRepository
             throw new RuntimeException('Unable to provision the LDAP user.');
         }
 
+        if ($createdByUsername === '') {
+            $createdByUsername = 'LDAP login';
+        }
+
         $email = $this->uniqueEmail((string) $ldapUser['email']);
         $statement = $this->pdo->prepare(
             'INSERT INTO users (username, email, password_hash, is_admin, is_approved, is_disabled,
-                                auth_source, display_name, notes, created_at)
+                                auth_source, display_name, notes, created_at,
+                                created_by_user_id, created_by_username)
              VALUES (:username, :email, :password_hash, 0, :is_approved, 0,
-                     \'ldap\', :display_name, \'\', datetime(\'now\'))'
+                     \'ldap\', :display_name, \'\', datetime(\'now\'),
+                     :created_by_user_id, :created_by_username)'
         );
         $statement->execute([
             ':username' => $ldapUser['username'],
@@ -196,6 +306,8 @@ final class UserRepository
             ':password_hash' => $placeholder,
             ':is_approved' => $autoApprove ? 1 : 0,
             ':display_name' => (string) ($ldapUser['display_name'] ?? ''),
+            ':created_by_user_id' => $createdByUserId,
+            ':created_by_username' => $createdByUsername,
         ]);
 
         $created = $this->findById((int) $this->pdo->lastInsertId());
@@ -286,20 +398,73 @@ final class UserRepository
     /** @return list<array<string, mixed>> */
     public function recentAudit(int $limit = 50): array
     {
-        $limit = max(1, min(200, $limit));
-        $statement = $this->pdo->query(
-            'SELECT id, event, actor_id, actor_username, target_user_id, target_username, details, ip_address, created_at
-             FROM user_audit_log
-             ORDER BY id DESC
-             LIMIT ' . $limit
-        );
-        if ($statement === false) {
-            return [];
-        }
+        return $this->searchAudit('', 1, $limit);
+    }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function searchAudit(string $query = '', int $page = 1, int $perPage = 25): array
+    {
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $offset = ($page - 1) * $perPage;
+        [$whereSql, $params] = $this->auditSearchWhere($query);
+
+        $sql = 'SELECT id, event, actor_id, actor_username, target_user_id, target_username, details, ip_address, created_at
+             FROM user_audit_log
+             ' . $whereSql . '
+             ORDER BY id DESC
+             LIMIT :limit OFFSET :offset';
+        $statement = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $statement->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $statement->execute();
         $rows = $statement->fetchAll();
 
         return is_array($rows) ? $rows : [];
+    }
+
+    public function countAudit(string $query = ''): int
+    {
+        [$whereSql, $params] = $this->auditSearchWhere($query);
+        $statement = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM user_audit_log ' . $whereSql
+        );
+        foreach ($params as $key => $value) {
+            $statement->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $statement->execute();
+
+        return (int) $statement->fetchColumn();
+    }
+
+    /**
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function auditSearchWhere(string $query): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return ['', []];
+        }
+
+        $like = '%' . $query . '%';
+
+        return [
+            'WHERE (
+                event LIKE :q
+                OR IFNULL(actor_username, \'\') LIKE :q
+                OR IFNULL(target_username, \'\') LIKE :q
+                OR IFNULL(ip_address, \'\') LIKE :q
+                OR IFNULL(details, \'\') LIKE :q
+                OR IFNULL(created_at, \'\') LIKE :q
+            )',
+            [':q' => $like],
+        ];
     }
 
     private function uniqueEmail(string $email, ?int $exceptId = null): string
@@ -333,6 +498,11 @@ final class UserRepository
         $row['auth_source'] = (string) ($row['auth_source'] ?? 'local');
         $row['display_name'] = (string) ($row['display_name'] ?? '');
         $row['notes'] = (string) ($row['notes'] ?? '');
+        $row['created_at'] = (string) ($row['created_at'] ?? '');
+        $row['created_by_user_id'] = isset($row['created_by_user_id']) && $row['created_by_user_id'] !== null && $row['created_by_user_id'] !== ''
+            ? (int) $row['created_by_user_id']
+            : null;
+        $row['created_by_username'] = (string) ($row['created_by_username'] ?? '');
 
         return $row;
     }

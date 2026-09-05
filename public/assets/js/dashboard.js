@@ -2378,6 +2378,131 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const actionTabButtons = Array.from(document.querySelectorAll('.action-tab'));
     const actionPanels = Array.from(document.querySelectorAll('.action-panel'));
+    const actionSourceButtons = Array.from(document.querySelectorAll('.action-source-tab'));
+    const actionSectionChips = Array.from(document.querySelectorAll('.action-section-chip'));
+    let activeActionSource = 'all';
+    let activeActionSection = '';
+
+    const syncActionSectionChips = () => {
+        const filters = document.getElementById('action-section-filters');
+        if (!filters) {
+            return;
+        }
+        let visibleChipCount = 0;
+        actionSectionChips.forEach((chip) => {
+            const chipSource = chip.dataset.actionSectionSource || 'all';
+            const isAllChip = (chip.dataset.actionSection || '') === '';
+            const show = isAllChip
+                || activeActionSource === 'all'
+                || chipSource === activeActionSource;
+            chip.hidden = !show;
+            if (show && !isAllChip) {
+                visibleChipCount += 1;
+            }
+            const isActive = isAllChip
+                ? activeActionSection === ''
+                : activeActionSection !== '' && chip.dataset.actionSection === activeActionSection;
+            chip.classList.toggle('is-active', isActive);
+        });
+        filters.hidden = visibleChipCount === 0;
+        const label = filters.querySelector('.action-section-filters-label');
+        if (label) {
+            label.textContent = activeActionSource === 'due_diligence' ? 'Categories' : 'Sections';
+        }
+    };
+
+    const applyActionSourceFilter = (source = 'all', section = activeActionSection) => {
+        activeActionSource = source || 'all';
+        activeActionSection = section || '';
+
+        // Drop section filter if it no longer belongs to the selected source.
+        if (activeActionSection !== '') {
+            const stillValid = actionSectionChips.some((chip) => {
+                const chipSection = chip.dataset.actionSection || '';
+                const chipSource = chip.dataset.actionSectionSource || 'all';
+                return chipSection === activeActionSection
+                    && (activeActionSource === 'all' || chipSource === activeActionSource);
+            });
+            if (!stillValid) {
+                activeActionSection = '';
+            }
+        }
+
+        actionSourceButtons.forEach((button) => {
+            const isActive = (button.dataset.actionSource || 'all') === activeActionSource;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        syncActionSectionChips();
+
+        const counts = { risks: 0, gaps: 0, tbd: 0 };
+        ['risks', 'gaps', 'tbd'].forEach((scope) => {
+            const table = document.getElementById(`action-${scope}-table`);
+            if (!table) {
+                return;
+            }
+            const rows = Array.from(table.querySelectorAll('tbody tr[data-item-type]'));
+            let visible = 0;
+            rows.forEach((row) => {
+                const itemType = row.dataset.itemType || 'architecture';
+                const rowSection = row.dataset.section || '';
+                const sourceMatch = activeActionSource === 'all' || itemType === activeActionSource;
+                const sectionMatch = activeActionSection === '' || rowSection === activeActionSection;
+                const show = sourceMatch && sectionMatch;
+                row.classList.toggle('hidden', !show);
+                if (show) {
+                    visible += 1;
+                }
+            });
+            counts[scope] = visible;
+
+            const countEl = document.querySelector(`[data-workbench-count="${scope}"]`);
+            if (countEl) {
+                countEl.textContent = `${visible} item${visible === 1 ? '' : 's'}`;
+            }
+            const tabCount = document.querySelector(`[data-action-count="${scope}"]`);
+            if (tabCount) {
+                tabCount.textContent = String(visible);
+            }
+            const emptyEl = document.querySelector(`[data-action-source-empty="${scope}"]`);
+            const helpEl = table.closest('.table-card')?.querySelector('.panel-help');
+            const bulkBar = table.closest('.table-card')?.querySelector('.bulk-response-bar');
+            const scroll = table.closest('.table-scroll');
+            const hasAnyRows = rows.length > 0;
+            if (emptyEl) {
+                emptyEl.hidden = !(hasAnyRows && visible === 0);
+            }
+            if (helpEl) {
+                helpEl.hidden = hasAnyRows && visible === 0;
+            }
+            if (bulkBar) {
+                bulkBar.hidden = hasAnyRows && visible === 0;
+            }
+            if (scroll) {
+                scroll.hidden = hasAnyRows && visible === 0;
+            }
+        });
+
+        window.refreshBulkSelectionBars?.();
+    };
+
+    const writeActionFilterUrl = (tabName) => {
+        const next = new URLSearchParams(window.location.search);
+        next.set('tab', 'actions');
+        next.set('action_tab', tabName || document.querySelector('.action-tab.is-active')?.dataset.actionTab || 'risks');
+        if (activeActionSource && activeActionSource !== 'all') {
+            next.set('action_source', activeActionSource);
+        } else {
+            next.delete('action_source');
+        }
+        if (activeActionSection) {
+            next.set('action_section', activeActionSection);
+        } else {
+            next.delete('action_section');
+        }
+        window.history.replaceState({}, '', `${window.location.pathname}?${next.toString()}`);
+    };
+
     const activateActionTab = (tabName, pushState = true) => {
         let target = tabName || 'risks';
         const hasTab = actionTabButtons.some((button) => button.dataset.actionTab === target);
@@ -2395,21 +2520,39 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.hidden = !isActive;
         });
         if (pushState) {
-            const next = new URLSearchParams(window.location.search);
-            next.set('tab', 'actions');
-            next.set('action_tab', target);
-            window.history.replaceState({}, '', `${window.location.pathname}?${next.toString()}`);
+            writeActionFilterUrl(target);
         }
         window.requestAnimationFrame(() => window.syncStickyOffsets?.());
         window.refreshBulkSelectionBars?.();
     };
     window.activateActionTab = activateActionTab;
+    window.applyActionSourceFilter = applyActionSourceFilter;
 
     actionTabButtons.forEach((button) => {
         button.addEventListener('click', () => {
             const scrollY = window.scrollY;
             activateActionTab(button.dataset.actionTab || 'risks');
             button.focus({ preventScroll: true });
+            window.scrollTo({ top: scrollY, left: window.scrollX, behavior: 'instant' });
+        });
+    });
+
+    actionSourceButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const scrollY = window.scrollY;
+            applyActionSourceFilter(button.dataset.actionSource || 'all', activeActionSection);
+            writeActionFilterUrl(document.querySelector('.action-tab.is-active')?.dataset.actionTab || 'risks');
+            button.focus({ preventScroll: true });
+            window.scrollTo({ top: scrollY, left: window.scrollX, behavior: 'instant' });
+        });
+    });
+
+    actionSectionChips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+            const scrollY = window.scrollY;
+            applyActionSourceFilter(activeActionSource, chip.dataset.actionSection || '');
+            writeActionFilterUrl(document.querySelector('.action-tab.is-active')?.dataset.actionTab || 'risks');
+            chip.focus({ preventScroll: true });
             window.scrollTo({ top: scrollY, left: window.scrollX, behavior: 'instant' });
         });
     });
@@ -2836,6 +2979,7 @@ document.addEventListener('DOMContentLoaded', () => {
             actionTab = 'risks';
         }
         activateActionTab(actionTab, false);
+        applyActionSourceFilter(params.get('action_source') || 'all', params.get('action_section') || '');
         if (window.location.hash === '#version-history') {
             document.getElementById('version-history')?.scrollIntoView({ behavior: 'smooth' });
         }
@@ -2848,6 +2992,13 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (params.get('action_tab')) {
         activateTab('actions', false);
         activateActionTab(params.get('action_tab') || 'risks', false);
+        applyActionSourceFilter(params.get('action_source') || 'all', params.get('action_section') || '');
+    } else if ((params.get('action_source') || params.get('action_section')) && actionSourceButtons.length) {
+        activateTab('actions', false);
+        activateActionTab(params.get('action_tab') || 'risks', false);
+        applyActionSourceFilter(params.get('action_source') || 'all', params.get('action_section') || '');
+    } else if (actionSourceButtons.length) {
+        applyActionSourceFilter('all', '');
     }
 
     if (window.location.hash === '#final-evaluation' && params.get('tab') !== 'actions') {

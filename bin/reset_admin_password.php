@@ -35,7 +35,7 @@ $existing = $users->findByUsernameOrEmail($username);
 
 if ($existing === null) {
     $email = str_contains($username, '@') ? $username : $username . '@localhost';
-    $id = $users->createLocal($username, $email, $hash, true, true, $username, 'Recovered via CLI');
+    $id = $users->createLocal($username, $email, $hash, true, true, $username, 'Recovered via CLI', null, 'CLI');
     $users->logAudit('user.cli_bootstrap', $id, $username, $id, $username, ['via' => 'reset_admin_password']);
     echo "Created administrator {$username} (id {$id})." . PHP_EOL;
     exit(0);

@@ -81,7 +81,8 @@ final class AdaptiveDashboardViews
         array $workbook,
         callable $renderDonut,
         callable $renderLegend,
-        callable $renderPanelIntro
+        callable $renderPanelIntro,
+        bool $isActive = false
     ): string {
         $router = array_values($workbook['router'] ?? []);
         $decisionCounts = [
@@ -148,14 +149,14 @@ final class AdaptiveDashboardViews
 
         ob_start();
         ?>
-        <div class="dash-panel dash-panel-theme-router" data-panel="router" hidden>
+        <div class="dash-panel dash-panel-theme-router<?= $isActive ? ' is-active' : '' ?>" data-panel="router"<?= $isActive ? '' : ' hidden' ?>>
             <div class="dash-panel-intro router-intro-hero">
                 <div class="dash-panel-intro-copy">
                     <span class="dash-panel-intro-icon" aria-hidden="true">🧭</span>
                     <div>
                         <div class="eyebrow">Adaptive routing</div>
                         <h2>Question Router</h2>
-                        <p>Scenario catalog with routing decisions. Selected and conditional scenarios drive the assessment; excluded scenarios are out of scope.</p>
+                        <p>Start here: scenario catalog with routing decisions. Selected and conditional scenarios drive Material findings and Due diligence; excluded scenarios are out of scope.</p>
                     </div>
                 </div>
                 <div class="router-coverage-meter" aria-label="Routing coverage">
