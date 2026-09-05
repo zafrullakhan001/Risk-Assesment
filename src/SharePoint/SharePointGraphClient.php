@@ -12,8 +12,8 @@ use RuntimeException;
 final class SharePointGraphClient
 {
     public const SOURCE_KEY = SharePointCatalogRepository::SOURCE_DEFAULT;
-    public const MAX_ITEMS = 5000;
-    public const MAX_DEPTH = 8;
+    public const MAX_ITEMS = 25000;
+    public const MAX_DEPTH = 30;
 
     private const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
     private const TOKEN_SCOPE = 'https://graph.microsoft.com/.default';
@@ -27,7 +27,7 @@ final class SharePointGraphClient
     ) {
     }
 
-    /** @return array{tenant_id: string, client_id: string, has_secret: bool, site_host: string, site_path: string, folder_path: string, folder_url: string, last_synced_at: string, last_sync_status: string, last_sync_error: string, last_item_count: int} */
+    /** @return array{tenant_id: string, client_id: string, has_secret: bool, enable_one_click_sync: bool, enable_console_sync: bool, site_host: string, site_path: string, folder_path: string, folder_url: string, last_synced_at: string, last_sync_status: string, last_sync_error: string, last_item_count: int} */
     public function status(): array
     {
         $siteHost = trim($this->settings->get('sharepoint_site_host', 'ahsonline.sharepoint.com'))
@@ -50,6 +50,8 @@ final class SharePointGraphClient
             'tenant_id' => trim($this->settings->get('sharepoint_tenant_id', '')),
             'client_id' => trim($this->settings->get('sharepoint_client_id', '')),
             'has_secret' => $this->clientSecret() !== '',
+            'enable_one_click_sync' => $this->settingEnabled('sharepoint_enable_one_click_sync', true),
+            'enable_console_sync' => $this->settingEnabled('sharepoint_enable_console_sync', true),
             'site_host' => $siteHost,
             'site_path' => $sitePath,
             'folder_path' => $folderPath,
@@ -66,6 +68,8 @@ final class SharePointGraphClient
      *   sharepoint_tenant_id?: string,
      *   sharepoint_client_id?: string,
      *   sharepoint_client_secret?: string|null,
+     *   sharepoint_enable_one_click_sync?: bool|string|int,
+     *   sharepoint_enable_console_sync?: bool|string|int,
      *   sharepoint_site_host?: string,
      *   sharepoint_site_path?: string,
      *   sharepoint_folder_path?: string,
@@ -122,6 +126,19 @@ final class SharePointGraphClient
             );
         }
 
+        if (array_key_exists('sharepoint_enable_one_click_sync', $input)) {
+            $this->settings->set(
+                'sharepoint_enable_one_click_sync',
+                $this->toBool($input['sharepoint_enable_one_click_sync']) ? '1' : '0'
+            );
+        }
+        if (array_key_exists('sharepoint_enable_console_sync', $input)) {
+            $this->settings->set(
+                'sharepoint_enable_console_sync',
+                $this->toBool($input['sharepoint_enable_console_sync']) ? '1' : '0'
+            );
+        }
+
         if (!array_key_exists('sharepoint_client_secret', $input)) {
             return;
         }
@@ -147,7 +164,14 @@ final class SharePointGraphClient
     public function syncFromPost(array $post): array
     {
         $this->applyPostedCredentials($post);
-        return $this->sync();
+        $sourceKey = trim((string) ($post['source'] ?? $post['source_key'] ?? self::SOURCE_KEY));
+
+        return $this->sync([
+            'source_key' => $sourceKey !== '' ? $sourceKey : self::SOURCE_KEY,
+            'site_host' => (string) ($post['sharepoint_site_host'] ?? ''),
+            'site_path' => (string) ($post['sharepoint_site_path'] ?? ''),
+            'folder_path' => (string) ($post['sharepoint_folder_path'] ?? ''),
+        ]);
     }
 
     /** @param array<string, mixed> $post */
@@ -184,6 +208,29 @@ final class SharePointGraphClient
         );
     }
 
+    private function toBool(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value)) {
+            return (int) $value !== 0;
+        }
+        $normalized = strtolower(trim((string) $value));
+
+        return !in_array($normalized, ['', '0', 'false', 'no', 'off'], true);
+    }
+
+    private function settingEnabled(string $key, bool $default = true): bool
+    {
+        $raw = trim($this->settings->get($key, $default ? '1' : '0'));
+        if ($raw === '') {
+            return $default;
+        }
+
+        return $this->toBool($raw);
+    }
+
     public function clearSecret(): void
     {
         $this->settings->delete('sharepoint_client_secret');
@@ -217,26 +264,44 @@ final class SharePointGraphClient
     }
 
     /**
-     * Sync the configured folder tree into the local catalog.
+     * Sync a SharePoint folder tree into the local catalog.
      *
-     * @return array{ok: bool, count: int, projects: int, message: string}
+     * @param array{
+     *   source_key?: string,
+     *   site_host?: string,
+     *   site_path?: string,
+     *   folder_path?: string,
+     *   access_token?: string
+     * }|null $options
+     * @return array{ok: bool, count: int, projects: int, message: string, source_key: string}
      */
-    public function sync(): array
+    public function sync(?array $options = null): array
     {
-        @set_time_limit(180);
+        @set_time_limit(600);
         ignore_user_abort(true);
 
+        $options = $options ?? [];
+        $sourceKey = trim((string) ($options['source_key'] ?? self::SOURCE_KEY));
+        if ($sourceKey === '') {
+            $sourceKey = self::SOURCE_KEY;
+        }
+        $userToken = trim((string) ($options['access_token'] ?? ''));
+
         try {
-            $token = $this->acquireToken();
+            $token = $userToken !== '' ? $userToken : $this->acquireToken();
             $status = $this->status();
-            $site = $this->resolveSite($status['site_host'], $status['site_path'], $token);
+            $siteHost = trim((string) ($options['site_host'] ?? $status['site_host'])) ?: $status['site_host'];
+            $sitePath = $this->normalizeSitePath((string) ($options['site_path'] ?? $status['site_path']));
+            $folderPath = trim((string) ($options['folder_path'] ?? $status['folder_path'])) ?: $status['folder_path'];
+
+            $site = $this->resolveSite($siteHost, $sitePath, $token);
             $siteId = (string) ($site['id'] ?? '');
             if ($siteId === '') {
                 throw new RuntimeException('SharePoint site id was empty.');
             }
 
-            $folderPath = $this->encodeDrivePath($status['folder_path']);
-            $rootChildren = $this->listChildren($siteId, $folderPath, $token);
+            $encodedFolder = $this->encodeDrivePath($folderPath);
+            $rootChildren = $this->listChildren($siteId, $encodedFolder, $token);
             $items = [];
             $this->walkChildren(
                 $siteId,
@@ -245,23 +310,28 @@ final class SharePointGraphClient
                 '',
                 1,
                 $token,
-                $items
+                $items,
+                $folderPath
             );
 
-            $count = $this->catalog->replaceForSource(self::SOURCE_KEY, $items);
-            $projects = $this->catalog->countProjects(self::SOURCE_KEY);
+            $count = $this->catalog->replaceForSource($sourceKey, $items);
+            $projects = $this->catalog->countProjects($sourceKey);
 
             $this->settings->set('sharepoint_last_synced_at', date('Y-m-d H:i:s'));
             $this->settings->set('sharepoint_last_sync_status', 'ok');
             $this->settings->set('sharepoint_last_sync_error', '');
             $this->settings->set('sharepoint_last_item_count', (string) $count);
 
+            $via = $userToken !== '' ? 'Microsoft login' : 'Graph app';
+
             return [
                 'ok' => true,
                 'count' => $count,
                 'projects' => $projects,
+                'source_key' => $sourceKey,
                 'message' => 'Synced ' . $count . ' item' . ($count === 1 ? '' : 's')
-                    . ' across ' . $projects . ' project folder' . ($projects === 1 ? '' : 's') . '.',
+                    . ' across ' . $projects . ' project folder' . ($projects === 1 ? '' : 's')
+                    . ' via ' . $via . '.',
             ];
         } catch (\Throwable $exception) {
             $this->settings->set('sharepoint_last_synced_at', date('Y-m-d H:i:s'));
@@ -282,7 +352,8 @@ final class SharePointGraphClient
         string $relativePrefix,
         int $depth,
         string $token,
-        array &$items
+        array &$items,
+        string $rootFolderPath
     ): void {
         foreach ($children as $child) {
             if (count($items) >= self::MAX_ITEMS) {
@@ -302,18 +373,11 @@ final class SharePointGraphClient
             $itemType = $isFolder ? 'folder' : 'file';
             $parentKey = trim((string) (($child['parentReference']['id'] ?? '') ?: ''));
 
-            // Depth 1 under the configured root: each folder is a project.
             $thisProject = $projectName;
             $relativePath = $relativePrefix === '' ? $name : ($relativePrefix . '/' . $name);
             if ($depth === 1) {
-                if (!$isFolder) {
-                    // Loose files at root of Architectural Projects — skip or treat as own project.
-                    $thisProject = $name;
-                    $relativePath = $name;
-                } else {
-                    $thisProject = $name;
-                    $relativePath = $name;
-                }
+                $thisProject = $name;
+                $relativePath = $name;
             }
 
             $items[] = [
@@ -331,9 +395,7 @@ final class SharePointGraphClient
 
             if ($isFolder && $depth < self::MAX_DEPTH) {
                 $childPath = $relativePrefix === '' ? $name : ($relativePrefix . '/' . $name);
-                // Path from drive root of the configured folder.
-                $status = $this->status();
-                $fullPath = rtrim($status['folder_path'], '/') . '/' . $childPath;
+                $fullPath = rtrim($rootFolderPath, '/') . '/' . $childPath;
                 $grandChildren = $this->listChildren($siteId, $this->encodeDrivePath($fullPath), $token);
                 $this->walkChildren(
                     $siteId,
@@ -342,7 +404,8 @@ final class SharePointGraphClient
                     $relativePath,
                     $depth + 1,
                     $token,
-                    $items
+                    $items,
+                    $rootFolderPath
                 );
             }
         }
@@ -525,7 +588,7 @@ final class SharePointGraphClient
         $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 60,
+            CURLOPT_TIMEOUT => 120,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_CUSTOMREQUEST => strtoupper($method),
             // Match GitHubUpdater: XAMPP often lacks a CA bundle for peer verification.

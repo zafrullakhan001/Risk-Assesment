@@ -1,5 +1,6 @@
 /**
- * Admin UI for MFA browser sync (Prepare → open SharePoint → paste console script).
+ * Admin UI for MFA browser sync.
+ * One click: prepare token → copy console script → open SharePoint folder.
  */
 (() => {
   const root = document.getElementById('sharepoint-mfa-sync');
@@ -18,7 +19,7 @@
   const setStatus = (text, ok) => {
     if (!statusEl) return;
     statusEl.textContent = text;
-    statusEl.classList.toggle('is-ok', !!ok);
+    statusEl.classList.toggle('is-ok', ok === true);
     statusEl.classList.toggle('is-error', ok === false);
   };
 
@@ -27,6 +28,21 @@
     root.getAttribute('data-source-key') ||
     (sourceKeyInput && sourceKeyInput.value) ||
     '';
+
+  const copyScript = async () => {
+    if (!lastScript) return false;
+    try {
+      await navigator.clipboard.writeText(lastScript);
+      return true;
+    } catch {
+      if (scriptEl) {
+        scriptEl.hidden = false;
+        scriptEl.focus();
+        scriptEl.select();
+      }
+      return false;
+    }
+  };
 
   const prepareForSource = async (sourceKey, triggerBtn) => {
     const key = String(sourceKey || '').trim();
@@ -37,7 +53,7 @@
 
     if (triggerBtn) triggerBtn.disabled = true;
     if (prepareBtn && triggerBtn !== prepareBtn) prepareBtn.disabled = true;
-    setStatus(`Preparing MFA sync token for “${key}”…`);
+    setStatus(`Preparing console sync for “${key}”…`);
 
     try {
       const body = new FormData();
@@ -75,14 +91,24 @@
       }
       if (copyBtn) copyBtn.disabled = false;
 
+      const copied = await copyScript();
       const mins = Math.max(1, Math.round(((payload.expires_at || 0) * 1000 - Date.now()) / 60000));
       const title = payload.title ? ` (${payload.title})` : '';
-      setStatus(
-        `Ready${title} for ${mins} min. Open SharePoint (MFA if needed), then Copy console script → paste in F12 Console. Deep-crawls all subfolders (Visio/PDF/etc). “Promise pending” is normal — wait for ✅ Sync complete.`,
-        true
-      );
+
       if (payload.folder_url) {
         window.open(payload.folder_url, '_blank', 'noopener');
+      }
+
+      if (copied) {
+        setStatus(
+          `✅ Script copied${title}. SharePoint opened — press F12 → Console → Ctrl+V → Enter. Token valid ~${mins} min. Wait for ✅ Sync complete.`,
+          true
+        );
+      } else {
+        setStatus(
+          `Ready${title}. Clipboard blocked — click “Copy console script”, then paste in SharePoint F12 Console. Token ~${mins} min.`,
+          true
+        );
       }
     } catch (error) {
       setStatus(error.message || 'Prepare failed.', false);
@@ -104,12 +130,12 @@
 
   copyBtn?.addEventListener('click', async () => {
     if (!lastScript) return;
-    try {
-      await navigator.clipboard.writeText(lastScript);
-      setStatus('Console script copied. Paste it into the SharePoint tab’s F12 Console and press Enter.', true);
-    } catch {
-      scriptEl?.select();
-      setStatus('Select the script below, copy it (Ctrl+C), paste into the SharePoint Console.', true);
-    }
+    const copied = await copyScript();
+    setStatus(
+      copied
+        ? 'Console script copied again. Paste into the SharePoint tab’s F12 Console and press Enter.'
+        : 'Select the script below, copy it (Ctrl+C), paste into the SharePoint Console.',
+      true
+    );
   });
 })();

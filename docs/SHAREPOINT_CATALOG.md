@@ -9,59 +9,97 @@ Default library in this app:
 
 ---
 
-## 0. Resync with your SharePoint login (MFA) — recommended
+## 0. One-click Sync (Microsoft login) — set this up first
 
-Your PHP server cannot see SharePoint cookies. Use the admin helper on **SharePoint catalog**:
+Console sync works without Entra. **One-click Sync** needs a small Entra app (no client secret).
 
-1. Sign in as **admin**.
-2. Paste the folder URL into **Registered SharePoint folder URL** (or keep the saved one) → **Save settings**.
-3. Click **🔐 Prepare MFA sync** (opens the folder; creates a 30‑minute token).
-4. Complete MFA on the SharePoint tab if prompted.
-5. Click **📋 Copy console script**.
-6. On the SharePoint tab: **F12** → **Console** → paste → **Enter**.
-7. When the alert says sync complete, refresh the catalog page.
+### A. Create / open the Entra app
 
-This replaces the local catalog with a **deep crawl** of the registered folder (every subfolder, paginated file lists — Visio, PDF, Office, etc.).
+1. Sign in: [https://entra.microsoft.com](https://entra.microsoft.com) (or ask IT if you cannot create apps).
+2. **Identity** → **Applications** → **App registrations** → **New registration**.
+3. Name: `RiskRegister SharePoint Catalog`.
+4. Supported account types: **Accounts in this organizational directory only** (single tenant).
+5. Leave Redirect URI blank for now → **Register**.
+6. On the app **Overview** page, copy:
+   - **Application (client) ID** → this is Client ID
+   - **Directory (tenant) ID** → this is Tenant ID  
+
+   AdventHealth tenant is often: `6ac36678-7785-476f-be03-b68b403734c2` (confirm on Overview).
+
+### B. Add SPA redirect (required for the Sync popup)
+
+1. App → **Authentication** → **Add a platform** → **Single-page application**.
+2. Redirect URI (must match the browser address bar exactly), e.g.:
+
+   `http://localhost/RiskRegister/public/sharepoint.php`
+
+   If you use a hostname or HTTPS, use that full URL instead.
+3. Under **Implicit grant and hybrid flows**, you can leave boxes unchecked (MSAL uses auth code + PKCE).
+4. **Save**.
+
+### C. Add delegated Graph permission
+
+1. App → **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**.
+2. Add:
+   - `Sites.Read.All` (required)
+   - `User.Read` (usually already there)
+3. Click **Grant admin consent for your org**  
+   If that button is disabled, send IT this ask:
+
+   > Please grant admin consent on app “RiskRegister SharePoint Catalog” for Microsoft Graph delegated permission **Sites.Read.All**.
+
+   Without admin consent, Sync will fail with a consent / AADSTS error at AdventHealth.
+
+### D. Paste into RiskRegister
+
+1. Open **SharePoint catalog** while signed in as admin.
+2. Scroll to **SharePoint sync & import**.
+3. Paste **Tenant ID** and **Client ID** → **Save settings**.  
+   Leave **Client secret** empty for one-click Sync.
+4. On a folder card click **🔄 Sync**.
+5. Complete MFA in the Microsoft popup → wait for refresh.
+
+**Allow popups** for your RiskRegister site if the login window is blocked.
+
+### Troubleshooting one-click Sync
+
+| Symptom | Fix |
+|--------|-----|
+| “Save Tenant ID and Client ID” | Values missing or not GUIDs — re-copy from Entra Overview |
+| Popup blocked | Allow popups, try Sync again |
+| Consent / AADSTS65001 | IT must **Grant admin consent** for `Sites.Read.All` |
+| redirect_uri mismatch | SPA redirect must equal `origin + path` of `sharepoint.php` (no trailing slash mismatch) |
+| 403 from Graph after login | Your account cannot read that SharePoint site/folder — open the folder in the browser first |
+
+Keep using **Console sync** until the above works.
 
 ---
 
-## 1. Get your Tenant ID (Microsoft Entra)
+## 0b. Advanced: console sync (what you use today)
 
-You need this for **Graph sync** only. Skip this section if you use MFA browser sync or CSV import.
+No Entra app required.
 
-### Option A — Entra admin center (clearest)
+1. Admin → folder card **🔐 Console sync** (or **Prepare console sync**).
+2. MFA on the SharePoint tab if needed.
+3. **Copy console script** → SharePoint **F12** → Console → paste → Enter.
+4. Wait for ✅ Sync complete → refresh catalog.
 
-1. Sign in at [https://entra.microsoft.com](https://entra.microsoft.com) with an account that can view directory info (or ask IT).
-2. Go to **Identity** → **Overview** (or **Microsoft Entra ID** → **Overview**).
-3. Copy **Tenant ID** (a GUID like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+Deep-crawls all subfolders (Visio, PDF, Office, etc.).
 
-For AdventHealth (`ahsonline.sharepoint.com`), the Tenant ID is typically:
+---
 
-`6ac36678-7785-476f-be03-b68b403734c2`
+## 1. Optional: Graph app-only sync (client secret)
 
-(Confirm in Entra Overview if your IT changes tenants.)
+Use this only if IT prefers a daemon sync **without** your interactive login. It needs stronger permissions.
 
-### Option B — Azure portal
+1. Same Entra app (or a separate one).
+2. **Certificates & secrets** → **New client secret** → copy the **Value** immediately.
+3. **API permissions** → Microsoft Graph → **Application permissions** → `Sites.Read.All`  
+   (or `Sites.Selected` if IT grants only one site).
+4. **Grant admin consent** (required).
+5. In RiskRegister: Tenant ID + Client ID + Client secret → **Save** → **Test connection** → **Graph sync**.
 
-1. Open [https://portal.azure.com](https://portal.azure.com).
-2. Search for **Microsoft Entra ID**.
-3. On the Overview blade, copy **Tenant ID**.
-
-### Option C — From any SharePoint URL (tenant name only)
-
-Your SharePoint host `ahsonline.sharepoint.com` is the **tenant name**, not the Tenant ID GUID.  
-The catalog page still needs the **GUID** from Option A/B for Graph auth.
-
-### Also register an app (for Graph sync)
-
-1. Entra → **App registrations** → **New registration**.
-2. Name e.g. `RiskRegister SharePoint Catalog`, single tenant.
-3. After create, copy **Application (client) ID**.
-4. **Certificates & secrets** → **New client secret** → copy the **Value** once (this is the client secret).
-5. **API permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions** → add `Sites.Read.All`  
-   (or `Sites.Selected` if IT will grant only this site).
-6. Click **Grant admin consent** for your tenant.
-7. Paste Tenant ID, Client ID, and Client secret into **SharePoint catalog** → admin settings → **Save** → **Test connection** → **Sync**.
+This path does **not** replace the SPA setup above if you also want one-click Sync; you can keep both on the same app.
 
 ---
 
@@ -150,3 +188,13 @@ The script writes a UTF-8 CSV to your **Desktop** by default (`sharepoint-catalo
 - If the path has brackets `[Public]`, always quote it: `"...\Architectural Projects [Public]"`.
 - After export, confirm a few **URL** cells open the right folder/file in the browser while signed in to AHS.
 - Keep Site host / site path / folder path on the catalog admin form matching these defaults so blank-URL rows (if any) resolve correctly.
+
+---
+
+## 4. Search index (reindex)
+
+Catalog search uses SQLite B-tree indexes plus an FTS5 full-text index (`sharepoint_items_fts`).
+
+- **Sync / import** automatically refreshes the FTS rows for that folder source.
+- Admins can run a full rebuild anytime: SharePoint page → **SharePoint sync & import** → **Reindex SharePoint search**.
+- Use this after large syncs or if search feels slow / incomplete vs the item count.

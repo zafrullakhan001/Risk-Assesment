@@ -292,8 +292,22 @@ final class Database
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_sharepoint_items_project_name ON sharepoint_items (project_name)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_sharepoint_items_name ON sharepoint_items (name)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source ON sharepoint_items (source_key)');
+        // Composite indexes used by per-folder catalog browse / project detail / search.
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_project
+             ON sharepoint_items (source_key, project_name)'
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_name
+             ON sharepoint_items (source_key, name)'
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_type
+             ON sharepoint_items (source_key, item_type)'
+        );
         self::ensureColumn($pdo, 'sharepoint_items', 'modified_by', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'sharepoint_items', 'person', "TEXT NOT NULL DEFAULT ''");
+        self::ensureSharePointFts($pdo);
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS sharepoint_sources (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -609,5 +623,33 @@ final class Database
         }
 
         $pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+    }
+
+    /**
+     * Create the SharePoint FTS5 search index when SQLite supports it (empty until first reindex/sync).
+     */
+    private static function ensureSharePointFts(PDO $pdo): void
+    {
+        try {
+            $exists = $pdo->query(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sharepoint_items_fts' LIMIT 1"
+            );
+            if ($exists !== false && $exists->fetchColumn() !== false) {
+                return;
+            }
+            $pdo->exec(
+                'CREATE VIRTUAL TABLE sharepoint_items_fts USING fts5(
+                    project_name,
+                    name,
+                    relative_path,
+                    modified_by,
+                    person,
+                    source_key UNINDEXED,
+                    tokenize = \'unicode61 remove_diacritics 2\'
+                )'
+            );
+        } catch (\Throwable) {
+            // FTS5 may be unavailable in some PHP SQLite builds; LIKE search still works.
+        }
     }
 }

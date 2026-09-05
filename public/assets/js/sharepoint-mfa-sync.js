@@ -1,6 +1,7 @@
 /**
  * Builds the SharePoint console crawler script for MFA browser sync.
- * Deep-walks every subfolder with paginated Files/Folders APIs (not truncated $expand).
+ * Prefers RecursiveAll list query (matches AllItems UI, includes .vsdx Visio files),
+ * then falls back to paginated Folders/Files walk.
  */
 (() => {
   function buildConsoleScript(cfg) {
@@ -15,8 +16,6 @@
       pageSize: 5000,
     });
 
-    // Pasted into the SharePoint page console while MFA-authenticated.
-    // Wrapped in void(...) so DevTools does not print Promise {<pending>} as the main result.
     return `void (async function () {
   const CFG = ${configJson};
   const rows = [];
@@ -26,6 +25,7 @@
   let filesFound = 0;
   let pagesFetched = 0;
   let deepest = 0;
+  let visioFound = 0;
   const skipFolderNames = new Set(["Forms", "_w", "_t", "_vti_cnf", "_catalogs", "SiteAssets", "Style Library"]);
   const quote = (value) => "'" + String(value).replace(/'/g, "''") + "'";
   const cleanPath = (value) => String(value || "").split("\\\\").join("/").replace(/\\/+$/g, "");
@@ -36,6 +36,15 @@
     if (Array.isArray(value.value)) return value.value;
     if (Array.isArray(value.results)) return value.results;
     return [];
+  };
+  const fileExt = (name) => {
+    const base = String(name || "").split("/").pop() || "";
+    const dot = base.lastIndexOf(".");
+    return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+  };
+  const isVisio = (name) => {
+    const ext = fileExt(name);
+    return ext === "vsdx" || ext === "vsd" || ext === "vssx" || ext === "vstx" || ext === "vsdm";
   };
   const relativeFromServer = (serverPath) => {
     const root = cleanPath(CFG.rootServerRelative);
@@ -57,6 +66,10 @@
     if (seen.has(key) || rows.length >= CFG.maxRows) return false;
     seen.add(key);
     rows.push(row);
+    if (row.type === "File" && isVisio(row.name)) {
+      visioFound += 1;
+      console.log("%cVisio found: " + row.path, "color:#7c3aed");
+    }
     return true;
   };
   const apiGet = async (url) => {
@@ -65,66 +78,208 @@
       headers: { Accept: "application/json;odata=nometadata" },
     });
     if (!response.ok) {
-      throw new Error("SharePoint API " + response.status + " for " + url.slice(0, 160) + " — are you signed in on this tab?");
+      throw new Error("SharePoint API " + response.status + " — are you signed in on this tab?");
     }
     pagesFetched += 1;
     return response.json();
   };
-  const folderApiBase = (serverRelative, collection) => {
-    const encoded = encodeURIComponent(quote(serverRelative));
-    const modern =
-      location.origin +
-      CFG.sitePath +
-      "/_api/web/GetFolderByServerRelativePath(DecodedUrl=@p)/" +
-      collection +
-      "?@p=" +
-      encoded +
-      "&$top=" +
-      CFG.pageSize;
-    const legacy =
-      location.origin +
-      CFG.sitePath +
-      "/_api/web/GetFolderByServerRelativeUrl(" +
-      encoded +
-      ")/" +
-      collection +
-      "?$top=" +
-      CFG.pageSize;
-    return { modern, legacy };
+  const apiPost = async (url, body, digest) => {
+    const response = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json;odata=nometadata",
+        "Content-Type": "application/json;odata=nometadata",
+        "X-RequestDigest": digest,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(function () { return ""; });
+      throw new Error("SharePoint POST " + response.status + " " + text.slice(0, 180));
+    }
+    pagesFetched += 1;
+    return response.json();
   };
-  const folderMetaUrl = (serverRelative) => {
+  const getDigest = async () => {
+    const response = await fetch(location.origin + CFG.sitePath + "/_api/contextinfo", {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json;odata=nometadata" },
+    });
+    if (!response.ok) throw new Error("Could not get request digest (" + response.status + ")");
+    pagesFetched += 1;
+    const data = await response.json();
+    return (
+      (data && data.FormDigestValue) ||
+      (data && data.d && data.d.GetContextWebInformation && data.d.GetContextWebInformation.FormDigestValue) ||
+      ""
+    );
+  };
+  const libraryRootFromFolder = (serverRelative) => {
+    const path = cleanPath(serverRelative);
+    const marker = "/Shared Documents";
+    const idx = path.toLowerCase().indexOf(marker.toLowerCase());
+    if (idx >= 0) return path.slice(0, idx + marker.length);
+    const parts = path.split("/").filter(Boolean);
+    if (parts.length >= 3) return "/" + parts.slice(0, 3).join("/");
+    return path;
+  };
+
+  // --- Primary: RecursiveAll list crawl (same universe as AllItems.aspx, includes .vsdx) ---
+  const crawlViaList = async () => {
+    const root = cleanPath(CFG.rootServerRelative);
+    const listPath = libraryRootFromFolder(root);
+    const digest = await getDigest();
+    if (!digest) throw new Error("Missing form digest for list crawl.");
+
+    let listDataNext = "";
+    let page = 0;
+    const rootPrefix = root.toLowerCase() + "/";
+    const rootExact = root.toLowerCase();
+
+    do {
+      page += 1;
+      let viewXml =
+        "<View Scope=\\"RecursiveAll\\"><Query><Where><Or>" +
+        "<Eq><FieldRef Name=\\"FileRef\\"/><Value Type=\\"Text\\">" +
+        root.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+        "</Value></Eq>" +
+        "<BeginsWith><FieldRef Name=\\"FileRef\\"/><Value Type=\\"Text\\">" +
+        (root + "/").replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+        "</Value></BeginsWith>" +
+        "</Or></Where></Query>" +
+        "<ViewFields>" +
+        "<FieldRef Name=\\"FileLeafRef\\"/>" +
+        "<FieldRef Name=\\"FileRef\\"/>" +
+        "<FieldRef Name=\\"FSObjType\\"/>" +
+        "<FieldRef Name=\\"File_x0020_Type\\"/>" +
+        "<FieldRef Name=\\"Modified\\"/>" +
+        "<FieldRef Name=\\"Editor\\"/>" +
+        "</ViewFields>" +
+        "<RowLimit Paged=\\"TRUE\\">" +
+        CFG.pageSize +
+        "</RowLimit></View>";
+
+      const url =
+        location.origin +
+        CFG.sitePath +
+        "/_api/web/GetListUsingPath(DecodedUrl=@u)/RenderListDataAsStream?@u=" +
+        encodeURIComponent(quote(listPath)) +
+        (listDataNext ? "&" + listDataNext.replace(/^\\?/, "") : "");
+
+      const payload = await apiPost(
+        url,
+        { parameters: { ViewXml: viewXml, RenderOptions: 4103 } },
+        digest
+      );
+
+      const rowList =
+        (payload && payload.Row) ||
+        (payload && payload.ListData && payload.ListData.Row) ||
+        [];
+      const rowsPage = Array.isArray(rowList) ? rowList : [];
+
+      for (let i = 0; i < rowsPage.length; i++) {
+        const item = rowsPage[i] || {};
+        const fileRef = cleanPath(item.FileRef || item.FileRefEncoded || "");
+        const name = String(item.FileLeafRef || item.FileName || "").trim();
+        if (!fileRef || !name) continue;
+        const lower = fileRef.toLowerCase();
+        if (lower !== rootExact && !lower.startsWith(rootPrefix)) continue;
+
+        const fsObj = String(item.FSObjType != null ? item.FSObjType : item["FSObjType.Value"] != null ? item["FSObjType.Value"] : "");
+        const isFolder = fsObj === "1" || fsObj === "Folder";
+        const rel = relativeFromServer(fileRef);
+        if (!rel && isFolder) continue;
+
+        const editor =
+          (item.Editor && (item.Editor[0] && (item.Editor[0].title || item.Editor[0].email))) ||
+          item.EditorTitle ||
+          item["Editor.title"] ||
+          "";
+
+        if (isFolder) {
+          foldersDone += 1;
+          pushRow({
+            name: name,
+            path: rel,
+            type: "Folder",
+            url: folderBrowseUrl(fileRef),
+            modified: item.Modified || item["Modified."] || "",
+            modified_by: editor,
+            person: "",
+          });
+        } else {
+          if (
+            pushRow({
+              name: name,
+              path: rel || name,
+              type: "File",
+              url: fileBrowseUrl(fileRef),
+              modified: item.Modified || item["Modified."] || "",
+              modified_by: editor,
+              person: "",
+            })
+          ) {
+            filesFound += 1;
+          }
+        }
+        if (rows.length >= CFG.maxRows) break;
+      }
+
+      console.log(
+        "…list crawl page " + page + ":",
+        rowsPage.length,
+        "rows | total",
+        rows.length,
+        "| files",
+        filesFound,
+        "| visio",
+        visioFound
+      );
+
+      const next =
+        (payload && payload.NextHref) ||
+        (payload && payload.ListData && payload.ListData.NextHref) ||
+        "";
+      listDataNext = next ? String(next).replace(/^\\?/, "") : "";
+    } while (listDataNext && rows.length < CFG.maxRows);
+
+    return rows.length > 0;
+  };
+
+  // --- Fallback: paginated Folders/Files walk ---
+  const folderApiBase = (serverRelative, collection) => {
     const encoded = encodeURIComponent(quote(serverRelative));
     return {
       modern:
         location.origin +
         CFG.sitePath +
-        "/_api/web/GetFolderByServerRelativePath(DecodedUrl=@p)?@p=" +
+        "/_api/web/GetFolderByServerRelativePath(DecodedUrl=@p)/" +
+        collection +
+        "?@p=" +
         encoded +
-        "&$select=Name,ServerRelativeUrl,TimeLastModified,ItemCount",
+        "&$top=" +
+        CFG.pageSize,
       legacy:
         location.origin +
         CFG.sitePath +
         "/_api/web/GetFolderByServerRelativeUrl(" +
         encoded +
-        ")?$select=Name,ServerRelativeUrl,TimeLastModified,ItemCount",
+        ")/" +
+        collection +
+        "?$top=" +
+        CFG.pageSize,
     };
   };
-  const getWithFallback = async (urls) => {
-    try {
-      return await apiGet(urls.modern);
-    } catch (error) {
-      return apiGet(urls.legacy);
-    }
-  };
-  const collectPaged = async (serverRelative, collection, selectExtra) => {
+  const collectPaged = async (serverRelative, collection) => {
     const urls = folderApiBase(serverRelative, collection);
     let url =
       urls.modern +
-      (selectExtra
-        ? "&$select=" + selectExtra + (collection === "Files" ? "&$expand=Author,ModifiedBy" : "")
-        : collection === "Files"
-          ? "&$select=Name,ServerRelativeUrl,TimeLastModified,Length,LinkingUrl&$expand=Author,ModifiedBy"
-          : "&$select=Name,ServerRelativeUrl,TimeLastModified,ItemCount");
+      (collection === "Files"
+        ? "&$select=Name,ServerRelativeUrl,TimeLastModified,Length,LinkingUrl&$expand=Author,ModifiedBy"
+        : "&$select=Name,ServerRelativeUrl,TimeLastModified,ItemCount");
     const items = [];
     let usedLegacy = false;
     while (url) {
@@ -149,61 +304,28 @@
     }
     return items;
   };
-  const logProgress = (force) => {
-    if (!force && foldersDone !== 1 && foldersDone % 5 !== 0) return;
-    console.log(
-      "…deep crawl:",
-      foldersDone,
-      "folders |",
-      filesFound,
-      "files |",
-      rows.length,
-      "rows | depth",
-      deepest,
-      "| API pages",
-      pagesFetched
-    );
-  };
-
-  const walk = async () => {
+  const crawlViaFolders = async () => {
     const queue = [{ path: cleanPath(CFG.rootServerRelative), depth: 0 }];
     while (queue.length) {
-      if (rows.length >= CFG.maxRows) {
-        console.warn("Stopped at maxRows=" + CFG.maxRows);
-        break;
-      }
+      if (rows.length >= CFG.maxRows) break;
       const current = queue.shift();
       const serverRelative = cleanPath(current.path);
       const depth = current.depth || 0;
       const key = pathKey(serverRelative);
-      if (!serverRelative || visitedFolders.has(key)) continue;
-      if (depth > CFG.maxDepth) {
-        console.warn("Skipped deeper than maxDepth=" + CFG.maxDepth + ":", serverRelative);
-        continue;
-      }
+      if (!serverRelative || visitedFolders.has(key) || depth > CFG.maxDepth) continue;
       visitedFolders.add(key);
       deepest = Math.max(deepest, depth);
-
-      let meta = null;
-      try {
-        meta = await getWithFallback(folderMetaUrl(serverRelative));
-      } catch (error) {
-        console.warn("Folder meta failed, continuing with children:", serverRelative, error && error.message);
-      }
-
       foldersDone += 1;
+
       const rel = relativeFromServer(serverRelative);
-      const name =
-        (meta && meta.Name) ||
-        serverRelative.split("/").filter(Boolean).pop() ||
-        "";
+      const name = serverRelative.split("/").filter(Boolean).pop() || "";
       if (rel) {
         pushRow({
           name: name,
           path: rel,
           type: "Folder",
           url: folderBrowseUrl(serverRelative),
-          modified: (meta && meta.TimeLastModified) || "",
+          modified: "",
           modified_by: "",
           person: "",
         });
@@ -244,7 +366,6 @@
         ) {
           filesFound += 1;
         }
-        if (rows.length >= CFG.maxRows) break;
       }
 
       for (let i = 0; i < childFolders.length; i++) {
@@ -253,25 +374,40 @@
         if (!folderName || skipFolderNames.has(folderName)) continue;
         if (folderName.charAt(0) === "_" && folderName !== "_private") continue;
         const childPath = cleanPath(folder.ServerRelativeUrl || serverRelative + "/" + folderName);
-        if (visitedFolders.has(pathKey(childPath))) continue;
-        queue.push({ path: childPath, depth: depth + 1 });
+        if (!visitedFolders.has(pathKey(childPath))) {
+          queue.push({ path: childPath, depth: depth + 1 });
+        }
       }
 
-      logProgress(false);
+      if (foldersDone === 1 || foldersDone % 10 === 0) {
+        console.log("…folder walk:", foldersDone, "folders |", filesFound, "files | visio", visioFound);
+      }
     }
   };
 
   console.log("%cRiskRegister MFA deep sync starting…", "color:#0f766e;font-weight:bold;font-size:14px");
-  console.log(
-    "Walks EVERY subfolder with paginated Files/Folders APIs (Visio/PDF/etc). Root:",
-    CFG.rootServerRelative
-  );
-  console.log("This can take several minutes on large libraries. Ignore any brief pending Promise.");
+  console.log("Includes Visio (.vsdx/.vsd/…). Root:", CFG.rootServerRelative);
   try {
-    await walk();
-    logProgress(true);
+    let usedList = false;
+    try {
+      usedList = await crawlViaList();
+      console.log(usedList ? "List RecursiveAll crawl finished." : "List crawl returned 0 rows — falling back to folder walk.");
+    } catch (listError) {
+      console.warn("List crawl failed, falling back to folder walk:", listError && listError.message);
+    }
+    if (!usedList || filesFound === 0) {
+      await crawlViaFolders();
+    }
     console.log(
-      "%cCollected " + rows.length + " rows (" + filesFound + " files, " + foldersDone + " folders, depth " + deepest + "). Posting to RiskRegister…",
+      "%cCollected " +
+        rows.length +
+        " rows (" +
+        filesFound +
+        " files, " +
+        foldersDone +
+        " folders, " +
+        visioFound +
+        " Visio). Posting…",
       "color:#0f766e;font-weight:bold"
     );
     const response = await fetch(CFG.importUrl, {
@@ -288,11 +424,11 @@
     if (!response.ok || !json.ok) {
       throw new Error(json.error || ("Import failed HTTP " + response.status));
     }
-    console.log("%c✅ Sync complete: " + json.message, "color:#047857;font-weight:bold;font-size:14px");
-    alert("RiskRegister sync complete:\\n" + json.message + "\\n\\nReturn to the catalog page and refresh.");
+    console.log("%c✅ Sync complete: " + json.message + " | Visio files: " + visioFound, "color:#047857;font-weight:bold;font-size:14px");
+    alert("RiskRegister sync complete:\\n" + json.message + "\\nVisio (.vsdx) files found: " + visioFound + "\\n\\nReturn to the catalog page and refresh.");
   } catch (error) {
     console.error("%c❌ Sync failed", "color:#b91c1c;font-weight:bold", error);
-    alert("RiskRegister sync failed: " + (error && error.message ? error.message : error) + "\\n\\nTip: click Prepare MFA sync again (token expires in 30 min), then copy a fresh script.");
+    alert("RiskRegister sync failed: " + (error && error.message ? error.message : error));
   }
 })();`;
   }

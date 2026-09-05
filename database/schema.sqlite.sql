@@ -263,6 +263,9 @@ CREATE TABLE IF NOT EXISTS sharepoint_items (
 CREATE INDEX IF NOT EXISTS idx_sharepoint_items_project_name ON sharepoint_items (project_name);
 CREATE INDEX IF NOT EXISTS idx_sharepoint_items_name ON sharepoint_items (name);
 CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source ON sharepoint_items (source_key);
+CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_project ON sharepoint_items (source_key, project_name);
+CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_name ON sharepoint_items (source_key, name);
+CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_type ON sharepoint_items (source_key, item_type);
 
 CREATE TABLE IF NOT EXISTS sharepoint_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -101,7 +101,221 @@ final class SharePointCatalogRepository
             throw $exception;
         }
 
+        $this->refreshSearchIndexForSource($sourceKey);
+
         return $count;
+    }
+
+    /**
+     * Rebuild B-tree + FTS search indexes for SharePoint catalog tables.
+     *
+     * @return array{
+     *   ok: bool,
+     *   item_count: int,
+     *   fts_count: int,
+     *   fts_available: bool,
+     *   indexes: list<string>,
+     *   duration_ms: int,
+     *   message: string
+     * }
+     */
+    public function reindex(): array
+    {
+        $started = microtime(true);
+        @set_time_limit(120);
+
+        $indexes = $this->ensureSearchIndexes();
+        $itemCount = (int) $this->pdo->query('SELECT COUNT(*) FROM sharepoint_items')->fetchColumn();
+        $ftsAvailable = $this->ensureFtsTable();
+        $ftsCount = 0;
+
+        if ($ftsAvailable) {
+            $this->rebuildFtsAll();
+            $ftsCount = (int) $this->pdo->query('SELECT COUNT(*) FROM sharepoint_items_fts')->fetchColumn();
+        }
+
+        try {
+            $this->pdo->exec('REINDEX sharepoint_items');
+        } catch (\Throwable) {
+            // Ignore if SQLite build rejects table-level REINDEX; indexes were still ensured.
+        }
+
+        $this->pdo->exec('ANALYZE sharepoint_items');
+        if ($ftsAvailable) {
+            try {
+                $this->pdo->exec('ANALYZE sharepoint_items_fts');
+            } catch (\Throwable) {
+            }
+        }
+
+        $ms = (int) round((microtime(true) - $started) * 1000);
+        $message = $ftsAvailable
+            ? sprintf(
+                'SharePoint search reindex complete: %d catalog items, %d FTS rows, %d indexes (%.0f ms).',
+                $itemCount,
+                $ftsCount,
+                count($indexes),
+                $ms
+            )
+            : sprintf(
+                'SharePoint B-tree reindex complete: %d catalog items, %d indexes (%.0f ms). FTS5 unavailable on this SQLite build.',
+                $itemCount,
+                count($indexes),
+                $ms
+            );
+
+        return [
+            'ok' => true,
+            'item_count' => $itemCount,
+            'fts_count' => $ftsCount,
+            'fts_available' => $ftsAvailable,
+            'indexes' => $indexes,
+            'duration_ms' => $ms,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * @return list<string> index names ensured
+     */
+    public function ensureSearchIndexes(): array
+    {
+        $definitions = [
+            'idx_sharepoint_items_project_name' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_project_name ON sharepoint_items (project_name)',
+            'idx_sharepoint_items_name' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_name ON sharepoint_items (name)',
+            'idx_sharepoint_items_source' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source ON sharepoint_items (source_key)',
+            'idx_sharepoint_items_source_project' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_project ON sharepoint_items (source_key, project_name)',
+            'idx_sharepoint_items_source_name' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_name ON sharepoint_items (source_key, name)',
+            'idx_sharepoint_items_source_type' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_type ON sharepoint_items (source_key, item_type)',
+            'idx_sharepoint_sources_key' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_sources_key ON sharepoint_sources (source_key)',
+        ];
+
+        foreach ($definitions as $sql) {
+            $this->pdo->exec($sql);
+        }
+
+        return array_keys($definitions);
+    }
+
+    public function refreshSearchIndexForSource(string $sourceKey): void
+    {
+        $sourceKey = trim($sourceKey) !== '' ? trim($sourceKey) : self::SOURCE_DEFAULT;
+        $this->ensureSearchIndexes();
+        if (!$this->ensureFtsTable()) {
+            try {
+                $this->pdo->exec('ANALYZE sharepoint_items');
+            } catch (\Throwable) {
+            }
+
+            return;
+        }
+
+        $delete = $this->pdo->prepare('DELETE FROM sharepoint_items_fts WHERE source_key = :source_key');
+        $delete->execute([':source_key' => $sourceKey]);
+
+        $insert = $this->pdo->prepare(
+            'INSERT INTO sharepoint_items_fts (
+                rowid, project_name, name, relative_path, modified_by, person, source_key
+             )
+             SELECT id, project_name, name, relative_path, modified_by, person, source_key
+             FROM sharepoint_items
+             WHERE source_key = :source_key'
+        );
+        $insert->execute([':source_key' => $sourceKey]);
+
+        try {
+            $this->pdo->exec('ANALYZE sharepoint_items');
+            $this->pdo->exec('ANALYZE sharepoint_items_fts');
+        } catch (\Throwable) {
+        }
+    }
+
+    private function rebuildFtsAll(): void
+    {
+        $this->pdo->exec('DELETE FROM sharepoint_items_fts');
+        $this->pdo->exec(
+            'INSERT INTO sharepoint_items_fts (
+                rowid, project_name, name, relative_path, modified_by, person, source_key
+             )
+             SELECT id, project_name, name, relative_path, modified_by, person, source_key
+             FROM sharepoint_items'
+        );
+    }
+
+    private function ensureFtsTable(): bool
+    {
+        try {
+            $exists = $this->pdo->query(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sharepoint_items_fts' LIMIT 1"
+            );
+            if ($exists !== false && $exists->fetchColumn() !== false) {
+                return true;
+            }
+            $this->pdo->exec(
+                'CREATE VIRTUAL TABLE sharepoint_items_fts USING fts5(
+                    project_name,
+                    name,
+                    relative_path,
+                    modified_by,
+                    person,
+                    source_key UNINDEXED,
+                    tokenize = \'unicode61 remove_diacritics 2\'
+                )'
+            );
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function ftsUsable(): bool
+    {
+        if (!$this->ensureFtsTable()) {
+            return false;
+        }
+        try {
+            $items = (int) $this->pdo->query('SELECT COUNT(*) FROM sharepoint_items')->fetchColumn();
+            if ($items === 0) {
+                return true;
+            }
+            $fts = (int) $this->pdo->query('SELECT COUNT(*) FROM sharepoint_items_fts')->fetchColumn();
+
+            return $fts > 0;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Build an FTS5 MATCH expression (prefix tokens) or empty string if nothing searchable.
+     */
+    private function buildFtsMatch(string $query): string
+    {
+        $parts = preg_split('/\s+/u', trim($query)) ?: [];
+        $tokens = [];
+        foreach ($parts as $part) {
+            $clean = preg_replace('/[^\p{L}\p{N}_.-]+/u', '', $part) ?? '';
+            $clean = trim($clean, '.-_');
+            if ($clean === '' || mb_strlen($clean) < 1) {
+                continue;
+            }
+            // Escape double quotes for FTS string literals; use prefix match for partial typing.
+            $safe = str_replace('"', '', $clean);
+            if ($safe === '') {
+                continue;
+            }
+            $tokens[] = '"' . $safe . '"*';
+        }
+
+        return implode(' AND ', $tokens);
     }
 
     public function count(string $sourceKey = self::SOURCE_DEFAULT): int
@@ -129,6 +343,26 @@ final class SharePointCatalogRepository
         $query = trim($query);
         if ($query === '') {
             return $this->countProjects($sourceKey);
+        }
+
+        $ftsMatch = $this->buildFtsMatch($query);
+        if ($ftsMatch !== '' && $this->ftsUsable()) {
+            try {
+                $statement = $this->pdo->prepare(
+                    'SELECT COUNT(DISTINCT project_name)
+                     FROM sharepoint_items_fts
+                     WHERE source_key = :source_key
+                       AND sharepoint_items_fts MATCH :match'
+                );
+                $statement->execute([
+                    ':source_key' => $sourceKey,
+                    ':match' => $ftsMatch,
+                ]);
+
+                return (int) $statement->fetchColumn();
+            } catch (\Throwable) {
+                // Fall through to LIKE.
+            }
         }
 
         $like = '%' . $this->escapeLike($query) . '%';
@@ -194,30 +428,55 @@ final class SharePointCatalogRepository
             $projectsStmt->bindValue(':off', $offset, PDO::PARAM_INT);
             $projectsStmt->execute();
         } else {
-            $like = '%' . $this->escapeLike($query) . '%';
-            $projectsStmt = $this->pdo->prepare(
-                'SELECT DISTINCT project_name
-                 FROM sharepoint_items
-                 WHERE source_key = :source_key
-                   AND (
-                       project_name LIKE :q ESCAPE \'\\\'
-                       OR name LIKE :q2 ESCAPE \'\\\'
-                       OR relative_path LIKE :q3 ESCAPE \'\\\'
-                       OR modified_by LIKE :q4 ESCAPE \'\\\'
-                       OR person LIKE :q5 ESCAPE \'\\\'
-                   )
-                 ORDER BY LOWER(project_name) ASC
-                 LIMIT :lim OFFSET :off'
-            );
-            $projectsStmt->bindValue(':source_key', $sourceKey, PDO::PARAM_STR);
-            $projectsStmt->bindValue(':q', $like, PDO::PARAM_STR);
-            $projectsStmt->bindValue(':q2', $like, PDO::PARAM_STR);
-            $projectsStmt->bindValue(':q3', $like, PDO::PARAM_STR);
-            $projectsStmt->bindValue(':q4', $like, PDO::PARAM_STR);
-            $projectsStmt->bindValue(':q5', $like, PDO::PARAM_STR);
-            $projectsStmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
-            $projectsStmt->bindValue(':off', $offset, PDO::PARAM_INT);
-            $projectsStmt->execute();
+            $ftsMatch = $this->buildFtsMatch($query);
+            $usedFts = false;
+            if ($ftsMatch !== '' && $this->ftsUsable()) {
+                try {
+                    $projectsStmt = $this->pdo->prepare(
+                        'SELECT DISTINCT project_name
+                         FROM sharepoint_items_fts
+                         WHERE source_key = :source_key
+                           AND sharepoint_items_fts MATCH :match
+                         ORDER BY LOWER(project_name) ASC
+                         LIMIT :lim OFFSET :off'
+                    );
+                    $projectsStmt->bindValue(':source_key', $sourceKey, PDO::PARAM_STR);
+                    $projectsStmt->bindValue(':match', $ftsMatch, PDO::PARAM_STR);
+                    $projectsStmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
+                    $projectsStmt->bindValue(':off', $offset, PDO::PARAM_INT);
+                    $projectsStmt->execute();
+                    $usedFts = true;
+                } catch (\Throwable) {
+                    $usedFts = false;
+                }
+            }
+
+            if (!$usedFts) {
+                $like = '%' . $this->escapeLike($query) . '%';
+                $projectsStmt = $this->pdo->prepare(
+                    'SELECT DISTINCT project_name
+                     FROM sharepoint_items
+                     WHERE source_key = :source_key
+                       AND (
+                           project_name LIKE :q ESCAPE \'\\\'
+                           OR name LIKE :q2 ESCAPE \'\\\'
+                           OR relative_path LIKE :q3 ESCAPE \'\\\'
+                           OR modified_by LIKE :q4 ESCAPE \'\\\'
+                           OR person LIKE :q5 ESCAPE \'\\\'
+                       )
+                     ORDER BY LOWER(project_name) ASC
+                     LIMIT :lim OFFSET :off'
+                );
+                $projectsStmt->bindValue(':source_key', $sourceKey, PDO::PARAM_STR);
+                $projectsStmt->bindValue(':q', $like, PDO::PARAM_STR);
+                $projectsStmt->bindValue(':q2', $like, PDO::PARAM_STR);
+                $projectsStmt->bindValue(':q3', $like, PDO::PARAM_STR);
+                $projectsStmt->bindValue(':q4', $like, PDO::PARAM_STR);
+                $projectsStmt->bindValue(':q5', $like, PDO::PARAM_STR);
+                $projectsStmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
+                $projectsStmt->bindValue(':off', $offset, PDO::PARAM_INT);
+                $projectsStmt->execute();
+            }
         }
 
         $names = array_map(
