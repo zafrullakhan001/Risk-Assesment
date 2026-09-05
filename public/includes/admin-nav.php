@@ -11,4 +11,5 @@ $adminTab = $adminTab ?? 'home';
     <a class="<?= $adminTab === 'branding' ? 'is-active' : '' ?>" href="branding.php">Branding</a>
     <a class="<?= $adminTab === 'maintenance' ? 'is-active' : '' ?>" href="maintenance.php">🗄️ SQLite</a>
     <a class="<?= $adminTab === 'updates' ? 'is-active' : '' ?>" href="updates.php">App updates</a>
+    <a href="../sharepoint.php#sharepoint-admin">📁 SharePoint</a>
 </nav>

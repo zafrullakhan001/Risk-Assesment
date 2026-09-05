@@ -22,6 +22,7 @@ use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
 use RiskAssessment\Repositories\ProjectPicturesRepository;
 use RiskAssessment\Repositories\ProjectShareRepository;
+use RiskAssessment\Repositories\SharePointCatalogRepository;
 
 $currentUser = $auth->requireAuth();
 $actor = Actor::fromUser($currentUser);
@@ -33,6 +34,7 @@ $projectLinksRepository = new ProjectLinksRepository($pdo);
 $projectMermaidRepository = new ProjectMermaidRepository($pdo);
 $projectPicturesRepository = new ProjectPicturesRepository($pdo);
 $projectShareRepository = new ProjectShareRepository($pdo);
+$sharePointCatalogRepository = new SharePointCatalogRepository($pdo);
 $projectImageConverter = new ProjectImageConverter();
 $findingStatusRepository = new FindingStatusRepository($pdo);
 $goliveGate = new GoliveGate();
@@ -1217,6 +1219,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             }
             $shareLinks = $projectShareRepository->listForAssessment($assessmentId);
+            $sharePointCatalog = $sharePointCatalogRepository->findMatchingProjectAnySource($solutionName);
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -1239,7 +1242,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 false,
                 '',
                 $shareLinks,
-                $freshShareUrl
+                $freshShareUrl,
+                $sharePointCatalog
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -1277,6 +1281,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $storedId);
             $findingStatuses = $findingStatusRepository->listForAssessment($storedId);
         }
+        $sharePointCatalog = $sharePointCatalogRepository->findMatchingProjectAnySource(
+            $assessment->getMetadata('solution_name')
+        );
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render(
             $assessment,
@@ -1299,7 +1306,8 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             false,
             '',
             $storedId > 0 ? $projectShareRepository->listForAssessment($storedId) : [],
-            $freshShareUrl
+            $freshShareUrl,
+            $sharePointCatalog
         );
     }
 }
@@ -1375,6 +1383,7 @@ $renderProjectDelete = static function (array $project): void {
                 <a class="button ghost home-link" href="#find-projects">Find by name</a>
                 <a class="button ghost home-link" href="#upload">Upload</a>
                 <a class="button ghost home-link" href="templates.php">📚 Templates</a>
+                <a class="button ghost home-link" href="sharepoint.php">📁 SharePoint</a>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/theme-controls.php'; ?>
                 <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
@@ -1402,11 +1411,7 @@ $renderProjectDelete = static function (array $project): void {
                 <div class="alert alert-success"><?= htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') ?></div>
             <?php endif; ?>
 
-            <nav class="home-section-tabs" aria-label="Home sections">
-                <a href="#find-projects">🔎 Find projects</a>
-                <a href="#upload">📤 Upload assessment</a>
-                <a href="templates.php">📚 Template library</a>
-            </nav>
+            <?php $homeTab = 'find'; require __DIR__ . '/includes/home-section-tabs.php'; ?>
 
             <section class="upload-card search-card" id="find-projects">
                 <h2><?= e($branding->heroHeadingPlain()) ?></h2>

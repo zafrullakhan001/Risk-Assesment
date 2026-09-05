@@ -269,10 +269,104 @@ final class Database
             )'
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_template_images_template_id ON template_images (template_id)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS sharepoint_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL DEFAULT \'default\',
+                item_key TEXT NOT NULL,
+                parent_item_key TEXT NOT NULL DEFAULT \'\',
+                project_name TEXT NOT NULL DEFAULT \'\',
+                name TEXT NOT NULL DEFAULT \'\',
+                item_type TEXT NOT NULL DEFAULT \'file\',
+                web_url TEXT NOT NULL DEFAULT \'\',
+                relative_path TEXT NOT NULL DEFAULT \'\',
+                mime_type TEXT NOT NULL DEFAULT \'\',
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                last_modified TEXT NOT NULL DEFAULT \'\',
+                modified_by TEXT NOT NULL DEFAULT \'\',
+                person TEXT NOT NULL DEFAULT \'\',
+                synced_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                UNIQUE (source_key, item_key)
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_sharepoint_items_project_name ON sharepoint_items (project_name)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_sharepoint_items_name ON sharepoint_items (name)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source ON sharepoint_items (source_key)');
+        self::ensureColumn($pdo, 'sharepoint_items', 'modified_by', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'sharepoint_items', 'person', "TEXT NOT NULL DEFAULT ''");
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS sharepoint_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL DEFAULT \'\',
+                folder_url TEXT NOT NULL DEFAULT \'\',
+                site_host TEXT NOT NULL DEFAULT \'\',
+                site_path TEXT NOT NULL DEFAULT \'\',
+                folder_path TEXT NOT NULL DEFAULT \'\',
+                last_synced_at TEXT NOT NULL DEFAULT \'\',
+                last_sync_status TEXT NOT NULL DEFAULT \'\',
+                last_sync_error TEXT NOT NULL DEFAULT \'\',
+                last_item_count INTEGER NOT NULL DEFAULT 0,
+                sync_token_hash TEXT NOT NULL DEFAULT \'\',
+                sync_token_expires TEXT NOT NULL DEFAULT \'0\',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                updated_at TEXT NOT NULL DEFAULT (datetime(\'now\'))
+            )'
+        );
         self::seedAuthSettings($pdo);
+        self::seedSharePointSettings($pdo);
+        self::seedDefaultSharePointSource($pdo);
         self::seedDefaultAdmin($pdo);
         self::migrateLegacyMermaidDiagrams($pdo);
         self::normalizeExcelSerialAssessmentDates($pdo);
+    }
+
+    private static function seedDefaultSharePointSource(PDO $pdo): void
+    {
+        $count = $pdo->query('SELECT COUNT(*) FROM sharepoint_sources');
+        if ($count !== false && (int) $count->fetchColumn() > 0) {
+            return;
+        }
+
+        $get = static function (string $key, string $fallback = '') use ($pdo): string {
+            $statement = $pdo->prepare('SELECT value FROM app_settings WHERE key = :k LIMIT 1');
+            $statement->execute([':k' => $key]);
+            $value = $statement->fetchColumn();
+
+            return is_string($value) && trim($value) !== '' ? trim($value) : $fallback;
+        };
+
+        $host = $get('sharepoint_site_host', 'ahsonline.sharepoint.com');
+        $sitePath = $get('sharepoint_site_path', '/teams/AITTechnologyEngagement');
+        $folderPath = $get('sharepoint_folder_path', 'Architectural Projects [Public]');
+        $folderUrl = $get('sharepoint_folder_url', '');
+        if ($folderUrl === '') {
+            $folderUrl = 'https://' . $host . rtrim($sitePath, '/')
+                . '/Shared%20Documents/Forms/AllItems.aspx?id='
+                . rawurlencode(rtrim($sitePath, '/') . '/Shared Documents/' . $folderPath)
+                . '&p=true';
+        }
+
+        $insert = $pdo->prepare(
+            'INSERT INTO sharepoint_sources (
+                source_key, title, folder_url, site_host, site_path, folder_path,
+                last_synced_at, last_sync_status, last_item_count, sort_order
+             ) VALUES (
+                \'default\', :title, :folder_url, :site_host, :site_path, :folder_path,
+                :last_synced_at, :last_sync_status, :last_item_count, 1
+             )'
+        );
+        $insert->execute([
+            ':title' => 'Architectural Projects [Public]',
+            ':folder_url' => $folderUrl,
+            ':site_host' => $host,
+            ':site_path' => $sitePath,
+            ':folder_path' => $folderPath,
+            ':last_synced_at' => $get('sharepoint_last_synced_at'),
+            ':last_sync_status' => $get('sharepoint_last_sync_status'),
+            ':last_item_count' => (int) $get('sharepoint_last_item_count', '0'),
+        ]);
     }
 
     private static function normalizeExcelSerialAssessmentDates(PDO $pdo): void
@@ -354,6 +448,30 @@ final class Database
             'ldap_servers' => '[]',
         ];
 
+        self::seedSettingsDefaults($pdo, $defaults);
+    }
+
+    private static function seedSharePointSettings(PDO $pdo): void
+    {
+        $defaults = [
+            'sharepoint_site_host' => 'ahsonline.sharepoint.com',
+            'sharepoint_site_path' => '/teams/AITTechnologyEngagement',
+            'sharepoint_folder_path' => 'Architectural Projects [Public]',
+            'sharepoint_folder_url' => '',
+            'sharepoint_browser_sync_token_hash' => '',
+            'sharepoint_browser_sync_token_expires' => '0',
+            'sharepoint_last_synced_at' => '',
+            'sharepoint_last_sync_status' => '',
+            'sharepoint_last_sync_error' => '',
+            'sharepoint_last_item_count' => '0',
+        ];
+
+        self::seedSettingsDefaults($pdo, $defaults);
+    }
+
+    /** @param array<string, string> $defaults */
+    private static function seedSettingsDefaults(PDO $pdo, array $defaults): void
+    {
         $statement = $pdo->prepare(
             'INSERT INTO app_settings (key, value, updated_at)
              SELECT :key, :value, datetime(\'now\')

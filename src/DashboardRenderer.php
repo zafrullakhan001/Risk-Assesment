@@ -55,6 +55,7 @@ final class DashboardRenderer
      * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $projectPictures
      * @param list<array{id: int, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
      * @param string|null $freshShareUrl Absolute URL shown once after creating a share link
+     * @param array{project_name: string, folder_url: string, items: list<array<string, mixed>>}|null $sharePointCatalog
      */
     public function render(
         Assessment $assessment,
@@ -77,7 +78,8 @@ final class DashboardRenderer
         bool $readOnly = false,
         string $shareToken = '',
         array $shareLinks = [],
-        ?string $freshShareUrl = null
+        ?string $freshShareUrl = null,
+        ?array $sharePointCatalog = null
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -375,7 +377,7 @@ final class DashboardRenderer
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>
-                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams, $projectPictures, !$readOnly, $shareToken) ?>
+                <?= $projectResources->render($assessmentId, $projectLinks, $projectDiagrams, $projectPictures, !$readOnly, $shareToken, $sharePointCatalog) ?>
             </div>
 
             <?php if ($hasGovernance): ?>

@@ -240,3 +240,45 @@ CREATE TABLE IF NOT EXISTS template_images (
 );
 
 CREATE INDEX IF NOT EXISTS idx_template_images_template_id ON template_images (template_id);
+
+CREATE TABLE IF NOT EXISTS sharepoint_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT NOT NULL DEFAULT 'default',
+    item_key TEXT NOT NULL,
+    parent_item_key TEXT NOT NULL DEFAULT '',
+    project_name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    item_type TEXT NOT NULL DEFAULT 'file',
+    web_url TEXT NOT NULL DEFAULT '',
+    relative_path TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    last_modified TEXT NOT NULL DEFAULT '',
+    modified_by TEXT NOT NULL DEFAULT '',
+    person TEXT NOT NULL DEFAULT '',
+    synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (source_key, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sharepoint_items_project_name ON sharepoint_items (project_name);
+CREATE INDEX IF NOT EXISTS idx_sharepoint_items_name ON sharepoint_items (name);
+CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source ON sharepoint_items (source_key);
+
+CREATE TABLE IF NOT EXISTS sharepoint_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL DEFAULT '',
+    folder_url TEXT NOT NULL DEFAULT '',
+    site_host TEXT NOT NULL DEFAULT '',
+    site_path TEXT NOT NULL DEFAULT '',
+    folder_path TEXT NOT NULL DEFAULT '',
+    last_synced_at TEXT NOT NULL DEFAULT '',
+    last_sync_status TEXT NOT NULL DEFAULT '',
+    last_sync_error TEXT NOT NULL DEFAULT '',
+    last_item_count INTEGER NOT NULL DEFAULT 0,
+    sync_token_hash TEXT NOT NULL DEFAULT '',
+    sync_token_expires TEXT NOT NULL DEFAULT '0',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

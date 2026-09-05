@@ -12,6 +12,7 @@ final class PaginationPreference
     public const KEY_USERS = 'ra_per_users';
     public const KEY_AUDIT = 'ra_per_audit';
     public const KEY_PROJECTS = 'ra_per_projects';
+    public const KEY_SHAREPOINT = 'ra_per_sharepoint';
 
     private const LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 

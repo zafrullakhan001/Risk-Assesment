@@ -651,6 +651,7 @@ $renderMermaidOptionControls = static function (
                 <a class="button ghost home-link" href="index.php#find-projects">🔎 Find projects</a>
                 <a class="button ghost home-link" href="index.php#upload">📤 Upload assessment</a>
                 <a class="button ghost home-link is-active" href="templates.php" aria-current="page">📚 Templates</a>
+                <a class="button ghost home-link" href="sharepoint.php">📁 SharePoint</a>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/theme-controls.php'; ?>
                 <div class="updated template-count-chip"><?= (int) $templateCount ?> / <?= (int) $maxTemplates ?> templates</div>
@@ -678,11 +679,7 @@ $renderMermaidOptionControls = static function (
                 <div class="alert alert-success">✅ <?= e($flash) ?></div>
             <?php endif; ?>
 
-            <nav class="home-section-tabs template-section-tabs" aria-label="Home sections">
-                <a href="index.php#find-projects"><span class="settings-emoji" aria-hidden="true">🔎</span> Find projects</a>
-                <a href="index.php#upload"><span class="settings-emoji" aria-hidden="true">📤</span> Upload assessment</a>
-                <a class="is-active" href="templates.php" aria-current="page"><span class="settings-emoji" aria-hidden="true">📚</span> Template library</a>
-            </nav>
+            <?php $homeTab = 'templates'; require __DIR__ . '/includes/home-section-tabs.php'; ?>
 
             <div class="template-stats" aria-label="Library capacity">
                 <div class="template-stat template-stat-stored">

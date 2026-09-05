@@ -16,6 +16,7 @@ final class DashboardProjectResources
      * @param list<array{id: int, label: string, url: string, sort_order: int}> $links
      * @param list<array{id: int, title: string, source: string, sort_order: int}> $diagrams
      * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $pictures
+     * @param array{project_name: string, folder_url: string, items: list<array<string, mixed>>}|null $sharePointCatalog
      */
     public function render(
         int $assessmentId,
@@ -23,13 +24,19 @@ final class DashboardProjectResources
         array $diagrams,
         array $pictures = [],
         bool $canEdit = true,
-        string $shareToken = ''
+        string $shareToken = '',
+        ?array $sharePointCatalog = null
     ): string {
         $canSave = $canEdit && $assessmentId > 0;
         $maxLinks = ProjectLinksRepository::MAX_LINKS;
         $maxDiagrams = ProjectMermaidRepository::MAX_DIAGRAMS;
         $maxPictures = ProjectPicturesRepository::MAX_PICTURES;
         $this->shareToken = $shareToken;
+        $catalogProject = trim((string) ($sharePointCatalog['project_name'] ?? ''));
+        $catalogFolderUrl = trim((string) ($sharePointCatalog['folder_url'] ?? ''));
+        $catalogItems = is_array($sharePointCatalog['items'] ?? null) ? $sharePointCatalog['items'] : [];
+        $hasCatalog = $catalogProject !== '' && $catalogItems !== [];
+        $catalogHref = $shareToken !== '' ? '' : 'sharepoint.php';
 
         ob_start();
         ?>
@@ -221,6 +228,91 @@ final class DashboardProjectResources
                     <template id="project-link-row-template">
                         <?= $this->renderLinkRow('', '', $canSave) ?>
                     </template>
+                </section>
+
+                <section class="table-card project-sharepoint-card project-resource-card" id="project-sharepoint-catalog">
+                    <div class="card-heading project-resource-heading">
+                        <div class="project-resource-heading-main">
+                            <span class="project-resource-icon" aria-hidden="true">📁</span>
+                            <div>
+                                <div class="eyebrow">Architectural Projects</div>
+                                <h3>SharePoint catalog</h3>
+                            </div>
+                        </div>
+                        <?php if ($hasCatalog): ?>
+                            <span class="result-count project-count-badge"><?= count($catalogItems) ?> link<?= count($catalogItems) === 1 ? '' : 's' ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($hasCatalog): ?>
+                        <p class="panel-help">
+                            Matched folder <strong><?= $this->e($catalogProject) ?></strong> from the SharePoint catalog.
+                            Links open in SharePoint (sign-in may be required).
+                        </p>
+                        <?php if ($catalogFolderUrl !== ''): ?>
+                            <div class="project-resource-toolbar">
+                                <a class="button ghost-light btn-accent-violet" href="<?= $this->e($catalogFolderUrl) ?>" target="_blank" rel="noopener noreferrer">🔗 Open project folder</a>
+                                <?php if ($catalogHref !== ''): ?>
+                                    <a class="button ghost" href="<?= $this->e($catalogHref) ?>?q=<?= rawurlencode($catalogProject) ?>">🔎 Catalog search</a>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                        <ul class="sharepoint-link-list sharepoint-link-list-compact">
+                            <?php foreach ($catalogItems as $item): ?>
+                                <?php
+                                $itemName = (string) ($item['name'] ?? '');
+                                $itemUrl = (string) ($item['web_url'] ?? '');
+                                $itemType = (string) ($item['item_type'] ?? 'file');
+                                $rel = (string) ($item['relative_path'] ?? '');
+                                $modified = (string) ($item['last_modified'] ?? '');
+                                $modifiedBy = (string) ($item['modified_by'] ?? '');
+                                $person = (string) ($item['person'] ?? '');
+                                if ($itemUrl === '') {
+                                    continue;
+                                }
+                                $icon = $itemType === 'folder' ? '📁' : '📄';
+                                $modifiedDisplay = $modified;
+                                if ($modified !== '' && preg_match('/^\d{4}-\d{2}-\d{2}/', $modified) === 1) {
+                                    try {
+                                        $modifiedDisplay = (new \DateTimeImmutable($modified))->format('M j, Y g:i A');
+                                    } catch (\Throwable) {
+                                        $modifiedDisplay = $modified;
+                                    }
+                                }
+                                ?>
+                                <li class="sharepoint-link-row">
+                                    <span class="sharepoint-link-icon" aria-hidden="true"><?= $icon ?></span>
+                                    <div class="sharepoint-link-body">
+                                        <a href="<?= $this->e($itemUrl) ?>" target="_blank" rel="noopener noreferrer"><?= $this->e($itemName) ?></a>
+                                        <?php if ($rel !== '' && $rel !== $itemName): ?>
+                                            <span class="sharepoint-link-path"><?= $this->e($rel) ?></span>
+                                        <?php endif; ?>
+                                        <span class="sharepoint-link-meta">
+                                            <?php if ($modifiedDisplay !== ''): ?>
+                                                <span title="Modified">🕒 <?= $this->e($modifiedDisplay) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($modifiedBy !== ''): ?>
+                                                <span title="Modified By">✏️ <?= $this->e($modifiedBy) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($person !== ''): ?>
+                                                <span title="Person">👤 <?= $this->e($person) ?></span>
+                                            <?php endif; ?>
+                                        </span>
+                                    </div>
+                                    <span class="sharepoint-link-type"><?= $this->e($itemType) ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?>
+                        <p class="empty-panel project-empty-state">
+                            📁 No matching SharePoint project folder for this assessment name.
+                            <?php if ($catalogHref !== ''): ?>
+                                Search the <a href="<?= $this->e($catalogHref) ?>">SharePoint catalog</a>
+                                or ask an admin to sync/import the Architectural Projects listing.
+                            <?php else: ?>
+                                The catalog may not include this project yet.
+                            <?php endif; ?>
+                        </p>
+                    <?php endif; ?>
                 </section>
             </div>
         </div>
