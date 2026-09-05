@@ -43,7 +43,13 @@ $freshShareUrl = null;
 $dashboardHtml = '';
 $searchQuery = trim((string) ($_GET['q'] ?? ''));
 $searchPage = max(1, (int) ($_GET['page'] ?? 1));
-$searchPerPage = 10;
+$allowedPerPage = [10, 25, 50, 100];
+$searchPerPage = \RiskAssessment\PaginationPreference::resolve(
+    \RiskAssessment\PaginationPreference::KEY_PROJECTS,
+    isset($_GET['per']) ? (int) $_GET['per'] : null,
+    10,
+    $allowedPerPage
+);
 $allowedSorts = ['project', 'vendor', 'id', 'template', 'owner', 'status', 'assessed', 'uploaded'];
 $searchSort = strtolower(trim((string) ($_GET['sort'] ?? 'uploaded')));
 if (!in_array($searchSort, $allowedSorts, true)) {
@@ -82,6 +88,7 @@ $projectListQueryParams = static function (
 ) use (
     $searchQuery,
     $searchPage,
+    $searchPerPage,
     $searchSort,
     $searchDir,
     $searchFilters
@@ -89,6 +96,7 @@ $projectListQueryParams = static function (
     $params = [
         'q' => $searchQuery,
         'page' => $searchPage,
+        'per' => $searchPerPage,
         'sort' => $searchSort,
         'dir' => $searchDir,
     ];
@@ -109,6 +117,9 @@ $projectListQueryParams = static function (
     }
     if ((int) ($params['page'] ?? 1) <= 1) {
         unset($params['page']);
+    }
+    if ((int) ($params['per'] ?? 10) === 10) {
+        unset($params['per']);
     }
     if (($params['sort'] ?? 'uploaded') === 'uploaded' && ($params['dir'] ?? 'desc') === 'desc') {
         unset($params['sort'], $params['dir']);
@@ -1401,6 +1412,9 @@ $renderProjectDelete = static function (array $project): void {
                 <h2><?= e($branding->heroHeadingPlain()) ?></h2>
                 <p>Search any project field: name, vendor, owner, scope, reviewer, architecture, filename, evaluator, executive summary, dates, template format (try “adaptive” or “matured”), or go-live status (try “ready”, “not ready”, “no final”). Leave blank to browse all saved versions.</p>
                 <form method="get" class="search-form" action="index.php#find-projects">
+                    <?php if ($searchPerPage !== 10): ?>
+                        <input type="hidden" name="per" value="<?= (int) $searchPerPage ?>">
+                    <?php endif; ?>
                     <div class="search-wrap search-wrap-wide">
                         <span>Find</span>
                         <input
@@ -1418,7 +1432,7 @@ $renderProjectDelete = static function (array $project): void {
                     <p class="empty-results">No saved projects found yet.</p>
                 <?php else: ?>
                     <div class="project-list-toolbar">
-                        <p class="search-result-meta">Showing <?= (int) $searchFrom ?>–<?= (int) $searchTo ?> of <?= (int) $searchTotal ?><?= $searchQuery !== '' ? ' matching “' . htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') . '”' : '' ?><?= $activeFilters !== [] ? ' · filtered' : '' ?> · 10 per page</p>
+                        <p class="search-result-meta">Showing <?= (int) $searchFrom ?>–<?= (int) $searchTo ?> of <?= (int) $searchTotal ?><?= $searchQuery !== '' ? ' matching “' . htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') . '”' : '' ?><?= $activeFilters !== [] ? ' · filtered' : '' ?></p>
                         <div class="project-list-toolbar-actions">
                             <button
                                 type="button"
@@ -1474,6 +1488,9 @@ $renderProjectDelete = static function (array $project): void {
                         <form method="get" class="project-table-filter-form" action="index.php#find-projects">
                             <?php if ($searchQuery !== ''): ?>
                                 <input type="hidden" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
+                            <?php endif; ?>
+                            <?php if ($searchPerPage !== 10): ?>
+                                <input type="hidden" name="per" value="<?= (int) $searchPerPage ?>">
                             <?php endif; ?>
                             <input type="hidden" name="sort" value="<?= htmlspecialchars($searchSort, ENT_QUOTES, 'UTF-8') ?>">
                             <input type="hidden" name="dir" value="<?= htmlspecialchars($searchDir, ENT_QUOTES, 'UTF-8') ?>">
@@ -1576,32 +1593,58 @@ $renderProjectDelete = static function (array $project): void {
                             </table>
                         </form>
                     </div>
-                    <?php if ($searchTotalPages > 1): ?>
-                        <nav class="pagination" aria-label="Project list pages">
-                            <?php if ($searchPage > 1): ?>
-                                <a class="button ghost" href="<?= htmlspecialchars($projectListUrl(['page' => $searchPage - 1]), ENT_QUOTES, 'UTF-8') ?>">← Previous</a>
-                            <?php else: ?>
-                                <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                    <?php if ($searchTotal > 0): ?>
+                    <nav class="pagination" aria-label="Project list pages">
+                        <div class="pagination-controls">
+                            <?php if ($searchTotalPages > 1): ?>
+                                <?php if ($searchPage > 1): ?>
+                                    <a class="button ghost" href="<?= htmlspecialchars($projectListUrl(['page' => $searchPage - 1]), ENT_QUOTES, 'UTF-8') ?>">← Previous</a>
+                                <?php else: ?>
+                                    <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                                <?php endif; ?>
+                                <span class="pagination-pages">
+                                    <?php
+                                    $windowStart = max(1, $searchPage - 2);
+                                    $windowEnd = min($searchTotalPages, $searchPage + 2);
+                                    for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
+                                    ?>
+                                        <?php if ($pageNum === $searchPage): ?>
+                                            <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
+                                        <?php else: ?>
+                                            <a class="pagination-page" href="<?= htmlspecialchars($projectListUrl(['page' => $pageNum]), ENT_QUOTES, 'UTF-8') ?>"><?= $pageNum ?></a>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                </span>
+                                <?php if ($searchPage < $searchTotalPages): ?>
+                                    <a class="button ghost" href="<?= htmlspecialchars($projectListUrl(['page' => $searchPage + 1]), ENT_QUOTES, 'UTF-8') ?>">Next →</a>
+                                <?php else: ?>
+                                    <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                                <?php endif; ?>
                             <?php endif; ?>
-                            <span class="pagination-pages">
-                                <?php
-                                $windowStart = max(1, $searchPage - 2);
-                                $windowEnd = min($searchTotalPages, $searchPage + 2);
-                                for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
-                                ?>
-                                    <?php if ($pageNum === $searchPage): ?>
-                                        <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
-                                    <?php else: ?>
-                                        <a class="pagination-page" href="<?= htmlspecialchars($projectListUrl(['page' => $pageNum]), ENT_QUOTES, 'UTF-8') ?>"><?= $pageNum ?></a>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
-                            </span>
-                            <?php if ($searchPage < $searchTotalPages): ?>
-                                <a class="button ghost" href="<?= htmlspecialchars($projectListUrl(['page' => $searchPage + 1]), ENT_QUOTES, 'UTF-8') ?>">Next →</a>
-                            <?php else: ?>
-                                <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                        </div>
+                        <form method="get" class="pagination-per-page" action="index.php#find-projects">
+                            <?php if ($searchQuery !== ''): ?>
+                                <input type="hidden" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
                             <?php endif; ?>
-                        </nav>
+                            <?php if ($searchSort !== 'uploaded' || $searchDir !== 'desc'): ?>
+                                <input type="hidden" name="sort" value="<?= htmlspecialchars($searchSort, ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="hidden" name="dir" value="<?= htmlspecialchars($searchDir, ENT_QUOTES, 'UTF-8') ?>">
+                            <?php endif; ?>
+                            <?php foreach ($searchFilters as $filterKey => $filterValue): ?>
+                                <?php if ($filterValue !== ''): ?>
+                                    <input type="hidden" name="f_<?= htmlspecialchars($filterKey, ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars($filterValue, ENT_QUOTES, 'UTF-8') ?>">
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                            <label>
+                                <span>Rows per page</span>
+                                <select name="per" onchange="this.form.submit()">
+                                    <?php foreach ($allowedPerPage as $size): ?>
+                                        <option value="<?= (int) $size ?>"<?= $searchPerPage === $size ? ' selected' : '' ?>><?= (int) $size ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                        </form>
+                    </nav>
                     <?php endif; ?>
                 <?php endif; ?>
             </section>

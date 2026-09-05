@@ -5945,6 +5945,29 @@ html.is-compact .site-footer {
     font-size: 11px;
     color: var(--muted);
 }
+.history-panel-footer-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.history-panel-per-page {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+}
+.history-panel-per-page select {
+    min-width: 3.5rem;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    padding: 0 6px;
+    font: inherit;
+}
 .history-panel-pagination {
     display: inline-flex;
     align-items: center;
@@ -6059,6 +6082,13 @@ html.is-compact .site-footer {
     gap: 10px;
     margin-top: 14px;
 }
+.pagination-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+}
 .pagination-pages {
     display: flex;
     flex-wrap: wrap;
@@ -6084,6 +6114,27 @@ html.is-compact .site-footer {
     border-color: var(--primary);
     color: #fff;
     font-weight: 600;
+}
+.pagination-per-page {
+    margin: 0;
+    margin-left: auto;
+}
+.pagination-per-page label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+}
+.pagination-per-page select {
+    min-width: 4.5rem;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    padding: 0 8px;
+    font: inherit;
 }
 .button.is-disabled,
 .button[aria-disabled="true"] {

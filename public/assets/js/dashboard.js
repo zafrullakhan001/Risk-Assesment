@@ -1761,15 +1761,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const pageEl = panel.querySelector('.history-panel-page');
         const prevBtn = panel.querySelector('.history-panel-prev');
         const nextBtn = panel.querySelector('.history-panel-next');
+        const perPageSelect = panel.querySelector('.history-panel-per-page-select');
+        const allowedPerPage = [5, 10, 20];
+        const historyPerPageKey = 'ra-history-per-page';
+        const readStoredPerPage = () => {
+            try {
+                const stored = parseInt(window.localStorage.getItem(historyPerPageKey) || '', 10);
+                return allowedPerPage.includes(stored) ? stored : null;
+            } catch (error) {
+                return null;
+            }
+        };
+        const writeStoredPerPage = (value) => {
+            try {
+                window.localStorage.setItem(historyPerPageKey, String(value));
+            } catch (error) {
+                // Ignore quota / private-mode failures.
+            }
+        };
+        const initialPerPage = readStoredPerPage()
+            ?? Math.max(1, parseInt(panel.dataset.perPage || '5', 10) || 5);
         const state = {
             page: 1,
             query: '',
-            perPage: Math.max(1, parseInt(panel.dataset.perPage || '5', 10) || 5),
+            perPage: allowedPerPage.includes(initialPerPage) ? initialPerPage : 5,
             total: 0,
             totalPages: 1,
             loading: false,
         };
         let searchTimer = null;
+
+        panel.dataset.perPage = String(state.perPage);
+        if (perPageSelect) {
+            perPageSelect.value = String(state.perPage);
+        }
 
         const updatePager = () => {
             if (!paginationEl) {
@@ -1785,6 +1810,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (nextBtn) {
                 nextBtn.disabled = state.page >= state.totalPages || state.loading;
+            }
+            if (perPageSelect) {
+                perPageSelect.disabled = state.loading;
             }
         };
 
@@ -1866,6 +1894,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.total = Number(payload.total || 0);
                 state.totalPages = Number(payload.total_pages || 1);
                 state.perPage = Number(payload.per_page || state.perPage);
+                if (perPageSelect) {
+                    perPageSelect.value = String(state.perPage);
+                }
                 renderEntries(Array.isArray(payload.entries) ? payload.entries : []);
             } catch (error) {
                 if (listEl) {
@@ -1899,6 +1930,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.page < state.totalPages) {
                 load(state.page + 1);
             }
+        });
+        perPageSelect?.addEventListener('change', () => {
+            const nextPerPage = parseInt(perPageSelect.value, 10);
+            if (!allowedPerPage.includes(nextPerPage) || nextPerPage === state.perPage) {
+                perPageSelect.value = String(state.perPage);
+                return;
+            }
+            state.perPage = nextPerPage;
+            panel.dataset.perPage = String(nextPerPage);
+            writeStoredPerPage(nextPerPage);
+            state.page = 1;
+            load(1);
         });
 
         return {

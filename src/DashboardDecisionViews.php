@@ -850,11 +850,21 @@ final class DashboardDecisionViews
                         <p class="history-panel-empty" hidden>📭 No history posts yet for this action item.</p>
                         <div class="history-panel-footer">
                             <span class="history-panel-meta"></span>
-                            <nav class="history-panel-pagination" aria-label="Activity log pages" hidden>
-                                <button type="button" class="button ghost history-panel-prev">← Prev</button>
-                                <span class="history-panel-page"></span>
-                                <button type="button" class="button ghost history-panel-next">Next →</button>
-                            </nav>
+                            <div class="history-panel-footer-actions">
+                                <label class="history-panel-per-page">
+                                    <span>Rows</span>
+                                    <select class="history-panel-per-page-select" aria-label="Rows per page">
+                                        <option value="5" selected>5</option>
+                                        <option value="10">10</option>
+                                        <option value="20">20</option>
+                                    </select>
+                                </label>
+                                <nav class="history-panel-pagination" aria-label="Activity log pages" hidden>
+                                    <button type="button" class="button ghost history-panel-prev">← Prev</button>
+                                    <span class="history-panel-page"></span>
+                                    <button type="button" class="button ghost history-panel-next">Next →</button>
+                                </nav>
+                            </div>
                         </div>
                     </div>
                     <p class="response-dialog-status" id="response-dialog-status" hidden></p>
@@ -1688,11 +1698,21 @@ final class DashboardDecisionViews
             <p class="history-panel-empty" hidden>No history posts yet.</p>
             <div class="history-panel-footer">
                 <span class="history-panel-meta"></span>
-                <nav class="history-panel-pagination" aria-label="<?= $this->e($heading) ?> pages" hidden>
-                    <button type="button" class="button ghost history-panel-prev">← Prev</button>
-                    <span class="history-panel-page"></span>
-                    <button type="button" class="button ghost history-panel-next">Next →</button>
-                </nav>
+                <div class="history-panel-footer-actions">
+                    <label class="history-panel-per-page">
+                        <span>Rows</span>
+                        <select class="history-panel-per-page-select" aria-label="Rows per page">
+                            <?php foreach ([5, 10, 20] as $size): ?>
+                                <option value="<?= (int) $size ?>"<?= max(1, min(20, $perPage)) === $size ? ' selected' : '' ?>><?= (int) $size ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <nav class="history-panel-pagination" aria-label="<?= $this->e($heading) ?> pages" hidden>
+                        <button type="button" class="button ghost history-panel-prev">← Prev</button>
+                        <span class="history-panel-page"></span>
+                        <button type="button" class="button ghost history-panel-next">Next →</button>
+                    </nav>
+                </div>
             </div>
         </section>
         <?php

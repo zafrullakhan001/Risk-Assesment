@@ -302,27 +302,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$allowedPerPage = [10, 25, 50, 100];
 $userQuery = trim((string) ($_GET['uq'] ?? ''));
-$userPerPage = 25;
+$userPerPage = \RiskAssessment\PaginationPreference::resolve(
+    \RiskAssessment\PaginationPreference::KEY_USERS,
+    isset($_GET['uper']) ? (int) $_GET['uper'] : null,
+    25,
+    $allowedPerPage
+);
 $userTotal = $usersRepo->countSearch($userQuery);
 $userTotalPages = max(1, (int) ceil($userTotal / $userPerPage));
 $userPage = max(1, min($userTotalPages, (int) ($_GET['upage'] ?? 1)));
 $allUsers = $usersRepo->searchUsers($userQuery, $userPage, $userPerPage);
 
 $auditQuery = trim((string) ($_GET['aq'] ?? ''));
-$auditPerPage = 25;
+$auditPerPage = \RiskAssessment\PaginationPreference::resolve(
+    \RiskAssessment\PaginationPreference::KEY_AUDIT,
+    isset($_GET['aper']) ? (int) $_GET['aper'] : null,
+    25,
+    $allowedPerPage
+);
 $auditTotal = $usersRepo->countAudit($auditQuery);
 $auditTotalPages = max(1, (int) ceil($auditTotal / $auditPerPage));
 $auditPage = max(1, min($auditTotalPages, (int) ($_GET['apage'] ?? 1)));
 $audit = $usersRepo->searchAudit($auditQuery, $auditPage, $auditPerPage);
 
-$usersPageUrl = static function (array $overrides = [], string $hash = '') use ($userQuery, $userPage, $auditQuery, $auditPage): string {
+$usersPageUrl = static function (array $overrides = [], string $hash = '') use ($userQuery, $userPage, $userPerPage, $auditQuery, $auditPage, $auditPerPage): string {
     $params = array_merge(
         [
             'uq' => $userQuery,
             'upage' => $userPage,
+            'uper' => $userPerPage,
             'aq' => $auditQuery,
             'apage' => $auditPage,
+            'aper' => $auditPerPage,
         ],
         $overrides
     );
@@ -332,11 +345,17 @@ $usersPageUrl = static function (array $overrides = [], string $hash = '') use (
     if ((int) ($params['upage'] ?? 1) <= 1) {
         unset($params['upage']);
     }
+    if ((int) ($params['uper'] ?? 25) === 25) {
+        unset($params['uper']);
+    }
     if (trim((string) ($params['aq'] ?? '')) === '') {
         unset($params['aq']);
     }
     if ((int) ($params['apage'] ?? 1) <= 1) {
         unset($params['apage']);
+    }
+    if ((int) ($params['aper'] ?? 25) === 25) {
+        unset($params['aper']);
     }
     $query = http_build_query($params);
 
@@ -554,6 +573,12 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     <?php if ($auditPage > 1): ?>
                         <input type="hidden" name="apage" value="<?= (int) $auditPage ?>">
                     <?php endif; ?>
+                    <?php if ($userPerPage !== 25): ?>
+                        <input type="hidden" name="uper" value="<?= (int) $userPerPage ?>">
+                    <?php endif; ?>
+                    <?php if ($auditPerPage !== 25): ?>
+                        <input type="hidden" name="aper" value="<?= (int) $auditPerPage ?>">
+                    <?php endif; ?>
                     <div class="settings-grid">
                         <label class="settings-field settings-span-all">
                             <span>Search users</span>
@@ -730,33 +755,57 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </tbody>
                         </table>
                     </div>
-                    <?php if ($userTotalPages > 1): ?>
-                        <nav class="pagination" aria-label="User list pages">
-                            <?php if ($userPage > 1): ?>
-                                <a class="button ghost" href="<?= e($usersPageUrl(['upage' => $userPage - 1], '#all-users')) ?>">← Previous</a>
-                            <?php else: ?>
-                                <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                    <nav class="pagination" aria-label="User list pages">
+                        <div class="pagination-controls">
+                            <?php if ($userTotalPages > 1): ?>
+                                <?php if ($userPage > 1): ?>
+                                    <a class="button ghost" href="<?= e($usersPageUrl(['upage' => $userPage - 1], '#all-users')) ?>">← Previous</a>
+                                <?php else: ?>
+                                    <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                                <?php endif; ?>
+                                <span class="pagination-pages">
+                                    <?php
+                                    $windowStart = max(1, $userPage - 2);
+                                    $windowEnd = min($userTotalPages, $userPage + 2);
+                                    for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
+                                    ?>
+                                        <?php if ($pageNum === $userPage): ?>
+                                            <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
+                                        <?php else: ?>
+                                            <a class="pagination-page" href="<?= e($usersPageUrl(['upage' => $pageNum], '#all-users')) ?>"><?= $pageNum ?></a>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                </span>
+                                <?php if ($userPage < $userTotalPages): ?>
+                                    <a class="button ghost" href="<?= e($usersPageUrl(['upage' => $userPage + 1], '#all-users')) ?>">Next →</a>
+                                <?php else: ?>
+                                    <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                                <?php endif; ?>
                             <?php endif; ?>
-                            <span class="pagination-pages">
-                                <?php
-                                $windowStart = max(1, $userPage - 2);
-                                $windowEnd = min($userTotalPages, $userPage + 2);
-                                for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
-                                ?>
-                                    <?php if ($pageNum === $userPage): ?>
-                                        <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
-                                    <?php else: ?>
-                                        <a class="pagination-page" href="<?= e($usersPageUrl(['upage' => $pageNum], '#all-users')) ?>"><?= $pageNum ?></a>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
-                            </span>
-                            <?php if ($userPage < $userTotalPages): ?>
-                                <a class="button ghost" href="<?= e($usersPageUrl(['upage' => $userPage + 1], '#all-users')) ?>">Next →</a>
-                            <?php else: ?>
-                                <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                        </div>
+                        <form method="get" class="pagination-per-page" action="users.php#all-users">
+                            <?php if ($userQuery !== ''): ?>
+                                <input type="hidden" name="uq" value="<?= e($userQuery) ?>">
                             <?php endif; ?>
-                        </nav>
-                    <?php endif; ?>
+                            <?php if ($auditQuery !== ''): ?>
+                                <input type="hidden" name="aq" value="<?= e($auditQuery) ?>">
+                            <?php endif; ?>
+                            <?php if ($auditPage > 1): ?>
+                                <input type="hidden" name="apage" value="<?= (int) $auditPage ?>">
+                            <?php endif; ?>
+                            <?php if ($auditPerPage !== 25): ?>
+                                <input type="hidden" name="aper" value="<?= (int) $auditPerPage ?>">
+                            <?php endif; ?>
+                            <label>
+                                <span>Rows per page</span>
+                                <select name="uper" onchange="this.form.submit()">
+                                    <?php foreach ($allowedPerPage as $size): ?>
+                                        <option value="<?= (int) $size ?>"<?= $userPerPage === $size ? ' selected' : '' ?>><?= (int) $size ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                        </form>
+                    </nav>
                 <?php endif; ?>
             </section>
 
@@ -768,6 +817,12 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     <?php endif; ?>
                     <?php if ($userPage > 1): ?>
                         <input type="hidden" name="upage" value="<?= (int) $userPage ?>">
+                    <?php endif; ?>
+                    <?php if ($userPerPage !== 25): ?>
+                        <input type="hidden" name="uper" value="<?= (int) $userPerPage ?>">
+                    <?php endif; ?>
+                    <?php if ($auditPerPage !== 25): ?>
+                        <input type="hidden" name="aper" value="<?= (int) $auditPerPage ?>">
                     <?php endif; ?>
                     <div class="settings-grid">
                         <label class="settings-field settings-span-all">
@@ -814,33 +869,57 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </tbody>
                         </table>
                     </div>
-                    <?php if ($auditTotalPages > 1): ?>
-                        <nav class="pagination" aria-label="Audit log pages">
-                            <?php if ($auditPage > 1): ?>
-                                <a class="button ghost" href="<?= e($usersPageUrl(['apage' => $auditPage - 1], '#audit-log')) ?>">← Previous</a>
-                            <?php else: ?>
-                                <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                    <nav class="pagination" aria-label="Audit log pages">
+                        <div class="pagination-controls">
+                            <?php if ($auditTotalPages > 1): ?>
+                                <?php if ($auditPage > 1): ?>
+                                    <a class="button ghost" href="<?= e($usersPageUrl(['apage' => $auditPage - 1], '#audit-log')) ?>">← Previous</a>
+                                <?php else: ?>
+                                    <span class="button ghost is-disabled" aria-disabled="true">← Previous</span>
+                                <?php endif; ?>
+                                <span class="pagination-pages">
+                                    <?php
+                                    $windowStart = max(1, $auditPage - 2);
+                                    $windowEnd = min($auditTotalPages, $auditPage + 2);
+                                    for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
+                                    ?>
+                                        <?php if ($pageNum === $auditPage): ?>
+                                            <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
+                                        <?php else: ?>
+                                            <a class="pagination-page" href="<?= e($usersPageUrl(['apage' => $pageNum], '#audit-log')) ?>"><?= $pageNum ?></a>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                </span>
+                                <?php if ($auditPage < $auditTotalPages): ?>
+                                    <a class="button ghost" href="<?= e($usersPageUrl(['apage' => $auditPage + 1], '#audit-log')) ?>">Next →</a>
+                                <?php else: ?>
+                                    <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                                <?php endif; ?>
                             <?php endif; ?>
-                            <span class="pagination-pages">
-                                <?php
-                                $windowStart = max(1, $auditPage - 2);
-                                $windowEnd = min($auditTotalPages, $auditPage + 2);
-                                for ($pageNum = $windowStart; $pageNum <= $windowEnd; $pageNum++):
-                                ?>
-                                    <?php if ($pageNum === $auditPage): ?>
-                                        <span class="pagination-page is-current" aria-current="page"><?= $pageNum ?></span>
-                                    <?php else: ?>
-                                        <a class="pagination-page" href="<?= e($usersPageUrl(['apage' => $pageNum], '#audit-log')) ?>"><?= $pageNum ?></a>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
-                            </span>
-                            <?php if ($auditPage < $auditTotalPages): ?>
-                                <a class="button ghost" href="<?= e($usersPageUrl(['apage' => $auditPage + 1], '#audit-log')) ?>">Next →</a>
-                            <?php else: ?>
-                                <span class="button ghost is-disabled" aria-disabled="true">Next →</span>
+                        </div>
+                        <form method="get" class="pagination-per-page" action="users.php#audit-log">
+                            <?php if ($userQuery !== ''): ?>
+                                <input type="hidden" name="uq" value="<?= e($userQuery) ?>">
                             <?php endif; ?>
-                        </nav>
-                    <?php endif; ?>
+                            <?php if ($userPage > 1): ?>
+                                <input type="hidden" name="upage" value="<?= (int) $userPage ?>">
+                            <?php endif; ?>
+                            <?php if ($userPerPage !== 25): ?>
+                                <input type="hidden" name="uper" value="<?= (int) $userPerPage ?>">
+                            <?php endif; ?>
+                            <?php if ($auditQuery !== ''): ?>
+                                <input type="hidden" name="aq" value="<?= e($auditQuery) ?>">
+                            <?php endif; ?>
+                            <label>
+                                <span>Rows per page</span>
+                                <select name="aper" onchange="this.form.submit()">
+                                    <?php foreach ($allowedPerPage as $size): ?>
+                                        <option value="<?= (int) $size ?>"<?= $auditPerPage === $size ? ' selected' : '' ?>><?= (int) $size ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                        </form>
+                    </nav>
                 <?php endif; ?>
             </section>
 <?php
