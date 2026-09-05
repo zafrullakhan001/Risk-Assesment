@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
+use RiskAssessment\ProjectImageConverter;
+use RiskAssessment\Repositories\TemplateImagesRepository;
 use RiskAssessment\Repositories\TemplateWorkbookRepository;
 
 $currentUser = $auth->requireAuth();
 $templates = new TemplateWorkbookRepository($pdo);
+$templateImages = new TemplateImagesRepository($pdo);
+$imageConverter = new ProjectImageConverter();
 
 $error = '';
 $flash = '';
 $maxTemplates = max(1, (int) ($config['max_template_workbooks'] ?? TemplateWorkbookRepository::MAX_TEMPLATES));
+$maxGuideImages = TemplateImagesRepository::MAX_IMAGES;
 $templateDir = (string) ($config['template_upload_dir'] ?? ($config['upload_dir'] . DIRECTORY_SEPARATOR . 'templates'));
 $maxWorkbookBytes = (int) ($config['max_upload_bytes'] ?? 5 * 1024 * 1024);
 $maxPromptBytes = (int) ($config['max_template_prompt_bytes'] ?? 512 * 1024);
@@ -96,6 +101,115 @@ $unlinkQuiet = static function (string $path): void {
     }
 };
 
+/**
+ * Apply ELK layout and flowchart direction to Mermaid source.
+ */
+$applyMermaidOptions = static function (string $source, string $layout, string $direction): string {
+    $source = trim($source);
+    if ($source === '') {
+        return '';
+    }
+
+    $layout = strtolower(trim($layout)) === 'elk' ? 'elk' : 'default';
+    $direction = strtoupper(trim($direction));
+    if (!in_array($direction, ['TB', 'TD', 'BT', 'LR', 'RL'], true)) {
+        $direction = 'TB';
+    }
+
+    // Strip prior ELK YAML front-matter / init directives we manage.
+    $source = preg_replace('/\A---\s*\nconfig:\s*\n(?:[ \t]+.+\n)*---\s*\n?/u', '', $source) ?? $source;
+    $source = preg_replace('/\A%%\{init:[\s\S]*?\}%%\s*/u', '', $source) ?? $source;
+    $source = trim($source);
+
+    $keyword = $layout === 'elk' ? 'flowchart-elk' : 'flowchart';
+    if (preg_match('/^(flowchart(?:-elk)?|graph)\s+(TB|TD|BT|LR|RL)\b/im', $source) === 1) {
+        $source = preg_replace(
+            '/^(flowchart(?:-elk)?|graph)\s+(TB|TD|BT|LR|RL)\b/im',
+            $keyword . ' ' . $direction,
+            $source,
+            1
+        ) ?? $source;
+    } elseif (preg_match('/^(flowchart(?:-elk)?|graph)\b/im', $source) === 1) {
+        $source = preg_replace(
+            '/^(flowchart(?:-elk)?|graph)\b/im',
+            $keyword . ' ' . $direction,
+            $source,
+            1
+        ) ?? $source;
+    } else {
+        $source = $keyword . ' ' . $direction . "\n" . $source;
+    }
+
+    if ($layout === 'elk') {
+        $source = "---\nconfig:\n  layout: elk\n---\n" . $source;
+    }
+
+    return $source;
+};
+
+/**
+ * Normalize multi-file upload field into a list of file arrays.
+ *
+ * @return list<array{name: string, type: string, tmp_name: string, error: int, size: int}>
+ */
+$collectUploadedFiles = static function (string $field): array {
+    if (!isset($_FILES[$field]) || !is_array($_FILES[$field])) {
+        return [];
+    }
+
+    $bucket = $_FILES[$field];
+    $files = [];
+
+    if (is_array($bucket['name'] ?? null)) {
+        $count = count($bucket['name']);
+        for ($i = 0; $i < $count; $i++) {
+            $error = (int) ($bucket['error'][$i] ?? UPLOAD_ERR_NO_FILE);
+            if ($error === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+            $files[] = [
+                'name' => (string) ($bucket['name'][$i] ?? ''),
+                'type' => (string) ($bucket['type'][$i] ?? ''),
+                'tmp_name' => (string) ($bucket['tmp_name'][$i] ?? ''),
+                'error' => $error,
+                'size' => (int) ($bucket['size'][$i] ?? 0),
+            ];
+        }
+    } else {
+        $error = (int) ($bucket['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($error !== UPLOAD_ERR_NO_FILE) {
+            $files[] = [
+                'name' => (string) ($bucket['name'] ?? ''),
+                'type' => (string) ($bucket['type'] ?? ''),
+                'tmp_name' => (string) ($bucket['tmp_name'] ?? ''),
+                'error' => $error,
+                'size' => (int) ($bucket['size'] ?? 0),
+            ];
+        }
+    }
+
+    return $files;
+};
+
+$viewAction = strtolower(trim((string) ($_GET['view'] ?? '')));
+if ($viewAction === 'image') {
+    $imageId = (int) ($_GET['id'] ?? 0);
+    $picture = $templateImages->findForView($imageId);
+    if ($picture === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Guide image not found.';
+        exit;
+    }
+
+    header('Content-Type: ' . $picture['mime_type']);
+    header('Content-Length: ' . (string) strlen($picture['bytes']));
+    header('Cache-Control: private, max-age=3600');
+    header('X-Content-Type-Options: nosniff');
+    echo $picture['bytes'];
+    exit;
+}
+
 $downloadAction = strtolower(trim((string) ($_GET['download'] ?? '')));
 if ($downloadAction === 'workbook' || $downloadAction === 'prompt') {
     $id = (int) ($_GET['id'] ?? 0);
@@ -179,6 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $hasPromptFile = isset($_FILES['ai_prompt_file'])
                 && is_array($_FILES['ai_prompt_file'])
                 && (int) ($_FILES['ai_prompt_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+            $newTemplateId = 0;
 
             try {
                 if ($hasPromptFile) {
@@ -205,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ];
                 }
 
-                $templates->create([
+                $newTemplateId = $templates->create([
                     'name' => $name,
                     'workbook_path' => $workbook['path'],
                     'workbook_filename' => $workbook['filename'],
@@ -213,13 +328,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'prompt_path' => $promptStored['path'],
                     'prompt_filename' => $promptStored['filename'],
                     'prompt_size' => $promptStored['size'],
+                    'mermaid_title' => trim((string) ($_POST['mermaid_title'] ?? '')),
+                    'mermaid_source' => $applyMermaidOptions(
+                        trim((string) ($_POST['mermaid_source'] ?? '')),
+                        (string) ($_POST['mermaid_layout'] ?? 'default'),
+                        (string) ($_POST['mermaid_direction'] ?? 'TB')
+                    ),
                     'uploaded_by_user_id' => (int) ($currentUser['id'] ?? 0),
                     'uploaded_by_username' => (string) ($currentUser['username'] ?? ''),
                     'uploaded_by_display_name' => (string) (($currentUser['display_name'] ?? '') !== ''
                         ? $currentUser['display_name']
                         : ($currentUser['username'] ?? '')),
                 ]);
+
+                $imageFiles = $collectUploadedFiles('template_images');
+                if (count($imageFiles) > $maxGuideImages) {
+                    throw new RuntimeException('You can upload up to ' . $maxGuideImages . ' guide images per template.');
+                }
+                foreach ($imageFiles as $imageFile) {
+                    $converted = $imageConverter->fromUploadedFile($imageFile);
+                    $templateImages->addForTemplate($newTemplateId, [
+                        'title' => pathinfo($converted['original_filename'], PATHINFO_FILENAME) ?: 'Guide image',
+                        'mime_type' => $converted['mime_type'],
+                        'base64' => $converted['base64'],
+                        'original_filename' => $converted['original_filename'],
+                    ]);
+                }
             } catch (Throwable $exception) {
+                if ($newTemplateId > 0) {
+                    $templateImages->deleteAllForTemplate($newTemplateId);
+                    $templates->delete($newTemplateId);
+                }
                 $unlinkQuiet($workbook['path']);
                 $unlinkQuiet($promptStored['path']);
                 throw $exception;
@@ -302,7 +441,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $oldPromptPath = $existing['prompt_path'];
                 }
 
+                $clearMermaid = !empty($_POST['clear_mermaid']);
+                $mermaidTitle = trim((string) ($_POST['mermaid_title'] ?? ''));
+                $mermaidSource = trim((string) ($_POST['mermaid_source'] ?? ''));
+                if ($clearMermaid) {
+                    $updatePayload['clear_mermaid'] = true;
+                } elseif (array_key_exists('mermaid_title', $_POST) || array_key_exists('mermaid_source', $_POST)) {
+                    $updatePayload['mermaid_title'] = $mermaidTitle;
+                    $updatePayload['mermaid_source'] = $applyMermaidOptions(
+                        $mermaidSource,
+                        (string) ($_POST['mermaid_layout'] ?? 'default'),
+                        (string) ($_POST['mermaid_direction'] ?? 'TB')
+                    );
+                }
+
                 $templates->update($id, $updatePayload);
+
+                $deleteImageIds = $_POST['delete_image_ids'] ?? [];
+                if (is_array($deleteImageIds)) {
+                    foreach ($deleteImageIds as $deleteImageId) {
+                        $templateImages->deleteOne((int) $deleteImageId, $id);
+                    }
+                }
+
+                $imageFiles = $collectUploadedFiles('template_images');
+                if ($imageFiles !== []) {
+                    $remainingSlots = $maxGuideImages - $templateImages->countForTemplate($id);
+                    if (count($imageFiles) > $remainingSlots) {
+                        throw new RuntimeException(
+                            'This template can hold ' . $maxGuideImages . ' guide images. '
+                            . 'You can add ' . max(0, $remainingSlots) . ' more after removing some.'
+                        );
+                    }
+                    foreach ($imageFiles as $imageFile) {
+                        $converted = $imageConverter->fromUploadedFile($imageFile);
+                        $templateImages->addForTemplate($id, [
+                            'title' => pathinfo($converted['original_filename'], PATHINFO_FILENAME) ?: 'Guide image',
+                            'mime_type' => $converted['mime_type'],
+                            'base64' => $converted['base64'],
+                            'original_filename' => $converted['original_filename'],
+                        ]);
+                    }
+                }
 
                 if ($oldWorkbookPath !== '' && isset($updatePayload['workbook_path']) && $oldWorkbookPath !== $updatePayload['workbook_path']) {
                     $unlinkQuiet($oldWorkbookPath);
@@ -323,6 +503,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = 'Template updated.';
         } elseif ($action === 'delete_template') {
             $id = (int) ($_POST['template_id'] ?? 0);
+            $existing = $templates->find($id);
+            if ($existing === null) {
+                throw new RuntimeException('Template not found.');
+            }
+            $templateImages->deleteAllForTemplate($id);
             $deleted = $templates->delete($id);
             if ($deleted === null) {
                 throw new RuntimeException('Template not found.');
@@ -341,6 +526,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $templateRows = $templates->listAll();
 $templateCount = count($templateRows);
 $slotsLeft = max(0, $maxTemplates - $templateCount);
+$imagesByTemplate = [];
+foreach ($templateRows as $templateRow) {
+    $imagesByTemplate[(int) $templateRow['id']] = $templateImages->listForTemplate((int) $templateRow['id']);
+}
+
+$parseMermaidOptions = static function (string $source): array {
+    $layout = 'default';
+    $direction = 'TB';
+    if (
+        preg_match('/^\s*flowchart-elk\b/im', $source) === 1
+        || preg_match('/^\s*layout:\s*elk\b/im', $source) === 1
+        || preg_match('/defaultRenderer[\'"]?\s*:\s*[\'"]elk[\'"]/i', $source) === 1
+    ) {
+        $layout = 'elk';
+    }
+    if (preg_match('/^(?:flowchart(?:-elk)?|graph)\s+(TB|TD|BT|LR|RL)\b/im', $source, $matches) === 1) {
+        $direction = strtoupper((string) $matches[1]);
+    }
+
+    return [
+        'layout' => $layout,
+        'direction' => $direction,
+    ];
+};
+
+$renderMermaidOptionControls = static function (
+    string $layout,
+    string $direction,
+    string $layoutName = 'mermaid_layout',
+    string $directionName = 'mermaid_direction',
+    string $prefix = '',
+    bool $disabled = false
+): string {
+    $disabledAttr = $disabled ? ' disabled' : '';
+    $idLayout = $prefix !== '' ? $prefix . '-layout' : '';
+    $idDirection = $prefix !== '' ? $prefix . '-direction' : '';
+    $layouts = [
+        'default' => 'Default',
+        'elk' => 'ELK',
+    ];
+    $directions = [
+        'TB' => 'TB',
+        'TD' => 'TD',
+        'BT' => 'BT',
+        'LR' => 'LR',
+        'RL' => 'RL',
+    ];
+    ob_start();
+    ?>
+    <div class="template-mermaid-options" data-mermaid-options>
+        <div class="template-mermaid-option-block">
+            <span class="template-mermaid-option-label"><span class="settings-emoji" aria-hidden="true">✨</span> Layout style</span>
+            <input
+                type="hidden"
+                name="<?= e($layoutName) ?>"
+                value="<?= e($layout) ?>"
+                data-mermaid-layout
+                <?= $idLayout !== '' ? 'id="' . e($idLayout) . '"' : '' ?>
+                <?= $disabledAttr ?>
+            >
+            <div class="template-mermaid-btn-group" role="group" aria-label="Layout style">
+                <?php foreach ($layouts as $value => $label): ?>
+                    <button
+                        type="button"
+                        class="template-mermaid-opt-btn<?= $layout === $value ? ' is-active' : '' ?>"
+                        data-mermaid-layout-btn="<?= e($value) ?>"
+                        <?= $disabledAttr ?>
+                    ><?= e($label) ?></button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <div class="template-mermaid-option-block">
+            <span class="template-mermaid-option-label"><span class="settings-emoji" aria-hidden="true">🧭</span> Flow direction</span>
+            <input
+                type="hidden"
+                name="<?= e($directionName) ?>"
+                value="<?= e($direction) ?>"
+                data-mermaid-direction
+                <?= $idDirection !== '' ? 'id="' . e($idDirection) . '"' : '' ?>
+                <?= $disabledAttr ?>
+            >
+            <div class="template-mermaid-btn-group" role="group" aria-label="Flow direction">
+                <?php foreach ($directions as $value => $label): ?>
+                    <button
+                        type="button"
+                        class="template-mermaid-opt-btn<?= $direction === $value ? ' is-active' : '' ?>"
+                        data-mermaid-direction-btn="<?= e($value) ?>"
+                        title="<?= e($value) ?>"
+                        <?= $disabledAttr ?>
+                    ><?= e($label) ?></button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php
+
+    return (string) ob_get_clean();
+};
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -379,9 +662,9 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                 <div class="hero-main">
                     <div class="hero-head">
                         <div class="hero-intro">
-                            <div class="eyebrow">📦 Blank workbooks &amp; 🤖 AI prompts</div>
+                            <div class="eyebrow">📦 Blank workbooks · 🤖 AI prompts · 🖼️ Guides</div>
                             <h2>Keep up to <?= (int) $maxTemplates ?> <em>downloadable</em> templates here</h2>
-                            <p>Drop an Excel workbook and its AI prompt so anyone signed in can download them later — no hunting shared drives.</p>
+                            <p>Drop an Excel workbook and its AI prompt, plus optional guide images and a Mermaid diagram so anyone signed in can understand how to use it.</p>
                         </div>
                         <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $templateCount, 'templates'); ?>
                     </div>
@@ -429,7 +712,8 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                         ? 'You can add <strong>' . (int) $slotsLeft . '</strong> more template' . ($slotsLeft === 1 ? '' : 's') . ' (max ' . (int) $maxTemplates . ').'
                         : 'Library is full (' . (int) $maxTemplates . '). Delete a template below before uploading another.' ?>
                     Workbooks up to <?= e($formatBytes($maxWorkbookBytes)) ?>; AI prompts (.txt / .md / .prompt) up to <?= e($formatBytes($maxPromptBytes)) ?>.
-                    Dropping a workbook auto-saves it after a moment (drop the AI prompt first or right after if you have one).
+                    Optional: up to <?= (int) $maxGuideImages ?> guide images (JPG/PNG, 2&nbsp;MB each) and one Mermaid diagram.
+                    Dropping a workbook auto-saves it after a moment (add the AI prompt, images, and Mermaid first if you have them).
                 </p>
 
                 <form
@@ -527,6 +811,52 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                         </label>
                     </fieldset>
 
+                    <fieldset class="settings-fieldset settings-tone-mint template-fieldset">
+                        <legend><span class="settings-emoji" aria-hidden="true">🖼️</span> Guide images</legend>
+                        <p class="settings-hint">Optional screenshots or diagrams that explain how to use this template (up to <?= (int) $maxGuideImages ?>, JPG/PNG, 2&nbsp;MB each).</p>
+                        <label class="file-input template-guide-images">
+                            <span><span class="settings-emoji" aria-hidden="true">📤</span> Upload images</span>
+                            <input
+                                type="file"
+                                name="template_images[]"
+                                id="template-images"
+                                accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                                multiple
+                                <?= $slotsLeft === 0 ? 'disabled' : '' ?>
+                            >
+                        </label>
+                        <p class="file-drop-status" id="template-images-status" hidden></p>
+                        <ul class="file-drop-list" id="template-images-list" hidden></ul>
+                    </fieldset>
+
+                    <fieldset class="settings-fieldset settings-tone-sky template-fieldset">
+                        <legend><span class="settings-emoji" aria-hidden="true">🗺️</span> Mermaid diagram</legend>
+                        <p class="settings-hint">Optional flowchart or architecture view shown in the template Guide popup. Choose ELK layout and flow direction, then paste Mermaid source.</p>
+                        <label class="file-input template-mermaid-title">
+                            <span><span class="settings-emoji" aria-hidden="true">🏷️</span> Diagram title</span>
+                            <input
+                                type="text"
+                                name="mermaid_title"
+                                id="mermaid-title"
+                                maxlength="200"
+                                placeholder="e.g. How to fill this workbook"
+                                <?= $slotsLeft === 0 ? 'disabled' : '' ?>
+                            >
+                        </label>
+                        <?= $renderMermaidOptionControls('default', 'TB', 'mermaid_layout', 'mermaid_direction', 'mermaid', $slotsLeft === 0) ?>
+                        <label class="file-input template-mermaid-source">
+                            <span><span class="settings-emoji" aria-hidden="true">📐</span> Mermaid source</span>
+                            <textarea
+                                name="mermaid_source"
+                                id="mermaid-source"
+                                rows="6"
+                                data-mermaid-source-field
+                                placeholder="flowchart TB&#10;  A[Download template] --> B[Fill workbook]&#10;  B --> C[Upload assessment]"
+                                <?= $slotsLeft === 0 ? 'disabled' : '' ?>
+                            ></textarea>
+                        </label>
+                    </fieldset>
+
                     <button type="submit" class="button button-primary template-save-btn" <?= $slotsLeft === 0 ? 'disabled' : '' ?>>
                         <span class="settings-emoji" aria-hidden="true">💾</span> Save to template library
                     </button>
@@ -538,7 +868,7 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                     <h2><span class="settings-emoji" aria-hidden="true">🗂️</span> Stored templates</h2>
                     <span class="template-pill template-pill-list"><?= (int) $templateCount ?> saved</span>
                 </div>
-                <p>Download the blank workbook or AI prompt for any saved entry. Files stay in the app upload folder (not publicly browsable).</p>
+                <p>Download the blank workbook or AI prompt for any saved entry. Use <strong>Open guide</strong> for a popup with explanatory images and Mermaid diagrams. Files stay in the app upload folder (not publicly browsable).</p>
 
                 <?php if ($templateRows === []): ?>
                     <div class="template-empty">
@@ -563,13 +893,17 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                 <?php foreach ($templateRows as $index => $row): ?>
                                     <?php
                                     $templateNumber = $index + 1;
+                                    $templateId = (int) $row['id'];
                                     $uploader = $row['uploaded_by_display_name'] !== ''
                                         ? $row['uploaded_by_display_name']
                                         : ($row['uploaded_by_username'] !== '' ? $row['uploaded_by_username'] : '—');
                                     $hasPrompt = $row['prompt_path'] !== '' && is_file($row['prompt_path']);
+                                    $guideImages = $imagesByTemplate[$templateId] ?? [];
+                                    $hasMermaid = trim((string) $row['mermaid_source']) !== '';
+                                    $hasGuide = $guideImages !== [] || $hasMermaid;
                                     $toneClass = ['is-tone-teal', 'is-tone-sky', 'is-tone-violet', 'is-tone-mint', 'is-tone-amber'][$index % 5];
                                     ?>
-                                    <tr class="template-row <?= $toneClass ?>" data-template-row="<?= (int) $row['id'] ?>" data-row-number="<?= $templateNumber ?>">
+                                    <tr class="template-row <?= $toneClass ?>" data-template-row="<?= $templateId ?>" data-row-number="<?= $templateNumber ?>">
                                         <td class="col-row-num">
                                             <span class="row-number" title="Template <?= $templateNumber ?>">#<?= $templateNumber ?></span>
                                         </td>
@@ -579,11 +913,11 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                                 <button
                                                     type="button"
                                                     class="template-rename-btn"
-                                                    data-template-edit-open="<?= (int) $row['id'] ?>"
+                                                    data-template-edit-open="<?= $templateId ?>"
                                                     title="Edit template"
                                                     aria-label="Edit template"
                                                     aria-expanded="false"
-                                                    aria-controls="template-edit-<?= (int) $row['id'] ?>"
+                                                    aria-controls="template-edit-<?= $templateId ?>"
                                                 >
                                                     <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
                                                         <path d="M12 20h9"></path>
@@ -591,13 +925,33 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                                     </svg>
                                                 </button>
                                             </div>
+                                            <?php if ($hasGuide): ?>
+                                                <button
+                                                    type="button"
+                                                    class="template-guide-toggle"
+                                                    data-template-guide-open="<?= $templateId ?>"
+                                                    aria-haspopup="dialog"
+                                                    aria-expanded="false"
+                                                    aria-controls="template-guide-<?= $templateId ?>"
+                                                >
+                                                    🗺️ Open guide
+                                                    <?php if ($guideImages !== []): ?>
+                                                        <span class="template-guide-count"><?= count($guideImages) ?> img</span>
+                                                    <?php endif; ?>
+                                                    <?php if ($hasMermaid): ?>
+                                                        <span class="template-guide-count">diagram</span>
+                                                    <?php endif; ?>
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="template-missing template-guide-missing">No guide yet</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <div class="template-file-meta">
                                                 <span>📗 <?= e($row['workbook_filename']) ?></span>
                                                 <small><?= e($formatBytes($row['workbook_size'])) ?></small>
                                             </div>
-                                            <a class="template-dl-link template-dl-workbook" href="templates.php?download=workbook&amp;id=<?= (int) $row['id'] ?>">Download workbook</a>
+                                            <a class="template-dl-link template-dl-workbook" href="templates.php?download=workbook&amp;id=<?= $templateId ?>">Download workbook</a>
                                         </td>
                                         <td>
                                             <?php if ($hasPrompt): ?>
@@ -605,7 +959,7 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                                     <span>🤖 <?= e($row['prompt_filename'] !== '' ? $row['prompt_filename'] : 'ai-prompt.txt') ?></span>
                                                     <small><?= e($formatBytes($row['prompt_size'])) ?></small>
                                                 </div>
-                                                <a class="template-dl-link template-dl-prompt" href="templates.php?download=prompt&amp;id=<?= (int) $row['id'] ?>">Download prompt</a>
+                                                <a class="template-dl-link template-dl-prompt" href="templates.php?download=prompt&amp;id=<?= $templateId ?>">Download prompt</a>
                                             <?php else: ?>
                                                 <span class="template-missing">➖ No AI prompt</span>
                                             <?php endif; ?>
@@ -616,7 +970,7 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                             <form method="post" class="inline-form template-delete-form" onsubmit="return confirm('Remove this template from the library?');">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="delete_template">
-                                                <input type="hidden" name="template_id" value="<?= (int) $row['id'] ?>">
+                                                <input type="hidden" name="template_id" value="<?= $templateId ?>">
                                                 <button type="submit" class="project-delete-btn template-delete-icon" title="Delete template" aria-label="Delete template">
                                                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
                                                         <polyline points="3 6 5 6 21 6"></polyline>
@@ -629,17 +983,17 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                             </form>
                                         </td>
                                     </tr>
-                                    <tr class="template-edit-row" id="template-edit-<?= (int) $row['id'] ?>" hidden>
+                                    <tr class="template-edit-row" id="template-edit-<?= $templateId ?>" hidden>
                                         <td colspan="7">
                                             <form
                                                 method="post"
                                                 enctype="multipart/form-data"
                                                 class="template-edit-form"
-                                                data-template-edit-form="<?= (int) $row['id'] ?>"
+                                                data-template-edit-form="<?= $templateId ?>"
                                             >
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="update_template">
-                                                <input type="hidden" name="template_id" value="<?= (int) $row['id'] ?>">
+                                                <input type="hidden" name="template_id" value="<?= $templateId ?>">
 
                                                 <div class="template-edit-head">
                                                     <div class="template-edit-title">
@@ -726,13 +1080,84 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                                                             </label>
                                                         <?php endif; ?>
                                                     </fieldset>
+
+                                                    <fieldset class="settings-fieldset settings-tone-mint template-edit-panel template-edit-panel-images">
+                                                        <legend><span class="settings-emoji" aria-hidden="true">🖼️</span> Guide images</legend>
+                                                        <p class="settings-hint">
+                                                            <?= count($guideImages) ?>/<?= (int) $maxGuideImages ?> stored.
+                                                            Check images to remove, or add more (JPG/PNG, 2&nbsp;MB each).
+                                                        </p>
+                                                        <?php if ($guideImages !== []): ?>
+                                                            <ul class="template-edit-image-list">
+                                                                <?php foreach ($guideImages as $image): ?>
+                                                                    <li class="template-edit-image-item">
+                                                                        <img
+                                                                            src="<?= e($templateImages->viewUrl((int) $image['id'])) ?>"
+                                                                            alt="<?= e($image['title'] !== '' ? $image['title'] : 'Guide image') ?>"
+                                                                            loading="lazy"
+                                                                        >
+                                                                        <div>
+                                                                            <strong><?= e($image['title'] !== '' ? $image['title'] : $image['original_filename']) ?></strong>
+                                                                            <label class="template-edit-clear">
+                                                                                <input type="checkbox" name="delete_image_ids[]" value="<?= (int) $image['id'] ?>">
+                                                                                <span>Remove</span>
+                                                                            </label>
+                                                                        </div>
+                                                                    </li>
+                                                                <?php endforeach; ?>
+                                                            </ul>
+                                                        <?php endif; ?>
+                                                        <?php if (count($guideImages) < $maxGuideImages): ?>
+                                                            <label class="file-input">
+                                                                <span><span class="settings-emoji" aria-hidden="true">📤</span> Add images</span>
+                                                                <input
+                                                                    type="file"
+                                                                    name="template_images[]"
+                                                                    accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                                                                    multiple
+                                                                >
+                                                            </label>
+                                                        <?php endif; ?>
+                                                    </fieldset>
+
+                                                    <fieldset class="settings-fieldset settings-tone-sky template-edit-panel template-edit-panel-mermaid">
+                                                        <legend><span class="settings-emoji" aria-hidden="true">🗺️</span> Mermaid diagram</legend>
+                                                        <p class="settings-hint">Update the diagram shown in the Guide popup, or clear it. ELK + direction are applied when you save.</p>
+                                                        <?php $mermaidOpts = $parseMermaidOptions((string) $row['mermaid_source']); ?>
+                                                        <label class="file-input">
+                                                            <span><span class="settings-emoji" aria-hidden="true">🏷️</span> Diagram title</span>
+                                                            <input
+                                                                type="text"
+                                                                name="mermaid_title"
+                                                                maxlength="200"
+                                                                value="<?= e($row['mermaid_title']) ?>"
+                                                                placeholder="e.g. How to fill this workbook"
+                                                            >
+                                                        </label>
+                                                        <?= $renderMermaidOptionControls(
+                                                            $mermaidOpts['layout'],
+                                                            $mermaidOpts['direction'],
+                                                            'mermaid_layout',
+                                                            'mermaid_direction'
+                                                        ) ?>
+                                                        <label class="file-input">
+                                                            <span><span class="settings-emoji" aria-hidden="true">📐</span> Mermaid source</span>
+                                                            <textarea name="mermaid_source" rows="6" data-mermaid-source-field placeholder="flowchart TB&#10;  A --> B"><?= e($row['mermaid_source']) ?></textarea>
+                                                        </label>
+                                                        <?php if ($hasMermaid): ?>
+                                                            <label class="template-edit-clear">
+                                                                <input type="checkbox" name="clear_mermaid" value="1">
+                                                                <span><span class="settings-emoji" aria-hidden="true">🗑️</span> Remove the Mermaid diagram</span>
+                                                            </label>
+                                                        <?php endif; ?>
+                                                    </fieldset>
                                                 </div>
 
                                                 <div class="template-edit-actions">
                                                     <button type="submit" class="button button-primary template-edit-save">
                                                         <span class="settings-emoji" aria-hidden="true">💾</span> Save changes
                                                     </button>
-                                                    <button type="button" class="button ghost template-edit-cancel-btn" data-template-edit-cancel="<?= (int) $row['id'] ?>">
+                                                    <button type="button" class="button ghost template-edit-cancel-btn" data-template-edit-cancel="<?= $templateId ?>">
                                                         <span class="settings-emoji" aria-hidden="true">✕</span> Cancel
                                                     </button>
                                                 </div>
@@ -743,12 +1168,139 @@ $slotsLeft = max(0, $maxTemplates - $templateCount);
                             </tbody>
                         </table>
                     </div>
+
+                    <?php foreach ($templateRows as $row): ?>
+                        <?php
+                        $templateId = (int) $row['id'];
+                        $guideImages = $imagesByTemplate[$templateId] ?? [];
+                        $hasMermaid = trim((string) $row['mermaid_source']) !== '';
+                        if ($guideImages === [] && !$hasMermaid) {
+                            continue;
+                        }
+                        ?>
+                        <dialog
+                            class="template-guide-dialog"
+                            id="template-guide-<?= $templateId ?>"
+                            aria-labelledby="template-guide-title-<?= $templateId ?>"
+                        >
+                            <div class="template-guide-dialog-shell">
+                                <header class="template-guide-dialog-head">
+                                    <div>
+                                        <p class="eyebrow">🗺️ Template guide</p>
+                                        <h3 id="template-guide-title-<?= $templateId ?>"><?= e($row['name']) ?></h3>
+                                        <p class="template-guide-dialog-sub">Screenshots and Mermaid diagram for this workbook</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="button ghost template-guide-dialog-close"
+                                        data-template-guide-close="<?= $templateId ?>"
+                                        aria-label="Close guide"
+                                    >✕</button>
+                                </header>
+
+                                <div class="template-guide-dialog-body">
+                                    <?php if ($guideImages !== []): ?>
+                                        <section class="template-guide-section" aria-label="Guide images">
+                                            <div class="template-guide-section-head">
+                                                <strong>🖼️ Guide images</strong>
+                                                <span><?= count($guideImages) ?> / <?= (int) $maxGuideImages ?></span>
+                                            </div>
+                                            <div class="template-guide-gallery">
+                                                <?php foreach ($guideImages as $image): ?>
+                                                    <a
+                                                        class="template-guide-thumb"
+                                                        href="<?= e($templateImages->viewUrl((int) $image['id'])) ?>"
+                                                        target="_blank"
+                                                        rel="noopener"
+                                                        title="<?= e($image['title'] !== '' ? $image['title'] : $image['original_filename']) ?>"
+                                                    >
+                                                        <img
+                                                            src="<?= e($templateImages->viewUrl((int) $image['id'])) ?>"
+                                                            alt="<?= e($image['title'] !== '' ? $image['title'] : 'Guide image') ?>"
+                                                            loading="lazy"
+                                                        >
+                                                        <span><?= e($image['title'] !== '' ? $image['title'] : $image['original_filename']) ?></span>
+                                                    </a>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        </section>
+                                    <?php endif; ?>
+
+                                    <?php if ($hasMermaid): ?>
+                                        <?php $guideMermaidOpts = $parseMermaidOptions((string) $row['mermaid_source']); ?>
+                                        <section class="template-guide-section template-guide-section-mermaid" aria-label="Mermaid diagram">
+                                            <div class="template-guide-section-head">
+                                                <strong>📐 <?= e($row['mermaid_title'] !== '' ? $row['mermaid_title'] : 'Mermaid diagram') ?></strong>
+                                                <div class="template-guide-mermaid-actions">
+                                                    <button
+                                                        type="button"
+                                                        class="button ghost-light template-guide-mermaid-fullscreen"
+                                                        data-template-mermaid-fullscreen
+                                                    >⛶ Full screen</button>
+                                                    <button
+                                                        type="button"
+                                                        class="button ghost-light template-guide-mermaid-view-code"
+                                                        data-template-mermaid-view-code
+                                                        aria-expanded="false"
+                                                    >📄 View code</button>
+                                                    <button
+                                                        type="button"
+                                                        class="button ghost-light template-guide-mermaid-copy-code"
+                                                        data-template-mermaid-copy-code
+                                                    >📋 Copy code</button>
+                                                    <button
+                                                        type="button"
+                                                        class="button ghost-light template-guide-mermaid-live"
+                                                        data-template-mermaid-live
+                                                    >✨ Mermaid Live</button>
+                                                </div>
+                                            </div>
+                                            <div class="template-mermaid-options template-guide-mermaid-controls" data-mermaid-options>
+                                                <div class="template-mermaid-option-block">
+                                                    <span class="template-mermaid-option-label">✨ Layout</span>
+                                                    <input type="hidden" data-mermaid-layout value="<?= e($guideMermaidOpts['layout']) ?>">
+                                                    <div class="template-mermaid-btn-group" role="group" aria-label="Layout style">
+                                                        <button type="button" class="template-mermaid-opt-btn<?= $guideMermaidOpts['layout'] === 'default' ? ' is-active' : '' ?>" data-mermaid-layout-btn="default">Default</button>
+                                                        <button type="button" class="template-mermaid-opt-btn<?= $guideMermaidOpts['layout'] === 'elk' ? ' is-active' : '' ?>" data-mermaid-layout-btn="elk">ELK</button>
+                                                    </div>
+                                                </div>
+                                                <div class="template-mermaid-option-block">
+                                                    <span class="template-mermaid-option-label">🧭 Direction</span>
+                                                    <input type="hidden" data-mermaid-direction value="<?= e($guideMermaidOpts['direction']) ?>">
+                                                    <div class="template-mermaid-btn-group" role="group" aria-label="Flow direction">
+                                                        <?php foreach (['TB', 'TD', 'BT', 'LR', 'RL'] as $dir): ?>
+                                                            <button type="button" class="template-mermaid-opt-btn<?= $guideMermaidOpts['direction'] === $dir ? ' is-active' : '' ?>" data-mermaid-direction-btn="<?= $dir ?>"><?= $dir ?></button>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="template-mermaid-code-panel" data-mermaid-code-panel hidden>
+                                                <div class="template-mermaid-code-panel-head">
+                                                    <strong>Mermaid source</strong>
+                                                    <button type="button" class="button ghost-light template-guide-mermaid-copy-code" data-template-mermaid-copy-code>📋 Copy</button>
+                                                </div>
+                                                <pre class="template-mermaid-code-pre" data-mermaid-code-pre></pre>
+                                            </div>
+                                            <div
+                                                class="template-guide-mermaid-host"
+                                                data-mermaid-source="<?= e($row['mermaid_source']) ?>"
+                                                data-mermaid-base-source="<?= e($row['mermaid_source']) ?>"
+                                            >
+                                                <pre class="mermaid template-guide-mermaid-diagram"></pre>
+                                            </div>
+                                        </section>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </dialog>
+                    <?php endforeach; ?>
                 <?php endif; ?>
             </section>
         </main>
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
+    <script src="assets/js/template-mermaid-viewer.js?v=<?= filemtime(__DIR__ . '/assets/js/template-mermaid-viewer.js') ?>"></script>
     <script src="assets/js/template-upload.js?v=<?= filemtime(__DIR__ . '/assets/js/template-upload.js') ?>"></script>
 </body>
 </html>

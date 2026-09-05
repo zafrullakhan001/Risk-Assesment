@@ -9,6 +9,8 @@ use PDO;
 final class TemplateWorkbookRepository
 {
     public const MAX_TEMPLATES = 10;
+    public const MAX_MERMAID_TITLE_LENGTH = 200;
+    public const MAX_MERMAID_SOURCE_LENGTH = 50000;
 
     public function __construct(
         private readonly PDO $pdo,
@@ -32,6 +34,8 @@ final class TemplateWorkbookRepository
      *   prompt_path: string,
      *   prompt_filename: string,
      *   prompt_size: int,
+     *   mermaid_title: string,
+     *   mermaid_source: string,
      *   uploaded_by_user_id: int|null,
      *   uploaded_by_username: string,
      *   uploaded_by_display_name: string,
@@ -43,6 +47,7 @@ final class TemplateWorkbookRepository
         $statement = $this->pdo->query(
             'SELECT id, name, workbook_path, workbook_filename, workbook_size,
                     prompt_path, prompt_filename, prompt_size,
+                    mermaid_title, mermaid_source,
                     uploaded_by_user_id, uploaded_by_username, uploaded_by_display_name, uploaded_at
              FROM template_workbooks
              ORDER BY uploaded_at DESC, id DESC'
@@ -69,6 +74,8 @@ final class TemplateWorkbookRepository
      *   prompt_path: string,
      *   prompt_filename: string,
      *   prompt_size: int,
+     *   mermaid_title: string,
+     *   mermaid_source: string,
      *   uploaded_by_user_id: int|null,
      *   uploaded_by_username: string,
      *   uploaded_by_display_name: string,
@@ -84,6 +91,7 @@ final class TemplateWorkbookRepository
         $statement = $this->pdo->prepare(
             'SELECT id, name, workbook_path, workbook_filename, workbook_size,
                     prompt_path, prompt_filename, prompt_size,
+                    mermaid_title, mermaid_source,
                     uploaded_by_user_id, uploaded_by_username, uploaded_by_display_name, uploaded_at
              FROM template_workbooks
              WHERE id = :id
@@ -107,6 +115,8 @@ final class TemplateWorkbookRepository
      *   prompt_path?: string,
      *   prompt_filename?: string,
      *   prompt_size?: int,
+     *   mermaid_title?: string,
+     *   mermaid_source?: string,
      *   uploaded_by_user_id?: int|null,
      *   uploaded_by_username?: string,
      *   uploaded_by_display_name?: string
@@ -133,16 +143,23 @@ final class TemplateWorkbookRepository
             throw new \RuntimeException('A workbook file is required.');
         }
 
+        $mermaid = $this->normalizeMermaid(
+            (string) ($data['mermaid_title'] ?? ''),
+            (string) ($data['mermaid_source'] ?? '')
+        );
+
         $userId = (int) ($data['uploaded_by_user_id'] ?? 0);
 
         $statement = $this->pdo->prepare(
             'INSERT INTO template_workbooks (
                 name, workbook_path, workbook_filename, workbook_size,
                 prompt_path, prompt_filename, prompt_size,
+                mermaid_title, mermaid_source,
                 uploaded_by_user_id, uploaded_by_username, uploaded_by_display_name, uploaded_at
             ) VALUES (
                 :name, :workbook_path, :workbook_filename, :workbook_size,
                 :prompt_path, :prompt_filename, :prompt_size,
+                :mermaid_title, :mermaid_source,
                 :uploaded_by_user_id, :uploaded_by_username, :uploaded_by_display_name, datetime(\'now\')
             )'
         );
@@ -154,6 +171,8 @@ final class TemplateWorkbookRepository
             ':prompt_path' => trim((string) ($data['prompt_path'] ?? '')),
             ':prompt_filename' => trim((string) ($data['prompt_filename'] ?? '')),
             ':prompt_size' => max(0, (int) ($data['prompt_size'] ?? 0)),
+            ':mermaid_title' => $mermaid['title'],
+            ':mermaid_source' => $mermaid['source'],
             ':uploaded_by_user_id' => $userId > 0 ? $userId : null,
             ':uploaded_by_username' => trim((string) ($data['uploaded_by_username'] ?? '')),
             ':uploaded_by_display_name' => trim((string) ($data['uploaded_by_display_name'] ?? '')),
@@ -176,7 +195,10 @@ final class TemplateWorkbookRepository
      *   prompt_path?: string,
      *   prompt_filename?: string,
      *   prompt_size?: int,
-     *   clear_prompt?: bool
+     *   clear_prompt?: bool,
+     *   mermaid_title?: string,
+     *   mermaid_source?: string,
+     *   clear_mermaid?: bool
      * } $data
      */
     public function update(int $id, array $data): bool
@@ -221,6 +243,23 @@ final class TemplateWorkbookRepository
             $promptSize = max(0, (int) ($data['prompt_size'] ?? 0));
         }
 
+        $mermaidTitle = $existing['mermaid_title'];
+        $mermaidSource = $existing['mermaid_source'];
+        if (!empty($data['clear_mermaid'])) {
+            $mermaidTitle = '';
+            $mermaidSource = '';
+        } elseif (array_key_exists('mermaid_title', $data) || array_key_exists('mermaid_source', $data)) {
+            $titleIn = array_key_exists('mermaid_title', $data)
+                ? (string) $data['mermaid_title']
+                : $existing['mermaid_title'];
+            $sourceIn = array_key_exists('mermaid_source', $data)
+                ? (string) $data['mermaid_source']
+                : $existing['mermaid_source'];
+            $mermaid = $this->normalizeMermaid($titleIn, $sourceIn);
+            $mermaidTitle = $mermaid['title'];
+            $mermaidSource = $mermaid['source'];
+        }
+
         $statement = $this->pdo->prepare(
             'UPDATE template_workbooks
              SET name = :name,
@@ -229,7 +268,9 @@ final class TemplateWorkbookRepository
                  workbook_size = :workbook_size,
                  prompt_path = :prompt_path,
                  prompt_filename = :prompt_filename,
-                 prompt_size = :prompt_size
+                 prompt_size = :prompt_size,
+                 mermaid_title = :mermaid_title,
+                 mermaid_source = :mermaid_source
              WHERE id = :id'
         );
         $statement->execute([
@@ -240,6 +281,8 @@ final class TemplateWorkbookRepository
             ':prompt_path' => $promptPath,
             ':prompt_filename' => $promptFilename,
             ':prompt_size' => $promptSize,
+            ':mermaid_title' => $mermaidTitle,
+            ':mermaid_source' => $mermaidSource,
             ':id' => $id,
         ]);
 
@@ -260,6 +303,35 @@ final class TemplateWorkbookRepository
     }
 
     /**
+     * @return array{title: string, source: string}
+     */
+    private function normalizeMermaid(string $title, string $source): array
+    {
+        $title = trim($title);
+        $source = trim($source);
+
+        if ($title === '' && $source === '') {
+            return ['title' => '', 'source' => ''];
+        }
+
+        if (mb_strlen($title) > self::MAX_MERMAID_TITLE_LENGTH) {
+            throw new \RuntimeException('Mermaid title must be ' . self::MAX_MERMAID_TITLE_LENGTH . ' characters or fewer.');
+        }
+        if (strlen($source) > self::MAX_MERMAID_SOURCE_LENGTH) {
+            throw new \RuntimeException('Mermaid source exceeds the size limit.');
+        }
+
+        if ($title === '' && $source !== '') {
+            $title = 'Template diagram';
+        }
+
+        return [
+            'title' => $title,
+            'source' => $source,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @return array{
      *   id: int,
@@ -270,6 +342,8 @@ final class TemplateWorkbookRepository
      *   prompt_path: string,
      *   prompt_filename: string,
      *   prompt_size: int,
+     *   mermaid_title: string,
+     *   mermaid_source: string,
      *   uploaded_by_user_id: int|null,
      *   uploaded_by_username: string,
      *   uploaded_by_display_name: string,
@@ -291,6 +365,8 @@ final class TemplateWorkbookRepository
             'prompt_path' => (string) ($row['prompt_path'] ?? ''),
             'prompt_filename' => (string) ($row['prompt_filename'] ?? ''),
             'prompt_size' => (int) ($row['prompt_size'] ?? 0),
+            'mermaid_title' => (string) ($row['mermaid_title'] ?? ''),
+            'mermaid_source' => (string) ($row['mermaid_source'] ?? ''),
             'uploaded_by_user_id' => $userId,
             'uploaded_by_username' => (string) ($row['uploaded_by_username'] ?? ''),
             'uploaded_by_display_name' => (string) ($row['uploaded_by_display_name'] ?? ''),

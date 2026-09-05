@@ -217,6 +217,8 @@ CREATE TABLE IF NOT EXISTS template_workbooks (
     prompt_path TEXT NOT NULL DEFAULT '',
     prompt_filename TEXT NOT NULL DEFAULT '',
     prompt_size INTEGER NOT NULL DEFAULT 0,
+    mermaid_title TEXT NOT NULL DEFAULT '',
+    mermaid_source TEXT NOT NULL DEFAULT '',
     uploaded_by_user_id INTEGER,
     uploaded_by_username TEXT NOT NULL DEFAULT '',
     uploaded_by_display_name TEXT NOT NULL DEFAULT '',
@@ -224,3 +226,17 @@ CREATE TABLE IF NOT EXISTS template_workbooks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_template_workbooks_uploaded_at ON template_workbooks (uploaded_at);
+
+CREATE TABLE IF NOT EXISTS template_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT 'image/png',
+    image_base64 TEXT NOT NULL DEFAULT '',
+    original_filename TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (template_id) REFERENCES template_workbooks (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_template_images_template_id ON template_images (template_id);
