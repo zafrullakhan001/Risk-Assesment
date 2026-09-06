@@ -270,14 +270,21 @@ final class LdapAuth
             $connection = $this->connect($server);
             $bindDn = trim((string) ($server['bind_dn'] ?? ''));
             if (!@ldap_bind($connection, $bindDn !== '' ? $bindDn : null, $bindDn !== '' ? $password : null)) {
-                $message = $this->explainBindFailure($connection, 'Service bind failed');
+                $message = $this->formatLdapFailure(
+                    'Service bind failed.',
+                    $connection,
+                    array_merge(
+                        ['Bind DN: ' . ($bindDn !== '' ? $bindDn : '(anonymous)')],
+                        $this->connectionContext($server)
+                    )
+                );
                 $protocol = ($server['protocol'] ?? 'ldap') === 'ldaps' ? 'ldaps' : 'ldap';
                 $port = (int) ($server['port'] ?? 389);
                 if (stripos($message, "Can't contact LDAP server") !== false) {
                     if ($protocol === 'ldaps') {
-                        $message .= ' Tip: ldaps:// needs SSL on the directory (usually port 636). For plain AD LDAP use protocol ldap:// and port 389.';
+                        $message .= "\nTip: ldaps:// needs SSL on the directory (usually port 636). For plain AD LDAP use protocol ldap:// and port 389.";
                     } elseif ($port === 636) {
-                        $message .= ' Tip: port 636 is for ldaps://. For plain LDAP use port 389 with protocol ldap://.';
+                        $message .= "\nTip: port 636 is for ldaps://. For plain LDAP use port 389 with protocol ldap://.";
                     }
                 }
 
@@ -292,7 +299,11 @@ final class LdapAuth
             if ($base !== '') {
                 $result = @ldap_read($connection, $base, '(objectClass=*)', ['dn']);
                 if ($result === false) {
-                    $detail .= ' Search base could not be read: ' . ldap_error($connection);
+                    $detail .= "\n" . $this->formatLdapFailure(
+                        'Search base could not be read.',
+                        $connection,
+                        ['Search base: ' . $base]
+                    );
                 } else {
                     $detail .= ' Search base is reachable.';
                 }
@@ -300,7 +311,16 @@ final class LdapAuth
 
             return ['success' => true, 'message' => $detail];
         } catch (Throwable $exception) {
-            return ['success' => false, 'message' => $exception->getMessage()];
+            $message = $exception->getMessage();
+            $previous = $exception->getPrevious();
+            if ($previous instanceof Throwable) {
+                $prior = trim($previous->getMessage());
+                if ($prior !== '' && !str_contains($message, $prior)) {
+                    $message .= "\n" . $prior;
+                }
+            }
+
+            return ['success' => false, 'message' => $message];
         } finally {
             if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
                 @ldap_unbind($connection);
@@ -510,7 +530,18 @@ final class LdapAuth
             if ($template !== '') {
                 $userDn = str_replace('{username}', $this->escapeDn($username), $template);
                 if (!@ldap_bind($connection, $userDn, $password)) {
-                    throw new RuntimeException('LDAP user bind failed.');
+                    throw new RuntimeException($this->formatLdapFailure(
+                        'LDAP user bind failed.',
+                        $connection,
+                        array_merge(
+                            [
+                                'Username: ' . $username,
+                                'Bind DN: ' . $userDn,
+                                'User DN template: ' . $template,
+                            ],
+                            $this->connectionContext($server)
+                        )
+                    ));
                 }
                 // Re-bind as service account to read attributes if needed
                 $this->serviceBind($connection, $server);
@@ -523,8 +554,29 @@ final class LdapAuth
                 $found = $this->searchUserEntry($connection, $server, $username);
                 $userEntry = $found['entry'];
                 $userDn = $found['dn'];
-                if ($userDn === '' || !@ldap_bind($connection, $userDn, $password)) {
-                    throw new RuntimeException('Invalid LDAP username or password.');
+                if ($userDn === '') {
+                    throw new RuntimeException($this->formatLdapFailure(
+                        'LDAP user DN was empty after search.',
+                        $connection,
+                        [
+                            'Username: ' . $username,
+                            'Search base: ' . trim((string) ($server['user_search_base'] ?? '')),
+                            'Filter: ' . $this->userFilterFor($server, $username),
+                        ]
+                    ));
+                }
+                if (!@ldap_bind($connection, $userDn, $password)) {
+                    throw new RuntimeException($this->formatLdapFailure(
+                        'LDAP user bind failed.',
+                        $connection,
+                        array_merge(
+                            [
+                                'Username: ' . $username,
+                                'Bind DN: ' . $userDn,
+                            ],
+                            $this->connectionContext($server)
+                        )
+                    ));
                 }
             }
 
@@ -736,7 +788,15 @@ final class LdapAuth
                 default => @ldap_search($connection, $searchBase, $filter, $attributes, 0, $limit),
             };
             if ($result === false) {
-                throw new RuntimeException('LDAP search failed: ' . ldap_error($connection));
+                throw new RuntimeException($this->formatLdapFailure(
+                    'LDAP search failed.',
+                    $connection,
+                    [
+                        'Search base: ' . $searchBase,
+                        'Filter: ' . $filter,
+                        'Scope: ' . $scope,
+                    ]
+                ));
             }
 
             $entries = @ldap_get_entries($connection, $result);
@@ -971,7 +1031,11 @@ final class LdapAuth
         $bindDn = trim((string) ($server['bind_dn'] ?? ''));
         $bindPassword = $this->decryptSecret((string) ($server['bind_password'] ?? ''));
         if (!@ldap_bind($connection, $bindDn !== '' ? $bindDn : null, $bindDn !== '' ? $bindPassword : null)) {
-            throw new RuntimeException($this->explainBindFailure($connection, 'LDAP service bind failed'));
+            throw new RuntimeException($this->formatLdapFailure(
+                'LDAP service bind failed.',
+                $connection,
+                ['Bind DN: ' . ($bindDn !== '' ? $bindDn : '(anonymous)')]
+            ));
         }
     }
 
@@ -987,7 +1051,14 @@ final class LdapAuth
             $userDn = str_replace('{username}', $this->escapeDn($username), $template);
             $found = $this->readEntry($connection, $server, $userDn);
             if ($found === null) {
-                throw new RuntimeException('User not found in the directory.');
+                throw new RuntimeException($this->formatLdapFailure(
+                    'User not found in the directory.',
+                    $connection,
+                    [
+                        'Username: ' . $username,
+                        'User DN: ' . $userDn,
+                    ]
+                ));
             }
 
             return $found;
@@ -1008,8 +1079,7 @@ final class LdapAuth
             throw new RuntimeException('LDAP user search base is not configured.');
         }
 
-        $filterTemplate = trim((string) ($server['user_filter'] ?? '(sAMAccountName={username})'));
-        $filter = str_replace('{username}', $this->escapeFilter($username), $filterTemplate);
+        $filter = $this->userFilterFor($server, $username);
         $attributes = $this->attributeList($server);
         $scope = strtolower((string) ($server['search_scope'] ?? 'sub'));
         $result = match ($scope) {
@@ -1018,18 +1088,46 @@ final class LdapAuth
             default => @ldap_search($connection, $searchBase, $filter, $attributes),
         };
         if ($result === false) {
-            throw new RuntimeException('LDAP search failed: ' . ldap_error($connection));
+            throw new RuntimeException($this->formatLdapFailure(
+                'LDAP search failed.',
+                $connection,
+                [
+                    'Username: ' . $username,
+                    'Search base: ' . $searchBase,
+                    'Filter: ' . $filter,
+                    'Scope: ' . $scope,
+                ]
+            ));
         }
 
         $entries = @ldap_get_entries($connection, $result);
-        if (!is_array($entries) || (int) ($entries['count'] ?? 0) < 1) {
-            throw new RuntimeException('User not found in the directory.');
+        $entryCount = is_array($entries) ? (int) ($entries['count'] ?? 0) : 0;
+        if (!is_array($entries) || $entryCount < 1) {
+            throw new RuntimeException($this->formatLdapFailure(
+                'User not found in the directory.',
+                $connection,
+                [
+                    'Username: ' . $username,
+                    'Search base: ' . $searchBase,
+                    'Filter: ' . $filter,
+                    'Scope: ' . $scope,
+                    'Entries returned: ' . $entryCount,
+                ]
+            ));
         }
 
         $userEntry = $entries[0];
         $userDn = (string) ($userEntry['dn'] ?? '');
         if ($userDn === '') {
-            throw new RuntimeException('User not found in the directory.');
+            throw new RuntimeException($this->formatLdapFailure(
+                'User not found in the directory (empty DN).',
+                $connection,
+                [
+                    'Username: ' . $username,
+                    'Search base: ' . $searchBase,
+                    'Filter: ' . $filter,
+                ]
+            ));
         }
 
         return ['entry' => $userEntry, 'dn' => $userDn];
@@ -1152,14 +1250,19 @@ final class LdapAuth
 
         $connection = @ldap_connect($uri);
         if ($connection === false) {
-            $detail = error_get_last()['message'] ?? '';
+            $detail = trim((string) (error_get_last()['message'] ?? ''));
             if (stripos($detail, 'Local error') !== false || stripos($detail, 'session handle') !== false) {
-                throw new RuntimeException(
-                    'Unable to connect to the LDAP server (Apache PHP LDAP session error). '
-                    . 'The app will retry through CLI PHP automatically when available.'
-                );
+                throw new RuntimeException($this->formatLdapFailure(
+                    'Unable to connect to the LDAP server (Apache PHP LDAP session error). The app will retry through CLI PHP automatically when available.',
+                    null,
+                    array_merge($this->connectionContext($server), $detail !== '' ? ['PHP: ' . $detail] : [])
+                ));
             }
-            throw new RuntimeException('Unable to connect to the LDAP server.');
+            throw new RuntimeException($this->formatLdapFailure(
+                'Unable to connect to the LDAP server.',
+                null,
+                array_merge($this->connectionContext($server), $detail !== '' ? ['PHP: ' . $detail] : [])
+            ));
         }
 
         ldap_set_option($connection, LDAP_OPT_PROTOCOL_VERSION, 3);
@@ -1168,7 +1271,11 @@ final class LdapAuth
         ldap_set_option($connection, LDAP_OPT_REFERRALS, ($server['referrals'] ?? '0') === '1' ? 1 : 0);
 
         if (($server['tls'] ?? '0') === '1' && $protocol !== 'ldaps' && !@ldap_start_tls($connection)) {
-            throw new RuntimeException('LDAP StartTLS failed: ' . ldap_error($connection));
+            throw new RuntimeException($this->formatLdapFailure(
+                'LDAP StartTLS failed.',
+                $connection,
+                $this->connectionContext($server)
+            ));
         }
 
         return $connection;
@@ -1282,11 +1389,13 @@ final class LdapAuth
         $decoded = is_string($stdout) ? json_decode($stdout, true) : null;
         if (!is_array($decoded)) {
             $hint = trim((string) $stderr);
-            throw new RuntimeException(
-                'LDAP CLI worker returned an invalid response'
-                . ($hint !== '' ? ': ' . $hint : '')
-                . ($exitCode !== 0 ? " (exit {$exitCode})" : '')
-            );
+            $body = trim((string) $stdout);
+            throw new RuntimeException(implode("\n", array_filter([
+                'LDAP CLI worker returned an invalid response.',
+                $hint !== '' ? 'stderr: ' . $hint : '',
+                $body !== '' ? 'stdout: ' . $body : '',
+                $exitCode !== 0 ? 'Exit code: ' . $exitCode : '',
+            ])));
         }
 
         return $decoded;
@@ -1937,31 +2046,146 @@ final class LdapAuth
     }
 
     /**
-     * @param \LDAP\Connection|resource $connection
+     * @param array<string, mixed> $server
+     * @return list<string>
      */
-    private function explainBindFailure($connection, string $prefix): string
+    private function connectionContext(array $server): array
     {
-        $error = ldap_error($connection);
-        $diagnostic = '';
-        if (defined('LDAP_OPT_DIAGNOSTIC_MESSAGE')) {
-            @ldap_get_option($connection, LDAP_OPT_DIAGNOSTIC_MESSAGE, $diagnostic);
-        }
-        $hint = '';
-        if (is_string($diagnostic) && preg_match('/\bdata\s+([0-9a-fA-F]+)\b/', $diagnostic, $matches) === 1) {
-            $hint = match (strtolower($matches[1])) {
-                '525' => ' User not found (wrong bind DN).',
-                '52e' => ' Invalid credentials.',
-                '530' => ' Logon hours restriction.',
-                '532' => ' Password expired.',
-                '533' => ' Account disabled in Active Directory.',
-                '701' => ' Account expired in Active Directory.',
-                '773' => ' Password must be reset in Active Directory.',
-                '775' => ' Account is locked out in Active Directory.',
-                default => '',
-            };
+        $host = trim((string) ($server['server'] ?? ''));
+        $port = (int) ($server['port'] ?? 389);
+        $protocol = ($server['protocol'] ?? 'ldap') === 'ldaps' ? 'ldaps' : 'ldap';
+        $timeout = max(1, min(60, (int) ($server['timeout'] ?? 30)));
+        $startTls = ($server['tls'] ?? '0') === '1' && $protocol !== 'ldaps';
+
+        return [
+            'URI: ' . $protocol . '://' . $host . ':' . $port,
+            'Timeout: ' . $timeout . 's',
+            'StartTLS: ' . ($startTls ? 'yes' : 'no'),
+            'Follow referrals: ' . (($server['referrals'] ?? '0') === '1' ? 'yes' : 'no'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     */
+    private function userFilterFor(array $server, string $username): string
+    {
+        $filterTemplate = trim((string) ($server['user_filter'] ?? '(sAMAccountName={username})'));
+        if ($filterTemplate === '') {
+            $filterTemplate = '(sAMAccountName={username})';
         }
 
-        return $prefix . ': ' . $error . $hint;
+        return str_replace('{username}', $this->escapeFilter($username), $filterTemplate);
+    }
+
+    /**
+     * @param \LDAP\Connection|resource|null $connection
+     * @param list<string> $context
+     */
+    private function formatLdapFailure(string $prefix, $connection = null, array $context = []): string
+    {
+        $lines = [rtrim($prefix)];
+        foreach ($context as $line) {
+            $line = trim((string) $line);
+            if ($line !== '') {
+                $lines[] = $line;
+            }
+        }
+
+        $hasConnection = $connection !== null
+            && (is_resource($connection) || $connection instanceof \LDAP\Connection);
+
+        if ($hasConnection) {
+            $errno = @ldap_errno($connection);
+            $error = trim((string) @ldap_error($connection));
+            if (is_int($errno) && $errno !== 0) {
+                $lines[] = 'LDAP error ' . $errno . ' (' . ($error !== '' ? $error : 'unknown') . ').';
+            } elseif ($error !== '' && strcasecmp($error, 'Success') !== 0) {
+                $lines[] = 'LDAP error: ' . $error . '.';
+            }
+
+            $diagnostic = $this->ldapOptionString(
+                $connection,
+                defined('LDAP_OPT_DIAGNOSTIC_MESSAGE') ? LDAP_OPT_DIAGNOSTIC_MESSAGE : 0x0032
+            );
+            $errorString = $this->ldapOptionString(
+                $connection,
+                defined('LDAP_OPT_ERROR_STRING') ? LDAP_OPT_ERROR_STRING : 0x0032
+            );
+            if ($errorString !== '' && strcasecmp($errorString, $diagnostic) !== 0 && stripos($diagnostic, $errorString) === false) {
+                $diagnostic = trim($diagnostic . ($diagnostic !== '' ? "\n" : '') . $errorString);
+            }
+            if ($diagnostic !== '') {
+                $lines[] = 'Diagnostic: ' . $diagnostic;
+                $hint = $this->activeDirectoryBindHint($diagnostic);
+                if ($hint !== '') {
+                    $lines[] = 'Meaning: ' . $hint;
+                }
+            }
+
+            $matchedDn = $this->ldapOptionString(
+                $connection,
+                defined('LDAP_OPT_MATCHED_DN') ? LDAP_OPT_MATCHED_DN : 0x0033
+            );
+            if ($matchedDn !== '') {
+                $lines[] = 'Matched DN: ' . $matchedDn;
+            }
+        }
+
+        $phpLast = error_get_last();
+        if (is_array($phpLast)) {
+            $phpMsg = trim((string) ($phpLast['message'] ?? ''));
+            if ($phpMsg !== '' && stripos($phpMsg, 'ldap') !== false) {
+                $joined = implode("\n", $lines);
+                if (stripos($joined, $phpMsg) === false) {
+                    $lines[] = 'PHP: ' . $phpMsg;
+                }
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     */
+    private function ldapOptionString($connection, int $option): string
+    {
+        $value = null;
+        if (!@ldap_get_option($connection, $option, $value) || $value === null) {
+            return '';
+        }
+        if (is_string($value)) {
+            return trim($value);
+        }
+        if (is_int($value) || is_float($value)) {
+            return trim((string) $value);
+        }
+
+        return '';
+    }
+
+    private function activeDirectoryBindHint(string $diagnostic): string
+    {
+        if (preg_match('/\bdata\s+([0-9a-fA-F]+)\b/', $diagnostic, $matches) !== 1) {
+            return '';
+        }
+
+        $code = strtolower($matches[1]);
+
+        return match ($code) {
+            '525' => 'User not found (data 525). Check the username, bind DN, or user DN template.',
+            '52e' => 'Invalid credentials (data 52e). Wrong password, or the bind DN / UPN is not what AD expects.',
+            '530' => 'Logon hours restriction (data 530). The account is not allowed to sign in at this time.',
+            '531' => 'Not permitted to log on from this workstation (data 531).',
+            '532' => 'Password expired (data 532). Reset the password in Active Directory.',
+            '533' => 'Account disabled in Active Directory (data 533).',
+            '534' => 'The account is not allowed this logon type (data 534).',
+            '701' => 'Account expired in Active Directory (data 701).',
+            '773' => 'Password must be reset in Active Directory (data 773).',
+            '775' => 'Account is locked out in Active Directory (data 775).',
+            default => 'Active Directory extended error data ' . $code . '.',
+        };
     }
 
     private function decryptSecret(string $value): string

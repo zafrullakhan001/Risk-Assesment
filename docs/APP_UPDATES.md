@@ -1,65 +1,52 @@
-# App Updates (GitHub + PAT)
+# App Updates (GitHub Releases)
 
-This install can check GitHub for new commits and apply them with `git fetch` + `git checkout` from **Admin → App updates**.
+This install checks GitHub for a newer **Release** and applies it by downloading a zip. **Git is not required** on the server. Database files, `uploads/`, and custom branding stay in place.
 
-Open the page from the **Admin** link in the top bar, or go to `public/admin/updates.php`. The old `public/updates.php` URL redirects there.
+Open **Admin → App updates**, or `public/admin/updates.php`.
 
-**Who:** administrators only (local or LDAP accounts with the admin role).
+**Who:** administrators only.
+
+---
+
+## Publish a release that the updater can apply
+
+GitHub’s automatic “Source code (zip)” is not a git checkout and does not include `vendor/`. Package the app first:
+
+```text
+php bin/package_release.php v1.1.0
+```
+
+That writes `dist/RiskRegister-v1.1.0.zip` (application files + `vendor/` when present, plus `VERSION.json` and `README.txt`). Upload that file as a GitHub Release asset.
+
+If GitHub Actions is enabled, creating a Release also runs `.github/workflows/release.yml`, which builds the same zip and attaches it to the Release.
 
 ---
 
 ## Enable a GitHub Personal Access Token
 
-Private repositories need a **classic PAT** with the **`repo`** scope. A token is also recommended for public repos (higher API rate limits, and git fetch will not hang on credential prompts under Apache).
-
-### Create the token
+Private repositories need a **classic PAT** with the **`repo`** scope. A token is also recommended for public repos (higher API rate limits).
 
 1. Sign in to GitHub.
-2. Open this URL (scope and note are pre-filled):
+2. Open [Create a classic PAT](https://github.com/settings/tokens/new?scopes=repo&description=Risk%20Assessment%20Updater).
+3. Confirm **Note:** Risk Assessment Updater, **Expiration:** 90 days or longer, **Scopes:** `repo`.
+4. Generate the token, copy it (`ghp_…`), then paste it under **Admin → App updates** → **Save settings**.
 
-   [https://github.com/settings/tokens/new?scopes=repo&description=Risk%20Assessment%20Updater](https://github.com/settings/tokens/new?scopes=repo&description=Risk%20Assessment%20Updater)
-
-3. Confirm:
-   - **Note:** Risk Assessment Updater
-   - **Expiration:** 90 days or longer
-   - **Scopes:** `repo` (full control of private repositories)
-4. Click **Generate token**.
-5. Copy the token (it starts with `ghp_`). GitHub shows it only once.
-6. In this app: **Admin → App updates** → paste the token → **Save settings**.
-
-Manage existing tokens: [https://github.com/settings/tokens](https://github.com/settings/tokens)
-
-### Fine-grained token (optional)
-
-If you prefer a fine-grained PAT, grant this repository:
-
-- **Contents:** Read and write
-- **Metadata:** Read
+Fine-grained tokens need **Contents: Read** and **Metadata: Read** on this repository.
 
 ---
 
 ## Apply an update
 
 1. Sign in as an administrator and open **Admin → App updates**.
-2. Confirm **GitHub repo** is `zafrullakhan001/Risk-Assesment` (or your fork) and **Track branch** is `main`.
+2. Confirm **GitHub repo** is `zafrullakhan001/Risk-Assesment` (or your fork).
 3. Paste the PAT if the badge says **token needed** → Save settings.
 4. Click **Check for updates**.
-5. Select a commit (newest is selected by default) → **Update via git**.
-6. When it finishes, reload with **Ctrl+F5**.
+5. Select a Release (newest is selected by default) → **Download and apply**.
+6. Reload with **Ctrl+F5**.
 
-Nothing is applied until you confirm **Update via git**.
+The apply step downloads `RiskRegister-*.zip` from the Release when that asset exists. Otherwise it uses GitHub’s source zipball. PHP `curl` and `zip` must be enabled. Composer is only needed when `vendor/` is missing after extract.
 
-The apply step runs:
-
-```text
-git fetch --tags --force origin
-git fetch origin <track-branch>
-git checkout --force <commit>
-```
-
-Local uncommitted files are overwritten. The SQLite database and `uploads/` stay in place (they are not in git).
-
-If `composer.json` / `composer.lock` changed, the updater also runs `composer install --no-dev` when Composer is available.
+If the repository has no Releases yet, the page lists recent commits on the track branch and applies the source zipball for the selected commit.
 
 ---
 
@@ -67,20 +54,22 @@ If `composer.json` / `composer.lock` changed, the updater also runs `composer in
 
 | Setting | Default | Notes |
 |---------|---------|--------|
-| GitHub repo | auto from `git remote origin`, else `zafrullakhan001/Risk-Assesment` | `owner/name` |
-| Track branch | `main` | Branch to compare and apply |
+| GitHub repo | auto from `git remote origin` when Git exists, else `zafrullakhan001/Risk-Assesment` | `owner/name` |
+| Track branch | `main` | Used only when there are no GitHub Releases |
 | GitHub token | _(empty)_ | Encrypted in `app_settings`. Leave blank on save to keep the current token. |
 
 Optional server environment fallback (used only when no token is saved): `GITHUB_TOKEN` or `GH_TOKEN`.
+
+Installed version is stored in `VERSION.json` and in updater settings.
 
 ---
 
 ## Security
 
 - The PAT is encrypted at rest (AES-256-GCM) in SQLite `app_settings`.
-- The token is injected into git per command (`Authorization: Basic`) and is **not** written to `.git/config`.
 - This page is limited to administrators. Forgot the admin password? Run `php bin/reset_admin_password.php admin YourNewPassword!1`.
 - Encryption key: `database/.encryption_key` (not in git). Keep it with the database if you copy the install.
+- Zip entries containing `..` are rejected.
 
 ---
 
@@ -90,7 +79,6 @@ Optional server environment fallback (used only when no token is saved): `GITHUB
 |---------|-----|
 | `GitHub returned 404` | Create a `repo`-scoped [classic PAT](https://github.com/settings/tokens/new?scopes=repo&description=Risk%20Assessment%20Updater) and save it |
 | GitHub 401 | Token expired or revoked — generate a new one and save it again |
-| `git fetch failed` | Confirm Git for Windows is installed and Apache can see `git.exe` |
-| Dubious ownership | The updater sets `safe.directory` for this folder |
+| PHP zip / curl missing | Enable `extension=zip` and `extension=curl` in `php.ini`, restart Apache |
 | Update already in progress | Wait a few seconds and retry; delete `database/updater.lock` only if Apache was killed mid-update |
 | Forgot admin password | `php bin/reset_admin_password.php admin YourNewPassword!1` |

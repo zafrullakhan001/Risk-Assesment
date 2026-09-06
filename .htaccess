@@ -4,7 +4,7 @@ Options -Indexes
     RewriteEngine On
 
     # Deny direct web access to non-public application trees.
-    RewriteRule ^(config|database|src|vendor|bin|docs|templates|uploads)(/|$) - [F,L]
+    RewriteRule ^(config|database|src|vendor|bin|docs|templates|uploads|dist)(/|$) - [F,L]
 
     # Keep /public/... URLs working as-is (no double rewrite).
     RewriteRule ^public(/|$) - [L]

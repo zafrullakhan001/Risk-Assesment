@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace RiskAssessment;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RiskAssessment\Repositories\SettingsRepository;
 use RuntimeException;
+use ZipArchive;
 
 final class GitHubUpdater
 {
@@ -13,6 +17,8 @@ final class GitHubUpdater
     public const DEFAULT_BRANCH = 'main';
     public const PAT_CREATE_URL = 'https://github.com/settings/tokens/new?scopes=repo&description=Risk%20Assessment%20Updater';
     public const PAT_MANAGE_URL = 'https://github.com/settings/tokens';
+    private const VERSION_FILE = 'VERSION.json';
+    private const STAGING_DIR = 'database/update-staging';
 
     public function __construct(
         private readonly SettingsRepository $settings,
@@ -56,115 +62,113 @@ final class GitHubUpdater
      *   branch: string,
      *   hasToken: bool,
      *   gitAvailable: bool,
+     *   zipAvailable: bool,
+     *   curlAvailable: bool,
      *   installedSha: string,
      *   installedShort: string,
+     *   installedTag: string,
+     *   installedVersion: string,
      *   currentBranch: string,
      *   dirty: bool,
-     *   lastAppliedAt: string
+     *   lastAppliedAt: string,
+     *   updateMethod: string
      * }
      */
     public function status(): array
     {
         $caps = $this->capabilities();
-        $sha = $caps['gitAvailable'] ? $this->installedCommit() : '';
+        $manifest = $this->installedManifest();
+        $sha = (string) ($manifest['sha'] ?? '');
+        if ($sha === '' && $caps['gitAvailable']) {
+            $sha = $this->installedCommitFromGit();
+        }
+        $tag = (string) ($manifest['tag'] ?? '');
+        $version = (string) ($manifest['version'] ?? '');
 
         return [
             'repo' => $this->repoSlug(),
             'branch' => $this->trackBranch(),
             'hasToken' => $this->hasToken(),
             'gitAvailable' => $caps['gitAvailable'],
+            'zipAvailable' => $caps['zipAvailable'],
+            'curlAvailable' => $caps['curlAvailable'],
             'installedSha' => $sha,
-            'installedShort' => $sha !== '' ? substr($sha, 0, 7) : '',
+            'installedShort' => $sha !== '' ? substr($sha, 0, 7) : ($tag !== '' ? $tag : ($version !== '' ? $version : '')),
+            'installedTag' => $tag,
+            'installedVersion' => $version !== '' ? $version : $tag,
             'currentBranch' => $caps['gitAvailable'] ? $this->currentBranch() : '',
             'dirty' => $caps['gitAvailable'] && $this->workingTreeDirty(),
             'lastAppliedAt' => $this->settings->get('updater_last_applied_at', ''),
+            'updateMethod' => 'github-zip',
         ];
     }
 
     /**
-     * @return array{aheadBy: int, headSha: string, commits: list<array<string, string>>}
+     * @return array{
+     *   aheadBy: int,
+     *   headSha: string,
+     *   mode: string,
+     *   commits: list<array<string, string>>
+     * }
      */
     public function check(bool $forceFetch = true): array
     {
-        $caps = $this->capabilities();
-        if (!$caps['gitAvailable']) {
-            throw new RuntimeException('Git is not available in this install. Install Git for Windows and ensure this folder is a git checkout.');
+        unset($forceFetch);
+        $this->assertCanTalkToGithub();
+
+        $releases = $this->githubReleases();
+        if ($releases !== []) {
+            return $this->checkFromReleases($releases);
         }
 
-        $branch = $this->trackBranch();
-        $base = $this->installedCommit();
-        if ($forceFetch && $this->hasToken()) {
-            $this->ensureGitSafeDirectory();
-            $this->runCommand('git fetch origin ' . escapeshellarg($branch) . ' --prune', 120);
-        }
-
-        if ($base === '') {
-            $commits = $this->githubBranchCommits($branch);
-            return [
-                'aheadBy' => count($commits),
-                'headSha' => $commits[0]['sha'] ?? '',
-                'commits' => $commits,
-            ];
-        }
-
-        $payload = $this->githubCompare($base, $branch);
-        $commits = $this->mapCompareCommits($payload, $base);
-
-        return [
-            'aheadBy' => (int) ($payload['ahead_by'] ?? 0),
-            'headSha' => $commits[0]['sha'] ?? '',
-            'commits' => $commits,
-        ];
+        return $this->checkFromCommits();
     }
 
     public function apply(string $ref = ''): array
     {
-        $caps = $this->capabilities();
-        if (!$caps['gitAvailable']) {
-            throw new RuntimeException('Git is not available in this install.');
-        }
+        $this->assertCanApply();
 
-        $branch = $this->trackBranch();
+        $check = $this->check(false);
         $target = trim($ref);
         if ($target === '') {
-            $check = $this->check(true);
-            $target = $check['headSha'] !== '' ? $check['headSha'] : $branch;
+            $target = $check['headSha'] !== '' ? $check['headSha'] : $this->trackBranch();
         }
         if (!preg_match('#^[A-Za-z0-9._/-]+$#', $target)) {
             throw new RuntimeException('Invalid update target.');
         }
 
+        $selected = $this->findUpdate($check['commits'], $target);
+        $download = $this->resolveDownload($target, $selected);
+
         $lock = $this->acquireLock();
+        $staging = $this->stagingPath();
         try {
-            if ($this->workingTreeDirty()) {
-                // Force checkout matches LinkNest: local uncommitted files are overwritten.
-            }
-
-            $this->ensureGitSafeDirectory();
-            $fetch = $this->runCommand('git fetch --tags --force origin', 180);
-            if (!$fetch['ok']) {
-                throw new RuntimeException($this->commandFailure('git fetch failed: ', $fetch));
-            }
-            $this->runCommand('git fetch origin ' . escapeshellarg($branch), 120);
-
-            $checkout = $this->runCommand('git checkout --force ' . escapeshellarg($target), 120);
-            if (!$checkout['ok']) {
-                throw new RuntimeException($this->commandFailure('git checkout failed: ', $checkout));
-            }
-
-            $head = $this->runCommand('git rev-parse HEAD', 15);
-            $sha = $head['ok'] ? strtolower($head['stdout']) : $target;
+            $this->resetDirectory($staging);
+            $zipFile = $staging . DIRECTORY_SEPARATOR . 'package.zip';
+            $extractDir = $staging . DIRECTORY_SEPARATOR . 'extract';
+            $this->httpDownload($download['url'], $zipFile, $download['headers']);
+            $payloadRoot = $this->extractPackage($zipFile, $extractDir);
+            $this->overlayFiles($payloadRoot);
             $this->maybeComposerInstall();
-            $this->settings->set('updater_last_applied_at', date('Y-m-d H:i:s'));
-            $this->settings->set('updater_last_applied_sha', $sha);
+
+            $sha = (string) ($selected['commitSha'] ?? '');
+            $tag = $check['mode'] === 'releases' ? $target : (string) ($selected['short'] ?? '');
+            if ($check['mode'] === 'commits') {
+                $sha = $target;
+                $tag = '';
+            }
+            $this->recordApplied($tag, $sha);
+
+            $label = $tag !== '' ? $tag : ($sha !== '' ? substr($sha, 0, 7) : $target);
 
             return [
                 'ok' => true,
-                'sha' => $sha,
-                'short' => substr($sha, 0, 7),
-                'message' => 'Updated to ' . substr($sha, 0, 7) . '. Reload the page (Ctrl+F5).',
+                'sha' => $sha !== '' ? $sha : $target,
+                'short' => $label,
+                'message' => 'Updated to ' . $label . '. Reload the page (Ctrl+F5). Database and uploads were kept in place.',
             ];
         } finally {
+            $this->deleteDirectory($staging);
             $this->releaseLock($lock);
         }
     }
@@ -204,7 +208,6 @@ final class GitHubUpdater
             throw new RuntimeException('GitHub token looks masked (asterisks). Paste the real token and save again.');
         }
         if (str_starts_with($token, 'github_pat_') === false && str_starts_with($token, 'ghp_') === false) {
-            // Allow other token prefixes (gho_, ghu_) but warn via exception only for obvious junk.
             if (strlen($token) < 20) {
                 throw new RuntimeException('That does not look like a GitHub personal access token.');
             }
@@ -216,6 +219,348 @@ final class GitHubUpdater
     public function clearToken(): void
     {
         $this->settings->delete('updater_github_token');
+    }
+
+    /**
+     * @param list<array<string, mixed>> $releases
+     * @return array{aheadBy: int, headSha: string, mode: string, commits: list<array<string, string>>}
+     */
+    private function checkFromReleases(array $releases): array
+    {
+        $installed = $this->installedTagOrVersion();
+        $updates = [];
+        foreach ($releases as $release) {
+            if (!is_array($release)) {
+                continue;
+            }
+            if (!empty($release['prerelease']) && !$this->installedIsPrerelease()) {
+                continue;
+            }
+            $mapped = $this->mapRelease($release);
+            if ($mapped === null) {
+                continue;
+            }
+            if ($installed !== '' && $this->sameVersion($mapped['sha'], $installed)) {
+                break;
+            }
+            $updates[] = $mapped;
+        }
+
+        if ($installed === '' && $updates === []) {
+            foreach ($releases as $release) {
+                if (!is_array($release) || !empty($release['prerelease'])) {
+                    continue;
+                }
+                $mapped = $this->mapRelease($release);
+                if ($mapped !== null) {
+                    $updates[] = $mapped;
+                }
+            }
+        }
+
+        return [
+            'aheadBy' => count($updates),
+            'headSha' => $updates[0]['sha'] ?? '',
+            'mode' => 'releases',
+            'commits' => $updates,
+        ];
+    }
+
+    /**
+     * @return array{aheadBy: int, headSha: string, mode: string, commits: list<array<string, string>>}
+     */
+    private function checkFromCommits(): array
+    {
+        $branch = $this->trackBranch();
+        $base = $this->installedManifest()['sha'] ?? '';
+        if ($base === '' && $this->capabilities()['gitAvailable']) {
+            $base = $this->installedCommitFromGit();
+        }
+
+        if ($base === '') {
+            $commits = $this->githubBranchCommits($branch);
+            return [
+                'aheadBy' => count($commits),
+                'headSha' => $commits[0]['sha'] ?? '',
+                'mode' => 'commits',
+                'commits' => $commits,
+            ];
+        }
+
+        $payload = $this->githubCompare($base, $branch);
+        $commits = $this->mapCompareCommits($payload, $base);
+
+        return [
+            'aheadBy' => (int) ($payload['ahead_by'] ?? count($commits)),
+            'headSha' => $commits[0]['sha'] ?? '',
+            'mode' => 'commits',
+            'commits' => $commits,
+        ];
+    }
+
+    /**
+     * @param list<array<string, string>> $items
+     * @return array<string, string>
+     */
+    private function findUpdate(array $items, string $target): array
+    {
+        foreach ($items as $item) {
+            $sha = (string) ($item['sha'] ?? '');
+            if ($sha === $target || str_starts_with($sha, $target) || $this->sameVersion($sha, $target)) {
+                return $item;
+            }
+        }
+
+        return ['sha' => $target, 'short' => $target];
+    }
+
+    /**
+     * @param array<string, string> $selected
+     * @return array{url: string, headers: list<string>}
+     */
+    private function resolveDownload(string $target, array $selected): array
+    {
+        $assetId = trim((string) ($selected['assetId'] ?? ''));
+        if ($assetId !== '' && ctype_digit($assetId)) {
+            return [
+                'url' => 'https://api.github.com/repos/' . $this->repoSlug() . '/releases/assets/' . $assetId,
+                'headers' => ['Accept: application/octet-stream'],
+            ];
+        }
+
+        return [
+            'url' => 'https://api.github.com/repos/' . $this->repoSlug() . '/zipball/' . rawurlencode($target),
+            'headers' => ['Accept: application/vnd.github+json'],
+        ];
+    }
+
+    private function extractPackage(string $zipFile, string $extractDir): string
+    {
+        if (!is_file($zipFile) || filesize($zipFile) < 64) {
+            throw new RuntimeException('The downloaded update file is empty or incomplete.');
+        }
+        $magic = (string) file_get_contents($zipFile, false, null, 0, 4);
+        if (!str_starts_with($magic, 'PK')) {
+            throw new RuntimeException('GitHub did not return a zip file. Check the token and repository name.');
+        }
+
+        if (!is_dir($extractDir) && !mkdir($extractDir, 0755, true) && !is_dir($extractDir)) {
+            throw new RuntimeException('Unable to create the update extract folder.');
+        }
+
+        $zip = new ZipArchive();
+        $opened = $zip->open($zipFile);
+        if ($opened !== true) {
+            throw new RuntimeException('Unable to open the update zip (code ' . (string) $opened . ').');
+        }
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = str_replace('\\', '/', (string) $zip->getNameIndex($i));
+            if ($name === '' || str_contains($name, '..')) {
+                $zip->close();
+                throw new RuntimeException('The update zip contains an unsafe path and was rejected.');
+            }
+        }
+
+        if (!$zip->extractTo($extractDir)) {
+            $zip->close();
+            throw new RuntimeException('Unable to extract the update zip.');
+        }
+        $zip->close();
+
+        return $this->payloadRoot($extractDir);
+    }
+
+    private function payloadRoot(string $extractDir): string
+    {
+        $entries = scandir($extractDir);
+        if (!is_array($entries)) {
+            throw new RuntimeException('Unable to read the extracted update.');
+        }
+        $useful = [];
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $useful[] = $entry;
+        }
+        if (count($useful) === 1 && is_dir($extractDir . DIRECTORY_SEPARATOR . $useful[0])) {
+            return $extractDir . DIRECTORY_SEPARATOR . $useful[0];
+        }
+
+        return $extractDir;
+    }
+
+    private function overlayFiles(string $sourceRoot): void
+    {
+        if (!is_dir($sourceRoot)) {
+            throw new RuntimeException('The update package has no files to copy.');
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($sourceRoot, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        $copied = 0;
+        foreach ($iterator as $file) {
+            $absolute = $file->getPathname();
+            $relative = substr($absolute, strlen($sourceRoot) + 1);
+            if ($relative === false || $relative === '') {
+                continue;
+            }
+            $relativeUnix = str_replace('\\', '/', $relative);
+            if ($this->shouldPreserve($relativeUnix)) {
+                continue;
+            }
+
+            $destination = $this->projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativeUnix);
+            if ($file->isDir()) {
+                if (!is_dir($destination) && !mkdir($destination, 0755, true) && !is_dir($destination)) {
+                    throw new RuntimeException('Unable to create folder: ' . $relativeUnix);
+                }
+                continue;
+            }
+
+            $directory = dirname($destination);
+            if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+                throw new RuntimeException('Unable to create folder: ' . dirname($relativeUnix));
+            }
+            if (!@copy($absolute, $destination)) {
+                usleep(120000);
+                if (!@copy($absolute, $destination)) {
+                    throw new RuntimeException('Unable to replace ' . $relativeUnix . '. Close programs using that file and try again.');
+                }
+            }
+            $copied++;
+        }
+
+        if ($copied < 5) {
+            throw new RuntimeException('The update package did not contain enough application files.');
+        }
+    }
+
+    private function shouldPreserve(string $relative): bool
+    {
+        $relative = ltrim(str_replace('\\', '/', $relative), '/');
+        $base = basename($relative);
+
+        if ($relative === '.git' || str_starts_with($relative, '.git/')) {
+            return true;
+        }
+        if ($relative === self::STAGING_DIR || str_starts_with($relative, self::STAGING_DIR . '/')) {
+            return true;
+        }
+        if ($relative === 'dist' || str_starts_with($relative, 'dist/')) {
+            return true;
+        }
+        if ($relative === 'uploads' || str_starts_with($relative, 'uploads/')) {
+            return !in_array($base, ['.gitkeep', '.htaccess'], true);
+        }
+        if (str_starts_with($relative, 'public/assets/branding/')) {
+            return $base !== '.gitkeep';
+        }
+        if ($relative === 'database' || str_starts_with($relative, 'database/')) {
+            return !in_array($base, ['schema.sql', 'schema.sqlite.sql', '.gitkeep', '.htaccess'], true);
+        }
+
+        return false;
+    }
+
+    private function recordApplied(string $tag, string $sha): void
+    {
+        $version = $tag !== '' ? $this->normalizeVersion($tag) : '';
+        $manifest = [
+            'name' => 'RiskRegister',
+            'version' => $version !== '' ? $version : (string) ($this->installedManifest()['version'] ?? ''),
+            'tag' => $tag,
+            'sha' => $sha,
+            'built_at' => gmdate('c'),
+            'repo' => $this->repoSlug(),
+        ];
+        $path = $this->projectRoot . DIRECTORY_SEPARATOR . self::VERSION_FILE;
+        $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json) || file_put_contents($path, $json . "\n") === false) {
+            throw new RuntimeException('Updated files were copied, but VERSION.json could not be written.');
+        }
+
+        $this->settings->set('updater_last_applied_at', date('Y-m-d H:i:s'));
+        if ($sha !== '') {
+            $this->settings->set('updater_last_applied_sha', $sha);
+        }
+        if ($tag !== '') {
+            $this->settings->set('updater_last_applied_tag', $tag);
+        }
+    }
+
+    /**
+     * @return array{version?: string, tag?: string, sha?: string}
+     */
+    private function installedManifest(): array
+    {
+        $file = $this->readVersionFile();
+        $tag = trim($this->settings->get('updater_last_applied_tag', ''));
+        $sha = trim($this->settings->get('updater_last_applied_sha', ''));
+        if ($tag === '' && isset($file['tag'])) {
+            $tag = trim((string) $file['tag']);
+        }
+        if ($sha === '' && isset($file['sha'])) {
+            $sha = trim((string) $file['sha']);
+        }
+        $version = isset($file['version']) ? trim((string) $file['version']) : '';
+        if ($version === '' && $tag !== '') {
+            $version = $this->normalizeVersion($tag);
+        }
+
+        return [
+            'version' => $version,
+            'tag' => $tag,
+            'sha' => $sha,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function readVersionFile(): ?array
+    {
+        $path = $this->projectRoot . DIRECTORY_SEPARATOR . self::VERSION_FILE;
+        if (!is_file($path)) {
+            return null;
+        }
+        $decoded = json_decode((string) file_get_contents($path), true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function installedTagOrVersion(): string
+    {
+        $manifest = $this->installedManifest();
+        if ($manifest['tag'] !== '') {
+            return $manifest['tag'];
+        }
+
+        return $manifest['version'];
+    }
+
+    private function installedIsPrerelease(): bool
+    {
+        $value = strtolower($this->installedTagOrVersion());
+        return str_contains($value, 'alpha') || str_contains($value, 'beta') || str_contains($value, 'rc');
+    }
+
+    private function sameVersion(string $left, string $right): bool
+    {
+        return strcasecmp($this->normalizeVersion($left), $this->normalizeVersion($right)) === 0;
+    }
+
+    private function normalizeVersion(string $value): string
+    {
+        $value = trim($value);
+        if (str_starts_with(strtolower($value), 'v') && preg_match('/^v\d/i', $value) === 1) {
+            return substr($value, 1);
+        }
+
+        return $value;
     }
 
     private function githubToken(): string
@@ -235,17 +580,34 @@ final class GitHubUpdater
     }
 
     /**
-     * @return array{gitAvailable: bool}
+     * @return array{gitAvailable: bool, zipAvailable: bool, curlAvailable: bool}
      */
     private function capabilities(): array
     {
         $hasGitDir = is_dir($this->projectRoot . DIRECTORY_SEPARATOR . '.git');
         return [
             'gitAvailable' => $hasGitDir && $this->gitBinary() !== '',
+            'zipAvailable' => class_exists(ZipArchive::class),
+            'curlAvailable' => function_exists('curl_init'),
         ];
     }
 
-    private function installedCommit(): string
+    private function assertCanTalkToGithub(): void
+    {
+        if (!$this->capabilities()['curlAvailable']) {
+            throw new RuntimeException('PHP cURL is required to check GitHub for updates. Enable extension=curl in php.ini and restart Apache.');
+        }
+    }
+
+    private function assertCanApply(): void
+    {
+        $this->assertCanTalkToGithub();
+        if (!$this->capabilities()['zipAvailable']) {
+            throw new RuntimeException('PHP zip is required to apply updates. Enable extension=zip in php.ini and restart Apache.');
+        }
+    }
+
+    private function installedCommitFromGit(): string
     {
         $result = $this->runCommand('git rev-parse HEAD', 15);
         if ($result['ok'] && preg_match('/^[a-f0-9]{7,40}$/i', $result['stdout']) === 1) {
@@ -281,6 +643,83 @@ final class GitHubUpdater
         }
 
         return $matches[1] . '/' . preg_replace('/\.git$/i', '', $matches[2]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function githubReleases(): array
+    {
+        $url = 'https://api.github.com/repos/' . $this->repoSlug() . '/releases?per_page=20';
+        $payload = $this->httpJson($url);
+        $releases = [];
+        foreach ($payload as $release) {
+            if (!is_array($release) || !empty($release['draft'])) {
+                continue;
+            }
+            $releases[] = $release;
+        }
+
+        return $releases;
+    }
+
+    /**
+     * @param array<string, mixed> $release
+     * @return array<string, string>|null
+     */
+    private function mapRelease(array $release): ?array
+    {
+        $tag = trim((string) ($release['tag_name'] ?? ''));
+        if ($tag === '' || preg_match('#^[A-Za-z0-9._/-]+$#', $tag) !== 1) {
+            return null;
+        }
+        $name = trim((string) ($release['name'] ?? ''));
+        if ($name === '') {
+            $name = $tag;
+        }
+        $asset = $this->preferredReleaseAsset($release);
+        $published = (string) ($release['published_at'] ?? $release['created_at'] ?? '');
+        $when = $published !== '' ? substr($published, 0, 10) : '';
+
+        return [
+            'sha' => $tag,
+            'short' => $tag,
+            'message' => $name,
+            'author' => $when,
+            'date' => $published,
+            'url' => (string) ($release['html_url'] ?? ''),
+            'assetId' => $asset !== null ? (string) $asset['id'] : '',
+            'assetName' => $asset !== null ? (string) $asset['name'] : '',
+            'commitSha' => '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $release
+     * @return array{id: int, name: string}|null
+     */
+    private function preferredReleaseAsset(array $release): ?array
+    {
+        $assets = is_array($release['assets'] ?? null) ? $release['assets'] : [];
+        $zipAssets = [];
+        foreach ($assets as $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            $name = (string) ($asset['name'] ?? '');
+            $id = (int) ($asset['id'] ?? 0);
+            if ($id <= 0 || preg_match('/\.zip$/i', $name) !== 1) {
+                continue;
+            }
+            $zipAssets[] = ['id' => $id, 'name' => $name];
+        }
+        foreach ($zipAssets as $asset) {
+            if (preg_match('/RiskRegister|Risk-Assesment|RiskAssessment/i', $asset['name']) === 1) {
+                return $asset;
+            }
+        }
+
+        return $zipAssets[0] ?? null;
     }
 
     /**
@@ -362,6 +801,9 @@ final class GitHubUpdater
             'author' => $author,
             'date' => $date,
             'url' => (string) ($commit['html_url'] ?? ''),
+            'assetId' => '',
+            'assetName' => '',
+            'commitSha' => $sha,
         ];
     }
 
@@ -370,15 +812,54 @@ final class GitHubUpdater
      */
     private function httpJson(string $url): array
     {
+        $text = $this->httpRequest($url, ['Accept: application/vnd.github+json']);
+        $decoded = json_decode($text, true);
+        if (!is_array($decoded)) {
+            throw new RuntimeException('Invalid JSON from GitHub.');
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @param list<string> $extraHeaders
+     */
+    private function httpDownload(string $url, string $destination, array $extraHeaders = []): void
+    {
+        $directory = dirname($destination);
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new RuntimeException('Unable to create the update download folder.');
+        }
+
+        $handle = fopen($destination, 'wb');
+        if ($handle === false) {
+            throw new RuntimeException('Unable to write the update zip.');
+        }
+
+        try {
+            $this->httpRequest($url, $extraHeaders, $handle, 300);
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * @param list<string> $extraHeaders
+     * @param resource|null $fileHandle
+     */
+    private function httpRequest(string $url, array $extraHeaders = [], $fileHandle = null, int $timeout = 30): string
+    {
         if (!function_exists('curl_init')) {
             throw new RuntimeException('PHP cURL is required to talk to GitHub.');
         }
 
         $headers = [
-            'Accept: application/vnd.github+json',
             'User-Agent: RiskAssessment-Updater',
             'X-GitHub-Api-Version: 2022-11-28',
         ];
+        foreach ($extraHeaders as $header) {
+            $headers[] = $header;
+        }
         $token = $this->githubToken();
         if ($token !== '') {
             $headers[] = 'Authorization: Bearer ' . $token;
@@ -388,14 +869,23 @@ final class GitHubUpdater
         if ($handle === false) {
             throw new RuntimeException('Unable to start a GitHub request.');
         }
-        curl_setopt_array($handle, [
-            CURLOPT_RETURNTRANSFER => true,
+
+        $options = [
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 30,
+            CURLOPT_MAXREDIRS => 8,
+            CURLOPT_TIMEOUT => $timeout,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 0,
-        ]);
+        ];
+        if (is_resource($fileHandle)) {
+            $options[CURLOPT_FILE] = $fileHandle;
+            $options[CURLOPT_RETURNTRANSFER] = false;
+        } else {
+            $options[CURLOPT_RETURNTRANSFER] = true;
+        }
+        curl_setopt_array($handle, $options);
+
         $body = curl_exec($handle);
         $status = (int) curl_getinfo($handle, CURLINFO_HTTP_CODE);
         $error = curl_error($handle);
@@ -405,17 +895,15 @@ final class GitHubUpdater
             throw new RuntimeException('GitHub request failed: ' . ($error !== '' ? $error : 'unknown error'));
         }
 
-        $text = is_string($body) ? $body : '';
         if ($status < 200 || $status >= 300) {
+            $text = is_string($body) ? $body : '';
+            if ($text === '' && is_resource($fileHandle)) {
+                fflush($fileHandle);
+            }
             throw new RuntimeException($this->formatGithubHttpError($status, $text));
         }
 
-        $decoded = json_decode($text, true);
-        if (!is_array($decoded)) {
-            throw new RuntimeException('Invalid JSON from GitHub.');
-        }
-
-        return $decoded;
+        return is_string($body) ? $body : '';
     }
 
     private function formatGithubHttpError(int $status, string $body): string
@@ -454,14 +942,12 @@ final class GitHubUpdater
         return $message;
     }
 
-    private function ensureGitSafeDirectory(): void
-    {
-        $safe = str_replace('\\', '/', $this->projectRoot);
-        $this->runCommand('git config --global --add safe.directory ' . escapeshellarg($safe), 15);
-    }
-
     private function maybeComposerInstall(): void
     {
+        $autoload = $this->projectRoot . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+        if (is_file($autoload)) {
+            return;
+        }
         $composerJson = $this->projectRoot . DIRECTORY_SEPARATOR . 'composer.json';
         if (!is_file($composerJson)) {
             return;
@@ -477,23 +963,6 @@ final class GitHubUpdater
         if ($this->commandExists('composer')) {
             $this->runCommand('composer install --no-dev --no-interaction', 180);
         }
-    }
-
-    /**
-     * @param array{ok: bool, code: int, stdout: string, stderr: string} $result
-     */
-    private function commandFailure(string $prefix, array $result): string
-    {
-        $detail = trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout']);
-        if ($detail === '') {
-            $detail = 'exit code ' . $result['code'] . ' (no output)';
-        }
-        if (!$this->hasToken()) {
-            $detail .= '. Private repositories need a classic PAT with the repo scope. Create one at '
-                . self::PAT_CREATE_URL . ', paste it under Updater settings, then try again.';
-        }
-
-        return $prefix . $detail;
     }
 
     /**
@@ -570,13 +1039,6 @@ final class GitHubUpdater
 
         $safe = escapeshellarg(str_replace('\\', '/', $this->projectRoot));
         $inject = ' -c safe.directory=' . $safe . ' -c safe.directory=*';
-        $token = $this->githubToken();
-        if ($token !== '') {
-            $basic = base64_encode('x-access-token:' . $token);
-            $inject .= ' -c credential.helper=';
-            $inject .= ' -c http.extraHeader=' . escapeshellarg('Authorization: Basic ' . $basic);
-        }
-
         $binary = str_contains($git, ' ') ? escapeshellarg($git) : $git;
         return (string) preg_replace('/^\s*git\b/i', $binary . $inject, $command, 1);
     }
@@ -599,8 +1061,7 @@ final class GitHubUpdater
             }
         }
         $env['GIT_TERMINAL_PROMPT'] = '0';
-        $env['GCM_INTERACTIVE'] = 'never';
-        $env['GIT_ASKPASS'] = '';
+        $env['COMPOSER_DISABLE_XDEBUG_WARN'] = '1';
         return $env;
     }
 
@@ -636,6 +1097,40 @@ final class GitHubUpdater
         $code = 1;
         @exec($check . ' 2>&1', $output, $code);
         return $code === 0;
+    }
+
+    private function stagingPath(): string
+    {
+        return $this->projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::STAGING_DIR);
+    }
+
+    private function resetDirectory(string $path): void
+    {
+        if (is_dir($path)) {
+            $this->deleteDirectory($path);
+        }
+        if (!mkdir($path, 0755, true) && !is_dir($path)) {
+            throw new RuntimeException('Unable to create the updater staging folder.');
+        }
+    }
+
+    private function deleteDirectory(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                @rmdir($file->getPathname());
+            } else {
+                @unlink($file->getPathname());
+            }
+        }
+        @rmdir($path);
     }
 
     /** @return resource|false */

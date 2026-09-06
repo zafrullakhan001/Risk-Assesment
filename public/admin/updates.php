@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $checkResult['aheadBy'] . ' update' . ($checkResult['aheadBy'] === 1 ? '' : 's') . ' available.'
                 : 'This install is up to date with GitHub.';
         } elseif ($action === 'apply') {
-            @set_time_limit(180);
+            @set_time_limit(300);
             ignore_user_abort(true);
             $ref = trim((string) ($_POST['target_ref'] ?? ''));
             $applied = $updater->apply($ref);
@@ -77,12 +77,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $status = $updater->status();
 $patUrl = GitHubUpdater::PAT_CREATE_URL;
 $patManageUrl = GitHubUpdater::PAT_MANAGE_URL;
+$checkMode = is_array($checkResult) ? (string) ($checkResult['mode'] ?? 'releases') : 'releases';
+$installedLabel = $status['installedTag'] !== ''
+    ? $status['installedTag']
+    : ($status['installedVersion'] !== '' ? $status['installedVersion'] : ($status['installedShort'] !== '' ? $status['installedShort'] : 'unknown'));
 
 $adminTitle = 'App updates';
 $adminTab = 'updates';
 $adminEyebrow = 'GitHub updater';
-$adminHeading = 'Update this install via <em>git</em>';
-$adminIntro = 'Check ' . $status['repo'] . ' and apply new commits with a Personal Access Token.';
+$adminHeading = 'Update this install from <em>GitHub Releases</em>';
+$adminIntro = 'Check ' . $status['repo'] . ' and apply a packaged release zip. Git is not required on this server.';
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
             <section class="upload-card pat-help" id="enable-pat">
@@ -104,7 +108,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     <a class="button button-primary" href="<?= e($patUrl) ?>" target="_blank" rel="noopener noreferrer">Create classic PAT (repo scope)</a>
                     <a class="button ghost" href="<?= e($patManageUrl) ?>" target="_blank" rel="noopener noreferrer">Manage existing tokens</a>
                 </p>
-                <p class="pat-fineprint">Fine-grained tokens also work if they grant this repository <strong>Contents: Read and write</strong> and <strong>Metadata: Read</strong>.</p>
+                <p class="pat-fineprint">Fine-grained tokens also work if they grant this repository <strong>Contents: Read</strong> and <strong>Metadata: Read</strong>.</p>
             </section>
 
             <section class="upload-card">
@@ -112,18 +116,29 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <div class="updater-status">
                     <div><span>Repository</span><strong><?= e($status['repo']) ?></strong></div>
                     <div><span>Track branch</span><strong><?= e($status['branch']) ?></strong></div>
-                    <div><span>Current HEAD</span><strong><?= e($status['installedShort'] !== '' ? $status['installedShort'] : 'unknown') ?></strong></div>
-                    <div><span>Local branch</span><strong><?= e($status['currentBranch'] !== '' ? $status['currentBranch'] : 'n/a') ?></strong></div>
+                    <div><span>Installed version</span><strong><?= e($installedLabel) ?></strong></div>
                     <div>
                         <span>GitHub token</span>
                         <strong class="<?= $status['hasToken'] ? 'token-ok' : 'token-needed' ?>">
                             <?= $status['hasToken'] ? 'saved' : 'token needed' ?>
                         </strong>
                     </div>
-                    <div><span>Git</span><strong><?= $status['gitAvailable'] ? 'available' : 'missing' ?></strong></div>
+                    <div>
+                        <span>Apply method</span>
+                        <strong class="<?= $status['zipAvailable'] && $status['curlAvailable'] ? 'token-ok' : 'token-needed' ?>">
+                            <?= $status['zipAvailable'] && $status['curlAvailable'] ? 'GitHub zip' : 'missing PHP zip/curl' ?>
+                        </strong>
+                    </div>
+                    <div><span>Git on server</span><strong><?= $status['gitAvailable'] ? 'available (optional)' : 'not required' ?></strong></div>
                 </div>
+                <?php if (!$status['zipAvailable']): ?>
+                    <p class="updater-warning">PHP zip is not enabled. Turn on <code>extension=zip</code> in php.ini and restart Apache so updates can be extracted.</p>
+                <?php endif; ?>
+                <?php if (!$status['curlAvailable']): ?>
+                    <p class="updater-warning">PHP cURL is not enabled. Turn on <code>extension=curl</code> in php.ini and restart Apache.</p>
+                <?php endif; ?>
                 <?php if ($status['dirty']): ?>
-                    <p class="updater-warning">This working tree has local changes. Applying an update uses <code>git checkout --force</code> and will overwrite them.</p>
+                    <p class="updater-warning">This working tree has local git changes. Applying a release zip overwrites application files (database and uploads stay).</p>
                 <?php endif; ?>
                 <?php if ($status['lastAppliedAt'] !== ''): ?>
                     <p class="empty-results">Last applied <?= e($status['lastAppliedAt']) ?>.</p>
@@ -141,10 +156,18 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <section class="upload-card">
                     <h2>Available updates</h2>
                     <?php if ((int) $checkResult['aheadBy'] <= 0): ?>
-                        <p>This install matches <code>origin/<?= e($status['branch']) ?></code>.</p>
+                        <?php if ($checkMode === 'releases'): ?>
+                            <p>This install matches the latest GitHub Release.</p>
+                        <?php else: ?>
+                            <p>This install matches <code>origin/<?= e($status['branch']) ?></code>.</p>
+                        <?php endif; ?>
                     <?php else: ?>
-                        <p><?= (int) $checkResult['aheadBy'] ?> commit<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> ahead on <code><?= e($status['branch']) ?></code>.</p>
-                        <form method="post" class="updater-apply" onsubmit="return confirm('Apply this GitHub update now? Local uncommitted files will be overwritten.');">
+                        <?php if ($checkMode === 'releases'): ?>
+                            <p><?= (int) $checkResult['aheadBy'] ?> newer GitHub Release<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> available. The packaged <code>RiskRegister-*.zip</code> asset is used when present.</p>
+                        <?php else: ?>
+                            <p>No GitHub Releases yet. Showing <?= (int) $checkResult['aheadBy'] ?> commit<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> on <code><?= e($status['branch']) ?></code> (source zipball).</p>
+                        <?php endif; ?>
+                        <form method="post" class="updater-apply" onsubmit="return confirm('Apply this GitHub update now? Application files will be replaced. The database, uploads, and branding stay in place.');">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="apply">
                             <div class="commit-list">
@@ -162,11 +185,18 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                     </label>
                                 <?php endforeach; ?>
                             </div>
-                            <button type="submit" class="button button-primary">Update via git</button>
+                            <button type="submit" class="button button-primary">Download and apply</button>
                         </form>
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
+
+            <section class="upload-card">
+                <h2>Publish a release zip</h2>
+                <p>GitHub’s automatic “Source code (zip)” does not include <code>vendor/</code> and is not a git checkout. Package this app first, then attach the zip to the GitHub Release:</p>
+                <pre class="updater-code">php bin/package_release.php v1.1.0</pre>
+                <p class="pat-fineprint">That writes <code>dist/RiskRegister-v1.1.0.zip</code>. Upload it as a release asset. Creating a GitHub Release also runs the packaging workflow, which attaches the same zip automatically.</p>
+            </section>
 
             <section class="upload-card">
                 <h2>Updater settings</h2>
@@ -179,7 +209,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <input type="text" name="updater_repo" value="<?= e($status['repo']) ?>" placeholder="zafrullakhan001/Risk-Assesment" required>
                     </label>
                     <label class="file-input">
-                        <span>Track branch</span>
+                        <span>Track branch (used if there are no Releases yet)</span>
                         <input type="text" name="updater_track_branch" value="<?= e($status['branch']) ?>" placeholder="main" required>
                     </label>
                     <label class="file-input">

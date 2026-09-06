@@ -1,0 +1,43 @@
+name: Package GitHub Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild (for example v1.2.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: zip, curl
+          coverage: none
+          tools: composer
+
+      - name: Install production dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist
+
+      - name: Build release zip
+        run: php bin/package_release.php "${{ github.event.release.tag_name || inputs.tag }}"
+
+      - name: Upload zip to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          ZIP=$(ls dist/RiskRegister-*.zip | head -n 1)
+          gh release upload "$TAG" "$ZIP" --clobber
+          echo "Attached $(basename "$ZIP") to $TAG"

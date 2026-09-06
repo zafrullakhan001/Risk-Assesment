@@ -2809,6 +2809,10 @@ html:not([data-project-list-view]) .project-item.is-none {
     padding: 12px 14px;
     border-radius: var(--radius-sm);
     font-size: 13px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
 }
 
 .alert-error {
@@ -5039,6 +5043,17 @@ body.is-presentation .print-only-block { display: block; }
     border: 1px solid color-mix(in srgb, #c2410c 35%, var(--line));
     background: color-mix(in srgb, #c2410c 10%, var(--card));
     color: #9a3412;
+    font-size: 13px;
+}
+
+.updater-code {
+    margin: 12px 0;
+    padding: 12px 14px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--paper) 55%, var(--card));
+    font-family: var(--font-mono);
     font-size: 13px;
 }
 

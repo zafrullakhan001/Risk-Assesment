@@ -364,7 +364,7 @@ HTML,
 <li><strong>Authentication</strong> — turn local and LDAP on or off, configure directory servers, test the bind.</li>
 <li><strong>Branding</strong> — title, subtitle, hero text, logo, favicon, footer.</li>
 <li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore. Treat backup files as secrets if encryption is on.</li>
-<li><strong>App updates</strong> — GitHub personal access token, check commits, apply an update via git. Database and uploads stay in place.</li>
+<li><strong>App updates</strong> — GitHub personal access token, check GitHub Releases, download and apply a packaged zip. Git is not required. Database, uploads, and branding stay in place.</li>
 <li><strong>SharePoint</strong> — jump to catalog admin (Tenant ID, Client ID, sync, import).</li>
 </ul>
 <p>Only administrators can open these pages. SharePoint folder management, sync, import, purge, tags, and archive controls are admin-gated as well.</p>

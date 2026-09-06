@@ -11,5 +11,8 @@
 !/database/snapshots/.gitkeep
 /database/.encryption_key
 /database/updater.lock
+/database/update-staging/
+/dist/*
+!/dist/.htaccess
 composer.phar
 cacert.pem
