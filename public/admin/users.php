@@ -473,7 +473,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <input type="hidden" name="action" value="search_ldap_users">
                         <fieldset class="settings-fieldset settings-tone-teal">
                             <legend><span class="settings-emoji" aria-hidden="true">🔎</span> Directory search</legend>
-                            <p class="settings-hint">Matches display name, username (sAMAccountName / uid), email, and common name. At least 2 characters.</p>
+                            <p class="settings-hint">Start with the exact username (sAMAccountName) when you know it. Name and email searches use prefix / ANR matches so they stay fast against a large domain.</p>
                             <div class="settings-grid">
                                 <label class="settings-field settings-span-all">
                                     <span><span class="settings-emoji" aria-hidden="true">🧑</span> Search</span>

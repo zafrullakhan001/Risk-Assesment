@@ -16,3 +16,4 @@
 !/dist/.htaccess
 composer.phar
 cacert.pem
+database/risk_assessment.zip

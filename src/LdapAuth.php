@@ -762,70 +762,78 @@ final class LdapAuth
             throw new RuntimeException('LDAP user search base is not configured.');
         }
 
-        $escaped = $this->escapeFilter($query);
-        $term = '*' . $escaped . '*';
-        $filter = '(&'
-            . '(|(objectClass=user)(objectClass=person)(objectClass=inetOrgPerson)(objectClass=organizationalPerson))'
-            . '(!(objectClass=computer))'
-            . '(|(sAMAccountName=' . $term . ')'
-            . '(uid=' . $term . ')'
-            . '(displayName=' . $term . ')'
-            . '(cn=' . $term . ')'
-            . '(mail=' . $term . ')'
-            . '(givenName=' . $term . ')'
-            . '(sn=' . $term . ')'
-            . '(userPrincipalName=' . $term . '))'
-            . ')';
-
         $connection = $this->connect($server);
         try {
             $this->serviceBind($connection, $server);
             $attributes = $this->attributeList($server);
             $scope = strtolower((string) ($server['search_scope'] ?? 'sub'));
-            $result = match ($scope) {
-                'base' => @ldap_read($connection, $searchBase, $filter, $attributes, 0, $limit),
-                'one' => @ldap_list($connection, $searchBase, $filter, $attributes, 0, $limit),
-                default => @ldap_search($connection, $searchBase, $filter, $attributes, 0, $limit),
-            };
-            if ($result === false) {
-                throw new RuntimeException($this->formatLdapFailure(
-                    'LDAP search failed.',
-                    $connection,
-                    [
-                        'Search base: ' . $searchBase,
-                        'Filter: ' . $filter,
-                        'Scope: ' . $scope,
-                    ]
-                ));
-            }
-
-            $entries = @ldap_get_entries($connection, $result);
-            if (!is_array($entries)) {
-                return [];
-            }
-
             $profiles = [];
             $seen = [];
-            $count = (int) ($entries['count'] ?? 0);
-            for ($i = 0; $i < $count; $i++) {
-                $entry = $entries[$i];
-                if (!is_array($entry) || !$this->isLikelyUserEntry($entry)) {
-                    continue;
+            $exactUsernameHit = false;
+
+            // Same indexed lookup the login path uses, so an exact username always works
+            // even when a domain-wide wildcard search would time out.
+            foreach ($this->searchLookupCandidates($query) as $candidate) {
+                try {
+                    $found = $this->findUserByUsername($connection, $server, $candidate);
+                    $entry = $found['entry'];
+                    if (($entry['dn'] ?? '') === '' && $found['dn'] !== '') {
+                        $entry['dn'] = $found['dn'];
+                    }
+                    $this->appendProfilesFromEntries(
+                        $server,
+                        ['count' => 1, 0 => $entry],
+                        $profiles,
+                        $seen,
+                        $limit
+                    );
+                    $loginName = $this->usernameFromEntry($entry, $candidate);
+                    if (strcasecmp($loginName, $candidate) === 0) {
+                        $exactUsernameHit = true;
+                    }
+                } catch (Throwable) {
+                    // Not an exact username match; continue with directory search filters.
                 }
-                $dn = (string) ($entry['dn'] ?? '');
-                $loginName = $this->usernameFromEntry($entry, '');
-                if ($loginName === '') {
-                    continue;
-                }
-                $key = strtolower($loginName);
-                if (isset($seen[$key])) {
-                    continue;
-                }
-                $seen[$key] = true;
-                $profiles[] = $this->extractProfile($server, $loginName, $entry, $dn);
                 if (count($profiles) >= $limit) {
                     break;
                 }
+            }
+
+            $hardError = null;
+            $timedOutWithNoHits = false;
+            foreach ($exactUsernameHit ? [] : $this->userDirectorySearchFilters($query) as $filter) {
+                if (count($profiles) >= $limit) {
+                    break;
+                }
+                $outcome = $this->directorySearch(
+                    $connection,
+                    $searchBase,
+                    $filter,
+                    $attributes,
+                    $scope,
+                    $limit,
+                    12
+                );
+                if ($outcome['error'] !== null) {
+                    $hardError = $outcome['error'];
+                    continue;
+                }
+                $before = count($profiles);
+                $this->appendProfilesFromEntries($server, $outcome['entries'], $profiles, $seen, $limit);
+                if ($outcome['timed_out'] && count($profiles) === $before) {
+                    $timedOutWithNoHits = true;
+                }
+            }
+
+            if ($profiles === [] && $hardError !== null && !$timedOutWithNoHits) {
+                throw new RuntimeException($hardError);
+            }
+            if ($profiles === [] && $timedOutWithNoHits) {
+                throw new RuntimeException(
+                    'LDAP search timed out before any users were returned. '
+                    . 'Search with the exact username (sAMAccountName), or set a narrower User search base than '
+                    . $searchBase . '.'
+                );
             }
 
             usort(
@@ -845,6 +853,148 @@ final class LdapAuth
             if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
                 @ldap_unbind($connection);
             }
+        }
+    }
+
+    /** @return list<string> */
+    private function searchLookupCandidates(string $query): array
+    {
+        $candidates = [trim($query)];
+        if (str_contains($query, '@')) {
+            $local = trim((string) strstr($query, '@', true));
+            if ($local !== '') {
+                $candidates[] = $local;
+            }
+        }
+
+        return array_values(array_unique(array_filter($candidates, static fn (string $value): bool => $value !== '')));
+    }
+
+    /**
+     * Cheap, index-friendly filters first. Leading-wildcard substring searches against a
+     * domain root are skipped because Active Directory typically exceeds its time limit.
+     *
+     * @return list<string>
+     */
+    private function userDirectorySearchFilters(string $query): array
+    {
+        $escaped = $this->escapeFilter($query);
+        $local = $query;
+        if (str_contains($query, '@')) {
+            $local = (string) strstr($query, '@', true);
+        }
+        $escapedLocal = $this->escapeFilter($local !== '' ? $local : $query);
+
+        $adUser = '(&(objectCategory=person)(objectClass=user)(!(objectClass=computer))';
+        $genericUser = '(&(|(objectClass=user)(objectClass=inetOrgPerson)(objectClass=person))(!(objectClass=computer))';
+        $exact = '(|(sAMAccountName=' . $escapedLocal . ')(uid=' . $escapedLocal . ')'
+            . '(userPrincipalName=' . $escaped . ')(mail=' . $escaped . ')(cn=' . $escaped . '))';
+        $prefix = '(|(sAMAccountName=' . $escapedLocal . '*)(uid=' . $escapedLocal . '*)'
+            . '(cn=' . $escaped . '*)(mail=' . $escaped . '*)(displayName=' . $escaped . '*)'
+            . '(givenName=' . $escaped . '*)(sn=' . $escaped . '*)(userPrincipalName=' . $escaped . '*))';
+
+        $filters = [
+            $adUser . $exact . ')',
+            $genericUser . $exact . ')',
+            $adUser . '(anr=' . $escaped . '))',
+            $adUser . $prefix . ')',
+            $genericUser . $prefix . ')',
+        ];
+        if ($escapedLocal !== $escaped) {
+            $filters[] = $adUser . '(anr=' . $escapedLocal . '))';
+        }
+
+        return $filters;
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param list<string> $attributes
+     * @return array{entries: array<string, mixed>, timed_out: bool, error: ?string}
+     */
+    private function directorySearch(
+        $connection,
+        string $base,
+        string $filter,
+        array $attributes,
+        string $scope,
+        int $sizeLimit,
+        int $timeLimit
+    ): array {
+        $result = match ($scope) {
+            'base' => @ldap_read($connection, $base, $filter, $attributes, 0, $sizeLimit, $timeLimit),
+            'one' => @ldap_list($connection, $base, $filter, $attributes, 0, $sizeLimit, $timeLimit),
+            default => @ldap_search($connection, $base, $filter, $attributes, 0, $sizeLimit, $timeLimit),
+        };
+        $errno = (int) @ldap_errno($connection);
+        $timeLimitCode = defined('LDAP_TIMELIMIT_EXCEEDED') ? LDAP_TIMELIMIT_EXCEEDED : 3;
+        $sizeLimitCode = defined('LDAP_SIZELIMIT_EXCEEDED') ? LDAP_SIZELIMIT_EXCEEDED : 4;
+        $adminLimitCode = defined('LDAP_ADMINLIMIT_EXCEEDED') ? LDAP_ADMINLIMIT_EXCEEDED : 11;
+        $timedOut = in_array($errno, [$timeLimitCode, $adminLimitCode], true);
+        $sizeLimited = $errno === $sizeLimitCode;
+        $unsupported = in_array($errno, [16, 17, 18, 21], true);
+
+        if ($result === false) {
+            if ($timedOut || $sizeLimited || $unsupported) {
+                return ['entries' => ['count' => 0], 'timed_out' => $timedOut, 'error' => null];
+            }
+
+            return [
+                'entries' => ['count' => 0],
+                'timed_out' => false,
+                'error' => $this->formatLdapFailure('LDAP search failed.', $connection, [
+                    'Search base: ' . $base,
+                    'Filter: ' . $filter,
+                    'Scope: ' . $scope,
+                ]),
+            ];
+        }
+
+        $entries = @ldap_get_entries($connection, $result);
+        if ($result instanceof \LDAP\Result || is_resource($result)) {
+            @ldap_free_result($result);
+        }
+
+        return [
+            'entries' => is_array($entries) ? $entries : ['count' => 0],
+            'timed_out' => $timedOut,
+            'error' => null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array<string, mixed> $entries
+     * @param list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}> $profiles
+     * @param array<string, true> $seen
+     */
+    private function appendProfilesFromEntries(
+        array $server,
+        array $entries,
+        array &$profiles,
+        array &$seen,
+        int $limit
+    ): void {
+        $count = (int) ($entries['count'] ?? 0);
+        for ($i = 0; $i < $count; $i++) {
+            if (count($profiles) >= $limit) {
+                return;
+            }
+            $entry = $entries[$i] ?? null;
+            if (!is_array($entry) || !$this->isLikelyUserEntry($entry)) {
+                continue;
+            }
+            $dn = (string) ($entry['dn'] ?? '');
+            $loginName = $this->usernameFromEntry($entry, '');
+            if ($loginName === '') {
+                continue;
+            }
+            $key = strtolower($loginName);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $profiles[] = $this->extractProfile($server, $loginName, $entry, $dn);
         }
     }
 
