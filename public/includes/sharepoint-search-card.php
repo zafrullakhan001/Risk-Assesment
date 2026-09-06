@@ -57,6 +57,7 @@ if (!$searchCardPublic && is_array($currentUser ?? null)) {
 }
 
 $presenceOptions = [];
+$archivedSourceKeys = is_array($archivedSourceKeys ?? null) ? $archivedSourceKeys : [];
 foreach ($allSources as $src) {
     $key = (string) ($src['source_key'] ?? '');
     if ($key === '') {
@@ -67,13 +68,16 @@ foreach ($allSources as $src) {
         'title' => (string) ($src['title'] ?? $key),
     ];
 }
+$showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
 ?>
 <section class="upload-card search-card is-compact-chrome" id="sharepoint-search"
+         data-sp-section="search"
          data-catalog-density="compact"
          data-source-key="<?= e($activeSourceKey) ?>"
          data-source-title="<?= e($activeTitle) ?>"
          data-solo="<?= $catalogSolo ? '1' : '0' ?>"
          data-can-edit-tags="<?= !empty($isAdmin) && empty($searchCardPublic) ? '1' : '0' ?>"
+         data-can-archive="<?= !empty($isAdmin) && empty($searchCardPublic) ? '1' : '0' ?>"
          <?php if (!empty($isAdmin) && empty($searchCardPublic)): ?>
          data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
          <?php endif; ?>
@@ -101,6 +105,7 @@ foreach ($allSources as $src) {
                 <p><?= $searchIntroHtml ?></p>
             </div>
             <div class="sharepoint-search-head-tools" data-no-toggle onclick="event.stopPropagation()">
+                <?php require __DIR__ . '/sharepoint-section-move.php'; ?>
                 <div class="sp-view-toggle sharepoint-catalog-view-toggle" role="group" aria-label="Catalog layout">
                     <button type="button" class="sp-view-btn" data-catalog-density="comfort" title="Show the full search card" aria-pressed="false">Comfort</button>
                     <button type="button" class="sp-view-btn is-active" data-catalog-density="compact" title="Shrink the search card so the project list has more room" aria-pressed="true">Compact</button>
@@ -135,7 +140,7 @@ foreach ($allSources as $src) {
                             $srcHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                             $checked = $srcKey === $activeSourceKey;
                             ?>
-                            <div class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>">
+                            <div class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?><?= !empty($archivedSourceKeys[$srcKey]) ? ' is-archived' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>"<?= !empty($archivedSourceKeys[$srcKey]) ? ' data-archived="1"' : '' ?>>
                                 <label class="sharepoint-scope-chip-main">
                                     <input type="checkbox" class="sharepoint-scope-check" value="<?= e($srcKey) ?>"<?= $checked ? ' checked' : '' ?>>
                                     <span><?= e($srcTitle) ?></span>
@@ -183,6 +188,9 @@ foreach ($allSources as $src) {
                         <button type="button" class="sp-search-toggle sp-search-suggest-toggle" id="sharepoint-suggest-toggle" title="Suggestions — show the search dropdown with project, file, people, and operator hints while typing" aria-pressed="false">▾ Suggest</button>
                         <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Fuzzy — tolerate typos and similar-sounding words (e.g. Encore ≈ Encor)" aria-pressed="false">✨ Fuzzy</button>
                         <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Deep files — also search nested file and folder names/paths inside each project (not file contents)" aria-pressed="true">📂 Deep files</button>
+                        <?php if (!empty($isAdmin) && empty($searchCardPublic)): ?>
+                            <button type="button" class="sp-search-toggle sp-search-archived" id="sharepoint-archived-toggle" title="Show archived — include catalogs, projects, and files you hid from the dashboard so you can restore them" aria-pressed="false">📦 Show archived</button>
+                        <?php endif; ?>
                     </div>
                     <button type="button" class="sp-search-advanced-toggle" id="sharepoint-advanced-toggle" aria-expanded="false" aria-controls="sharepoint-search-advanced" title="Show date, person, presence, contains/lacks, and save/export options">
                         <span class="sp-adv-toggle-label">Advanced</span>

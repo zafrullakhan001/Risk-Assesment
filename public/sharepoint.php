@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
+use RiskAssessment\AppUrl;
 use RiskAssessment\PaginationPreference;
 use RiskAssessment\Repositories\CatalogShareRepository;
+use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
@@ -19,6 +21,7 @@ $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
 $catalogShareRepository = new CatalogShareRepository($pdo);
 $searchTags = new SharePointSearchTagRepository($pdo);
+$archives = new SharePointArchiveRepository($pdo);
 $graph = new SharePointGraphClient($settings, $crypto, $catalog);
 $importer = new SharePointListingImporter($catalog, $settings);
 $browserSync = new SharePointBrowserSync($sourcesRepo);
@@ -157,6 +160,21 @@ if ($activeSource === null) {
     $activeSource = $allSources[0] ?? $sourcesRepo->ensureDefaultSource();
 }
 $activeSourceKey = (string) $activeSource['source_key'];
+$archiveIndex = $archives->indexForSources(array_values(array_filter(array_map(
+    static fn (array $src): string => (string) ($src['source_key'] ?? ''),
+    $allSources
+))));
+$archivedSourceKeys = $archiveIndex['sources'];
+if (!$isAdmin && isset($archivedSourceKeys[$activeSourceKey])) {
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '' && !isset($archivedSourceKeys[$key])) {
+            $activeSource = $src;
+            $activeSourceKey = $key;
+            break;
+        }
+    }
+}
 
 $query = trim((string) ($_GET['q'] ?? ''));
 $allowedPerPage = [10, 25, 50, 100];
@@ -208,10 +226,18 @@ if ($actionParam === 'project_detail') {
         $searchTags->listProjectTags($detail['source_key'], (string) ($detail['project_name'] ?? '')),
         $searchTags->mapItemTagsForSources([$detail['source_key']])
     );
+    $detailArchiveIndex = $archives->indexForSources([$detail['source_key']]);
+    $detail = $archives->attachToProjectDetail($detail, $detail['source_key'], $detailArchiveIndex);
+    if (!$isAdmin && !empty($detail['archived'])) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Project not found.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     echo json_encode([
         'ok' => true,
         'project' => $detail,
         'can_edit_tags' => $isAdmin,
+        'can_archive' => $isAdmin,
         'all_tags' => $isAdmin ? $searchTags->listAll() : [],
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -220,7 +246,7 @@ if ($actionParam === 'project_detail') {
 // Lightweight catalog index for LinkNest-style client search (one or many folders).
 if ($actionParam === 'search_index') {
     header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: private, max-age=60');
+    header('Cache-Control: private, no-store');
 
     $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
     $indexSourceKey = trim((string) ($_GET['source'] ?? $activeSourceKey));
@@ -272,6 +298,13 @@ if ($actionParam === 'search_index') {
         $searchTags->mapProjectTagsForSources($indexSourceKeys),
         $searchTags->mapItemTagsForSources($indexSourceKeys)
     );
+    $index = $archives->attachToSearchIndex(
+        $index,
+        $archives->indexForSources($indexSourceKeys)
+    );
+    if (!$isAdmin) {
+        $index = $archives->excludeArchivedFromSearchIndex($index);
+    }
     $itemCountTotal = 0;
     $metaSources = [];
     foreach ($indexSources as $srcMeta) {
@@ -298,6 +331,7 @@ if ($actionParam === 'search_index') {
         'projects' => $index,
         'tags' => $searchTags->listAll(),
         'can_edit_tags' => $isAdmin,
+        'can_archive' => $isAdmin,
         'last_synced_at' => (string) ($primary['last_synced_at'] ?? ''),
         'last_sync_status' => (string) ($primary['last_sync_status'] ?? ''),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -444,10 +478,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Content-Type: application/json; charset=utf-8');
             header('Cache-Control: private, no-store');
             $prepareKey = trim((string) ($_POST['source_key'] ?? $activeSourceKey));
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $hostHeader = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
-            $basePath = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/sharepoint.php'))), '/');
-            $importUrl = $scheme . '://' . $hostHeader . $basePath . '/sharepoint.php?action=browser_sync_import';
+            $importUrl = AppUrl::absolute('sharepoint.php?action=browser_sync_import');
             $prepared = $browserSync->prepare($prepareKey, $importUrl);
             echo json_encode(['ok' => true] + $prepared, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
@@ -802,6 +833,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             $flash = 'File/folder tags updated.';
+        } elseif ($action === 'set_archive') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $archiveSource = trim((string) ($_POST['source_key'] ?? $activeSourceKey));
+            $archiveScope = trim((string) ($_POST['scope'] ?? 'project'));
+            $archiveProject = trim((string) ($_POST['project_name'] ?? ''));
+            $archivePath = trim((string) ($_POST['relative_path'] ?? ''));
+            $rawArchived = $_POST['archived'] ?? '1';
+            $archived = $rawArchived === true
+                || $rawArchived === 1
+                || $rawArchived === '1'
+                || strtolower((string) $rawArchived) === 'true';
+            $result = $archives->setArchived(
+                $archiveSource,
+                $archiveScope,
+                $archived,
+                $archiveProject,
+                $archivePath,
+                $currentUser
+            );
+            $auth->users()->logAudit(
+                $archived ? 'sharepoint.archived' : 'sharepoint.unarchived',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                $result
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = $archived ? 'Archived. It is hidden from the catalog until you unarchive it.' : 'Restored to the catalog.';
+            header('Location: sharepoint.php?source=' . rawurlencode($activeSourceKey) . '#sharepoint-sources');
+            exit;
         } elseif ($action === 'purge_catalog') {
             $confirm = trim((string) ($_POST['confirm_purge'] ?? ''));
             if (strcasecmp($confirm, 'PURGE') !== 0) {
@@ -898,7 +965,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = (string) ($_POST['action'] ?? '');
         if ($action === 'prepare_browser_sync' || $action === 'delegated_sync'
             || $action === 'create_search_tag' || $action === 'delete_search_tag'
-            || $action === 'save_project_tags' || $action === 'save_item_tags') {
+            || $action === 'save_project_tags' || $action === 'save_item_tags'
+            || $action === 'set_archive') {
             $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
                 || (string) ($_POST['ajax'] ?? '') === '1'
                 || $action === 'prepare_browser_sync'
@@ -925,10 +993,7 @@ if ($thisClientIdSafe !== '' && !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{
     $status['client_id'] = '';
 }
 
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$hostHeader = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
-$scriptPath = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/sharepoint.php'));
-$msalRedirectUri = $scheme . '://' . $hostHeader . $scriptPath;
+$msalRedirectUri = AppUrl::absoluteMatchingRequest('sharepoint.php');
 
 if (isset($_GET['catalog_shared']) && $flash === '') {
     $flash = 'Catalog share settings updated.';
@@ -1312,8 +1377,18 @@ $soloPageClass = $ownerSolo
             <?php $homeTab = 'sharepoint'; require __DIR__ . '/includes/home-section-tabs.php'; ?>
             <?php endif; ?>
 
+            <?php if (!$panelSolo): ?>
+            <?php $showSectionMove = true; ?>
+            <div id="sharepoint-section-board" class="sharepoint-section-board" data-layout="stack">
+                <div class="sharepoint-section-board-toolbar" data-no-toggle>
+                    <button type="button" class="button ghost" id="sharepoint-section-reset" title="Restore default section order">Reset section order</button>
+                </div>
+            <?php else: ?>
+            <?php $showSectionMove = false; ?>
+            <?php endif; ?>
+
             <?php if (!$catalogSolo): ?>
-            <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-folders-view="compact" data-solo="<?= $foldersSolo ? '1' : '0' ?>">
+            <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-sp-section="folders" data-folders-view="compact" data-solo="<?= $foldersSolo ? '1' : '0' ?>">
                 <details class="sharepoint-sources-shell" id="sharepoint-sources-shell" open>
                     <summary class="card-heading sharepoint-sources-heading sharepoint-sources-summary">
                         <div>
@@ -1321,6 +1396,7 @@ $soloPageClass = $ownerSolo
                             <p class="panel-help">Each folder has its own catalog and search. Use <strong>Sync</strong> for one-click Microsoft login (MFA in popup), or Console sync as a fallback.</p>
                         </div>
                         <div class="sharepoint-sources-summary-tools" data-no-toggle onclick="event.stopPropagation()">
+                            <?php require __DIR__ . '/includes/sharepoint-section-move.php'; ?>
                             <div class="sp-view-toggle sharepoint-folders-view-toggle" role="group" aria-label="Folder layout">
                                 <button type="button" class="sp-view-btn" data-folders-view="comfort" aria-pressed="false" title="Roomier folder cards">Comfort</button>
                                 <button type="button" class="sp-view-btn is-active" data-folders-view="compact" aria-pressed="true" title="Shrink the folder panel so catalog search has more room">Compact</button>
@@ -1340,6 +1416,10 @@ $soloPageClass = $ownerSolo
                     <?php foreach ($allSources as $src): ?>
                         <?php
                         $srcKey = (string) ($src['source_key'] ?? '');
+                        $srcArchived = isset($archivedSourceKeys[$srcKey]);
+                        if (!$isAdmin && $srcArchived) {
+                            continue;
+                        }
                         $isActiveCard = $srcKey === $activeSourceKey;
                         $srcCount = (int) ($sourceCounts[$srcKey] ?? 0);
                         $srcSynced = (string) ($src['last_synced_at'] ?? '');
@@ -1349,13 +1429,15 @@ $soloPageClass = $ownerSolo
                         $srcFolderPath = (string) ($src['folder_path'] ?? '');
                         $srcSite = (string) (($src['site_host'] ?? '') . ($src['site_path'] ?? ''));
                         ?>
-                        <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?>" data-source-key="<?= e($srcKey) ?>">
+                        <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
                             <div class="sharepoint-source-card-head">
                                 <h3>
                                     <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                     <span class="sharepoint-source-card-title"><?= e($srcTitle) ?></span>
                                 </h3>
-                                <?php if ($isActiveCard): ?>
+                                <?php if ($srcArchived): ?>
+                                    <span class="sharepoint-source-badge sharepoint-archive-badge">Archived</span>
+                                <?php elseif ($isActiveCard): ?>
                                     <span class="sharepoint-source-badge">Active</span>
                                 <?php endif; ?>
                             </div>
@@ -1384,6 +1466,20 @@ $soloPageClass = $ownerSolo
                                 <?php endif; ?>
                                 <?php if ($srcUrl !== ''): ?>
                                     <a class="button ghost" href="<?= e($srcUrl) ?>" target="_blank" rel="noopener noreferrer"><span class="sp-card-emoji" data-tone="link" aria-hidden="true">🔗</span> Open in SharePoint</a>
+                                <?php endif; ?>
+                                <?php if ($isAdmin): ?>
+                                    <form method="post" class="sharepoint-archive-source-form">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="set_archive">
+                                        <input type="hidden" name="scope" value="source">
+                                        <input type="hidden" name="source_key" value="<?= e($srcKey) ?>">
+                                        <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
+                                        <input type="hidden" name="archived" value="<?= $srcArchived ? '0' : '1' ?>">
+                                        <button type="submit" class="button ghost-light sp-archive-source-btn" title="<?= $srcArchived ? 'Show this catalog on the dashboard again' : 'Hide this catalog from the dashboard. You can unarchive it later.' ?>">
+                                            <span class="sp-card-emoji" aria-hidden="true"><?= $srcArchived ? '↩️' : '📦' ?></span>
+                                            <?= $srcArchived ? 'Unarchive' : 'Archive' ?>
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
                             </div>
                             <?php if ($isAdmin): ?>
@@ -1452,6 +1548,10 @@ $soloPageClass = $ownerSolo
                             <?php foreach ($allSources as $src): ?>
                                 <?php
                                 $srcKey = (string) ($src['source_key'] ?? '');
+                                $srcArchived = isset($archivedSourceKeys[$srcKey]);
+                                if (!$isAdmin && $srcArchived) {
+                                    continue;
+                                }
                                 $isActiveCard = $srcKey === $activeSourceKey;
                                 $srcCount = (int) ($sourceCounts[$srcKey] ?? 0);
                                 $srcSynced = (string) ($src['last_synced_at'] ?? '');
@@ -1461,12 +1561,14 @@ $soloPageClass = $ownerSolo
                                 $srcFolderPath = (string) ($src['folder_path'] ?? '');
                                 $srcSite = (string) (($src['site_host'] ?? '') . ($src['site_path'] ?? ''));
                                 ?>
-                                <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?>" data-source-key="<?= e($srcKey) ?>">
+                                <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
                                     <td>
                                         <div class="sharepoint-source-table-title">
                                             <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                             <strong><?= e($srcTitle) ?></strong>
-                                            <?php if ($isActiveCard): ?>
+                                            <?php if ($srcArchived): ?>
+                                                <span class="sharepoint-source-badge sharepoint-archive-badge">Archived</span>
+                                            <?php elseif ($isActiveCard): ?>
                                                 <span class="sharepoint-source-badge">Active</span>
                                             <?php endif; ?>
                                         </div>
@@ -1499,6 +1601,19 @@ $soloPageClass = $ownerSolo
                                             <?php endif; ?>
                                             <?php if ($srcUrl !== ''): ?>
                                                 <a class="button ghost" href="<?= e($srcUrl) ?>" target="_blank" rel="noopener noreferrer"><span class="sp-card-emoji" data-tone="link" aria-hidden="true">🔗</span> SP</a>
+                                            <?php endif; ?>
+                                            <?php if ($isAdmin): ?>
+                                                <form method="post" class="sharepoint-archive-source-form">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="action" value="set_archive">
+                                                    <input type="hidden" name="scope" value="source">
+                                                    <input type="hidden" name="source_key" value="<?= e($srcKey) ?>">
+                                                    <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
+                                                    <input type="hidden" name="archived" value="<?= $srcArchived ? '0' : '1' ?>">
+                                                    <button type="submit" class="button ghost-light sp-archive-source-btn" title="<?= $srcArchived ? 'Show this catalog on the dashboard again' : 'Hide this catalog from the dashboard' ?>">
+                                                        <?= $srcArchived ? '↩️ Unarchive' : '📦 Archive' ?>
+                                                    </button>
+                                                </form>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -1601,6 +1716,7 @@ $soloPageClass = $ownerSolo
                 || (int) ($_GET['cshare_page'] ?? 0) > 0
                 || ($error !== '' && str_contains((string) ($_POST['action'] ?? ''), 'catalog_share'));
             $shareView = '';
+            $shareSectionKey = 'catalog-share';
             require __DIR__ . '/includes/sharepoint-public-share-card.php';
             ?>
             <?php endif; ?>
@@ -1631,6 +1747,7 @@ $soloPageClass = $ownerSolo
             <section
                 class="upload-card sp-owner-dash"
                 id="sharepoint-owner-dash"
+                data-sp-section="owners"
                 data-solo="<?= $ownerSolo ? '1' : '0' ?>"
                 data-active-source="<?= e($activeSourceKey) ?>"
                 data-sources="<?= e(json_encode(array_map(static function (array $src) use ($catalogTones): array {
@@ -1652,6 +1769,7 @@ $soloPageClass = $ownerSolo
                             </p>
                         </div>
                         <div class="sp-owner-dash-summary-tools" data-no-toggle onclick="event.stopPropagation()">
+                            <?php require __DIR__ . '/includes/sharepoint-section-move.php'; ?>
                             <?php if ($ownerSolo): ?>
                                 <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← Catalog</a>
                             <?php else: ?>
@@ -1804,6 +1922,7 @@ $soloPageClass = $ownerSolo
                 || (int) ($_GET['oshare_page'] ?? 0) > 0
                 || ($error !== '' && str_contains((string) ($_POST['action'] ?? ''), 'owners_share'));
             $shareView = $ownerSolo ? 'owners' : '';
+            $shareSectionKey = 'owners-share';
             require __DIR__ . '/includes/sharepoint-public-share-card.php';
             ?>
             <?php endif; ?>
@@ -1817,7 +1936,7 @@ $soloPageClass = $ownerSolo
             require __DIR__ . '/includes/sharepoint-search-card.php';
             ?>
 
-            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact">
+            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-sp-section="projects" data-density="compact">
                 <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
                     <summary class="sharepoint-table-toolbar sharepoint-catalog-table-summary">
                     <div class="sharepoint-table-summary-lead">
@@ -1825,6 +1944,7 @@ $soloPageClass = $ownerSolo
                         <span class="result-count" id="sharepoint-result-count">Showing <?= (int) $from ?>–<?= (int) $to ?> of <?= (int) $matchedProjectCount ?></span>
                     </div>
                     <div class="sharepoint-table-toolbar-tools" data-no-toggle onclick="event.stopPropagation()">
+                        <?php require __DIR__ . '/includes/sharepoint-section-move.php'; ?>
                         <div class="sp-view-toggle" role="group" aria-label="Row density">
                             <button type="button" class="sp-view-btn" data-list-density="comfort" title="Taller rows with badges under the name" aria-pressed="false">Comfort</button>
                             <button type="button" class="sp-view-btn is-active" data-list-density="compact" title="Shrink rows to a single line" aria-pressed="true">Compact</button>
@@ -2032,14 +2152,17 @@ $soloPageClass = $ownerSolo
             <?php endif; ?>
 
             <?php if ($isAdmin && !$panelSolo): ?>
-                <section class="upload-card sharepoint-admin-card" id="sharepoint-admin">
+                <section class="upload-card sharepoint-admin-card" id="sharepoint-admin" data-sp-section="admin">
                     <details class="sharepoint-admin-shell" id="sharepoint-admin-shell" open>
                         <summary class="sharepoint-admin-shell-summary">
                             <div>
                                 <div class="eyebrow">Administrators</div>
                                 <h2>⚙️ SharePoint sync &amp; import</h2>
                             </div>
-                            <span class="sharepoint-admin-shell-hint" aria-hidden="true"></span>
+                            <div class="sharepoint-admin-shell-tools" data-no-toggle onclick="event.stopPropagation()">
+                                <?php require __DIR__ . '/includes/sharepoint-section-move.php'; ?>
+                                <span class="sharepoint-admin-shell-hint" aria-hidden="true"></span>
+                            </div>
                         </summary>
 
                         <p class="panel-help">
@@ -2402,6 +2525,9 @@ $soloPageClass = $ownerSolo
                     </details>
                 </section>
             <?php endif; ?>
+            <?php if (!$panelSolo): ?>
+            </div>
+            <?php endif; ?>
         </main>
         <div class="sharepoint-catalog-color-pop" id="sharepoint-catalog-color-pop" hidden role="dialog" aria-label="Choose catalog color">
             <p class="sharepoint-catalog-color-pop-kicker" id="sharepoint-catalog-color-pop-title">Catalog color</p>
@@ -2422,6 +2548,9 @@ $soloPageClass = $ownerSolo
     <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <?php if (!$panelSolo): ?>
+    <script src="assets/js/sharepoint-section-board.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-section-board.js') ?>"></script>
+    <?php endif; ?>
     <?php if ($isAdmin && !$foldersSolo): ?>
     <script src="assets/js/sharepoint-public-share.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-public-share.js') ?>"></script>
     <?php endif; ?>

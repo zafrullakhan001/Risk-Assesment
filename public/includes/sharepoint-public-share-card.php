@@ -54,8 +54,10 @@ $canPurge = $shareHistoryTotal > $shareActiveCount;
 $badgeText = $shareActiveCount > 0
     ? $shareActiveCount . ' active'
     : 'Off';
+$shareSectionKey = (string) ($shareSectionKey ?? ($shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners-share' : 'catalog-share'));
+$showSectionMove = !empty($showSectionMove);
 ?>
-<section class="upload-card share-link-card sharepoint-share-card" id="<?= e($sharePanelId) ?>" data-share-kind="<?= e($shareKind) ?>">
+<section class="upload-card share-link-card sharepoint-share-card" id="<?= e($sharePanelId) ?>" data-sp-section="<?= e($shareSectionKey) ?>" data-share-kind="<?= e($shareKind) ?>">
     <details class="sharepoint-share-shell" id="<?= e($sharePanelId) ?>-shell"<?= $shareForceOpen ? ' open' : '' ?>>
         <summary class="sharepoint-share-summary">
             <div class="card-heading-with-icon">
@@ -66,6 +68,7 @@ $badgeText = $shareActiveCount > 0
                 </div>
             </div>
             <div class="sharepoint-share-summary-tools" data-no-toggle onclick="event.stopPropagation()">
+                <?php require __DIR__ . '/sharepoint-section-move.php'; ?>
                 <span class="result-count result-count-badge"><?= e($badgeText) ?></span>
                 <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
             </div>

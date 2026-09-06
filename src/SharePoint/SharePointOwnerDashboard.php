@@ -340,6 +340,7 @@ final class SharePointOwnerDashboard
                     OR relative_path = project_name
                     OR relative_path = name
                )
+               AND " . \RiskAssessment\Repositories\SharePointArchiveRepository::visibleProjectSql('sharepoint_items') . "
              ORDER BY source_key ASC, LOWER(project_name) ASC, id ASC"
         );
         $statement->execute($sourceKeys);

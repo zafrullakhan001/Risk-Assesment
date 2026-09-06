@@ -15,6 +15,7 @@ use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
 use RiskAssessment\Repositories\ProjectPicturesRepository;
 use RiskAssessment\Repositories\ProjectShareRepository;
+use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
@@ -117,7 +118,11 @@ $evaluationHistory = $changeLogRepository->listForEntity(
     ''
 );
 
-$sharePointCatalog = (new SharePointCatalogRepository($pdo))->findMatchingProjectAnySource($solutionName);
+$sharePointMatch = (new SharePointCatalogRepository($pdo))->findMatchingProjectAnySource($solutionName);
+$sharePointCatalog = (new SharePointArchiveRepository($pdo))->applyToAssessmentMatch(
+    $sharePointMatch,
+    (string) ($sharePointMatch['source_key'] ?? '')
+);
 
 $renderer = new DashboardRenderer();
 echo $renderer->render(

@@ -921,6 +921,41 @@
   const catalogCanEditTags = () =>
     document.getElementById('sharepoint-search')?.getAttribute('data-can-edit-tags') === '1';
 
+  const catalogCanArchive = () =>
+    document.getElementById('sharepoint-search')?.getAttribute('data-can-archive') === '1';
+
+  const catalogShowArchived = () =>
+    document.getElementById('sharepoint-search')?.getAttribute('data-show-archived') === '1';
+
+  const archiveToggleHtml = ({
+    archived = false,
+    disabled = false,
+    title = '',
+    extraClass = '',
+    attrs = {},
+  } = {}) => {
+    if (!catalogCanArchive()) return '';
+    const isArchived = !!archived;
+    const label = isArchived ? 'Unarchive' : 'Archive';
+    const icon = isArchived ? '↩️' : '📦';
+    const attrHtml = Object.entries(attrs || {})
+      .map(([key, value]) => ` ${key}="${escapeHtml(String(value ?? ''))}"`)
+      .join('');
+    return `<button type="button" class="button ghost-light sp-archive-btn ${extraClass}${isArchived ? ' is-on' : ''}" data-archived="${isArchived ? '1' : '0'}" title="${escapeHtml(title || label)}" aria-label="${escapeHtml(label)}"${attrHtml}${disabled ? ' disabled' : ''} onclick="event.stopPropagation()">${icon}</button>`;
+  };
+
+  const archivedBadgeHtml = (reason = '') =>
+    `<span class="sp-archive-badge" title="${escapeHtml(reason || 'Hidden from the catalog dashboard')}">📦 Archived</span>`;
+
+  const postArchive = async ({ scope, sourceKey, projectName, relativePath = '', archived }) =>
+    postCatalogAction('set_archive', {
+      scope,
+      source_key: sourceKey,
+      project_name: projectName || '',
+      relative_path: relativePath || '',
+      archived: archived ? '1' : '0',
+    });
+
   const postCatalogAction = async (action, fields = {}) => {
     const body = new URLSearchParams();
     body.set('csrf_token', catalogCsrfToken());
@@ -1008,32 +1043,45 @@
     fuzzy: 'riskregister_sp_search_fuzzy',
     compareDensity: 'riskregister_sp_compare_density',
     compareColumns: 'riskregister_sp_compare_columns',
+    projectColumns: 'riskregister_sp_project_columns',
     listDensity: 'riskregister_sp_list_density',
     catalogDensity: 'riskregister_sp_catalog_density',
   };
 
-  const COMPARE_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'diff'];
+  const COMPARE_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'diff', 'actions'];
   const COMPARE_DEFAULT_HIDDEN_COLS = ['size', 'modified_by'];
+  const PROJECT_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'actions'];
+  const PROJECT_DEFAULT_HIDDEN_COLS = [];
 
-  const readCompareHiddenCols = () => {
+  const readHiddenCols = (storageKey, allowed, fallback) => {
     try {
-      const raw = localStorage.getItem(SEARCH_PREF.compareColumns);
-      if (!raw) return new Set(COMPARE_DEFAULT_HIDDEN_COLS);
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return new Set(fallback);
       const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return new Set(COMPARE_DEFAULT_HIDDEN_COLS);
-      return new Set(parsed.filter((col) => COMPARE_TOGGLE_COLS.includes(col)));
+      if (!Array.isArray(parsed)) return new Set(fallback);
+      return new Set(parsed.filter((col) => allowed.includes(col)));
     } catch {
-      return new Set(COMPARE_DEFAULT_HIDDEN_COLS);
+      return new Set(fallback);
     }
   };
 
-  const writeCompareHiddenCols = (hidden) => {
+  const writeHiddenCols = (storageKey, hidden) => {
     try {
-      localStorage.setItem(SEARCH_PREF.compareColumns, JSON.stringify([...hidden]));
+      localStorage.setItem(storageKey, JSON.stringify([...hidden]));
     } catch {
       /* ignore */
     }
   };
+
+  const readCompareHiddenCols = () =>
+    readHiddenCols(SEARCH_PREF.compareColumns, COMPARE_TOGGLE_COLS, COMPARE_DEFAULT_HIDDEN_COLS);
+
+  const writeCompareHiddenCols = (hidden) => writeHiddenCols(SEARCH_PREF.compareColumns, hidden);
+
+  const readProjectHiddenCols = () =>
+    readHiddenCols(SEARCH_PREF.projectColumns, PROJECT_TOGGLE_COLS, PROJECT_DEFAULT_HIDDEN_COLS);
+
+  const writeProjectHiddenCols = (hidden) => writeHiddenCols(SEARCH_PREF.projectColumns, hidden);
 
   const readDialogDensity = () => {
     try {
@@ -2097,7 +2145,7 @@
     });
   };
 
-  const nameCellHtml = (item, depth = 0, treeToggle = '', qrMeta = {}) => {
+  const nameCellHtml = (item, depth = 0, treeToggle = '') => {
     const name = String(item.name || '');
     const url = String(item.web_url || '');
     const path = String(item.relative_path || '');
@@ -2115,16 +2163,60 @@
     const link = url
       ? `<a class="sp-file-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${nameInner}</a>`
       : `<span class="sp-file-link sp-file-link--static">${nameInner}</span>`;
+    const inherited = !!item?.archived && !item?.archived_direct;
+    const archiveScope = String(item?.archive_scope || '');
+    const isRoot = isRootProjectFolder(item, item?.project_name || '');
+    const archiveBtn = archiveToggleHtml({
+      archived: isRoot ? !!item?.archived : !!item?.archived_direct,
+      disabled: !isRoot && inherited,
+      title: isRoot
+        ? item?.archived
+          ? 'Show this project on the dashboard again'
+          : 'Hide this project from the dashboard'
+        : inherited
+          ? archiveScope === 'source'
+            ? 'Hidden with the catalog folder. Unarchive the folder first.'
+            : archiveScope === 'project'
+              ? 'Hidden with the project. Unarchive the project first.'
+              : 'Hidden with a parent folder. Unarchive that folder first.'
+          : item?.archived_direct
+            ? 'Show this file or folder on the dashboard again'
+            : 'Hide this file or folder from the dashboard',
+      extraClass: 'sp-archive-item-btn',
+      attrs: {
+        'data-archive-scope': isRoot ? 'project' : 'item',
+        'data-archive-path': path || name,
+      },
+    });
+    const archiveMark = item?.archived ? archivedBadgeHtml() : '';
+    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${archiveBtn}${archiveMark}</div>`;
+  };
+
+  const itemActionsHtml = (item, qrMeta = {}, tagEdit = null) => {
+    const name = String(item.name || '');
+    const url = String(item.web_url || '');
+    const path = String(item.relative_path || '');
     const copyBtn = url
       ? `<button type="button" class="sp-copy-link-btn" data-copy-url="${escapeHtml(url)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}">📋</button>`
       : '';
     const qrBtn = qrButtonHtml(url, name, qrMeta);
     const tagsHtml = tagChipsHtml(item?.tags || [], {
-      editable: catalogCanEditTags(),
+      editable: !!(tagEdit?.canEdit ?? catalogCanEditTags()),
       scope: 'item',
       path: path || name,
     });
-    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${copyBtn}${qrBtn}${tagsHtml}</div>`;
+    let addTagHtml = '';
+    if (tagEdit?.canEdit) {
+      const assigned = new Set(normalizeTagList(item?.tags).map((tag) => tag.id));
+      const options = normalizeTagList(tagEdit.allTags)
+        .filter((tag) => !assigned.has(tag.id))
+        .map((tag) => `<option value="${tag.id}">${escapeHtml(tag.label)}</option>`)
+        .join('');
+      if (options) {
+        addTagHtml = `<label class="sp-item-tag-add"><select class="sp-tag-select sp-tag-select--compact" aria-label="Add tag to item"><option value="">+ Tag</option>${options}</select></label>`;
+      }
+    }
+    return `<div class="sp-row-actions">${copyBtn}${qrBtn}${tagsHtml}${addTagHtml}</div>`;
   };
 
   const typeBadgeHtml = (item) => {
@@ -2150,8 +2242,12 @@
   };
 
   const itemCountsHtml = (project) => {
-    const folders = Number(project?.folder_count || 0);
-    const files = Number(project?.file_count || 0);
+    let folders = Number(project?.folder_count || 0);
+    let files = Number(project?.file_count || 0);
+    if (!catalogShowArchived()) {
+      folders = Math.max(0, folders - Number(project?.archived_folder_count || 0));
+      files = Math.max(0, files - Number(project?.archived_file_count || 0));
+    }
     const parts = [];
     if (folders > 0) {
       parts.push(`<span class="sp-type-badge sp-type-badge--folder">📁 ${folders}</span>`);
@@ -2170,6 +2266,11 @@
     const meta = resolveProjectMeta(project);
     const typeLabel = meta.tone === 'folder' ? '📁 Folder' : meta.label;
     const tagsHtml = tagChipsHtml(project?.tags || [], { editable: false, scope: 'project' });
+    const archiveMark = project?.archived ? archivedBadgeHtml(
+      project?.archive_scope === 'source'
+        ? 'This catalog folder is archived'
+        : 'Hidden from the catalog dashboard'
+    ) : '';
     return `<div class="sp-project-cell">
       <div class="sp-tree-cell">
         <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}">
@@ -2182,6 +2283,7 @@
       <div class="sp-project-meta-line">
         <span class="sp-type-badge sp-type-badge--${escapeHtml(meta.tone)}">${escapeHtml(typeLabel)}</span>
         ${catalogBadgeHtml(sourceTitle, sourceKey)}
+        ${archiveMark}
       </div>
       ${tagsHtml}
       ${extraHtml}
@@ -2191,7 +2293,7 @@
   const dialogItemCellsHtml = (item, depth, toggle, qrMeta = {}) => {
     const person = String(item?.person || '').trim();
     const modifiedBy = String(item?.modified_by || '').trim();
-    return `<td data-col="name">${nameCellHtml(item, depth, toggle, qrMeta)}</td>
+    return `<td data-col="name">${nameCellHtml(item, depth, toggle)}</td>
       <td data-col="type">${typeBadgeHtml(item)}</td>
       <td data-col="size" class="sp-meta-cell sp-size-cell">${escapeHtml(formatSize(item?.size_bytes))}</td>
       <td data-col="modified" class="sp-meta-cell">${escapeHtml(formatModified(item?.last_modified))}</td>
@@ -2199,6 +2301,9 @@
       <td data-col="modified_by" class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
       <td data-col="created_by" class="sp-meta-cell">${personCellHtml(person, '🙋')}</td>`;
   };
+
+  const dialogActionsCellHtml = (item, qrMeta = {}, tagEdit = null) =>
+    `<td data-col="actions">${itemActionsHtml(item, qrMeta, tagEdit)}</td>`;
 
   /* ---- Project detail dialog ---- */
   const initDialog = () => {
@@ -2222,6 +2327,37 @@
     const extSelect = document.getElementById('sharepoint-project-dialog-ext');
     const tableEl = dialog.querySelector('.sharepoint-dialog-table');
     const headerRow = tableEl?.querySelector('thead tr');
+    const columnsPicker = document.getElementById('sharepoint-project-columns-picker');
+    /** @type {Set<string>} */
+    let hiddenCols = readProjectHiddenCols();
+
+    const visibleColspan = () => {
+      let count = 1; // name always shown
+      PROJECT_TOGGLE_COLS.forEach((col) => {
+        if (!hiddenCols.has(col)) count += 1;
+      });
+      return Math.max(count, 1);
+    };
+
+    const emptyRowHtml = (message) =>
+      `<tr><td colspan="${visibleColspan()}" class="sharepoint-dialog-empty">${message}</td></tr>`;
+
+    const applyHiddenColsToDialog = () => {
+      dialog.setAttribute('data-hidden-cols', [...hiddenCols].join(' '));
+      columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+        const col = input.getAttribute('data-col-toggle') || '';
+        input.checked = !hiddenCols.has(col);
+      });
+    };
+
+    const setColumnHidden = (col, hide) => {
+      if (!PROJECT_TOGGLE_COLS.includes(col)) return;
+      if (hide) hiddenCols.add(col);
+      else hiddenCols.delete(col);
+      writeProjectHiddenCols(hiddenCols);
+      applyHiddenColsToDialog();
+      applyFilter();
+    };
 
     let allItems = [];
     let layout = 'tree';
@@ -2239,6 +2375,7 @@
     let dialogCanEditTags = false;
     let projectBusy = false;
     let bindItemTagEditors = () => {};
+    let bindItemArchiveButtons = () => {};
     let renderProjectTagsPanel = () => {};
     let saveTagsForTarget = async () => [];
     let bindTagEditor = () => {};
@@ -2317,6 +2454,11 @@
       catalog: currentCatalogTitle || '',
     });
 
+    const projectTagEdit = () => ({
+      canEdit: dialogCanEditTags && catalogCanEditTags(),
+      allTags: dialogAllTags,
+    });
+
     const renderTreeRows = (nodes, depth, acc) => {
       const qrMeta = projectQrMeta();
       nodes.forEach((node) => {
@@ -2327,8 +2469,9 @@
         const toggle = hasKids
           ? `<button type="button" class="sp-tree-toggle" data-tree-path="${escapeHtml(path)}" aria-expanded="${isOpen ? 'true' : 'false'}">${isOpen ? '▼' : '▶'}</button>`
           : `<span class="sp-tree-toggle sp-tree-toggle--spacer" aria-hidden="true"></span>`;
-        acc.push(`<tr class="sp-dialog-row${isFolder ? ' sp-dialog-row--folder' : ''}${node.selfMatch === false && hasKids ? ' sp-tree-ancestor' : ''}" data-tree-path="${escapeHtml(path)}" data-tree-depth="${depth}">
-          ${dialogItemCellsHtml(node.item, depth, toggle, qrMeta)}
+        acc.push(`<tr class="sp-dialog-row${isFolder ? ' sp-dialog-row--folder' : ''}${node.item?.archived ? ' is-archived' : ''}${node.selfMatch === false && hasKids ? ' sp-tree-ancestor' : ''}" data-tree-path="${escapeHtml(path)}" data-tree-depth="${depth}">
+          ${dialogItemCellsHtml(node.item, depth, toggle)}
+          ${dialogActionsCellHtml(node.item, qrMeta, projectTagEdit())}
         </tr>`);
         if (isOpen) renderTreeRows(node.children, depth + 1, acc);
       });
@@ -2340,12 +2483,15 @@
       const ext = activeExtFilter();
       const prefs = syncSearchModes(query);
       syncLayoutButtons();
-      syncExtChips(searchWrap, allItems, selectedExts);
+      const visibleItems = catalogShowArchived()
+        ? allItems
+        : allItems.filter((item) => !item.archived);
+      syncExtChips(searchWrap, visibleItems, selectedExts);
       syncHeaderSort();
 
       let shown = 0;
       if (layout === 'tree') {
-        const tree = sortTreeNodesBy(filterTree(buildTreeNodes(allItems), kind, ext, query, prefs), sortKey, sortDir);
+        const tree = sortTreeNodesBy(filterTree(buildTreeNodes(visibleItems), kind, ext, query, prefs), sortKey, sortDir);
         const key = treeRevealKey(query, kind, ext, prefs);
         if (key !== lastRevealKey) {
           lastRevealKey = key;
@@ -2360,11 +2506,13 @@
         rowsEl.innerHTML =
           rows.length > 0
             ? rows.join('')
-            : `<tr><td colspan="7" class="sharepoint-dialog-empty">${
-                allItems.length === 0
-                  ? '🗂️ No files or folders found for this project.'
+            : emptyRowHtml(
+                visibleItems.length === 0
+                  ? catalogShowArchived()
+                    ? '🗂️ No files or folders found for this project.'
+                    : '🗂️ No files or folders to show. Turn on Show archived to restore hidden items.'
                   : 'No matches for this view / filter. Try OR mode or Fuzzy.'
-              }</td></tr>`;
+              );
         if (rows.length > 0) settleTreeRows(rowsEl, previousTops);
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
           btn.addEventListener('click', (event) => {
@@ -2377,19 +2525,22 @@
           });
         });
       } else {
-        const filtered = sortItemsBy(flattenFiltered(allItems, kind, ext, query, prefs), sortKey, sortDir);
+        const filtered = sortItemsBy(flattenFiltered(visibleItems, kind, ext, query, prefs), sortKey, sortDir);
         shown = filtered.length;
         if (filtered.length === 0) {
-          rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${
-            allItems.length === 0
-              ? '🗂️ No files or folders found for this project.'
+          rowsEl.innerHTML = emptyRowHtml(
+            visibleItems.length === 0
+              ? catalogShowArchived()
+                ? '🗂️ No files or folders found for this project.'
+                : '🗂️ No files or folders to show. Turn on Show archived to restore hidden items.'
               : 'No matches for this view / filter. Try OR mode or Fuzzy.'
-          }</td></tr>`;
+          );
         } else {
           rowsEl.innerHTML = filtered
             .map((item) => {
-              return `<tr class="sp-dialog-row${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}">
-                ${dialogItemCellsHtml(item, 0, '', projectQrMeta())}
+              return `<tr class="sp-dialog-row${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}${item?.archived ? ' is-archived' : ''}">
+                ${dialogItemCellsHtml(item, 0, '')}
+                ${dialogActionsCellHtml(item, projectQrMeta(), projectTagEdit())}
               </tr>`;
             })
             .join('');
@@ -2397,7 +2548,9 @@
       }
 
       if (searchMeta) {
-        const bits = [`${shown} shown`, `of ${allItems.length}`];
+        const hiddenCount = allItems.filter((item) => item.archived).length;
+        const bits = [`${shown} shown`, `of ${visibleItems.length}`];
+        if (!catalogShowArchived() && hiddenCount) bits.push(`${hiddenCount} archived hidden`);
         if (kind !== 'all') bits.push(kind === 'files' ? 'files only' : 'folders only');
         if (ext.length) bits.push(ext.map((value) => `.${value}`).join(' + '));
         if (layout === 'tree') bits.push('tree');
@@ -2411,6 +2564,7 @@
       bindCopyLinkButtons(rowsEl);
       bindQrButtons(rowsEl);
       bindItemTagEditors();
+      bindItemArchiveButtons();
     };
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
@@ -2476,6 +2630,17 @@
       });
     });
     syncHeaderSort();
+
+    columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const col = input.getAttribute('data-col-toggle') || '';
+        setColumnHidden(col, !input.checked);
+      });
+    });
+    columnsPicker?.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+    applyHiddenColsToDialog();
 
     renderProjectTagsPanel = () => {
       if (!tagsEl) return;
@@ -2600,32 +2765,75 @@
           if (isFolderItem(node.item)) expanded.add(node.path.toLowerCase());
         });
       }
-      const folders = allItems.filter((item) => isFolderItem(item)).length;
-      const files = allItems.length - folders;
+      const visibleForStats = catalogShowArchived() ? allItems : allItems.filter((item) => !item.archived);
+      const folders = visibleForStats.filter((item) => isFolderItem(item)).length;
+      const files = visibleForStats.length - folders;
       const catalogLabel = String(project.source_title || '').trim();
       currentCatalogTitle = catalogLabel || '';
       currentProjectTags = normalizeTagList(project.tags);
       const catalogBadge = catalogBadgeHtml(currentCatalogTitle, project.source_key || currentSourceKey);
+      const archivedCount = allItems.filter((item) => item.archived).length;
       subEl.innerHTML = `${
         catalogBadge ? `${catalogBadge} · ` : ''
-      }📦 <strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}`;
+      }${project.archived ? `${archivedBadgeHtml()} · ` : ''}📦 <strong>${visibleForStats.length}</strong> item${visibleForStats.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}${
+        !catalogShowArchived() && archivedCount ? ` · ${archivedCount} archived` : ''
+      }`;
       renderProjectActivityStats(
         statsEl,
-        computeProjectActivityStats(allItems, project.project_name || name)
+        computeProjectActivityStats(visibleForStats, project.project_name || name)
       );
       renderProjectTagsPanel();
 
+      const archiveProjectBtn = archiveToggleHtml({
+        archived: !!project.archived,
+        disabled: project.archive_scope === 'source',
+        title:
+          project.archive_scope === 'source'
+            ? 'This catalog folder is archived. Unarchive the folder card first.'
+            : project.archived
+              ? 'Show this project on the dashboard again'
+              : 'Hide this project from the dashboard',
+        extraClass: 'sp-archive-project-btn',
+        attrs: {
+          'data-archive-scope': 'project',
+          'data-source-key': project.source_key || currentSourceKey,
+          'data-project-name': project.project_name || name,
+        },
+      });
       if (project.folder_url) {
         actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
             <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open project folder in SharePoint">🔗 Open</a>
             <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
             ${qrButtonHtml(project.folder_url, project.project_name || name, projectQrMeta())}
+            ${archiveProjectBtn}
           </div>`;
         bindCopyLinkButtons(actionsEl);
         bindQrButtons(actionsEl);
       } else {
-        actionsEl.innerHTML = '';
+        actionsEl.innerHTML = archiveProjectBtn
+          ? `<div class="sp-dialog-folder-actions">${archiveProjectBtn}</div>`
+          : '';
       }
+      actionsEl.querySelectorAll('.sp-archive-project-btn').forEach((btn) => {
+        btn.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.disabled) return;
+          const nextArchived = btn.getAttribute('data-archived') !== '1';
+          try {
+            await postArchive({
+              scope: 'project',
+              sourceKey: currentSourceKey,
+              projectName: currentName,
+              archived: nextArchived,
+            });
+            await loadCurrentProject({ fresh: true });
+            if (typeof loadIndex === 'function') loadIndex();
+          } catch (error) {
+            window.alert(error.message || 'Unable to update archive.');
+          }
+        });
+      });
 
       if (searchWrap) searchWrap.hidden = false;
       applyFilter();
@@ -2633,7 +2841,7 @@
     };
 
     bindItemTagEditors = () => {
-      if (!dialogCanEditTags || !rowsEl) return;
+      if (!dialogCanEditTags || !rowsEl || hiddenCols.has('actions')) return;
       rowsEl.querySelectorAll('.sp-tag-chips[data-tag-scope="item"]').forEach((chipRoot) => {
         const path = chipRoot.getAttribute('data-tag-path') || '';
         const item = allItems.find((entry) => {
@@ -2659,32 +2867,17 @@
           });
         });
       });
-      rowsEl.querySelectorAll('.sp-dialog-row').forEach((row) => {
-        if (row.querySelector('.sp-item-tag-add')) return;
-        const nameCell = row.querySelector('[data-col="name"] .sp-tree-cell');
-        if (!nameCell) return;
-        const path =
-          row.querySelector('.sp-tag-chips')?.getAttribute('data-tag-path') ||
-          row.querySelector('.sharepoint-link-path')?.textContent ||
-          row.querySelector('.sp-file-name')?.textContent ||
-          '';
-        const item = allItems.find((entry) => String(entry.relative_path || entry.name || '').trim() === String(path).trim());
-        if (!item) return;
-        const assigned = new Set(normalizeTagList(item.tags).map((tag) => tag.id));
-        const options = normalizeTagList(dialogAllTags)
-          .filter((tag) => !assigned.has(tag.id))
-          .map((tag) => `<option value="${tag.id}">${escapeHtml(tag.label)}</option>`)
-          .join('');
-        if (!options) return;
-        const wrap = document.createElement('label');
-        wrap.className = 'sp-item-tag-add';
-        wrap.innerHTML = `<select class="sp-tag-select sp-tag-select--compact" aria-label="Add tag to item"><option value="">+ Tag</option>${options}</select>`;
-        nameCell.appendChild(wrap);
-        wrap.querySelector('select')?.addEventListener('change', async (event) => {
-          const select = event.target;
-          const addId = Number(select.value || 0);
-          select.value = '';
-          if (!addId) return;
+      rowsEl.querySelectorAll('[data-col="actions"] .sp-item-tag-add select').forEach((select) => {
+        select.addEventListener('change', async (event) => {
+          const path =
+            select.closest('tr')?.querySelector('.sp-tag-chips')?.getAttribute('data-tag-path') ||
+            select.closest('tr')?.querySelector('.sharepoint-link-path')?.textContent ||
+            select.closest('tr')?.querySelector('.sp-file-name')?.textContent ||
+            '';
+          const item = allItems.find((entry) => String(entry.relative_path || entry.name || '').trim() === String(path).trim());
+          const addId = Number(event.target.value || 0);
+          event.target.value = '';
+          if (!item || !addId) return;
           const nextIds = [...new Set([...normalizeTagList(item.tags).map((tag) => tag.id), addId])];
           try {
             item.tags = await saveTagsForTarget({
@@ -2696,6 +2889,33 @@
             if (typeof loadIndex === 'function') loadIndex();
           } catch (error) {
             window.alert(error.message || 'Unable to update tags.');
+          }
+        });
+      });
+    };
+
+    bindItemArchiveButtons = () => {
+      if (!catalogCanArchive() || !rowsEl) return;
+      rowsEl.querySelectorAll('.sp-archive-item-btn').forEach((btn) => {
+        btn.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.disabled) return;
+          const scope = btn.getAttribute('data-archive-scope') || 'item';
+          const path = btn.getAttribute('data-archive-path') || '';
+          const nextArchived = btn.getAttribute('data-archived') !== '1';
+          try {
+            await postArchive({
+              scope,
+              sourceKey: currentSourceKey,
+              projectName: currentName,
+              relativePath: scope === 'item' ? path : '',
+              archived: nextArchived,
+            });
+            await loadCurrentProject({ fresh: true });
+            if (typeof loadIndex === 'function') loadIndex();
+          } catch (error) {
+            window.alert(error.message || 'Unable to update archive.');
           }
         });
       });
@@ -2740,7 +2960,7 @@
       if (kindSelect) kindSelect.value = 'all';
       if (extSelect) extSelect.value = '';
       if (searchWrap) searchWrap.hidden = true;
-      rowsEl.innerHTML = '<tr><td colspan="7" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>';
+      rowsEl.innerHTML = emptyRowHtml('⏳ Loading…');
       dialog.__spPrepareWorkspace?.();
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
@@ -2755,7 +2975,7 @@
         subEl.textContent = '';
         clearActivityStats();
         if (searchWrap) searchWrap.hidden = true;
-        rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${escapeHtml(error.message || 'Failed to load project.')}</td></tr>`;
+        rowsEl.innerHTML = emptyRowHtml(escapeHtml(error.message || 'Failed to load project.'));
       } finally {
         projectBusy = false;
         setDialogRefreshBusy(refreshBtn, false);
@@ -2773,7 +2993,7 @@
           subEl.textContent = '';
           clearActivityStats();
           if (searchWrap) searchWrap.hidden = true;
-          rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${escapeHtml(error.message || 'Failed to load project.')}</td></tr>`;
+          rowsEl.innerHTML = emptyRowHtml(escapeHtml(error.message || 'Failed to load project.'));
         } else if (subEl) {
           subEl.textContent = error.message || 'Refresh failed.';
         }
@@ -2951,15 +3171,20 @@
     };
 
     const filterOutHiddenItems = (items) =>
-      (items || []).filter((item) => !hiddenItemKeys.has(itemKey(item)));
+      (items || []).filter((item) => {
+        if (hiddenItemKeys.has(itemKey(item))) return false;
+        if (!catalogShowArchived() && item?.archived) return false;
+        return true;
+      });
 
-    const compareRowExtrasHtml = (item, side, diff, tone) => {
+    const compareRowExtrasHtml = (item, side, diff, tone, qrMeta = {}) => {
       const key = itemKey(item);
       const name = String(item?.name || '').trim() || key;
       return `<td data-col="diff"><span class="sp-diff-pill sp-diff-pill--${tone}">${diffLabelFor(diff, side)}</span></td>
         <td data-col="hide" class="sp-compare-hide-cell">
           <button type="button" class="sp-compare-hide-btn" data-hide-key="${escapeHtml(key)}" data-hide-label="${escapeHtml(name)}" title="Hide from compare" aria-label="Hide ${escapeHtml(name)} from compare">👁‍🗨</button>
-        </td>`;
+        </td>
+        ${dialogActionsCellHtml(item, qrMeta)}`;
     };
 
     const syncCompareHeaderSort = () => {
@@ -3109,8 +3334,8 @@
         const tone = pillClassFor(diff);
         acc.push({
           html: `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolder ? ' sp-dialog-row--folder' : ''}" data-tree-path="${escapeHtml(node.path)}" data-tree-depth="${depth}">
-            ${dialogItemCellsHtml(node.item, depth, toggle, qrMeta)}
-            ${compareRowExtrasHtml(node.item, side, diff, tone)}
+            ${dialogItemCellsHtml(node.item, depth, toggle)}
+            ${compareRowExtrasHtml(node.item, side, diff, tone, qrMeta)}
           </tr>`,
           shared: diff === 'all' || diff === 'shared' ? 1 : 0,
           only: diff.startsWith('only-') ? 1 : 0,
@@ -3194,8 +3419,8 @@
                 catalog: String(project.source_title || project.source_key || '').trim(),
               };
               return `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}">
-                ${dialogItemCellsHtml(item, 0, '', qrMeta)}
-                ${compareRowExtrasHtml(item, side, diff, tone)}
+                ${dialogItemCellsHtml(item, 0, '')}
+                ${compareRowExtrasHtml(item, side, diff, tone, qrMeta)}
               </tr>`;
             })
             .join('');
@@ -3796,6 +4021,7 @@
     saved: publicShare ? 'riskregister_sp_public_search_saved' : 'riskregister_sp_search_saved',
     listFilters: 'riskregister_sp_list_filters_open',
     advancedOpen: publicShare ? 'riskregister_sp_public_search_advanced' : 'riskregister_sp_search_advanced',
+    archived: 'riskregister_sp_search_archived',
   };
   const RECENT_MAX = 10;
   const RECENT_MIN_LEN = 2;
@@ -3843,6 +4069,7 @@
   const typeChipsRoot = document.getElementById('sharepoint-type-chips');
   const fuzzyToggle = document.getElementById('sharepoint-fuzzy-toggle');
   const deepToggle = document.getElementById('sharepoint-deep-toggle');
+  const archivedToggle = document.getElementById('sharepoint-archived-toggle');
   const suggestToggle = document.getElementById('sharepoint-suggest-toggle');
   const refineInput = document.getElementById('sharepoint-refine-input');
   const refineClear = document.getElementById('sharepoint-refine-clear');
@@ -3949,6 +4176,7 @@
     const presence = PRESENCE_MODES.has(presenceRaw) ? presenceRaw : 'any';
     const fuzzyParam = params.get('fuzzy');
     const deepParam = params.get('deep');
+    const archivedParam = params.get('archived');
     const modeParam = (params.get('mode') || '').trim().toLowerCase();
     return {
       refine: (params.get('refine') || '').trim(),
@@ -3970,6 +4198,10 @@
         deepParam === null
           ? localStorage.getItem(STORAGE.deep) !== '0'
           : deepParam !== '0' && deepParam !== 'false',
+      archived:
+        archivedParam === null
+          ? localStorage.getItem(STORAGE.archived) === '1'
+          : archivedParam === '1' || archivedParam === 'true',
       wordMode:
         modeParam === 'or' || modeParam === 'and'
           ? modeParam
@@ -3995,6 +4227,7 @@
     wordMode: urlSearchState.wordMode,
     fuzzy: urlSearchState.fuzzy,
     deep: urlSearchState.deep,
+    showArchived: catalogCanArchive() && !!urlSearchState.archived,
     suggestEnabled: (() => {
       try {
         return localStorage.getItem(STORAGE.suggest) === '1';
@@ -4015,6 +4248,7 @@
     tagFilter: '',
     allTags: [],
     canEditTags: catalogCanEditTags(),
+    canArchive: catalogCanArchive(),
     page: 1,
     perPage: Number(searchRoot.dataset.perPage || perPageSelect?.value || 25) || 25,
     ready: false,
@@ -4051,35 +4285,42 @@
   };
 
   const projectEntries = (project) => {
-    if (Array.isArray(project?._entries)) return project._entries;
-    const files = Array.isArray(project.files) ? project.files : [];
-    const folders = Array.isArray(project.folders) ? project.folders : [];
-    const out = [];
-    files.forEach((item) => {
-      const name = String(item?.name || '').trim();
-      if (!name) return;
-      out.push({
-        kind: 'file',
-        name,
-        path: String(item?.path || name).trim() || name,
+    if (!Array.isArray(project?._entriesAll)) {
+      const files = Array.isArray(project.files) ? project.files : [];
+      const folders = Array.isArray(project.folders) ? project.folders : [];
+      const out = [];
+      files.forEach((item) => {
+        const name = String(item?.name || '').trim();
+        if (!name) return;
+        out.push({
+          kind: 'file',
+          name,
+          path: String(item?.path || name).trim() || name,
+          archived: !!item?.archived,
+        });
       });
-    });
-    folders.forEach((item) => {
-      const name = String(item?.name || '').trim();
-      if (!name) return;
-      out.push({
-        kind: 'folder',
-        name,
-        path: String(item?.path || name).trim() || name,
+      folders.forEach((item) => {
+        const name = String(item?.name || '').trim();
+        if (!name) return;
+        out.push({
+          kind: 'folder',
+          name,
+          path: String(item?.path || name).trim() || name,
+          archived: !!item?.archived,
+        });
       });
-    });
-    if (out.length) return out;
-    (project.names || []).forEach((name) => {
-      const label = String(name || '').trim();
-      if (!label || label.toLowerCase() === String(project.project_name || '').trim().toLowerCase()) return;
-      out.push({ kind: 'file', name: label, path: label });
-    });
-    return out;
+      if (!out.length) {
+        (project.names || []).forEach((name) => {
+          const label = String(name || '').trim();
+          if (!label || label.toLowerCase() === String(project.project_name || '').trim().toLowerCase()) return;
+          out.push({ kind: 'file', name: label, path: label, archived: false });
+        });
+      }
+      project._entriesAll = out;
+    }
+    const all = project._entriesAll;
+    if (catalogShowArchived() || state.showArchived) return all;
+    return all.filter((entry) => !entry.archived);
   };
 
   const parseProjectDate = (value) => {
@@ -4611,6 +4852,27 @@
     });
     bindCopyLinkButtons(tbody);
     bindQrButtons(tbody);
+    tbody.querySelectorAll('.sp-archive-project-btn').forEach((btn) => {
+      btn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (btn.disabled) return;
+        const sourceKey = btn.getAttribute('data-source-key') || state.sourceKey;
+        const projectName = btn.getAttribute('data-project-name') || '';
+        const nextArchived = btn.getAttribute('data-archived') !== '1';
+        try {
+          await postArchive({
+            scope: 'project',
+            sourceKey,
+            projectName,
+            archived: nextArchived,
+          });
+          loadIndex();
+        } catch (error) {
+          window.alert(error.message || 'Unable to update archive.');
+        }
+      });
+    });
   };
 
   const listFiltersActive = () =>
@@ -4970,6 +5232,10 @@
 
     let results = state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
 
+    if (!state.showArchived) {
+      results = results.filter((row) => !row.project?.archived);
+    }
+
     results = results.filter((row) => projectPassesQueryFilters(row.project, parsed));
     results = results.filter((row) => projectPassesPresence(row.project, presence));
 
@@ -5035,6 +5301,15 @@
       deepToggle.classList.toggle('is-active', state.deep);
       deepToggle.setAttribute('aria-pressed', state.deep ? 'true' : 'false');
     }
+    if (archivedToggle) {
+      archivedToggle.classList.toggle('is-active', state.showArchived);
+      archivedToggle.setAttribute('aria-pressed', state.showArchived ? 'true' : 'false');
+    }
+    searchRoot.dataset.showArchived = state.showArchived ? '1' : '0';
+    document.querySelectorAll('.sharepoint-scope-chip[data-archived="1"]').forEach((chip) => {
+      chip.hidden = !state.showArchived;
+      chip.classList.toggle('is-archive-revealed', state.showArchived);
+    });
     if (suggestToggle) {
       suggestToggle.classList.toggle('is-active', state.suggestEnabled);
       suggestToggle.setAttribute('aria-pressed', state.suggestEnabled ? 'true' : 'false');
@@ -5128,6 +5403,12 @@
     const searching = queryIsActive();
     let html = `${matchedCount} project${matchedCount === 1 ? '' : 's'}${searching ? ' matched' : ''}`;
     html += ` · ${state.itemCount} catalog item${state.itemCount === 1 ? '' : 's'} total`;
+    const archivedCount = state.projects.filter((project) => project.archived).length;
+    if (archivedCount && catalogCanArchive()) {
+      html += state.showArchived
+        ? ` · showing ${archivedCount} archived`
+        : ` · ${archivedCount} archived hidden`;
+    }
     if (state.scopeKeys.length > 1) {
       html += ` · Searching ${state.scopeKeys.length} catalogs`;
     }
@@ -5591,6 +5872,8 @@
           ? '⏳ Loading live search index…'
           : state.projects.length === 0
             ? '📁 No catalog items yet.'
+            : !state.showArchived && state.projects.every((project) => project.archived)
+              ? '📦 All matching projects are archived. Turn on <strong>Show archived</strong> to restore them.'
             : listFiltersActive() || advancedFiltersActive()
               ? 'No projects match these filters. Clear filters or try another search.'
               : searching
@@ -5614,7 +5897,7 @@
         const hitSet = searching && useDeep ? deepHits : null;
         const openQuery = '';
         const extra = `${hitSet ? deepHitsHtml(hitSet) : ''}${coverageHtml(project, presence)}`;
-        return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
+        return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}${project.archived ? ' is-archived' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
           <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
             <label class="sharepoint-row-select">
               <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(name)} for compare">
@@ -5630,13 +5913,32 @@
           <td class="sp-meta-cell" data-col="created_by">${personCellHtml(person, '🙋')}</td>
           <td class="sharepoint-project-actions" data-col="actions">
             ${
-              folderUrl
+              folderUrl || catalogCanArchive()
                 ? `<div class="sharepoint-project-action-group">
-                    <a class="button ghost-light sharepoint-open-sp" href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
+                    ${
+                      folderUrl
+                        ? `<a class="button ghost-light sharepoint-open-sp" href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
                     <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(folderUrl)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}" onclick="event.stopPropagation()">📋</button>
                     ${qrButtonHtml(folderUrl, name, {
                       sourceKey,
                       catalog: sourceTitle,
+                    })}`
+                        : ''
+                    }
+                    ${archiveToggleHtml({
+                      archived: !!project.archived,
+                      disabled: project.archive_scope === 'source',
+                      title:
+                        project.archive_scope === 'source'
+                          ? 'This catalog folder is archived. Unarchive the folder card first.'
+                          : project.archived
+                            ? 'Show this project on the dashboard again'
+                            : 'Hide this project from the dashboard',
+                      extraClass: 'sp-archive-project-btn',
+                      attrs: {
+                        'data-source-key': sourceKey,
+                        'data-project-name': name,
+                      },
                     })}
                   </div>`
                 : ''
@@ -5763,6 +6065,7 @@
     if (state.lacks) params.set('lacks', state.lacks);
     if (state.fuzzy) params.set('fuzzy', '1');
     if (!state.deep) params.set('deep', '0');
+    if (state.showArchived) params.set('archived', '1');
     if (state.wordMode === 'or') params.set('mode', 'or');
     if (state.perPage !== 25) params.set('per', String(state.perPage));
     if (state.page > 1 && !state.query.trim() && !advancedFiltersActive()) params.set('page', String(state.page));
@@ -5830,7 +6133,8 @@
 
     fetch(catalogApiUrl('search_index', extra), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
     })
       .then((response) => response.json())
       .then((payload) => {
@@ -5846,6 +6150,10 @@
         if (typeof payload.can_edit_tags === 'boolean') {
           state.canEditTags = payload.can_edit_tags;
           searchRoot.dataset.canEditTags = payload.can_edit_tags ? '1' : '0';
+        }
+        if (typeof payload.can_archive === 'boolean') {
+          state.canArchive = payload.can_archive;
+          searchRoot.dataset.canArchive = payload.can_archive ? '1' : '0';
         }
         state.loadingIndex = false;
         state.ready = true;
@@ -5993,6 +6301,22 @@
     state.deep = !state.deep;
     localStorage.setItem(STORAGE.deep, state.deep ? '1' : '0');
     applySearch();
+  });
+
+  archivedToggle?.addEventListener('click', () => {
+    state.showArchived = !state.showArchived;
+    try {
+      localStorage.setItem(STORAGE.archived, state.showArchived ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    searchRoot.dataset.showArchived = state.showArchived ? '1' : '0';
+    state.projects = state.projects.map((project) => prepareSearchProject(project));
+    applySearch({ resetPage: true });
+    const dialog = document.getElementById('sharepoint-project-dialog');
+    if (dialog?.open) {
+      dialog.querySelector('#sharepoint-project-dialog-search')?.dispatchEvent(new Event('input'));
+    }
   });
 
   suggestToggle?.addEventListener('click', () => {
@@ -6318,6 +6642,23 @@
   });
 
   loadIndex();
+
+  document.querySelectorAll('.sharepoint-archive-source-form').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      const willArchive = form.querySelector('input[name="archived"]')?.value === '1';
+      if (!willArchive) return;
+      const title =
+        form.closest('[data-source-key]')?.querySelector('.sharepoint-source-card-title, strong')
+          ?.textContent || 'this catalog';
+      if (
+        !window.confirm(
+          `Archive ${title.trim()}? It will be hidden from the catalog dashboard until you unarchive it.`
+        )
+      ) {
+        event.preventDefault();
+      }
+    });
+  });
 })();
 
 (() => {

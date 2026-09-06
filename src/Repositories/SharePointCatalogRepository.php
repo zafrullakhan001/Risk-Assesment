@@ -418,8 +418,10 @@ final class SharePointCatalogRepository
 
     public function countProjects(string $sourceKey = self::SOURCE_DEFAULT): int
     {
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
         $statement = $this->pdo->prepare(
-            'SELECT COUNT(DISTINCT project_name) FROM sharepoint_items WHERE source_key = :source_key'
+            "SELECT COUNT(DISTINCT project_name) FROM sharepoint_items
+             WHERE source_key = :source_key AND {$visible}"
         );
         $statement->execute([':source_key' => $sourceKey]);
 
@@ -436,11 +438,13 @@ final class SharePointCatalogRepository
         $ftsMatch = $this->buildFtsMatch($query);
         if ($ftsMatch !== '' && $this->ftsUsable()) {
             try {
+                $visibleFts = SharePointArchiveRepository::visibleProjectSql('sharepoint_items_fts');
                 $statement = $this->pdo->prepare(
-                    'SELECT COUNT(DISTINCT project_name)
+                    "SELECT COUNT(DISTINCT project_name)
                      FROM sharepoint_items_fts
                      WHERE source_key = :source_key
-                       AND sharepoint_items_fts MATCH :match'
+                       AND sharepoint_items_fts MATCH :match
+                       AND {$visibleFts}"
                 );
                 $statement->execute([
                     ':source_key' => $sourceKey,
@@ -454,17 +458,19 @@ final class SharePointCatalogRepository
         }
 
         $like = '%' . $this->escapeLike($query) . '%';
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
         $statement = $this->pdo->prepare(
-            'SELECT COUNT(DISTINCT project_name)
+            "SELECT COUNT(DISTINCT project_name)
              FROM sharepoint_items
              WHERE source_key = :source_key
+               AND {$visible}
                AND (
-                   project_name LIKE :q ESCAPE \'\\\'
-                   OR name LIKE :q2 ESCAPE \'\\\'
-                   OR relative_path LIKE :q3 ESCAPE \'\\\'
-                   OR modified_by LIKE :q4 ESCAPE \'\\\'
-                   OR person LIKE :q5 ESCAPE \'\\\'
-               )'
+                   project_name LIKE :q ESCAPE '\\'
+                   OR name LIKE :q2 ESCAPE '\\'
+                   OR relative_path LIKE :q3 ESCAPE '\\'
+                   OR modified_by LIKE :q4 ESCAPE '\\'
+                   OR person LIKE :q5 ESCAPE '\\'
+               )"
         );
         $statement->execute([
             ':source_key' => $sourceKey,
@@ -503,13 +509,17 @@ final class SharePointCatalogRepository
         $offset = ($page - 1) * $perPage;
         $query = trim($query);
 
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visibleFts = SharePointArchiveRepository::visibleProjectSql('sharepoint_items_fts');
+
         if ($query === '') {
             $projectsStmt = $this->pdo->prepare(
-                'SELECT DISTINCT project_name
+                "SELECT DISTINCT project_name
                  FROM sharepoint_items
                  WHERE source_key = :source_key
+                   AND {$visible}
                  ORDER BY LOWER(project_name) ASC
-                 LIMIT :lim OFFSET :off'
+                 LIMIT :lim OFFSET :off"
             );
             $projectsStmt->bindValue(':source_key', $sourceKey, PDO::PARAM_STR);
             $projectsStmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
@@ -521,12 +531,13 @@ final class SharePointCatalogRepository
             if ($ftsMatch !== '' && $this->ftsUsable()) {
                 try {
                     $projectsStmt = $this->pdo->prepare(
-                        'SELECT DISTINCT project_name
+                        "SELECT DISTINCT project_name
                          FROM sharepoint_items_fts
                          WHERE source_key = :source_key
                            AND sharepoint_items_fts MATCH :match
+                           AND {$visibleFts}
                          ORDER BY LOWER(project_name) ASC
-                         LIMIT :lim OFFSET :off'
+                         LIMIT :lim OFFSET :off"
                     );
                     $projectsStmt->bindValue(':source_key', $sourceKey, PDO::PARAM_STR);
                     $projectsStmt->bindValue(':match', $ftsMatch, PDO::PARAM_STR);
@@ -542,18 +553,19 @@ final class SharePointCatalogRepository
             if (!$usedFts) {
                 $like = '%' . $this->escapeLike($query) . '%';
                 $projectsStmt = $this->pdo->prepare(
-                    'SELECT DISTINCT project_name
+                    "SELECT DISTINCT project_name
                      FROM sharepoint_items
                      WHERE source_key = :source_key
+                       AND {$visible}
                        AND (
-                           project_name LIKE :q ESCAPE \'\\\'
-                           OR name LIKE :q2 ESCAPE \'\\\'
-                           OR relative_path LIKE :q3 ESCAPE \'\\\'
-                           OR modified_by LIKE :q4 ESCAPE \'\\\'
-                           OR person LIKE :q5 ESCAPE \'\\\'
+                           project_name LIKE :q ESCAPE '\\'
+                           OR name LIKE :q2 ESCAPE '\\'
+                           OR relative_path LIKE :q3 ESCAPE '\\'
+                           OR modified_by LIKE :q4 ESCAPE '\\'
+                           OR person LIKE :q5 ESCAPE '\\'
                        )
                      ORDER BY LOWER(project_name) ASC
-                     LIMIT :lim OFFSET :off'
+                     LIMIT :lim OFFSET :off"
                 );
                 $projectsStmt->bindValue(':source_key', $sourceKey, PDO::PARAM_STR);
                 $projectsStmt->bindValue(':q', $like, PDO::PARAM_STR);
@@ -917,15 +929,18 @@ final class SharePointCatalogRepository
             return null;
         }
 
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+
         // Exact normalized match (case-insensitive, collapsed whitespace).
         $statement = $this->pdo->prepare(
-            'SELECT DISTINCT project_name
+            "SELECT DISTINCT project_name
              FROM sharepoint_items
              WHERE source_key = :source_key
-               AND LOWER(REPLACE(REPLACE(REPLACE(TRIM(project_name), \'  \', \' \'), CHAR(9), \' \'), CHAR(160), \' \'))
+               AND {$visible}
+               AND LOWER(REPLACE(REPLACE(REPLACE(TRIM(project_name), '  ', ' '), CHAR(9), ' '), CHAR(160), ' '))
                    = :normalized
              ORDER BY project_name ASC
-             LIMIT 2'
+             LIMIT 2"
         );
         $statement->execute([
             ':source_key' => $sourceKey,
@@ -939,12 +954,13 @@ final class SharePointCatalogRepository
         // Unique LIKE match when solution name is a prefix of the folder name.
         $like = $this->escapeLike($solutionName) . '%';
         $likeStmt = $this->pdo->prepare(
-            'SELECT DISTINCT project_name
+            "SELECT DISTINCT project_name
              FROM sharepoint_items
              WHERE source_key = :source_key
-               AND project_name LIKE :q ESCAPE \'\\\' COLLATE NOCASE
+               AND {$visible}
+               AND project_name LIKE :q ESCAPE '\\' COLLATE NOCASE
              ORDER BY project_name ASC
-             LIMIT 2'
+             LIMIT 2"
         );
         $likeStmt->execute([
             ':source_key' => $sourceKey,

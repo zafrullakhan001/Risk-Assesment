@@ -22,6 +22,7 @@ use RiskAssessment\Repositories\ProjectLinksRepository;
 use RiskAssessment\Repositories\ProjectMermaidRepository;
 use RiskAssessment\Repositories\ProjectPicturesRepository;
 use RiskAssessment\Repositories\ProjectShareRepository;
+use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 
 $currentUser = $auth->requireAuth();
@@ -35,6 +36,7 @@ $projectMermaidRepository = new ProjectMermaidRepository($pdo);
 $projectPicturesRepository = new ProjectPicturesRepository($pdo);
 $projectShareRepository = new ProjectShareRepository($pdo);
 $sharePointCatalogRepository = new SharePointCatalogRepository($pdo);
+$sharePointArchives = new SharePointArchiveRepository($pdo);
 $projectImageConverter = new ProjectImageConverter();
 $findingStatusRepository = new FindingStatusRepository($pdo);
 $goliveGate = new GoliveGate();
@@ -1219,7 +1221,10 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             }
             $shareLinks = $projectShareRepository->listForAssessment($assessmentId);
-            $sharePointCatalog = $sharePointCatalogRepository->findMatchingProjectAnySource($solutionName);
+            $sharePointCatalog = $sharePointArchives->applyToAssessmentMatch(
+                $sharePointCatalogRepository->findMatchingProjectAnySource($solutionName),
+                ''
+            );
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -1281,8 +1286,11 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $storedId);
             $findingStatuses = $findingStatusRepository->listForAssessment($storedId);
         }
-        $sharePointCatalog = $sharePointCatalogRepository->findMatchingProjectAnySource(
-            $assessment->getMetadata('solution_name')
+        $sharePointCatalog = $sharePointArchives->applyToAssessmentMatch(
+            $sharePointCatalogRepository->findMatchingProjectAnySource(
+                $assessment->getMetadata('solution_name')
+            ),
+            ''
         );
         $renderer = new DashboardRenderer();
         $dashboardHtml = $renderer->render(

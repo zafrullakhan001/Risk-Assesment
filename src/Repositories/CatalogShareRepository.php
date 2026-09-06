@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RiskAssessment\Repositories;
 
 use PDO;
+use RiskAssessment\AppUrl;
 
 /**
  * Public read-only share links for SharePoint catalog cards and project-owner cards.
@@ -385,18 +386,7 @@ final class CatalogShareRepository
 
     public static function absoluteUrl(string $token, string $kind = self::KIND_CATALOG): string
     {
-        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || ((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
-            || ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443);
-        $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
-        $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/sharepoint.php'));
-        $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
-        if ($dir === '/' || $dir === '\\' || $dir === '.') {
-            $dir = '';
-        }
-        $scheme = $https ? 'https' : 'http';
-
-        return $scheme . '://' . $host . $dir . '/' . self::publicFile($kind) . '?t=' . rawurlencode($token);
+        return AppUrl::absolute(self::publicFile($kind) . '?t=' . rawurlencode($token));
     }
 
     /**

@@ -63,6 +63,17 @@ try {
         exit(0);
     }
 
+    if ($action === 'lookup_details') {
+        $server = $payload['server'] ?? null;
+        $username = (string) ($payload['username'] ?? '');
+        if (!is_array($server) || $username === '') {
+            throw new RuntimeException('server and username are required.');
+        }
+        $details = $ldap->lookupUserDetailsAgainstServer($server, $username);
+        echo json_encode(['success' => true, 'details' => $details], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit(0);
+    }
+
     if ($action === 'lookup_group') {
         $server = $payload['server'] ?? null;
         $groupDn = (string) ($payload['group_dn'] ?? '');

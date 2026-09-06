@@ -388,6 +388,27 @@ final class Database
             'CREATE INDEX IF NOT EXISTS idx_sp_tag_assign_tag
              ON sharepoint_search_tag_assignments (tag_id)'
         );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS sharepoint_archives (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL DEFAULT \'\',
+                scope TEXT NOT NULL DEFAULT \'project\',
+                project_name TEXT NOT NULL DEFAULT \'\',
+                relative_path TEXT NOT NULL DEFAULT \'\',
+                archived_by_user_id INTEGER,
+                archived_by_username TEXT NOT NULL DEFAULT \'\',
+                archived_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                UNIQUE (source_key, scope, project_name, relative_path)
+            )'
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_sp_archives_source_scope
+             ON sharepoint_archives (source_key, scope)'
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_sp_archives_source_project
+             ON sharepoint_archives (source_key, project_name)'
+        );
         self::seedAuthSettings($pdo);
         self::seedSharePointSettings($pdo);
         self::seedDefaultSharePointSource($pdo);

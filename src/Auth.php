@@ -484,16 +484,19 @@ final class Auth
 
     private function currentRequestTarget(): string
     {
-        $uri = (string) ($_SERVER['REQUEST_URI'] ?? 'index.php');
-        $path = parse_url($uri, PHP_URL_PATH);
-        $query = parse_url($uri, PHP_URL_QUERY);
-        $file = is_string($path) ? basename($path) : 'index.php';
-        if ($file === '') {
+        $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+        $inAdmin = str_contains($script, '/admin/');
+        $file = basename($script);
+        // Directory URLs (/RiskRegister/, /public/, /admin/) leave REQUEST_URI without a .php
+        // basename; SCRIPT_NAME always names the front controller being executed.
+        if ($file === '' || !str_ends_with(strtolower($file), '.php')) {
             $file = 'index.php';
         }
-        if (str_contains(str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '')), '/admin/')) {
+        if ($inAdmin) {
             $file = 'admin/' . $file;
         }
+
+        $query = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY);
         if (is_string($query) && $query !== '') {
             $file .= '?' . $query;
         }

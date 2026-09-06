@@ -6,6 +6,7 @@ require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\PaginationPreference;
 use RiskAssessment\Repositories\CatalogShareRepository;
+use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
@@ -28,8 +29,17 @@ if ($share === null || ($share['kind'] ?? CatalogShareRepository::KIND_CATALOG) 
 $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
 $searchTags = new SharePointSearchTagRepository($pdo);
+$archives = new SharePointArchiveRepository($pdo);
 $allRegistered = $sourcesRepo->listAll();
 $allSources = $shareRepository->filterSources($allRegistered, $share['source_keys']);
+$archivedSourceKeys = $archives->archivedSourceKeySet(array_values(array_filter(array_map(
+    static fn (array $src): string => (string) ($src['source_key'] ?? ''),
+    $allSources
+))));
+$allSources = array_values(array_filter(
+    $allSources,
+    static fn (array $src): bool => !isset($archivedSourceKeys[(string) ($src['source_key'] ?? '')])
+));
 if ($allSources === []) {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
@@ -121,10 +131,24 @@ if ($actionParam === 'project_detail') {
         $searchTags->listProjectTags($detail['source_key'], (string) ($detail['project_name'] ?? '')),
         $searchTags->mapItemTagsForSources([$detail['source_key']])
     );
+    $detailArchiveIndex = $archives->indexForSources([$detail['source_key']]);
+    $detail = $archives->attachToProjectDetail($detail, $detail['source_key'], $detailArchiveIndex);
+    if (!empty($detail['archived'])) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Project not found.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (isset($detail['items']) && is_array($detail['items'])) {
+        $detail['items'] = array_values(array_filter(
+            $detail['items'],
+            static fn (array $item): bool => empty($item['archived'])
+        ));
+    }
     echo json_encode([
         'ok' => true,
         'project' => $detail,
         'can_edit_tags' => false,
+        'can_archive' => false,
         'all_tags' => [],
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -132,7 +156,7 @@ if ($actionParam === 'project_detail') {
 
 if ($actionParam === 'search_index') {
     header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: private, max-age=60');
+    header('Cache-Control: private, no-store');
 
     $indexSources = $resolveIndexSources(
         trim((string) ($_GET['sources'] ?? '')),
@@ -154,6 +178,11 @@ if ($actionParam === 'search_index') {
         $searchTags->mapProjectTagsForSources($indexSourceKeys),
         $searchTags->mapItemTagsForSources($indexSourceKeys)
     );
+    $index = $archives->attachToSearchIndex(
+        $index,
+        $archives->indexForSources($indexSourceKeys)
+    );
+    $index = $archives->excludeArchivedFromSearchIndex($index);
     $itemCountTotal = 0;
     $metaSources = [];
     foreach ($indexSources as $srcMeta) {
@@ -179,6 +208,7 @@ if ($actionParam === 'search_index') {
         'projects' => $index,
         'tags' => $searchTags->listAll(),
         'can_edit_tags' => false,
+        'can_archive' => false,
         'last_synced_at' => (string) ($primary['last_synced_at'] ?? ''),
         'last_sync_status' => (string) ($primary['last_sync_status'] ?? ''),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

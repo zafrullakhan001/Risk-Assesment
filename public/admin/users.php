@@ -13,6 +13,25 @@ $flash = '';
 $ldapSearchQuery = '';
 /** @var list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>|null $ldapSearchResults */
 $ldapSearchResults = null;
+/** @var array{
+ *   profile: array{username: string, email: string, display_name: string, dn: string, groups: list<string>},
+ *   status: array{
+ *     enabled: bool,
+ *     disabled: bool,
+ *     locked: bool,
+ *     password_expired: bool,
+ *     must_change_password: bool,
+ *     password_never_expires: bool,
+ *     account_expired: bool,
+ *     badges: list<array{label: string, tone: string}>,
+ *     notes: list<string>
+ *   },
+ *   groups: list<array{cn: string, dn: string}>,
+ *   fields: array<string, string>,
+ *   timestamps: array<string, string>,
+ *   attributes: array<string, string|list<string>>
+ * }|null $ldapUserDetails */
+$ldapUserDetails = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -126,6 +145,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = $wasExisting
                 ? 'LDAP user “' . $user['username'] . '” was already present and has been refreshed.'
                 : 'LDAP user “' . $user['username'] . '” added and approved.';
+            if ($ldapSearchQuery !== '') {
+                try {
+                    $ldapSearchResults = $ldap->searchUsers($ldapSearchQuery, 25);
+                } catch (Throwable) {
+                    $ldapSearchResults = null;
+                }
+            }
+        } elseif ($action === 'view_ldap_user') {
+            if (!$ldapEnabled) {
+                throw new RuntimeException('Enable LDAP under Authentication before inspecting directory users.');
+            }
+            $username = trim((string) ($_POST['ldap_username'] ?? ''));
+            $ldapSearchQuery = trim((string) ($_POST['ldap_search_query'] ?? ''));
+            if ($username === '') {
+                throw new RuntimeException('Enter an LDAP username.');
+            }
+            $ldapUserDetails = $ldap->lookupUserDetails($username);
+            $usersRepo->logAudit(
+                'user.ldap_inspected',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                (string) ($ldapUserDetails['profile']['username'] ?? $username),
+                ['dn' => (string) ($ldapUserDetails['profile']['dn'] ?? '')]
+            );
+            $flash = 'Directory profile loaded for “' . ($ldapUserDetails['profile']['username'] ?? $username) . '”.';
             if ($ldapSearchQuery !== '') {
                 try {
                     $ldapSearchResults = $ldap->searchUsers($ldapSearchQuery, 25);
@@ -422,7 +467,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <?php if (!$ldapEnabled): ?>
                     <p class="settings-hint">LDAP is disabled. Configure and enable it under <a href="authentication.php">Authentication</a> first.</p>
                 <?php else: ?>
-                    <p>Search the directory by name, username, or email, then add people from the results. No user password is required.</p>
+                    <p>Search the directory by name, username, or email, then add people from the results or open <strong>LDAP details</strong> for a full live profile (groups, lock status, and readable attributes). No user password is required.</p>
                     <form method="post" class="settings-form user-create-form" action="#add-ldap-user">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="search_ldap_users">
@@ -441,6 +486,233 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         </div>
                     </form>
 
+                    <?php if ($ldapUserDetails !== null): ?>
+                        <?php
+                        $detailProfile = $ldapUserDetails['profile'];
+                        $detailStatus = $ldapUserDetails['status'];
+                        $detailGroups = $ldapUserDetails['groups'];
+                        $detailFields = $ldapUserDetails['fields'];
+                        $detailTimestamps = $ldapUserDetails['timestamps'];
+                        $detailAttributes = $ldapUserDetails['attributes'];
+                        $detailName = $detailProfile['display_name'] !== '' ? $detailProfile['display_name'] : $detailProfile['username'];
+                        $detailInitial = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $detailName) ?: 'U', 0, 1));
+                        $ldapFieldIcons = [
+                            'title' => '💼',
+                            'department' => '🏢',
+                            'company' => '🏛️',
+                            'manager' => '👤',
+                            'telephonenumber' => '📞',
+                            'mobile' => '📱',
+                            'homephone' => '☎️',
+                            'pager' => '📟',
+                            'facsimiletelephonenumber' => '📠',
+                            'physicaldeliveryofficename' => '📍',
+                            'streetaddress' => '🏠',
+                            'l' => '🌆',
+                            'st' => '🗺️',
+                            'postalcode' => '🏷️',
+                            'c' => '🌍',
+                            'co' => '🌍',
+                            'givenname' => '✏️',
+                            'sn' => '✏️',
+                            'initials' => '🔤',
+                            'description' => '📝',
+                            'employeeid' => '🪪',
+                            'employeenumber' => '🔢',
+                            'info' => 'ℹ️',
+                            'wwwhomepage' => '🔗',
+                            'url' => '🔗',
+                        ];
+                        $ldapBadgeEmoji = static function (string $label, string $tone): string {
+                            $lower = strtolower($label);
+                            return match (true) {
+                                str_contains($lower, 'disabled') => '🚫',
+                                str_contains($lower, 'locked') => '🔒',
+                                str_contains($lower, 'expired') && str_contains($lower, 'password') => '⌛',
+                                str_contains($lower, 'account expired') => '📅',
+                                str_contains($lower, 'must change') => '🔄',
+                                str_contains($lower, 'never expires') => '♾️',
+                                str_contains($lower, 'enabled') => '✅',
+                                $tone === 'danger' => '⚠️',
+                                $tone === 'warn' => '⚡',
+                                $tone === 'ok' => '✅',
+                                default => 'ℹ️',
+                            };
+                        };
+                        $ldapHumanLabel = static function (string $name): string {
+                            $map = [
+                                'telephonenumber' => 'Phone',
+                                'physicaldeliveryofficename' => 'Office',
+                                'streetaddress' => 'Street',
+                                'postalcode' => 'Postal code',
+                                'givenname' => 'First name',
+                                'sn' => 'Last name',
+                                'l' => 'City',
+                                'st' => 'State',
+                                'c' => 'Country code',
+                                'co' => 'Country',
+                                'wwwhomepage' => 'Website',
+                                'facsimiletelephonenumber' => 'Fax',
+                                'employeeid' => 'Employee ID',
+                                'employeenumber' => 'Employee number',
+                                'pwdlastset' => 'Password last set',
+                                'lockouttime' => 'Lockout time',
+                                'lastlogon' => 'Last logon',
+                                'lastlogontimestamp' => 'Last logon timestamp',
+                                'badpasswordtime' => 'Bad password time',
+                                'lastlogoff' => 'Last logoff',
+                                'accountexpires' => 'Account expires',
+                                'whencreated' => 'When created',
+                                'whenchanged' => 'When changed',
+                                'createtimestamp' => 'Create timestamp',
+                                'modifytimestamp' => 'Modify timestamp',
+                                'pwdchangedtime' => 'Password changed',
+                                'pwdaccountlockedtime' => 'Account locked time',
+                                'msds-userpasswordexpirytimecomputed' => 'Password expiry (computed)',
+                            ];
+                            $key = strtolower($name);
+                            if (isset($map[$key])) {
+                                return $map[$key];
+                            }
+
+                            return preg_replace('/([a-z])([A-Z])/', '$1 $2', $name) ?? $name;
+                        };
+                        $orgFieldRows = [];
+                        foreach ($detailFields as $fieldName => $fieldValue) {
+                            if (in_array(strtolower($fieldName), ['samaccountname', 'uid', 'cn', 'mail', 'displayname', 'userprincipalname'], true)) {
+                                continue;
+                            }
+                            $orgFieldRows[$fieldName] = $fieldValue;
+                        }
+                        ?>
+                        <div class="ldap-details-card" id="ldap-user-details">
+                            <div class="ldap-details-head">
+                                <div class="ldap-details-identity">
+                                    <span class="ldap-details-avatar" aria-hidden="true"><?= e($detailInitial) ?></span>
+                                    <div>
+                                        <p class="eyebrow"><span class="settings-emoji" aria-hidden="true">🗂️</span> Directory profile</p>
+                                        <h3><?= e($detailName) ?></h3>
+                                        <p class="ldap-details-dn"><span class="settings-emoji" aria-hidden="true">🧩</span> <?= e($detailProfile['dn']) ?></p>
+                                    </div>
+                                </div>
+                                <div class="ldap-status-badges">
+                                    <?php foreach ($detailStatus['badges'] as $badge): ?>
+                                        <?php
+                                        $tone = (string) ($badge['tone'] ?? 'info');
+                                        $label = (string) ($badge['label'] ?? '');
+                                        ?>
+                                        <span class="ldap-status-badge tone-<?= e($tone) ?>">
+                                            <span class="settings-emoji" aria-hidden="true"><?= e($ldapBadgeEmoji($label, $tone)) ?></span>
+                                            <?= e($label) ?>
+                                        </span>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                            <div class="ldap-details-grid">
+                                <div class="ldap-details-block tone-identity">
+                                    <h4><span class="settings-emoji" aria-hidden="true">🧑</span> Identity</h4>
+                                    <dl class="ldap-details-dl">
+                                        <div><dt><span class="settings-emoji" aria-hidden="true">🔑</span> Username</dt><dd><code><?= e($detailProfile['username']) ?></code></dd></div>
+                                        <div><dt><span class="settings-emoji" aria-hidden="true">📧</span> Email</dt><dd><?= e($detailProfile['email'] !== '' ? $detailProfile['email'] : '—') ?></dd></div>
+                                        <div><dt><span class="settings-emoji" aria-hidden="true">🏷️</span> Display name</dt><dd><?= e($detailProfile['display_name'] !== '' ? $detailProfile['display_name'] : '—') ?></dd></div>
+                                    </dl>
+                                    <?php if ($detailStatus['notes'] !== []): ?>
+                                        <ul class="ldap-details-notes">
+                                            <?php foreach ($detailStatus['notes'] as $note): ?>
+                                                <li><span class="settings-emoji" aria-hidden="true">📌</span> <?= e($note) ?></li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    <?php endif; ?>
+                                </div>
+
+                                <?php if ($orgFieldRows !== []): ?>
+                                    <div class="ldap-details-block tone-org">
+                                        <h4><span class="settings-emoji" aria-hidden="true">🏢</span> Org &amp; contact</h4>
+                                        <dl class="ldap-details-dl">
+                                            <?php foreach ($orgFieldRows as $fieldName => $fieldValue): ?>
+                                                <?php $icon = $ldapFieldIcons[strtolower($fieldName)] ?? '🔹'; ?>
+                                                <div>
+                                                    <dt><span class="settings-emoji" aria-hidden="true"><?= e($icon) ?></span> <?= e($ldapHumanLabel($fieldName)) ?></dt>
+                                                    <dd><?= e($fieldValue) ?></dd>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </dl>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if ($detailTimestamps !== []): ?>
+                                    <div class="ldap-details-block tone-time">
+                                        <h4><span class="settings-emoji" aria-hidden="true">⏱️</span> Timestamps</h4>
+                                        <dl class="ldap-details-dl">
+                                            <?php foreach ($detailTimestamps as $tsName => $tsValue): ?>
+                                                <div>
+                                                    <dt><span class="settings-emoji" aria-hidden="true">📅</span> <?= e($ldapHumanLabel($tsName)) ?></dt>
+                                                    <dd><time><?= e($tsValue) ?></time></dd>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </dl>
+                                    </div>
+                                <?php endif; ?>
+
+                                <div class="ldap-details-block ldap-details-groups tone-groups">
+                                    <h4><span class="settings-emoji" aria-hidden="true">👥</span> Groups <em><?= count($detailGroups) ?></em></h4>
+                                    <?php if ($detailGroups === []): ?>
+                                        <p class="settings-hint"><span class="settings-emoji" aria-hidden="true">🫥</span> No memberOf groups returned (or the bind account cannot read them).</p>
+                                    <?php else: ?>
+                                        <ul class="ldap-group-list">
+                                            <?php foreach ($detailGroups as $group): ?>
+                                                <li>
+                                                    <span class="ldap-group-icon" aria-hidden="true">🛡️</span>
+                                                    <span class="ldap-group-text">
+                                                        <strong><?= e($group['cn']) ?></strong>
+                                                        <span class="table-sub"><?= e($group['dn']) ?></span>
+                                                    </span>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <details class="ldap-attributes-details" open>
+                                <summary>
+                                    <span class="settings-emoji" aria-hidden="true">🧾</span>
+                                    All readable attributes
+                                    <em><?= count($detailAttributes) ?></em>
+                                </summary>
+                                <div class="admin-table-wrap ldap-attr-table-wrap">
+                                    <table class="admin-table ldap-attr-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Attribute</th>
+                                                <th>Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($detailAttributes as $attrName => $attrValue): ?>
+                                                <tr>
+                                                    <td><code><?= e((string) $attrName) ?></code></td>
+                                                    <td>
+                                                        <?php if (is_array($attrValue)): ?>
+                                                            <ul class="ldap-attr-values">
+                                                                <?php foreach ($attrValue as $one): ?>
+                                                                    <li><?= e((string) $one) ?></li>
+                                                                <?php endforeach; ?>
+                                                            </ul>
+                                                        <?php else: ?>
+                                                            <?= e((string) $attrValue) ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        </div>
+                    <?php endif; ?>
+
                     <?php if ($ldapSearchResults !== null): ?>
                         <div class="admin-table-wrap" style="margin-top: 1rem;">
                             <?php if ($ldapSearchResults === []): ?>
@@ -453,6 +725,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                             <th>Username</th>
                                             <th>Email</th>
                                             <th>Status</th>
+                                            <th>Details</th>
                                             <th>Add</th>
                                         </tr>
                                     </thead>
@@ -483,6 +756,15 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                     <?php else: ?>
                                                         <span class="token-needed">Not in app</span>
                                                     <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <form method="post" class="user-actions" action="#ldap-user-details">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="action" value="view_ldap_user">
+                                                        <input type="hidden" name="ldap_username" value="<?= e($hit['username']) ?>">
+                                                        <input type="hidden" name="ldap_search_query" value="<?= e($ldapSearchQuery) ?>">
+                                                        <button type="submit" class="button ghost">LDAP details</button>
+                                                    </form>
                                                 </td>
                                                 <td>
                                                     <?php if ($alreadyLocal): ?>
@@ -528,6 +810,19 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </div>
                             <div class="settings-actions">
                                 <button type="submit" class="button button-primary">➕ Add LDAP user</button>
+                            </div>
+                        </form>
+                        <form method="post" class="settings-form user-create-form" action="#ldap-user-details" style="margin-top: 0.75rem;">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="view_ldap_user">
+                            <div class="settings-grid">
+                                <label class="settings-field">
+                                    <span>Inspect LDAP username</span>
+                                    <input type="text" name="ldap_username" required maxlength="120" autocomplete="off" placeholder="jsmith">
+                                </label>
+                            </div>
+                            <div class="settings-actions">
+                                <button type="submit" class="button ghost">View LDAP details</button>
                             </div>
                         </form>
                     </details>
@@ -733,6 +1028,18 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                             <button type="submit" class="button button-primary">Save password</button>
                                                         </form>
                                                     </details>
+                                                <?php elseif ($ldapEnabled && ($user['auth_source'] ?? '') === 'ldap'): ?>
+                                                    <form method="post" action="#ldap-user-details">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="action" value="view_ldap_user">
+                                                        <input type="hidden" name="ldap_username" value="<?= e((string) $user['username']) ?>">
+                                                        <button type="submit" class="user-action-btn is-ldap-details" title="LDAP details" aria-label="LDAP details">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <circle cx="11" cy="11" r="8"></circle>
+                                                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
                                                 <?php endif; ?>
                                                 <form method="post" onsubmit="return confirm('Delete this user permanently?');">
                                                     <?= csrf_field() ?>

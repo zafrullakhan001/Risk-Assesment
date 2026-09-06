@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RiskAssessment\Repositories;
 
 use PDO;
+use RiskAssessment\AppUrl;
 
 final class ProjectShareRepository
 {
@@ -240,18 +241,7 @@ final class ProjectShareRepository
     /** Build an absolute share URL for the current request host. */
     public static function absoluteUrl(string $token): string
     {
-        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || ((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
-            || ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443);
-        $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
-        $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
-        $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
-        if ($dir === '/' || $dir === '\\' || $dir === '.') {
-            $dir = '';
-        }
-        $scheme = $https ? 'https' : 'http';
-
-        return $scheme . '://' . $host . $dir . '/share.php?t=' . rawurlencode($token);
+        return AppUrl::absolute('share.php?t=' . rawurlencode($token));
     }
 
     private function hashToken(string $token): string

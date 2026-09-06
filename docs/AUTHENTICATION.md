@@ -55,6 +55,8 @@ Default user filter: `(sAMAccountName={username})`.
 
 **Auto** on the sign-in form tries LDAP first, then local. Usernames that contain `@localhost` skip LDAP.
 
+On **Admin → Users**, administrators can search the directory and open **LDAP details** for a live profile: account status (enabled, disabled, locked, password flags), groups (`memberOf`), org/contact fields, timestamps, and every other attribute the service bind account can read. Passwords and credential secrets are never retrieved or stored. Inspection is audited as `user.ldap_inspected` (username/DN only).
+
 ---
 
 ## Admin section
@@ -62,7 +64,7 @@ Default user filter: `(sAMAccountName={username})`.
 | Page | Tasks |
 |------|--------|
 | `admin/index.php` | Overview, change your local password |
-| `admin/users.php` | Create, approve, disable, promote, reset password, audit log |
+| `admin/users.php` | Create, approve, disable, promote, reset password, LDAP search/add/details, audit log |
 | `admin/authentication.php` | Local / LDAP toggles and LDAP server |
 | `admin/updates.php` | GitHub PAT and git updates |
 

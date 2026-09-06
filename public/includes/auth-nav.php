@@ -7,8 +7,16 @@ use RiskAssessment\Auth;
 $navAuth = Auth::instance();
 $navUser = $navAuth->currentUser();
 $navPrefix = $navAuth->publicPrefix();
+$navScript = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+$navOnHelp = str_ends_with($navScript, '/help.php');
 ?>
 <?php if ($navUser !== null): ?>
+    <a
+        class="button ghost home-link<?= $navOnHelp ? ' is-active' : '' ?>"
+        href="<?= e($navPrefix) ?>help.php"
+        title="Help and About"
+        <?= $navOnHelp ? ' aria-current="page"' : '' ?>
+    >Help</a>
     <?php if (!empty($navUser['is_admin'])): ?>
         <a class="button ghost home-link" href="<?= e($navPrefix) ?>admin/index.php" title="Users, branding, LDAP, and GitHub updates">Admin</a>
     <?php endif; ?>

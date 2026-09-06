@@ -5256,6 +5256,365 @@ body.is-presentation .print-only-block { display: block; }
     font-size: 12px;
 }
 
+.ldap-details-card {
+    margin-top: 1rem;
+    padding: 1.15rem 1.2rem 1.25rem;
+    border: 1px solid color-mix(in srgb, #0d9488 28%, var(--line));
+    border-radius: var(--radius);
+    background:
+        radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, #14b8a6 16%, transparent), transparent 55%),
+        radial-gradient(90% 70% at 100% 0%, color-mix(in srgb, #6366f1 12%, transparent), transparent 50%),
+        color-mix(in srgb, var(--primary) 4%, var(--card));
+    box-shadow: 0 10px 28px color-mix(in srgb, #0f766e 8%, transparent);
+}
+
+.ldap-details-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem 1.25rem;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.05rem;
+    padding-bottom: 0.95rem;
+    border-bottom: 1px solid color-mix(in srgb, #0d9488 18%, var(--line));
+}
+
+.ldap-details-identity {
+    display: flex;
+    gap: 0.85rem;
+    align-items: flex-start;
+    min-width: min(100%, 280px);
+}
+
+.ldap-details-avatar {
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, #0d9488 35%, var(--line));
+    background: linear-gradient(145deg, #14b8a6, #0f766e);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    box-shadow: 0 6px 14px color-mix(in srgb, #0f766e 28%, transparent);
+}
+
+.ldap-details-head .eyebrow {
+    margin: 0 0 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #0f766e;
+    font-weight: 700;
+}
+
+.ldap-details-head h3 {
+    margin: 0;
+    font-size: 1.28rem;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+
+.ldap-details-dn {
+    margin: 0.4rem 0 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    color: var(--muted);
+    font-size: 12px;
+    word-break: break-all;
+    line-height: 1.45;
+}
+
+.ldap-status-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: flex-end;
+    max-width: 100%;
+}
+
+.ldap-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.32rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    background: var(--card);
+    box-shadow: 0 1px 0 color-mix(in srgb, #000 4%, transparent);
+}
+
+.ldap-status-badge.tone-ok {
+    border-color: color-mix(in srgb, #16a34a 42%, var(--line));
+    background: linear-gradient(180deg, color-mix(in srgb, #bbf7d0 55%, var(--card)), color-mix(in srgb, #86efac 22%, var(--card)));
+    color: #166534;
+}
+
+.ldap-status-badge.tone-danger {
+    border-color: color-mix(in srgb, #dc2626 42%, var(--line));
+    background: linear-gradient(180deg, color-mix(in srgb, #fecaca 55%, var(--card)), color-mix(in srgb, #fca5a5 22%, var(--card)));
+    color: #991b1b;
+}
+
+.ldap-status-badge.tone-warn {
+    border-color: color-mix(in srgb, #d97706 42%, var(--line));
+    background: linear-gradient(180deg, color-mix(in srgb, #fde68a 55%, var(--card)), color-mix(in srgb, #fcd34d 22%, var(--card)));
+    color: #92400e;
+}
+
+.ldap-status-badge.tone-info {
+    border-color: color-mix(in srgb, #0284c7 42%, var(--line));
+    background: linear-gradient(180deg, color-mix(in srgb, #bae6fd 55%, var(--card)), color-mix(in srgb, #7dd3fc 20%, var(--card)));
+    color: #075985;
+}
+
+.ldap-details-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.95rem;
+}
+
+.ldap-details-block {
+    --ldap-block-accent: #0d9488;
+    --ldap-block-wash: color-mix(in srgb, #14b8a6 8%, var(--card));
+    padding: 0.85rem 0.95rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--ldap-block-accent) 28%, var(--line));
+    border-radius: var(--radius);
+    background: var(--ldap-block-wash);
+    box-shadow: inset 4px 0 0 var(--ldap-block-accent);
+}
+
+.ldap-details-block.tone-identity {
+    --ldap-block-accent: #0d9488;
+    --ldap-block-wash: color-mix(in srgb, #14b8a6 10%, var(--card));
+}
+
+.ldap-details-block.tone-org {
+    --ldap-block-accent: #7c3aed;
+    --ldap-block-wash: color-mix(in srgb, #a78bfa 10%, var(--card));
+}
+
+.ldap-details-block.tone-time {
+    --ldap-block-accent: #d97706;
+    --ldap-block-wash: color-mix(in srgb, #fbbf24 10%, var(--card));
+}
+
+.ldap-details-block.tone-groups {
+    --ldap-block-accent: #0284c7;
+    --ldap-block-wash: color-mix(in srgb, #38bdf8 10%, var(--card));
+}
+
+.ldap-details-block h4 {
+    margin: 0 0 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--ldap-block-accent) 70%, var(--ink));
+    font-weight: 700;
+}
+
+.ldap-details-block h4 em {
+    font-style: normal;
+    margin-left: 0.15rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ldap-block-accent) 16%, var(--card));
+    color: color-mix(in srgb, var(--ldap-block-accent) 80%, var(--ink));
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.ldap-details-groups {
+    grid-column: 1 / -1;
+}
+
+.ldap-details-dl {
+    margin: 0;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.ldap-details-dl > div {
+    display: grid;
+    grid-template-columns: minmax(110px, 38%) 1fr;
+    gap: 0.35rem 0.65rem;
+    padding: 0.35rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--card) 78%, transparent);
+}
+
+.ldap-details-dl dt {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ldap-details-dl dd {
+    margin: 0;
+    word-break: break-word;
+    font-size: 13px;
+    color: var(--ink);
+}
+
+.ldap-details-dl dd code,
+.ldap-details-dl dd time {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.ldap-details-notes {
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.ldap-details-notes li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.4rem 0.55rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, #0d9488 18%, var(--line));
+    background: color-mix(in srgb, #99f6e4 14%, var(--card));
+    color: #115e59;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.ldap-group-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.55rem;
+    max-height: 280px;
+    overflow: auto;
+}
+
+.ldap-group-list li {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid color-mix(in srgb, #0284c7 22%, var(--line));
+    border-radius: var(--radius-sm);
+    background: linear-gradient(180deg, color-mix(in srgb, #e0f2fe 55%, var(--card)), var(--card));
+}
+
+.ldap-group-icon {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: color-mix(in srgb, #38bdf8 22%, var(--card));
+    font-size: 14px;
+}
+
+.ldap-group-text {
+    min-width: 0;
+}
+
+.ldap-group-text strong {
+    display: block;
+    color: #0c4a6e;
+    font-size: 13px;
+}
+
+.ldap-attributes-details {
+    margin-top: 1.05rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid color-mix(in srgb, #64748b 22%, var(--line));
+    border-radius: var(--radius);
+    background: color-mix(in srgb, #94a3b8 7%, var(--card));
+}
+
+.ldap-attributes-details > summary {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 700;
+    margin-bottom: 0.55rem;
+    color: #334155;
+    list-style: none;
+}
+
+.ldap-attributes-details > summary::-webkit-details-marker {
+    display: none;
+}
+
+.ldap-attributes-details > summary em {
+    font-style: normal;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, #64748b 16%, var(--card));
+    color: #334155;
+    font-size: 11px;
+}
+
+.ldap-attr-table-wrap {
+    max-height: 420px;
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, #64748b 20%, var(--line));
+    border-radius: var(--radius-sm);
+    background: var(--card);
+}
+
+.ldap-attr-table tbody tr:nth-child(even) {
+    background: color-mix(in srgb, #f1f5f9 55%, var(--card));
+}
+
+.ldap-attr-table td code {
+    font-size: 12px;
+    padding: 0.12rem 0.35rem;
+    border-radius: 6px;
+    background: color-mix(in srgb, #0d9488 10%, var(--card));
+    color: #0f766e;
+}
+
+.ldap-attr-values {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+.user-action-btn.is-ldap-details {
+    border-color: color-mix(in srgb, #0d9488 30%, var(--line));
+    background: color-mix(in srgb, #99f6e4 14%, var(--card));
+    color: #0f766e;
+}
+
+.user-action-btn.is-ldap-details:hover,
+.user-action-btn.is-ldap-details:focus-visible {
+    border-color: #0d9488;
+    background: #0d9488;
+    color: #fff;
+}
+
 .user-actions {
     display: flex;
     flex-wrap: wrap;
@@ -9337,6 +9696,94 @@ body.is-public-catalog-share .topbar-actions {
 .sharepoint-catalog-page main > .home-section-tabs {
     margin: 0;
 }
+
+/* Section board: Stack (column) or Cards (grid) */
+.sharepoint-section-board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    width: 100%;
+}
+.sharepoint-section-board-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.75rem;
+    margin: 0;
+}
+.sharepoint-section-board[data-layout="cards"] {
+    /* Cards layout parked — keep rules for a later revisit; stack is forced in JS. */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    align-items: start;
+}
+.sharepoint-section-board[data-layout="cards"] > .sharepoint-section-board-toolbar {
+    grid-column: 1 / -1;
+}
+.sharepoint-section-board[data-layout="cards"] > :not([data-sp-section]):not(.sharepoint-section-board-toolbar) {
+    grid-column: 1 / -1;
+}
+.sharepoint-section-board[data-layout="cards"] > [data-sp-section] {
+    min-width: 0;
+    height: auto;
+}
+.sharepoint-section-board > [data-sp-section].is-sp-dragging {
+    opacity: 0.55;
+}
+.sharepoint-section-board > [data-sp-section].is-sp-drop-target {
+    outline: 2px dashed color-mix(in srgb, var(--accent, #0f766e) 55%, transparent);
+    outline-offset: 2px;
+}
+.sp-section-move {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.12rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.5rem;
+    padding: 0.12rem;
+    background: rgba(255, 255, 255, 0.85);
+}
+.sp-section-move-btn {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    width: 1.55rem;
+    height: 1.55rem;
+    padding: 0;
+    border-radius: 0.35rem;
+    cursor: pointer;
+}
+.sp-section-move-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent, #0f766e) 12%, transparent);
+    color: var(--accent, #0f766e);
+}
+.sp-section-move-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.sharepoint-section-board[data-layout="stack"] .sp-section-move-lr,
+.sharepoint-section-board[data-layout="cards"].is-single-col .sp-section-move-lr {
+    display: none;
+}
+.sharepoint-admin-shell-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+}
+@media (max-width: 899px) {
+    .sharepoint-section-board[data-layout="cards"] {
+        grid-template-columns: 1fr;
+    }
+    .sp-section-move-lr {
+        display: none;
+    }
+}
+
 .sharepoint-catalog-page main > .upload-card,
 .sharepoint-catalog-page main > #sharepoint-sources,
 .sharepoint-catalog-page main > #sharepoint-owner-dash,
@@ -9344,7 +9791,15 @@ body.is-public-catalog-share .topbar-actions {
 .sharepoint-catalog-page main > #sharepoint-table-card,
 .sharepoint-catalog-page main > #sharepoint-admin,
 .sharepoint-catalog-page main > #catalog-share-panel,
-.sharepoint-catalog-page main > #owners-share-panel {
+.sharepoint-catalog-page main > #owners-share-panel,
+.sharepoint-section-board > .upload-card,
+.sharepoint-section-board > #sharepoint-sources,
+.sharepoint-section-board > #sharepoint-owner-dash,
+.sharepoint-section-board > #sharepoint-search,
+.sharepoint-section-board > #sharepoint-table-card,
+.sharepoint-section-board > #sharepoint-admin,
+.sharepoint-section-board > #catalog-share-panel,
+.sharepoint-section-board > #owners-share-panel {
     margin-top: 0;
     margin-bottom: 0;
 }
@@ -9355,7 +9810,15 @@ body.is-public-catalog-share .topbar-actions {
 .sharepoint-catalog-page main > #sharepoint-table-card:has(> details:not([open])),
 .sharepoint-catalog-page main > #sharepoint-admin:has(> details:not([open])),
 .sharepoint-catalog-page main > #catalog-share-panel:has(> details:not([open])),
-.sharepoint-catalog-page main > #owners-share-panel:has(> details:not([open])) {
+.sharepoint-catalog-page main > #owners-share-panel:has(> details:not([open])),
+.sharepoint-section-board > .upload-card:has(> details:not([open])),
+.sharepoint-section-board > #sharepoint-sources:has(> details:not([open])),
+.sharepoint-section-board > #sharepoint-owner-dash:has(> details:not([open])),
+.sharepoint-section-board > #sharepoint-search:has(> details:not([open])),
+.sharepoint-section-board > #sharepoint-table-card:has(> details:not([open])),
+.sharepoint-section-board > #sharepoint-admin:has(> details:not([open])),
+.sharepoint-section-board > #catalog-share-panel:has(> details:not([open])),
+.sharepoint-section-board > #owners-share-panel:has(> details:not([open])) {
     padding: 0.62rem 0.95rem;
     background: var(--card, #fff);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -9367,10 +9830,19 @@ body.is-public-catalog-share .topbar-actions {
 .sharepoint-catalog-page main > #sharepoint-table-card:has(> details:not([open])):hover,
 .sharepoint-catalog-page main > #sharepoint-admin:has(> details:not([open])):hover,
 .sharepoint-catalog-page main > #catalog-share-panel:has(> details:not([open])):hover,
-.sharepoint-catalog-page main > #owners-share-panel:has(> details:not([open])):hover {
+.sharepoint-catalog-page main > #owners-share-panel:has(> details:not([open])):hover,
+.sharepoint-section-board > .upload-card:has(> details:not([open])):hover,
+.sharepoint-section-board > #sharepoint-sources:has(> details:not([open])):hover,
+.sharepoint-section-board > #sharepoint-owner-dash:has(> details:not([open])):hover,
+.sharepoint-section-board > #sharepoint-search:has(> details:not([open])):hover,
+.sharepoint-section-board > #sharepoint-table-card:has(> details:not([open])):hover,
+.sharepoint-section-board > #sharepoint-admin:has(> details:not([open])):hover,
+.sharepoint-section-board > #catalog-share-panel:has(> details:not([open])):hover,
+.sharepoint-section-board > #owners-share-panel:has(> details:not([open])):hover {
     border-color: color-mix(in srgb, var(--primary, #0e7490) 28%, var(--line));
 }
-.sharepoint-catalog-page main > .upload-card:has(> details:not([open])) > details > summary {
+.sharepoint-catalog-page main > .upload-card:has(> details:not([open])) > details > summary,
+.sharepoint-section-board > .upload-card:has(> details:not([open])) > details > summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -11315,7 +11787,15 @@ body.is-public-catalog-share .topbar-actions {
     .sharepoint-catalog-page main > #sharepoint-table-card,
     .sharepoint-catalog-page main > #sharepoint-admin,
     .sharepoint-catalog-page main > #catalog-share-panel,
-    .sharepoint-catalog-page main > #owners-share-panel {
+    .sharepoint-catalog-page main > #owners-share-panel,
+    .sharepoint-section-board > .upload-card,
+    .sharepoint-section-board > #sharepoint-sources,
+    .sharepoint-section-board > #sharepoint-owner-dash,
+    .sharepoint-section-board > #sharepoint-search,
+    .sharepoint-section-board > #sharepoint-table-card,
+    .sharepoint-section-board > #sharepoint-admin,
+    .sharepoint-section-board > #catalog-share-panel,
+    .sharepoint-section-board > #owners-share-panel {
         border-radius: 0.85rem;
         margin-left: 0;
         margin-right: 0;
@@ -12184,7 +12664,17 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-compare-dialog[data-hidden-cols~="created"] [data-col="created"],
 .sharepoint-compare-dialog[data-hidden-cols~="modified_by"] [data-col="modified_by"],
 .sharepoint-compare-dialog[data-hidden-cols~="created_by"] [data-col="created_by"],
-.sharepoint-compare-dialog[data-hidden-cols~="diff"] [data-col="diff"] {
+.sharepoint-compare-dialog[data-hidden-cols~="diff"] [data-col="diff"],
+.sharepoint-compare-dialog[data-hidden-cols~="actions"] [data-col="actions"] {
+    display: none;
+}
+.sharepoint-project-dialog[data-hidden-cols~="type"] [data-col="type"],
+.sharepoint-project-dialog[data-hidden-cols~="size"] [data-col="size"],
+.sharepoint-project-dialog[data-hidden-cols~="modified"] [data-col="modified"],
+.sharepoint-project-dialog[data-hidden-cols~="created"] [data-col="created"],
+.sharepoint-project-dialog[data-hidden-cols~="modified_by"] [data-col="modified_by"],
+.sharepoint-project-dialog[data-hidden-cols~="created_by"] [data-col="created_by"],
+.sharepoint-project-dialog[data-hidden-cols~="actions"] [data-col="actions"] {
     display: none;
 }
 .sp-compare-columns-picker {
@@ -12321,11 +12811,18 @@ html.sp-workspace-scroll-lock body {
     height: 1.2rem;
     margin-top: 0.08rem;
 }
-.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-table-wrap .sp-copy-link-btn {
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-table-wrap .sp-copy-link-btn,
+.sharepoint-compare-dialog.is-compact-chrome .sp-row-actions .sp-qr-btn {
     width: 1.35rem;
     height: 1.35rem;
-    margin-top: 0.05rem;
+    min-width: 1.35rem;
+    min-height: 1.35rem;
+    margin: 0;
     font-size: 0.66rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-row-actions {
+    min-width: 0;
+    gap: 0.18rem;
 }
 
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-body,
@@ -12457,11 +12954,18 @@ html.sp-workspace-scroll-lock body {
     height: 1.2rem;
     margin-top: 0.08rem;
 }
-.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-table-wrap .sp-copy-link-btn {
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-table-wrap .sp-copy-link-btn,
+.sharepoint-project-dialog.is-compact-chrome .sp-row-actions .sp-qr-btn {
     width: 1.35rem;
     height: 1.35rem;
-    margin-top: 0.05rem;
+    min-width: 1.35rem;
+    min-height: 1.35rem;
+    margin: 0;
     font-size: 0.66rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-row-actions {
+    min-width: 0;
+    gap: 0.18rem;
 }
 
 .sp-tree-cell {
@@ -12469,6 +12973,30 @@ html.sp-workspace-scroll-lock body {
     align-items: flex-start;
     gap: 0.25rem;
     padding-left: calc(var(--sp-depth, 0) * 1.1rem);
+}
+.sharepoint-dialog-table [data-col="actions"] {
+    width: 1%;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.sp-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.28rem;
+    min-width: 7.5rem;
+}
+.sp-row-actions .sp-copy-link-btn,
+.sp-row-actions .sp-qr-btn,
+.sp-row-actions .sp-archive-btn {
+    margin: 0;
+    flex: 0 0 auto;
+}
+.sp-row-actions .sp-tag-chips {
+    margin-top: 0;
+}
+.sp-row-actions .sp-item-tag-add {
+    margin-left: 0;
 }
 .sp-copy-link-btn {
     flex: 0 0 auto;
@@ -15024,4 +15552,195 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
 [data-theme="indigo"] .sp-od-chart-wrap,
 [data-theme="indigo"] .sp-od-heat {
     background: color-mix(in srgb, var(--card, #111a2b) 92%, #000);
+}
+
+/* SharePoint catalog archive / ignore */
+.sharepoint-source-card.is-archived,
+.sharepoint-source-row.is-archived {
+    opacity: 0.72;
+    border-style: dashed;
+}
+.sharepoint-archive-badge,
+.sp-archive-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, #b45309 16%, transparent);
+    color: #9a3412;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.sharepoint-archive-source-form {
+    display: inline-flex;
+    margin: 0;
+}
+.sp-archive-btn {
+    min-height: 1.85rem;
+    min-width: 1.85rem;
+    padding: 0 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+}
+.sp-archive-btn.is-on {
+    background: color-mix(in srgb, #b45309 14%, transparent);
+    border-color: color-mix(in srgb, #b45309 28%, var(--border, #e2e8f0));
+}
+.sharepoint-project-row.is-archived,
+.sp-dialog-row.is-archived {
+    background: color-mix(in srgb, #b45309 6%, transparent);
+}
+.sharepoint-project-row.is-archived .sp-file-name,
+.sp-dialog-row.is-archived .sp-file-name {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    opacity: 0.85;
+}
+.sp-search-archived.is-active,
+.sp-search-archived[aria-pressed="true"] {
+    background: rgba(180, 83, 9, 0.12);
+    color: #9a3412;
+    border-color: rgba(180, 83, 9, 0.28);
+}
+.sharepoint-scope-chip.is-archived:not(.is-archive-revealed) {
+    display: none;
+}
+.sharepoint-scope-chip.is-archived.is-archive-revealed {
+    opacity: 0.75;
+    border-style: dashed;
+}
+
+/* Help & About two-pane */
+.help-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 16rem) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    margin: 0 0 1.5rem;
+}
+.help-toc {
+    position: sticky;
+    top: calc(var(--topbar-sticky-height, 72px) + 12px);
+    max-height: calc(100vh - var(--topbar-sticky-height, 72px) - 24px);
+    overflow: auto;
+    padding: 1rem 1rem 1.1rem;
+}
+.help-toc-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+}
+.help-toc-group {
+    margin: 0 0 0.85rem;
+}
+.help-toc-group:last-child {
+    margin-bottom: 0;
+}
+.help-toc-group-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft, #5b6b7c);
+}
+.help-toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+}
+.help-toc-link {
+    display: block;
+    padding: 0.4rem 0.55rem;
+    border-radius: var(--radius-sm, 8px);
+    color: var(--ink, #0c1524);
+    text-decoration: none;
+    font-size: 0.92rem;
+    line-height: 1.3;
+    border: 1px solid transparent;
+}
+.help-toc-link:hover {
+    background: color-mix(in srgb, var(--primary, #0e7490) 10%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 22%, var(--line, #d5dee8));
+}
+.help-toc-link:focus-visible {
+    outline: 2px solid var(--primary, #0e7490);
+    outline-offset: 1px;
+}
+.help-toc-link.is-active,
+.help-toc-link[aria-current="true"] {
+    background: color-mix(in srgb, var(--primary, #0e7490) 16%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 38%, var(--line, #d5dee8));
+    color: var(--primary, #0e7490);
+    font-weight: 650;
+}
+.help-article {
+    padding: 1.15rem 1.25rem 1.35rem;
+    min-height: 16rem;
+}
+.help-article-kicker {
+    margin: 0 0 0.25rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft, #5b6b7c);
+}
+.help-article h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.35rem;
+}
+.help-article-body p,
+.help-article-body ul {
+    margin: 0 0 0.75rem;
+    color: var(--ink, #0c1524);
+    font-size: 0.98rem;
+    line-height: 1.55;
+}
+.help-article-body ul {
+    padding-left: 1.2rem;
+}
+.help-article-body li + li {
+    margin-top: 0.28rem;
+}
+.help-article-body a {
+    color: var(--primary, #0e7490);
+    font-weight: 650;
+}
+.help-article-body code {
+    font-size: 0.88em;
+    padding: 0.08em 0.32em;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--primary, #0e7490) 8%, var(--paper, #e8eef3));
+}
+html.is-compact .help-toc {
+    padding: 0.75rem;
+}
+html.is-compact .help-article {
+    padding: 0.9rem 1rem 1.1rem;
+}
+html.is-compact .help-article h2 {
+    font-size: 1.2rem;
+}
+@media (max-width: 900px) {
+    .help-layout {
+        grid-template-columns: 1fr;
+    }
+    .help-toc {
+        position: static;
+        max-height: none;
+    }
+}
+[data-theme="indigo"] .help-toc-link.is-active,
+[data-theme="indigo"] .help-toc-link[aria-current="true"] {
+    color: #7dd3fc;
+}
+[data-theme="indigo"] .help-article-body code {
+    background: color-mix(in srgb, #7dd3fc 12%, var(--card, #111a2b));
 }

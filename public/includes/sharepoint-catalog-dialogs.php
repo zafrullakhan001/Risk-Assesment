@@ -36,6 +36,18 @@ declare(strict_types=1);
                                 <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders">⬇ Expand all</button>
                                 <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders">⬆ Collapse all</button>
                             </div>
+                            <details class="sp-compare-columns-picker" id="sharepoint-project-columns-picker">
+                                <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
+                                <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size" checked> Size</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created" checked> Created</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by" checked> Modified By</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Copy, QR &amp; tags</label>
+                                </div>
+                            </details>
                             <label class="sp-view-select">
                                 <span>Show</span>
                                 <select id="sharepoint-project-dialog-kind" aria-label="Show files and/or folders">
@@ -85,31 +97,32 @@ declare(strict_types=1);
                         <table class="sharepoint-projects-table sharepoint-dialog-table">
                             <thead>
                                 <tr>
-                                    <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" aria-sort="ascending">
+                                    <th scope="col" class="is-sortable is-sorted-asc" data-col="name" data-sort="name" aria-sort="ascending">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="name">📄 Name</button>
                                     </th>
-                                    <th scope="col" class="is-sortable" data-sort="type" aria-sort="none">
+                                    <th scope="col" class="is-sortable" data-col="type" data-sort="type" aria-sort="none">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="type">🏷️ Type</button>
                                     </th>
-                                    <th scope="col" class="is-sortable" data-sort="size" aria-sort="none">
+                                    <th scope="col" class="is-sortable" data-col="size" data-sort="size" aria-sort="none">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="size">📦 Size</button>
                                     </th>
-                                    <th scope="col" class="is-sortable" data-sort="modified" aria-sort="none">
+                                    <th scope="col" class="is-sortable" data-col="modified" data-sort="modified" aria-sort="none">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="modified">🕒 Modified</button>
                                     </th>
-                                    <th scope="col" class="is-sortable" data-sort="created" aria-sort="none">
+                                    <th scope="col" class="is-sortable" data-col="created" data-sort="created" aria-sort="none">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="created">📅 Created</button>
                                     </th>
-                                    <th scope="col" class="is-sortable" data-sort="modified_by" aria-sort="none">
+                                    <th scope="col" class="is-sortable" data-col="modified_by" data-sort="modified_by" aria-sort="none">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by">👤 Modified By</button>
                                     </th>
-                                    <th scope="col" class="is-sortable" data-sort="created_by" aria-sort="none">
+                                    <th scope="col" class="is-sortable" data-col="created_by" data-sort="created_by" aria-sort="none">
                                         <button type="button" class="sp-dialog-sort-btn" data-sort="created_by">🙋 Created By</button>
                                     </th>
+                                    <th scope="col" data-col="actions">Copy / QR / Tags</th>
                                 </tr>
                             </thead>
                             <tbody id="sharepoint-project-dialog-rows">
-                                <tr><td colspan="7" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>
+                                <tr><td colspan="8" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -175,6 +188,7 @@ declare(strict_types=1);
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by"> Modified By</label>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="diff" checked> Diff</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Copy, QR &amp; tags</label>
                                 </div>
                             </details>
                         </div>
@@ -253,10 +267,11 @@ declare(strict_types=1);
                                             </th>
                                             <th scope="col" data-col="diff">Diff</th>
                                             <th scope="col" data-col="hide" class="sp-compare-hide-col"><span class="visually-hidden">Hide</span></th>
+                                            <th scope="col" data-col="actions">Copy / QR / Tags</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sharepoint-compare-left-rows">
-                                        <tr><td colspan="9" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
+                                        <tr><td colspan="10" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -321,10 +336,11 @@ declare(strict_types=1);
                                             </th>
                                             <th scope="col" data-col="diff">Diff</th>
                                             <th scope="col" data-col="hide" class="sp-compare-hide-col"><span class="visually-hidden">Hide</span></th>
+                                            <th scope="col" data-col="actions">Copy / QR / Tags</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sharepoint-compare-mid-rows">
-                                        <tr><td colspan="9" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
+                                        <tr><td colspan="10" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -389,10 +405,11 @@ declare(strict_types=1);
                                             </th>
                                             <th scope="col" data-col="diff">Diff</th>
                                             <th scope="col" data-col="hide" class="sp-compare-hide-col"><span class="visually-hidden">Hide</span></th>
+                                            <th scope="col" data-col="actions">Copy / QR / Tags</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sharepoint-compare-right-rows">
-                                        <tr><td colspan="9" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
+                                        <tr><td colspan="10" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
                                     </tbody>
                                 </table>
                             </div>

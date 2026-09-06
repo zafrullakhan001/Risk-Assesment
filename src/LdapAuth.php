@@ -347,6 +347,70 @@ final class LdapAuth
     }
 
     /**
+     * Full live directory profile for admin inspection (groups, lock status, all readable attrs).
+     * Passwords and other secrets are never returned.
+     *
+     * @return array{
+     *   profile: array{username: string, email: string, display_name: string, dn: string, groups: list<string>},
+     *   status: array{
+     *     enabled: bool,
+     *     disabled: bool,
+     *     locked: bool,
+     *     password_expired: bool,
+     *     must_change_password: bool,
+     *     password_never_expires: bool,
+     *     account_expired: bool,
+     *     badges: list<array{label: string, tone: string}>,
+     *     notes: list<string>
+     *   },
+     *   groups: list<array{cn: string, dn: string}>,
+     *   fields: array<string, string>,
+     *   timestamps: array<string, string>,
+     *   attributes: array<string, string|list<string>>
+     * }
+     */
+    public function lookupUserDetails(string $username, int $serverIndex = 0): array
+    {
+        if (!extension_loaded('ldap')) {
+            throw new RuntimeException('PHP LDAP extension is not loaded. Enable it in php.ini.');
+        }
+        $username = trim($username);
+        if ($username === '') {
+            throw new RuntimeException('LDAP username is required.');
+        }
+
+        $server = $this->serverAt($serverIndex);
+
+        return $this->lookupUserDetailsAgainst($server, $username);
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{
+     *   profile: array{username: string, email: string, display_name: string, dn: string, groups: list<string>},
+     *   status: array{
+     *     enabled: bool,
+     *     disabled: bool,
+     *     locked: bool,
+     *     password_expired: bool,
+     *     must_change_password: bool,
+     *     password_never_expires: bool,
+     *     account_expired: bool,
+     *     badges: list<array{label: string, tone: string}>,
+     *     notes: list<string>
+     *   },
+     *   groups: list<array{cn: string, dn: string}>,
+     *   fields: array<string, string>,
+     *   timestamps: array<string, string>,
+     *   attributes: array<string, string|list<string>>
+     * }
+     */
+    public function lookupUserDetailsAgainstServer(array $server, string $username): array
+    {
+        return $this->lookupUserDetailsAgainst(array_merge(self::defaultServer(), $server), trim($username));
+    }
+
+    /**
      * Search directory users by username, display name, email, or common name (substring match).
      *
      * @return list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>
@@ -511,6 +575,86 @@ final class LdapAuth
             $loginName = $this->usernameFromEntry($found['entry'], $username);
 
             return $this->extractProfile($server, $loginName, $found['entry'], $found['dn']);
+        } finally {
+            if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
+                @ldap_unbind($connection);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{
+     *   profile: array{username: string, email: string, display_name: string, dn: string, groups: list<string>},
+     *   status: array{
+     *     enabled: bool,
+     *     disabled: bool,
+     *     locked: bool,
+     *     password_expired: bool,
+     *     must_change_password: bool,
+     *     password_never_expires: bool,
+     *     account_expired: bool,
+     *     badges: list<array{label: string, tone: string}>,
+     *     notes: list<string>
+     *   },
+     *   groups: list<array{cn: string, dn: string}>,
+     *   fields: array<string, string>,
+     *   timestamps: array<string, string>,
+     *   attributes: array<string, string|list<string>>
+     * }
+     */
+    private function lookupUserDetailsAgainst(array $server, string $username): array
+    {
+        $host = trim((string) ($server['server'] ?? ''));
+        if ($host === '') {
+            throw new RuntimeException('LDAP server host is not configured.');
+        }
+        if ($username === '') {
+            throw new RuntimeException('LDAP username is required.');
+        }
+
+        if (!$this->nativeLdapUsable()) {
+            $result = $this->runCliWorker('lookup_details', [
+                'server' => $server,
+                'username' => $username,
+            ]);
+            if (empty($result['success']) || !is_array($result['details'] ?? null)) {
+                throw new RuntimeException((string) ($result['message'] ?? 'LDAP user details lookup failed.'));
+            }
+
+            /** @var array{
+             *   profile: array{username: string, email: string, display_name: string, dn: string, groups: list<string>},
+             *   status: array{
+             *     enabled: bool,
+             *     disabled: bool,
+             *     locked: bool,
+             *     password_expired: bool,
+             *     must_change_password: bool,
+             *     password_never_expires: bool,
+             *     account_expired: bool,
+             *     badges: list<array{label: string, tone: string}>,
+             *     notes: list<string>
+             *   },
+             *   groups: list<array{cn: string, dn: string}>,
+             *   fields: array<string, string>,
+             *   timestamps: array<string, string>,
+             *   attributes: array<string, string|list<string>>
+             * } $details */
+            $details = $result['details'];
+
+            return $details;
+        }
+
+        $connection = $this->connect($server);
+        try {
+            $this->serviceBind($connection, $server);
+            $found = $this->findUserByUsername($connection, $server, $username);
+            $full = $this->readEntry($connection, $server, $found['dn'], ['*', '+']);
+            $entry = is_array($full['entry'] ?? null) ? $full['entry'] : $found['entry'];
+            $dn = (string) ($full['dn'] ?? $found['dn']);
+            $loginName = $this->usernameFromEntry($entry, $username);
+
+            return $this->buildUserDetails($server, $loginName, $entry, $dn);
         } finally {
             if (is_resource($connection) || $connection instanceof \LDAP\Connection) {
                 @ldap_unbind($connection);
@@ -1189,6 +1333,480 @@ final class LdapAuth
             'dn' => $userDn,
             'groups' => $this->collectGroups($entry),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array<string, mixed> $entry
+     * @return array{
+     *   profile: array{username: string, email: string, display_name: string, dn: string, groups: list<string>},
+     *   status: array{
+     *     enabled: bool,
+     *     disabled: bool,
+     *     locked: bool,
+     *     password_expired: bool,
+     *     must_change_password: bool,
+     *     password_never_expires: bool,
+     *     account_expired: bool,
+     *     badges: list<array{label: string, tone: string}>,
+     *     notes: list<string>
+     *   },
+     *   groups: list<array{cn: string, dn: string}>,
+     *   fields: array<string, string>,
+     *   timestamps: array<string, string>,
+     *   attributes: array<string, string|list<string>>
+     * }
+     */
+    private function buildUserDetails(array $server, string $username, array $entry, string $userDn): array
+    {
+        $profile = $this->extractProfile($server, $username, $entry, $userDn);
+        $flat = $this->flattenLdapEntry($entry);
+        $groupDns = $profile['groups'];
+        $groups = [];
+        foreach ($groupDns as $groupDn) {
+            $groups[] = [
+                'cn' => $this->cnFromDn($groupDn) ?: $groupDn,
+                'dn' => $groupDn,
+            ];
+        }
+        usort($groups, static fn (array $a, array $b): int => strcasecmp($a['cn'], $b['cn']));
+
+        $highlightKeys = [
+            'title', 'department', 'company', 'manager', 'telephoneNumber', 'mobile',
+            'homePhone', 'pager', 'facsimileTelephoneNumber', 'physicalDeliveryOfficeName',
+            'streetAddress', 'l', 'st', 'postalCode', 'c', 'co', 'givenName', 'sn', 'initials',
+            'description', 'employeeID', 'employeeNumber', 'info', 'wWWHomePage', 'url',
+            'userPrincipalName', 'sAMAccountName', 'uid', 'cn', 'mail', 'displayName',
+        ];
+        $fields = [];
+        foreach ($highlightKeys as $key) {
+            $value = $this->attributeDisplayValue($flat, $key);
+            if ($value !== '') {
+                $fields[$key] = $value;
+            }
+        }
+
+        $timestamps = $this->extractReadableTimestamps($flat);
+        $status = $this->decodeAccountStatus($flat);
+
+        $skipFromDump = array_merge(
+            array_map('strtolower', array_keys($fields)),
+            array_map('strtolower', array_keys($timestamps)),
+            ['memberof', 'dn', 'count']
+        );
+        $attributes = [];
+        foreach ($flat as $name => $values) {
+            if (in_array(strtolower($name), $skipFromDump, true)) {
+                continue;
+            }
+            if ($this->isSecretAttribute($name)) {
+                continue;
+            }
+            $attributes[$name] = count($values) === 1 ? $values[0] : $values;
+        }
+        ksort($attributes, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return [
+            'profile' => $profile,
+            'status' => $status,
+            'groups' => $groups,
+            'fields' => $fields,
+            'timestamps' => $timestamps,
+            'attributes' => $attributes,
+        ];
+    }
+
+    /**
+     * Flatten ldap_get_entries style entry into attr => list of display strings.
+     *
+     * @param array<string, mixed> $entry
+     * @return array<string, list<string>>
+     */
+    private function flattenLdapEntry(array $entry): array
+    {
+        $out = [];
+        foreach ($entry as $key => $value) {
+            if (!is_string($key) || $key === 'count' || is_numeric($key)) {
+                continue;
+            }
+            if ($this->isSecretAttribute($key)) {
+                continue;
+            }
+            if (!is_array($value)) {
+                continue;
+            }
+            $values = [];
+            foreach ($value as $index => $item) {
+                if ($index === 'count' || !is_string($item)) {
+                    continue;
+                }
+                $values[] = $this->stringifyAttributeValue($key, $item);
+            }
+            if ($values !== []) {
+                $out[$key] = array_values(array_unique($values));
+            }
+        }
+
+        return $out;
+    }
+
+    private function isSecretAttribute(string $name): bool
+    {
+        $lower = strtolower($name);
+        $secrets = [
+            'unicodepwd',
+            'userpassword',
+            'ntpwdhistory',
+            'lmpwdhistory',
+            'supplementalcredentials',
+            'msds-managedpassword',
+            'dbcspwd',
+            'krbprimarykey',
+            'sambantpassword',
+            'sambalmpassword',
+            'authpassword',
+            'krbprincipalkey',
+            'userpkcs12',
+            'usersmimecertificate',
+            'msds-keycredentiallink',
+        ];
+
+        return in_array($lower, $secrets, true);
+    }
+
+    private function stringifyAttributeValue(string $name, string $raw): string
+    {
+        $lower = strtolower($name);
+        if ($raw === '') {
+            return '';
+        }
+
+        if ($lower === 'objectsid') {
+            $sid = $this->decodeObjectSid($raw);
+            if ($sid !== '') {
+                return $sid;
+            }
+        }
+        if ($lower === 'objectguid' || $lower === 'msexchmailboxguid') {
+            $guid = $this->decodeObjectGuid($raw);
+            if ($guid !== '') {
+                return $guid;
+            }
+        }
+
+        if (!mb_check_encoding($raw, 'UTF-8') || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', $raw) === 1) {
+            return 'binary (' . strlen($raw) . ' bytes)';
+        }
+
+        return $raw;
+    }
+
+    private function decodeObjectSid(string $binary): string
+    {
+        $length = strlen($binary);
+        if ($length < 8) {
+            return '';
+        }
+        $revision = ord($binary[0]);
+        $subCount = ord($binary[1]);
+        if ($length < 8 + ($subCount * 4)) {
+            return '';
+        }
+        $authority = 0;
+        for ($i = 2; $i <= 7; $i++) {
+            $authority = ($authority << 8) | ord($binary[$i]);
+        }
+        $parts = ['S', (string) $revision, (string) $authority];
+        for ($i = 0; $i < $subCount; $i++) {
+            $chunk = substr($binary, 8 + ($i * 4), 4);
+            $unpacked = unpack('V', $chunk);
+            if ($unpacked === false) {
+                return '';
+            }
+            $parts[] = (string) $unpacked[1];
+        }
+
+        return implode('-', $parts);
+    }
+
+    private function decodeObjectGuid(string $binary): string
+    {
+        if (strlen($binary) !== 16) {
+            return '';
+        }
+        $hex = bin2hex($binary);
+
+        return sprintf(
+            '%s-%s-%s-%s-%s',
+            substr($hex, 6, 2) . substr($hex, 4, 2) . substr($hex, 2, 2) . substr($hex, 0, 2),
+            substr($hex, 10, 2) . substr($hex, 8, 2),
+            substr($hex, 14, 2) . substr($hex, 12, 2),
+            substr($hex, 16, 4),
+            substr($hex, 20, 12)
+        );
+    }
+
+    /**
+     * @param array<string, list<string>> $flat
+     */
+    private function attributeDisplayValue(array $flat, string $name): string
+    {
+        $lower = strtolower($name);
+        foreach ($flat as $key => $values) {
+            if (strtolower($key) !== $lower || $values === []) {
+                continue;
+            }
+
+            return implode(', ', $values);
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, list<string>> $flat
+     * @return array<string, string>
+     */
+    private function extractReadableTimestamps(array $flat): array
+    {
+        $filetimeAttrs = [
+            'lockoutTime',
+            'pwdLastSet',
+            'lastLogon',
+            'lastLogonTimestamp',
+            'badPasswordTime',
+            'lastLogoff',
+            'accountExpires',
+            'msDS-UserPasswordExpiryTimeComputed',
+        ];
+        $generalizedAttrs = [
+            'whenCreated',
+            'whenChanged',
+            'createTimestamp',
+            'modifyTimestamp',
+            'pwdChangedTime',
+            'pwdAccountLockedTime',
+            'pwdFailureTime',
+            'pwdEndTime',
+            'pwdStartTime',
+        ];
+
+        $out = [];
+        foreach ($filetimeAttrs as $attr) {
+            $raw = $this->attributeDisplayValue($flat, $attr);
+            if ($raw === '') {
+                continue;
+            }
+            $label = $attr;
+            if ($attr === 'accountExpires' && ($raw === '0' || $raw === '9223372036854775807')) {
+                $out[$label] = 'Never';
+                continue;
+            }
+            if (($attr === 'lockoutTime' || $attr === 'pwdLastSet') && $raw === '0') {
+                $out[$label] = $attr === 'pwdLastSet' ? 'Never set / must change' : 'Not locked';
+                continue;
+            }
+            $converted = $this->windowsFileTimeToUtc($raw);
+            $out[$label] = $converted !== '' ? $converted : $raw;
+        }
+        foreach ($generalizedAttrs as $attr) {
+            $raw = $this->attributeDisplayValue($flat, $attr);
+            if ($raw === '') {
+                continue;
+            }
+            $converted = $this->ldapGeneralizedTimeToUtc($raw);
+            $out[$attr] = $converted !== '' ? $converted : $raw;
+        }
+        ksort($out, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $out;
+    }
+
+    private function windowsFileTimeToUtc(string $raw): string
+    {
+        if (!ctype_digit($raw) || $raw === '0') {
+            return '';
+        }
+        // 100-nanosecond intervals since 1601-01-01 UTC → Unix seconds
+        if (strlen($raw) > 18) {
+            return '';
+        }
+        $ft = (int) $raw;
+        if ($ft <= 0) {
+            return '';
+        }
+        $unix = intdiv($ft, 10000000) - 11644473600;
+        if ($unix < 0 || $unix > 4102444800) {
+            return '';
+        }
+        $dt = gmdate('Y-m-d H:i:s', $unix);
+
+        return $dt !== false ? $dt . ' UTC' : '';
+    }
+
+    private function ldapGeneralizedTimeToUtc(string $raw): string
+    {
+        if (preg_match('/^(\d{14})(?:\.\d+)?Z$/', $raw, $m) !== 1) {
+            return '';
+        }
+        $dt = \DateTimeImmutable::createFromFormat('YmdHis', $m[1], new \DateTimeZone('UTC'));
+        if ($dt === false) {
+            return '';
+        }
+
+        return $dt->format('Y-m-d H:i:s') . ' UTC';
+    }
+
+    /**
+     * @param array<string, list<string>> $flat
+     * @return array{
+     *   enabled: bool,
+     *   disabled: bool,
+     *   locked: bool,
+     *   password_expired: bool,
+     *   must_change_password: bool,
+     *   password_never_expires: bool,
+     *   account_expired: bool,
+     *   badges: list<array{label: string, tone: string}>,
+     *   notes: list<string>
+     * }
+     */
+    private function decodeAccountStatus(array $flat): array
+    {
+        $uac = (int) $this->attributeDisplayValue($flat, 'userAccountControl');
+        $computed = (int) $this->attributeDisplayValue($flat, 'msDS-User-Account-Control-Computed');
+        $lockoutTime = $this->attributeDisplayValue($flat, 'lockoutTime');
+        $pwdLastSet = $this->attributeDisplayValue($flat, 'pwdLastSet');
+        $accountExpires = $this->attributeDisplayValue($flat, 'accountExpires');
+        $pwdAccountLockedTime = $this->attributeDisplayValue($flat, 'pwdAccountLockedTime');
+        $badPwdCount = $this->attributeDisplayValue($flat, 'badPwdCount');
+
+        $disabled = ($uac & 0x0002) === 0x0002;
+        $passwordNeverExpires = ($uac & 0x10000) === 0x10000;
+        $locked = ($computed & 0x0010) === 0x0010
+            || ($uac & 0x0010) === 0x0010
+            || ($lockoutTime !== '' && $lockoutTime !== '0')
+            || $pwdAccountLockedTime !== '';
+        $passwordExpired = ($computed & 0x800000) === 0x800000
+            || ($uac & 0x800000) === 0x800000;
+        $mustChange = $pwdLastSet === '0';
+
+        $accountExpired = false;
+        if ($accountExpires !== '' && $accountExpires !== '0' && $accountExpires !== '9223372036854775807') {
+            $converted = $this->windowsFileTimeToUtc($accountExpires);
+            if ($converted !== '') {
+                $expiresUnix = strtotime(str_replace(' UTC', '', $converted) . ' UTC');
+                if ($expiresUnix !== false && $expiresUnix < time()) {
+                    $accountExpired = true;
+                }
+            }
+        }
+
+        $enabled = !$disabled && !$accountExpired;
+        $badges = [];
+        $notes = [];
+
+        if ($disabled) {
+            $badges[] = ['label' => 'Disabled', 'tone' => 'danger'];
+        } elseif ($accountExpired) {
+            $badges[] = ['label' => 'Account expired', 'tone' => 'danger'];
+        } else {
+            $badges[] = ['label' => 'Enabled', 'tone' => 'ok'];
+        }
+        if ($locked) {
+            $badges[] = ['label' => 'Locked', 'tone' => 'danger'];
+        }
+        if ($passwordExpired) {
+            $badges[] = ['label' => 'Password expired', 'tone' => 'warn'];
+        }
+        if ($mustChange) {
+            $badges[] = ['label' => 'Must change password', 'tone' => 'warn'];
+        }
+        if ($passwordNeverExpires) {
+            $badges[] = ['label' => 'Password never expires', 'tone' => 'info'];
+        }
+        if ($badPwdCount !== '' && (int) $badPwdCount > 0) {
+            $notes[] = 'Bad password count: ' . $badPwdCount;
+        }
+        if ($uac > 0) {
+            $flagNames = $this->userAccountControlFlags($uac);
+            if ($flagNames !== []) {
+                $notes[] = 'userAccountControl: ' . implode(', ', $flagNames) . ' (0x' . dechex($uac) . ')';
+            }
+        }
+        if ($computed > 0) {
+            $computedNames = [];
+            if (($computed & 0x0010) === 0x0010) {
+                $computedNames[] = 'LOCKOUT';
+            }
+            if (($computed & 0x800000) === 0x800000) {
+                $computedNames[] = 'PASSWORD_EXPIRED';
+            }
+            if ($computedNames !== []) {
+                $notes[] = 'Computed flags: ' . implode(', ', $computedNames);
+            }
+        }
+        if ($pwdAccountLockedTime !== '') {
+            $notes[] = 'OpenLDAP lock time: ' . ($this->ldapGeneralizedTimeToUtc($pwdAccountLockedTime) ?: $pwdAccountLockedTime);
+        }
+
+        return [
+            'enabled' => $enabled,
+            'disabled' => $disabled,
+            'locked' => $locked,
+            'password_expired' => $passwordExpired,
+            'must_change_password' => $mustChange,
+            'password_never_expires' => $passwordNeverExpires,
+            'account_expired' => $accountExpired,
+            'badges' => $badges,
+            'notes' => $notes,
+        ];
+    }
+
+    /** @return list<string> */
+    private function userAccountControlFlags(int $uac): array
+    {
+        $map = [
+            0x0001 => 'SCRIPT',
+            0x0002 => 'ACCOUNTDISABLE',
+            0x0008 => 'HOMEDIR_REQUIRED',
+            0x0010 => 'LOCKOUT',
+            0x0020 => 'PASSWD_NOTREQD',
+            0x0040 => 'PASSWD_CANT_CHANGE',
+            0x0080 => 'ENCRYPTED_TEXT_PWD_ALLOWED',
+            0x0100 => 'TEMP_DUPLICATE_ACCOUNT',
+            0x0200 => 'NORMAL_ACCOUNT',
+            0x0800 => 'INTERDOMAIN_TRUST_ACCOUNT',
+            0x1000 => 'WORKSTATION_TRUST_ACCOUNT',
+            0x2000 => 'SERVER_TRUST_ACCOUNT',
+            0x10000 => 'DONT_EXPIRE_PASSWORD',
+            0x20000 => 'MNS_LOGON_ACCOUNT',
+            0x40000 => 'SMARTCARD_REQUIRED',
+            0x80000 => 'TRUSTED_FOR_DELEGATION',
+            0x100000 => 'NOT_DELEGATED',
+            0x200000 => 'USE_DES_KEY_ONLY',
+            0x400000 => 'DONT_REQ_PREAUTH',
+            0x800000 => 'PASSWORD_EXPIRED',
+            0x1000000 => 'TRUSTED_TO_AUTH_FOR_DELEGATION',
+            0x04000000 => 'PARTIAL_SECRETS_ACCOUNT',
+        ];
+        $names = [];
+        foreach ($map as $bit => $label) {
+            if (($uac & $bit) === $bit) {
+                $names[] = $label;
+            }
+        }
+
+        return $names;
+    }
+
+    private function cnFromDn(string $dn): string
+    {
+        if (preg_match('/^CN=([^,]+)/i', $dn, $matches) === 1) {
+            return str_replace('\\', '', $matches[1]);
+        }
+
+        return '';
     }
 
     /**
