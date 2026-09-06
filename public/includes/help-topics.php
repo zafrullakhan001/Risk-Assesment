@@ -106,10 +106,10 @@ HTML,
                     'id' => 'upload',
                     'title' => 'Upload an assessment',
                     'html' => <<<'HTML'
-<p>Open <a href="index.php#upload">Upload assessment</a> and choose one or more Excel workbooks (<code>.xlsx</code>). The parser accepts:</p>
+<p>Open <a href="index.php#upload">Upload assessment</a>, choose one or more Excel workbooks (<code>.xlsx</code>), then click <strong>Generate dashboard</strong>. The parser accepts:</p>
 <ul>
-<li><strong>Matured Risk Register</strong> — architecture checks, due diligence, governance, and scoring legend tabs.</li>
-<li><strong>Adaptive Architecture</strong> — Question Router, material findings, due diligence evidence, classification, and related sheets.</li>
+<li><strong>Classic Risk Register</strong> (matured) — Architecture sheet (metadata in early rows, checks from the header row), Due Diligence Extension, JSON Due Diligence Summary, governance, and scoring legend.</li>
+<li><strong>Adaptive Architecture</strong> — classify → route → material findings: Question Router, material findings, due diligence evidence, classification, and related sheets.</li>
 </ul>
 <p>A new upload for the same solution name is stored as another version. Open the latest from Find projects, then use Actions → Versions to compare or remove older copies.</p>
 <p>Need a blank file to fill in? Download one from the <a href="templates.php">Template library</a>.</p>
@@ -144,9 +144,9 @@ HTML,
 <li>The score is computed from remaining risks, gaps, TBDs, and high-severity items.</li>
 <li>You can customize the headline and summary, or restore the auto-generated wording.</li>
 <li><strong>Presets</strong> fill both fields; you can still edit before saving.</li>
-<li>A final “ready to go live” decision is recorded under Actions → Final evaluation, not by the score alone.</li>
+<li>A final “ready to go live” decision is recorded under <strong>Actions → Sign-off</strong> (Final evaluation form), not by the score alone.</li>
 </ul>
-<p>Buttons on the desk jump to Actions (risks, sign-off, or a public share link).</p>
+<p>Buttons on the desk jump to Actions (risks, Sign-off, or a public share link).</p>
 HTML,
                 ],
                 [
@@ -158,7 +158,7 @@ HTML,
 <li><strong>Question Router</strong> (adaptive) — selected, conditional, and excluded scenarios by module.</li>
 <li><strong>Architecture checks</strong> or <strong>Material findings</strong> — control status, risk levels, and the register. Adaptive files show Gap / Risk / Decision Required rows here; the router keeps the full catalog.</li>
 <li><strong>Due diligence</strong> — evidence and control-attestation items.</li>
-<li><strong>Actions</strong> — responses, exceptions, sign-off, versions, share, and workspace.</li>
+<li><strong>Actions</strong> — responses, exceptions, Sign-off, versions, and share.</li>
 <li><strong>Diagram &amp; links</strong> — Mermaid diagrams, pictures, and project URLs.</li>
 <li><strong>Governance summary</strong> — classification, exceptions, ADRs, or JSON diligence fields when the workbook has them.</li>
 <li><strong>Scoring legend</strong> — status meanings, risk guidance, and evidence checklist.</li>
@@ -168,18 +168,23 @@ HTML,
                 ],
                 [
                     'id' => 'actions',
-                    'title' => 'Actions, evaluation, and workspace',
+                    'title' => 'Actions and Sign-off',
                     'html' => <<<'HTML'
-<p><strong>Actions</strong> is where you record decisions on open items:</p>
+<p><strong>Actions</strong> is where you record decisions on open items. Use <strong>Finding sources</strong> to narrow the list:</p>
+<ul>
+<li><strong>All sources</strong> — every actionable row.</li>
+<li><strong>Architecture</strong> (matured) or <strong>Material findings</strong> (adaptive) — register findings only.</li>
+<li><strong>Due diligence</strong> — evidence / diligence rows only.</li>
+<li><strong>Sections</strong> chips — further filter by workbook section.</li>
+</ul>
+<p>Action tabs:</p>
 <ul>
 <li><strong>Risks / Gaps / TBD</strong> — set Taken care, Ignore, Not applicable, Closed, or leave Open. Add a comment. History is kept per item.</li>
 <li><strong>Exceptions</strong> — accepted exceptions, mitigations, owners, and timelines. On the register, ✏️ adds comments and up to 5 ServiceNow links.</li>
-<li><strong>Final evaluation</strong> — evaluator name, notes, and ready-to-go-live. Go-live gates summarize what still blocks a clean sign-off.</li>
+<li><strong>Sign-off</strong> — Final evaluation form: evaluator name, notes, and ready-to-go-live. Go-live gates summarize what still blocks a clean sign-off. Sign-off history is kept.</li>
 <li><strong>Versions</strong> — compare and manage uploads of this solution.</li>
 <li><strong>Share</strong> — create or revoke a read-only public link (shown once when created).</li>
-<li><strong>Workspace</strong> — owner workload, remediation timelines, and evidence completeness. Click a row to filter Actions.</li>
 </ul>
-<p>Adaptive workbooks also split actionable rows into <strong>Material findings</strong> and <strong>Due diligence</strong> source sub-tabs.</p>
 HTML,
                 ],
                 [
@@ -225,11 +230,11 @@ HTML,
 <p>Each template can include:</p>
 <ul>
 <li>An Excel workbook (<code>.xlsx</code>).</li>
-<li>An AI prompt file (<code>.txt</code>, <code>.md</code>, or <code>.prompt</code>).</li>
-<li>Up to a handful of guide images (JPG/PNG).</li>
-<li>One Mermaid diagram explaining how to fill the workbook.</li>
+<li>An AI prompt — upload <code>.txt</code> / <code>.md</code> / <code>.prompt</code>, or paste the prompt text in the form.</li>
+<li>Up to <strong>5</strong> guide images (JPG/PNG).</li>
+<li>One Mermaid diagram with <strong>Default</strong> or <strong>ELK</strong> layout and flow direction (TB, LR, and related options).</li>
 </ul>
-<p>Dropping a workbook can auto-save after a moment — add the prompt, images, and Mermaid first if you have them. You can rename, replace files, preview guides, download, or delete a template when you need a free slot.</p>
+<p>Dropping a workbook can auto-save after a moment — add the prompt, images, and Mermaid first if you have them. Use <strong>Open guide</strong> for the popup with images and the diagram. You can rename, replace files, download, or delete a template when you need a free slot.</p>
 HTML,
                 ],
             ],
@@ -246,7 +251,7 @@ HTML,
 <ul>
 <li><strong>Comfort / Compact / Table</strong> change how folder cards look. Compact leaves more room for search.</li>
 <li>You can open folders, the catalog, or Owners in a <strong>new tab</strong> or a <strong>separate window</strong>.</li>
-<li>The section board lets you <strong>reorder panels</strong> (folders, search, owners, shares). Use Reset section order to restore the default.</li>
+<li>The section board lets you <strong>reorder panels</strong> (folders, catalog share, owners, owners share, search, projects, admin). Use Reset section order to restore the default.</li>
 <li>On the project table, select <strong>2–3 folders</strong> and open <strong>Compare selected</strong> for a side-by-side view. Use the Columns picker to show or hide fields (including Copy, QR, and tags).</li>
 <li>Each project row has a <strong>QR</strong> button so you can scan the SharePoint folder URL on a phone (print or copy from the dialog).</li>
 </ul>
@@ -257,15 +262,18 @@ HTML,
                     'id' => 'sharepoint-search',
                     'title' => 'Search, compare, and tags',
                     'html' => <<<'HTML'
-<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Select more than one catalog to see where a project is found and where it is missing.</p>
+<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Select more than one catalog to see where a project is found and where it is missing. The search card also has Comfort / Compact density.</p>
 <p>Search operators and toggles:</p>
 <ul>
 <li><code>tag:name</code>, <code>ext:pdf</code>, <code>type:visio</code>, <code>person:"Last, First"</code>, <code>path:drawings</code>, <code>has:pdf</code>, <code>"exact phrase"</code>, and <code>-exclude</code>.</li>
 <li><strong>Fuzzy</strong> — tolerate typos and similar-sounding words (for example Encore ≈ Encor).</li>
 <li><strong>Deep files</strong> — walk every cataloged file alongside the folder (names and paths, not file contents).</li>
+<li><strong>Suggest</strong> — show query suggestions while typing.</li>
+<li><strong>AND / OR</strong> — require every word or any word.</li>
 <li><strong>Show archived</strong> (admins) — include catalogs, projects, and files you hid so you can restore them.</li>
+<li><strong>Recent</strong> — browser-local chips for recent queries.</li>
 </ul>
-<p>Refine further with file-type chips, person, catalog presence (Any / All / Only / Missing), “projects that contain,” and “projects that lack.” <strong>Save search</strong> pins the query and filters; <strong>Export CSV</strong> downloads the full filtered set. Press <code>/</code> to focus the search box.</p>
+<p>Open <strong>Advanced</strong> for date, person, catalog presence (Any / All / Only / Missing), “projects that contain,” and “projects that lack,” plus file-type chips. <strong>Save search</strong> pins the query and filters; <strong>Export CSV</strong> downloads the full filtered set. Press <code>/</code> to focus the search box.</p>
 <p>Open a project row for the workspace dialog: files, Copy / QR / tags, archive, and related actions. Admins maintain the reusable <strong>search tag</strong> list.</p>
 HTML,
                 ],
@@ -275,37 +283,38 @@ HTML,
                     'html' => <<<'HTML'
 <p>Folder cards stay useful only if the listing is current. Admins can refresh a catalog in several ways:</p>
 <ul>
-<li><strong>Sync</strong> — one-click Microsoft sign-in (MFA in a popup). Allow popups for this site. Needs Tenant ID and Client ID saved under SharePoint settings.</li>
-<li><strong>Console sync</strong> — fallback: copy a script, paste it into the SharePoint browser console after MFA, then wait for completion.</li>
+<li><strong>One-click Sync</strong> (recommended) — Microsoft sign-in with MFA in a popup. Allow popups for this site. Needs Tenant ID and Client ID only (no client secret). Uses a local Microsoft sign-in library.</li>
+<li><strong>Console sync</strong> — fallback with no Entra app: prepare, copy the script, paste it into the SharePoint browser console after MFA, then wait for completion.</li>
 <li><strong>Graph sync</strong> — app-only connection with a client secret (daemon-style, no interactive login).</li>
 <li><strong>Excel / CSV import</strong> — replace the catalog from a listing file (Name/Path columns).</li>
 </ul>
-<p>Admins can also reindex search and purge a catalog. Entra app setup (redirect URI, <code>Sites.Read.All</code> consent) is an IT task; ask an administrator if Sync is not offered yet.</p>
+<p>Under SharePoint settings, <strong>Folder action buttons</strong> can show or hide One-click Sync and Console sync on each folder card. Admins can also reindex search and purge a catalog (type <code>PURGE</code>; optional clear of search tags; VACUUM after purge). Entra app setup (redirect URI, <code>Sites.Read.All</code> consent) is an IT task; ask an administrator if One-click Sync is not offered yet.</p>
 HTML,
                 ],
                 [
                     'id' => 'sharepoint-owners',
                     'title' => 'Owners dashboard',
                     'html' => <<<'HTML'
-<p>The <strong>Owners</strong> view (top bar on SharePoint, or a solo window) shows owner × period insights across the catalogs you select.</p>
+<p>The <strong>Project owners</strong> view (top bar on SharePoint, or a solo window) shows owner × period insights across the catalogs you select.</p>
 <ul>
 <li>Group time by <strong>month</strong>, <strong>quarter</strong>, or <strong>year</strong>; filter by year; search people or projects.</li>
-<li><strong>Sort</strong> the leaderboard (projects, activity, and related options). Click a cell to see the folders in that period.</li>
+<li>Quick chips include <strong>This year</strong>, <strong>Touched this quarter</strong>, <strong>Quiet 12+ months</strong>, <strong>Unassigned</strong>, <strong>Undated</strong>, and <strong>Has assessment</strong>.</li>
+<li><strong>Sort</strong> the leaderboard (projects, streak, items, newest owners, and related options). Click a cell to see the folders in that period.</li>
 <li>Select <strong>2–3 owners</strong> and open <strong>Compare</strong> for a side-by-side view. Export <strong>CSV</strong> or <strong>Print</strong> a snapshot.</li>
 <li>Scope which catalogs count toward the stats; optional catalog colors make sources easier to tell apart.</li>
-<li>Create a <strong>public owners link</strong> so people browse only the owner cards without signing in.</li>
+<li>Create a <strong>public owners link</strong> (<strong>Share project owner cards</strong>) so people browse only the owner cards without signing in.</li>
 </ul>
 <p>Recipients of that link cannot sync, edit folders, or open assessments.</p>
 HTML,
                 ],
                 [
                     'id' => 'sharepoint-archive',
-                    'title' => 'Archive and ignore',
+                    'title' => 'Archive',
                     'html' => <<<'HTML'
-<p>Archive hides a catalog, a project, or a file/folder path from everyday search without deleting SharePoint. Flags survive a resync because they are keyed by source, project, and relative path.</p>
+<p><strong>Archive</strong> hides a catalog, a project, or a file/folder path from everyday search without deleting SharePoint. Flags survive a resync because they are keyed by source, project, and relative path.</p>
 <ul>
 <li>Non-admins do not see archived items in search.</li>
-<li>Admins can reveal archived rows and turn archive off.</li>
+<li>Admins can use <strong>Show archived</strong> to reveal hidden rows and turn archive off (restore).</li>
 </ul>
 <p>Use archive for noise (duplicates, retired folders, working files) rather than for access control. True permission still lives in SharePoint and in who you give public links to.</p>
 HTML,
@@ -333,14 +342,14 @@ HTML,
                     'id' => 'share-catalog',
                     'title' => 'Share catalog and owners',
                     'html' => <<<'HTML'
-<p>On SharePoint, administrators can create public links for <strong>catalog cards</strong> or <strong>owner cards</strong> only.</p>
+<p>On SharePoint, administrators can create public links under <strong>Share catalog cards</strong> or <strong>Share project owner cards</strong>.</p>
 <ul>
 <li>Recipients browse and search the selected catalogs (or owners) without signing in — including live search operators where the public card allows them.</li>
 <li>They cannot sync, edit folders, or open assessments.</li>
 <li>Uncheck any catalog you want to keep private. A tag/label is required so you can tell links apart.</li>
 <li>There is a maximum number of active links. Copy the URL when it appears — it is shown only once. Revoke when finished.</li>
 </ul>
-<p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. Signed-in users can still open <strong>QR</strong> on a project row to scan the SharePoint folder on a phone.</p>
+<p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. On the signed-in catalog, project rows also have <strong>QR</strong> so you can scan the SharePoint folder URL on a phone.</p>
 HTML,
                 ],
             ],
@@ -353,11 +362,11 @@ HTML,
                     'id' => 'sign-in',
                     'title' => 'Sign in, local, and LDAP',
                     'html' => <<<'HTML'
-<p>Open the sign-in page and choose <strong>Auto</strong> (LDAP first, then local), <strong>Local</strong>, or <strong>LDAP</strong> when both are enabled. <strong>Remember me</strong> keeps this browser signed in longer. Usernames that contain <code>@localhost</code> skip LDAP.</p>
+<p>Open the sign-in page and choose <strong>Auto (LDAP, then local)</strong>, <strong>LDAP directory</strong>, or <strong>Local account</strong> when both are enabled. <strong>Remember me for 30 days</strong> keeps this browser signed in longer. Usernames that contain <code>@localhost</code> skip LDAP.</p>
 <ul>
 <li><strong>Local accounts</strong> store a password hash. New passwords need 8+ characters, one uppercase letter, one number, and one special character.</li>
-<li><strong>Self-registration</strong> (if enabled) stays pending until an administrator approves it.</li>
-<li><strong>LDAP / Active Directory</strong> checks the password against the directory. Directory passwords are never stored here.</li>
+<li><strong>Self-registration</strong> (if enabled under Authentication) stays pending until an administrator approves it.</li>
+<li><strong>LDAP / Active Directory</strong> checks the password against the directory. Directory passwords are never stored here. Admins can enable auto-create / auto-update / auto-approve for directory sign-ins, and export or import LDAP settings.</li>
 <li>Administrators can search LDAP, open live <strong>LDAP details</strong> (status, groups, org fields — never passwords), add a user, or <strong>preview and import a directory group</strong> (all members or a selected subset).</li>
 </ul>
 <p>The default first admin is <code>admin</code> / <code>admin123</code>. Change that password under Admin → Overview before exposing the app on a network.</p>
@@ -370,8 +379,8 @@ HTML,
 <p>The <strong>Admin</strong> link appears in the top bar for administrators. Open <a href="admin/index.php">Admin overview</a>.</p>
 <ul>
 <li><strong>Users</strong> — create, approve, disable, promote, reset local passwords, bulk-select and delete, search LDAP, add or refresh a directory user, preview a group and import all or selected members, inspect LDAP details, review the audit log. LDAP details never include passwords.</li>
-<li><strong>Authentication</strong> — turn local and LDAP on or off, configure directory servers, test the bind.</li>
-<li><strong>Branding</strong> — title, subtitle, hero text, logo, favicon, footer.</li>
+<li><strong>Authentication</strong> — turn local and LDAP on or off, registration toggle, LDAP auto-create / auto-update / auto-approve, configure directory servers, test the bind, export or import LDAP settings.</li>
+<li><strong>Branding</strong> — brand title, subtitle, browser title, hero text (with <code>*accent*</code> preview), logo, logo size, favicon, footer.</li>
 <li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore. Treat backup files as secrets if encryption is on.</li>
 <li><strong>App updates</strong> — see <a href="#app-updates">App updates</a> for Releases, commits, and zip apply.</li>
 <li><strong>SharePoint</strong> — jump to catalog admin (Tenant ID, Client ID, sync, import).</li>
