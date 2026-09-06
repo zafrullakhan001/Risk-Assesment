@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS catalog_share_links (
     token_hash TEXT NOT NULL UNIQUE,
     source_keys TEXT NOT NULL DEFAULT '',
     kind TEXT NOT NULL DEFAULT 'catalog',
+    label TEXT NOT NULL DEFAULT '',
     created_by_user_id INTEGER,
     created_by_username TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),

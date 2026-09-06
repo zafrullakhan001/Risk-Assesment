@@ -239,6 +239,8 @@ final class Database
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 token_hash TEXT NOT NULL UNIQUE,
                 source_keys TEXT NOT NULL DEFAULT \'\',
+                kind TEXT NOT NULL DEFAULT \'catalog\',
+                label TEXT NOT NULL DEFAULT \'\',
                 created_by_user_id INTEGER,
                 created_by_username TEXT NOT NULL DEFAULT \'\',
                 created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
@@ -252,6 +254,7 @@ final class Database
         self::ensureColumn($pdo, 'catalog_share_links', 'kind', "TEXT NOT NULL DEFAULT 'catalog'");
         $pdo->exec("UPDATE catalog_share_links SET kind = 'catalog' WHERE kind IS NULL OR kind = ''");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_catalog_share_links_kind ON catalog_share_links (kind)');
+        self::ensureColumn($pdo, 'catalog_share_links', 'label', "TEXT NOT NULL DEFAULT ''");
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS template_workbooks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

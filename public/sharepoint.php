@@ -142,6 +142,8 @@ $flash = '';
 $testResult = null;
 $freshCatalogShareUrl = null;
 $freshOwnersShareUrl = null;
+$freshCatalogShareLabel = '';
+$freshOwnersShareLabel = '';
 
 $allSources = $sourcesRepo->listAll();
 $requestedSourceKey = trim((string) ($_GET['source'] ?? $_POST['source'] ?? $_POST['source_key'] ?? ''));
@@ -582,11 +584,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (count($selected) === count($registeredKeys)) {
                     $selected = [];
                 }
-                $created = $catalogShareRepository->create($selected, $currentUser, $shareKind);
-                $sessionKey = $shareKind === CatalogShareRepository::KIND_OWNERS
+                $shareTag = CatalogShareRepository::normalizeLabel((string) ($_POST['share_tag'] ?? ''));
+                $created = $catalogShareRepository->create($selected, $currentUser, $shareKind, $shareTag);
+                $sessionUrlKey = $shareKind === CatalogShareRepository::KIND_OWNERS
                     ? 'fresh_owners_share_url'
                     : 'fresh_catalog_share_url';
-                $_SESSION[$sessionKey] = CatalogShareRepository::absoluteUrl($created['token'], $shareKind);
+                $sessionLabelKey = $shareKind === CatalogShareRepository::KIND_OWNERS
+                    ? 'fresh_owners_share_label'
+                    : 'fresh_catalog_share_label';
+                $_SESSION[$sessionUrlKey] = CatalogShareRepository::absoluteUrl($created['token'], $shareKind);
+                $_SESSION[$sessionLabelKey] = (string) ($created['label'] ?? $shareTag);
                 $auth->users()->logAudit(
                     $shareKind === CatalogShareRepository::KIND_OWNERS
                         ? 'sharepoint.owners_share_created'
@@ -595,16 +602,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (string) $currentUser['username'],
                     null,
                     null,
-                    ['source_keys' => $created['source_keys'], 'kind' => $shareKind]
+                    [
+                        'source_keys' => $created['source_keys'],
+                        'kind' => $shareKind,
+                        'label' => $created['label'],
+                        'share_id' => $created['id'],
+                    ]
                 );
             } elseif (str_starts_with($action, 'revoke_')) {
                 $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
-                if ($shareId > 0) {
-                    $catalogShareRepository->revokeById($shareId);
-                } else {
-                    $catalogShareRepository->revokeAll($shareKind);
+                if ($shareId <= 0) {
+                    throw new RuntimeException('Choose which public link to revoke.');
                 }
-                unset($_SESSION['fresh_catalog_share_url'], $_SESSION['fresh_owners_share_url']);
+                if (!$catalogShareRepository->revokeById($shareId, $shareKind)) {
+                    throw new RuntimeException('That public link is already revoked or was not found.');
+                }
+                unset(
+                    $_SESSION['fresh_catalog_share_url'],
+                    $_SESSION['fresh_owners_share_url'],
+                    $_SESSION['fresh_catalog_share_label'],
+                    $_SESSION['fresh_owners_share_label']
+                );
                 $auth->users()->logAudit(
                     $shareKind === CatalogShareRepository::KIND_OWNERS
                         ? 'sharepoint.owners_share_revoked'
@@ -613,7 +631,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (string) $currentUser['username'],
                     null,
                     null,
-                    ['kind' => $shareKind]
+                    ['kind' => $shareKind, 'share_id' => $shareId]
                 );
             } else {
                 $purged = $catalogShareRepository->purgeHistory($shareKind);
@@ -688,9 +706,17 @@ if (isset($_SESSION['fresh_catalog_share_url'])) {
     $freshCatalogShareUrl = (string) $_SESSION['fresh_catalog_share_url'];
     unset($_SESSION['fresh_catalog_share_url']);
 }
+if (isset($_SESSION['fresh_catalog_share_label'])) {
+    $freshCatalogShareLabel = (string) $_SESSION['fresh_catalog_share_label'];
+    unset($_SESSION['fresh_catalog_share_label']);
+}
 if (isset($_SESSION['fresh_owners_share_url'])) {
     $freshOwnersShareUrl = (string) $_SESSION['fresh_owners_share_url'];
     unset($_SESSION['fresh_owners_share_url']);
+}
+if (isset($_SESSION['fresh_owners_share_label'])) {
+    $freshOwnersShareLabel = (string) $_SESSION['fresh_owners_share_label'];
+    unset($_SESSION['fresh_owners_share_label']);
 }
 
 $shareHistoryPerPage = CatalogShareRepository::HISTORY_PER_PAGE;
@@ -716,10 +742,8 @@ $ownersShareLinks = $catalogShareRepository->listPage(
     $ownersShareHistPage,
     $shareHistoryPerPage
 );
-$catalogShareActiveRow = $catalogShareRepository->findActive(CatalogShareRepository::KIND_CATALOG);
-$ownersShareActiveRow = $catalogShareRepository->findActive(CatalogShareRepository::KIND_OWNERS);
-$catalogShareActive = $catalogShareActiveRow !== null ? [$catalogShareActiveRow] : [];
-$ownersShareActive = $ownersShareActiveRow !== null ? [$ownersShareActiveRow] : [];
+$catalogShareActiveCount = $catalogShareRepository->countActive(CatalogShareRepository::KIND_CATALOG);
+$ownersShareActiveCount = $catalogShareRepository->countActive(CatalogShareRepository::KIND_OWNERS);
 
 $itemCount = $catalog->count($activeSourceKey);
 $projectCount = $catalog->countProjects($activeSourceKey);
@@ -1288,9 +1312,11 @@ $soloPageClass = $ownerSolo
             $shareKind = CatalogShareRepository::KIND_CATALOG;
             $sharePanelId = 'catalog-share-panel';
             $shareHeading = 'Share catalog cards';
-            $shareHelp = 'Create a public link so people can browse <strong>only the catalog cards</strong> and search project folders without signing in. Recipients cannot sync, edit folders, or open assessments. Creating a new link revokes the previous catalog link. Copy the URL when it appears — it is shown only once.';
+            $shareHelp = 'Create public links so people can browse <strong>only the catalog cards</strong> and search project folders without signing in. Recipients cannot sync, edit folders, or open assessments. You can keep up to ' . CatalogShareRepository::MAX_ACTIVE . ' active links. Tag each one so you know who it is for. Copy the URL when it appears — it is shown only once.';
             $shareFreshLabel = 'Copy this public catalog link now';
-            $shareHasActive = $catalogShareActive !== [];
+            $shareFreshTag = $freshCatalogShareLabel;
+            $shareHasActive = $catalogShareActiveCount > 0;
+            $shareActiveCount = $catalogShareActiveCount;
             $shareFreshUrl = $freshCatalogShareUrl;
             $shareLinks = $catalogShareLinks;
             $shareHistoryPage = $catalogShareHistPage;
@@ -1300,10 +1326,10 @@ $soloPageClass = $ownerSolo
             $shareCreateAction = 'create_catalog_share_link';
             $shareRevokeAction = 'revoke_catalog_share_link';
             $sharePurgeAction = 'purge_catalog_share_history';
-            $shareActiveId = (int) ($catalogShareActive[0]['id'] ?? 0);
             $shareForceOpen = ($freshCatalogShareUrl !== null && $freshCatalogShareUrl !== '')
                 || isset($_GET['catalog_shared'])
-                || (int) ($_GET['cshare_page'] ?? 0) > 0;
+                || (int) ($_GET['cshare_page'] ?? 0) > 0
+                || ($error !== '' && str_contains((string) ($_POST['action'] ?? ''), 'catalog_share'));
             $shareView = '';
             require __DIR__ . '/includes/sharepoint-public-share-card.php';
             ?>
@@ -1448,9 +1474,11 @@ $soloPageClass = $ownerSolo
             $shareKind = CatalogShareRepository::KIND_OWNERS;
             $sharePanelId = 'owners-share-panel';
             $shareHeading = 'Share project owner cards';
-            $shareHelp = 'Create a public link so people can browse <strong>only the project owner cards</strong> without signing in. Recipients cannot sync, edit folders, or open assessments. Creating a new link revokes the previous owners link. Copy the URL when it appears — it is shown only once.';
+            $shareHelp = 'Create public links so people can browse <strong>only the project owner cards</strong> without signing in. Recipients cannot sync, edit folders, or open assessments. You can keep up to ' . CatalogShareRepository::MAX_ACTIVE . ' active links. Tag each one so you know who it is for. Copy the URL when it appears — it is shown only once.';
             $shareFreshLabel = 'Copy this public owners link now';
-            $shareHasActive = $ownersShareActive !== [];
+            $shareFreshTag = $freshOwnersShareLabel;
+            $shareHasActive = $ownersShareActiveCount > 0;
+            $shareActiveCount = $ownersShareActiveCount;
             $shareFreshUrl = $freshOwnersShareUrl;
             $shareLinks = $ownersShareLinks;
             $shareHistoryPage = $ownersShareHistPage;
@@ -1460,10 +1488,10 @@ $soloPageClass = $ownerSolo
             $shareCreateAction = 'create_owners_share_link';
             $shareRevokeAction = 'revoke_owners_share_link';
             $sharePurgeAction = 'purge_owners_share_history';
-            $shareActiveId = (int) ($ownersShareActive[0]['id'] ?? 0);
             $shareForceOpen = ($freshOwnersShareUrl !== null && $freshOwnersShareUrl !== '')
                 || isset($_GET['owners_shared'])
-                || (int) ($_GET['oshare_page'] ?? 0) > 0;
+                || (int) ($_GET['oshare_page'] ?? 0) > 0
+                || ($error !== '' && str_contains((string) ($_POST['action'] ?? ''), 'owners_share'));
             $shareView = $ownerSolo ? 'owners' : '';
             require __DIR__ . '/includes/sharepoint-public-share-card.php';
             ?>

@@ -7224,6 +7224,92 @@ html.is-compact .site-footer {
     border-color: color-mix(in srgb, var(--primary) 40%, var(--line));
     background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
+.catalog-share-create-form .share-link-actions {
+    padding: 0;
+    align-items: center;
+}
+.catalog-share-tag {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0 0 12px;
+}
+.catalog-share-tag-label {
+    font-size: 13px;
+    font-weight: 700;
+}
+.catalog-share-tag input {
+    width: 100%;
+    max-width: 28rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--ink);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 14px;
+}
+.catalog-share-tag input:focus {
+    outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+    outline-offset: 1px;
+}
+.catalog-share-tag-hint,
+.catalog-share-quota,
+.catalog-share-limit-note {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+.catalog-share-limit-note {
+    margin: 0 0 10px;
+    color: var(--warn, #b45309);
+    font-weight: 600;
+}
+.catalog-share-quota {
+    font-weight: 700;
+}
+.share-link-row-body {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.55rem;
+}
+.share-link-row-tag {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.share-link-history-compact .share-link-row-body {
+    display: grid;
+    gap: 1px;
+}
+.share-link-history-compact .share-link-row-tag {
+    justify-self: start;
+}
+.share-link-revoke-one {
+    font-size: 12px;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+.share-link-row-revoke {
+    justify-self: end;
+}
+@media (max-width: 720px) {
+    .share-link-history-compact .share-link-row-revoke {
+        grid-column: 1 / -1;
+        justify-self: start;
+    }
+}
 body.is-public-catalog-share .topbar-actions {
     flex-wrap: wrap;
 }

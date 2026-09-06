@@ -15,6 +15,8 @@ final class CatalogShareRepository
     public const KIND_CATALOG = 'catalog';
     public const KIND_OWNERS = 'owners';
     public const HISTORY_PER_PAGE = 8;
+    public const MAX_ACTIVE = 10;
+    public const LABEL_MAX_LENGTH = 60;
 
     public function __construct(
         private readonly PDO $pdo,
@@ -31,16 +33,41 @@ final class CatalogShareRepository
         return self::normalizeKind($kind) === self::KIND_OWNERS ? 'owners-share.php' : 'catalog-share.php';
     }
 
+    public static function normalizeLabel(string $label): string
+    {
+        $label = trim(preg_replace('/\s+/u', ' ', $label) ?? '');
+        $label = strip_tags($label);
+        $label = preg_replace('/[\x00-\x1F\x7F]/', '', $label) ?? '';
+        $label = trim($label);
+        if ($label === '') {
+            return '';
+        }
+        if (function_exists('mb_substr')) {
+            return trim(mb_substr($label, 0, self::LABEL_MAX_LENGTH));
+        }
+
+        return trim(substr($label, 0, self::LABEL_MAX_LENGTH));
+    }
+
     /**
-     * Create a new public share. Revokes any existing active links of the same kind.
+     * Create a new public share. Existing active links of the same kind stay valid (up to MAX_ACTIVE).
      *
      * @param list<string> $sourceKeys Empty list means every catalog at view time.
      * @param array{id?: int, username?: string}|null $actor
-     * @return array{token: string, id: int, created_at: string, url_path: string, source_keys: list<string>, kind: string}
+     * @return array{token: string, id: int, created_at: string, url_path: string, source_keys: list<string>, kind: string, label: string}
      */
-    public function create(array $sourceKeys = [], ?array $actor = null, string $kind = self::KIND_CATALOG): array
-    {
+    public function create(
+        array $sourceKeys = [],
+        ?array $actor = null,
+        string $kind = self::KIND_CATALOG,
+        string $label = '',
+    ): array {
         $kind = self::normalizeKind($kind);
+        $label = self::normalizeLabel($label);
+        if ($label === '') {
+            throw new \RuntimeException('Add a tag so you can tell this public link apart from others.');
+        }
+
         $normalized = $this->normalizeSourceKeys($sourceKeys);
         $token = bin2hex(random_bytes(self::TOKEN_BYTES));
         $tokenHash = $this->hashToken($token);
@@ -50,24 +77,23 @@ final class CatalogShareRepository
 
         $this->pdo->beginTransaction();
         try {
-            $revoke = $this->pdo->prepare(
-                "UPDATE catalog_share_links
-                 SET revoked_at = datetime('now')
-                 WHERE revoked_at IS NULL
-                   AND kind = :kind"
-            );
-            $revoke->execute([':kind' => $kind]);
+            if ($this->countActive($kind) >= self::MAX_ACTIVE) {
+                throw new \RuntimeException(
+                    'You already have ' . self::MAX_ACTIVE . ' active public links. Revoke one before creating another.'
+                );
+            }
 
             $insert = $this->pdo->prepare(
                 'INSERT INTO catalog_share_links (
-                    token_hash, kind, source_keys, created_by_user_id, created_by_username, created_at
+                    token_hash, kind, label, source_keys, created_by_user_id, created_by_username, created_at
                  ) VALUES (
-                    :token_hash, :kind, :source_keys, :created_by_user_id, :created_by_username, datetime(\'now\')
+                    :token_hash, :kind, :label, :source_keys, :created_by_user_id, :created_by_username, datetime(\'now\')
                  )'
             );
             $insert->execute([
                 ':token_hash' => $tokenHash,
                 ':kind' => $kind,
+                ':label' => $label,
                 ':source_keys' => is_string($sourceJson) ? $sourceJson : '',
                 ':created_by_user_id' => $userId > 0 ? $userId : null,
                 ':created_by_username' => $username,
@@ -75,7 +101,9 @@ final class CatalogShareRepository
             $id = (int) $this->pdo->lastInsertId();
             $this->pdo->commit();
         } catch (\Throwable $exception) {
-            $this->pdo->rollBack();
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             throw $exception;
         }
 
@@ -90,22 +118,28 @@ final class CatalogShareRepository
             'url_path' => self::publicFile($kind) . '?t=' . rawurlencode($token),
             'source_keys' => $normalized,
             'kind' => $kind,
+            'label' => $label,
         ];
     }
 
-    public function revokeById(int $shareId): bool
+    public function revokeById(int $shareId, string $kind = ''): bool
     {
         if ($shareId <= 0) {
             return false;
         }
 
-        $statement = $this->pdo->prepare(
-            "UPDATE catalog_share_links
-             SET revoked_at = datetime('now')
-             WHERE id = :id
-               AND revoked_at IS NULL"
-        );
-        $statement->execute([':id' => $shareId]);
+        $sql = "UPDATE catalog_share_links
+                SET revoked_at = datetime('now')
+                WHERE id = :id
+                  AND revoked_at IS NULL";
+        $params = [':id' => $shareId];
+        if ($kind !== '') {
+            $sql .= ' AND kind = :kind';
+            $params[':kind'] = self::normalizeKind($kind);
+        }
+
+        $statement = $this->pdo->prepare($sql);
+        $statement->execute($params);
 
         return $statement->rowCount() > 0;
     }
@@ -156,6 +190,25 @@ final class CatalogShareRepository
         return (int) $statement->fetchColumn();
     }
 
+    public function countActive(string $kind = self::KIND_CATALOG): int
+    {
+        $kind = self::normalizeKind($kind);
+        $statement = $this->pdo->prepare(
+            "SELECT COUNT(*)
+             FROM catalog_share_links
+             WHERE kind = :kind
+               AND (revoked_at IS NULL OR revoked_at = '')
+               AND (
+                    expires_at IS NULL
+                    OR expires_at = ''
+                    OR expires_at >= datetime('now')
+               )"
+        );
+        $statement->execute([':kind' => $kind]);
+
+        return (int) $statement->fetchColumn();
+    }
+
     /**
      * @return array{
      *   id: int,
@@ -174,7 +227,7 @@ final class CatalogShareRepository
         }
 
         $statement = $this->pdo->prepare(
-            'SELECT id, kind, source_keys, created_at, created_by_username, expires_at, revoked_at
+            'SELECT id, kind, label, source_keys, created_at, created_by_username, expires_at, revoked_at
              FROM catalog_share_links
              WHERE token_hash = :token_hash
              LIMIT 1'
@@ -207,6 +260,7 @@ final class CatalogShareRepository
         return [
             'id' => (int) $row['id'],
             'kind' => self::normalizeKind((string) ($row['kind'] ?? self::KIND_CATALOG)),
+            'label' => self::normalizeLabel((string) ($row['label'] ?? '')),
             'source_keys' => $this->decodeSourceKeys((string) ($row['source_keys'] ?? '')),
             'created_at' => (string) ($row['created_at'] ?? ''),
             'created_by_username' => (string) ($row['created_by_username'] ?? ''),
@@ -217,6 +271,7 @@ final class CatalogShareRepository
     /**
      * @return list<array{
      *   id: int,
+     *   label: string,
      *   source_keys: list<string>,
      *   created_at: string,
      *   created_by_username: string,
@@ -233,7 +288,7 @@ final class CatalogShareRepository
         $offset = ($page - 1) * $perPage;
 
         $statement = $this->pdo->prepare(
-            'SELECT id, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
+            'SELECT id, label, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
              FROM catalog_share_links
              WHERE kind = :kind
              ORDER BY id DESC
@@ -251,6 +306,7 @@ final class CatalogShareRepository
     /**
      * @return array{
      *   id: int,
+     *   label: string,
      *   source_keys: list<string>,
      *   created_at: string,
      *   created_by_username: string,
@@ -263,7 +319,7 @@ final class CatalogShareRepository
     {
         $kind = self::normalizeKind($kind);
         $statement = $this->pdo->prepare(
-            "SELECT id, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
+            "SELECT id, label, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
              FROM catalog_share_links
              WHERE kind = :kind
                AND (revoked_at IS NULL OR revoked_at = '')
@@ -288,6 +344,7 @@ final class CatalogShareRepository
     /**
      * @return list<array{
      *   id: int,
+     *   label: string,
      *   source_keys: list<string>,
      *   created_at: string,
      *   created_by_username: string,
@@ -346,6 +403,7 @@ final class CatalogShareRepository
      * @param list<array<string, mixed>> $rows
      * @return list<array{
      *   id: int,
+     *   label: string,
      *   source_keys: list<string>,
      *   created_at: string,
      *   created_by_username: string,
@@ -368,6 +426,7 @@ final class CatalogShareRepository
             }
             $links[] = [
                 'id' => (int) ($row['id'] ?? 0),
+                'label' => self::normalizeLabel((string) ($row['label'] ?? '')),
                 'source_keys' => $this->decodeSourceKeys((string) ($row['source_keys'] ?? '')),
                 'created_at' => (string) ($row['created_at'] ?? ''),
                 'created_by_username' => (string) ($row['created_by_username'] ?? ''),

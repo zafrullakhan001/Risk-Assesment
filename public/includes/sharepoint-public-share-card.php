@@ -12,9 +12,11 @@ use RiskAssessment\Repositories\CatalogShareRepository;
  * @var string $shareHeading
  * @var string $shareHelp
  * @var string $shareFreshLabel
+ * @var string $shareFreshTag
  * @var bool $shareHasActive
+ * @var int $shareActiveCount
  * @var string|null $shareFreshUrl
- * @var list<array{id: int, source_keys: list<string>, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
+ * @var list<array{id: int, label?: string, source_keys: list<string>, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
  * @var int $shareHistoryPage
  * @var int $shareHistoryPages
  * @var int $shareHistoryTotal
@@ -22,7 +24,6 @@ use RiskAssessment\Repositories\CatalogShareRepository;
  * @var string $shareCreateAction
  * @var string $shareRevokeAction
  * @var string $sharePurgeAction
- * @var int $shareActiveId
  * @var string $activeSourceKey
  * @var list<array<string, mixed>> $allSources
  * @var array<string, string> $sourceTitleByKey
@@ -32,22 +33,27 @@ use RiskAssessment\Repositories\CatalogShareRepository;
 
 $shareKind = CatalogShareRepository::normalizeKind((string) ($shareKind ?? CatalogShareRepository::KIND_CATALOG));
 $sharePanelId = (string) ($sharePanelId ?? ($shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners-share-panel' : 'catalog-share-panel'));
-$shareHasActive = !empty($shareHasActive);
+$shareActiveCount = max(0, (int) ($shareActiveCount ?? 0));
+$shareHasActive = !empty($shareHasActive) || $shareActiveCount > 0;
 $shareFreshUrl = isset($shareFreshUrl) ? (string) $shareFreshUrl : '';
+$shareFreshTag = trim((string) ($shareFreshTag ?? ''));
 $shareForceOpen = !empty($shareForceOpen) || $shareFreshUrl !== '';
 $shareHistoryPage = max(1, (int) ($shareHistoryPage ?? 1));
 $shareHistoryPages = max(1, (int) ($shareHistoryPages ?? 1));
 $shareHistoryTotal = max(0, (int) ($shareHistoryTotal ?? 0));
 $shareLinks = is_array($shareLinks ?? null) ? $shareLinks : [];
-$shareActiveId = (int) ($shareActiveId ?? 0);
 $formSuffix = preg_replace('/[^a-z0-9_-]/i', '', $shareKind) ?: 'catalog';
 $createFormId = 'share-create-' . $formSuffix;
-$revokeFormId = 'share-revoke-' . $formSuffix;
 $purgeFormId = 'share-purge-' . $formSuffix;
 $urlInputId = 'share-link-url-' . $formSuffix;
 $copyBtnId = 'btn-copy-share-link-' . $formSuffix;
 $statusId = 'share-link-copy-status-' . $formSuffix;
-$canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
+$tagInputId = 'share-tag-' . $formSuffix;
+$shareAtLimit = $shareActiveCount >= CatalogShareRepository::MAX_ACTIVE;
+$canPurge = $shareHistoryTotal > $shareActiveCount;
+$badgeText = $shareActiveCount > 0
+    ? $shareActiveCount . ' active'
+    : 'Off';
 ?>
 <section class="upload-card share-link-card sharepoint-share-card" id="<?= e($sharePanelId) ?>" data-share-kind="<?= e($shareKind) ?>">
     <details class="sharepoint-share-shell" id="<?= e($sharePanelId) ?>-shell"<?= $shareForceOpen ? ' open' : '' ?>>
@@ -60,7 +66,7 @@ $canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
                 </div>
             </div>
             <div class="sharepoint-share-summary-tools" data-no-toggle onclick="event.stopPropagation()">
-                <span class="result-count result-count-badge"><?= $shareHasActive ? 'Active' : 'Off' ?></span>
+                <span class="result-count result-count-badge"><?= e($badgeText) ?></span>
                 <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
             </div>
         </summary>
@@ -69,7 +75,7 @@ $canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
 
             <?php if ($shareFreshUrl !== ''): ?>
                 <div class="share-link-fresh alert alert-success">
-                    <strong><?= e((string) ($shareFreshLabel ?? 'Copy this public link now')) ?></strong> — it will not be shown again.
+                    <strong><?= e((string) ($shareFreshLabel ?? 'Copy this public link now')) ?><?= $shareFreshTag !== '' ? ' · ' . e($shareFreshTag) : '' ?></strong> — it will not be shown again.
                     <div class="share-link-copy-row">
                         <input type="text" class="share-link-url-input" id="<?= e($urlInputId) ?>" readonly value="<?= e($shareFreshUrl) ?>">
                         <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($urlInputId) ?>" data-copy-status="<?= e($statusId) ?>" id="<?= e($copyBtnId) ?>">📋 Copy</button>
@@ -86,8 +92,22 @@ $canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
                 <?php if (($shareView ?? '') !== ''): ?>
                     <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
                 <?php endif; ?>
+                <label class="catalog-share-tag" for="<?= e($tagInputId) ?>">
+                    <span class="catalog-share-tag-label">Tag</span>
+                    <input
+                        type="text"
+                        name="share_tag"
+                        id="<?= e($tagInputId) ?>"
+                        maxlength="<?= (int) CatalogShareRepository::LABEL_MAX_LENGTH ?>"
+                        required
+                        <?= $shareAtLimit ? 'disabled' : '' ?>
+                        autocomplete="off"
+                        placeholder="e.g. Vendor review, Finance team"
+                    >
+                    <span class="catalog-share-tag-hint">Required. Helps you tell this link apart from the others (max <?= (int) CatalogShareRepository::LABEL_MAX_LENGTH ?> characters).</span>
+                </label>
                 <?php if (count($allSources) > 1): ?>
-                    <fieldset class="catalog-share-scope">
+                    <fieldset class="catalog-share-scope"<?= $shareAtLimit ? ' disabled' : '' ?>>
                         <legend>Catalogs on this link</legend>
                         <p class="panel-help">Leave every box checked to share all catalog cards. Uncheck any catalog you want to keep private.</p>
                         <div class="catalog-share-scope-list">
@@ -97,36 +117,26 @@ $canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
                                 $srcTitle = (string) ($src['title'] ?? $srcKey);
                                 ?>
                                 <label class="catalog-share-scope-chip">
-                                    <input type="checkbox" name="share_source_keys[]" value="<?= e($srcKey) ?>" checked>
+                                    <input type="checkbox" name="share_source_keys[]" value="<?= e($srcKey) ?>" checked<?= $shareAtLimit ? ' disabled' : '' ?>>
                                     <span><?= e($srcTitle) ?></span>
                                 </label>
                             <?php endforeach; ?>
                         </div>
                     </fieldset>
                 <?php endif; ?>
+                <?php if ($shareAtLimit): ?>
+                    <p class="catalog-share-limit-note">You already have <?= (int) CatalogShareRepository::MAX_ACTIVE ?> active public links. Revoke one before creating another.</p>
+                <?php endif; ?>
                 <div class="share-link-actions">
-                    <button type="submit" class="button button-primary">
-                        <?= $shareHasActive ? '🔄 Create new public link' : '🔗 Create public link' ?>
+                    <button type="submit" class="button button-primary"<?= $shareAtLimit ? ' disabled' : '' ?>>
+                        <?= $shareHasActive ? '🔗 Create another public link' : '🔗 Create public link' ?>
                     </button>
-                    <?php if ($shareHasActive): ?>
-                        <button type="submit" class="button danger-btn" form="<?= e($revokeFormId) ?>" onclick="return confirm('Revoke the public link? Anyone with the old URL will lose access.');">🚫 Revoke link</button>
-                    <?php endif; ?>
+                    <span class="catalog-share-quota"><?= (int) $shareActiveCount ?> / <?= (int) CatalogShareRepository::MAX_ACTIVE ?> active</span>
                     <?php if ($canPurge): ?>
-                        <button type="submit" class="button ghost" form="<?= e($purgeFormId) ?>" onclick="return confirm('Permanently delete revoked and expired share history? The active link is kept.');">🧹 Purge history</button>
+                        <button type="submit" class="button ghost" form="<?= e($purgeFormId) ?>" onclick="return confirm('Permanently delete revoked and expired share history? Active links are kept.');">🧹 Purge history</button>
                     <?php endif; ?>
                 </div>
             </form>
-            <?php if ($shareHasActive): ?>
-                <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="<?= e((string) $shareRevokeAction) ?>">
-                    <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
-                    <?php if (($shareView ?? '') !== ''): ?>
-                        <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
-                    <?php endif; ?>
-                    <input type="hidden" name="share_id" value="<?= (int) $shareActiveId ?>">
-                </form>
-            <?php endif; ?>
             <form method="post" id="<?= e($purgeFormId) ?>" class="inline-form">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="<?= e((string) $sharePurgeAction) ?>">
@@ -141,13 +151,16 @@ $canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
             <?php else: ?>
                 <div class="share-link-history share-link-history-compact">
                     <div class="share-link-history-head">
-                        <div class="eyebrow">History</div>
-                        <h3>Recent links</h3>
+                        <div class="eyebrow">Links</div>
+                        <h3>Public links</h3>
                         <span class="share-link-history-count"><?= (int) $shareHistoryTotal ?></span>
                     </div>
                     <ul class="share-link-list">
                         <?php foreach ($shareLinks as $link): ?>
                             <?php
+                            $linkId = (int) ($link['id'] ?? 0);
+                            $linkLabel = trim((string) ($link['label'] ?? ''));
+                            $linkActive = !empty($link['is_active']);
                             $scopeKeys = $link['source_keys'] ?? [];
                             if ($scopeKeys === []) {
                                 $scopeLabel = 'All catalogs';
@@ -165,11 +178,39 @@ $canPurge = $shareHistoryTotal > ($shareHasActive ? 1 : 0);
                             if (($link['last_accessed_at'] ?? null) !== null) {
                                 $meta .= ' · Opened ' . (string) $link['last_accessed_at'];
                             }
+                            $revokeFormId = 'share-revoke-' . $formSuffix . '-' . $linkId;
+                            $revokeConfirm = $linkLabel !== ''
+                                ? 'Revoke the public link "' . $linkLabel . '"? Anyone with that URL will lose access.'
+                                : 'Revoke this public link? Anyone with that URL will lose access.';
+                            $revokeConfirmJs = json_encode(
+                                $revokeConfirm,
+                                JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP
+                            );
+                            if (!is_string($revokeConfirmJs)) {
+                                $revokeConfirmJs = '"Revoke this public link?"';
+                            }
                             ?>
-                            <li class="share-link-row <?= !empty($link['is_active']) ? 'is-active' : 'is-revoked' ?>">
-                                <strong><?= !empty($link['is_active']) ? 'Active' : 'Revoked' ?></strong>
-                                <span class="share-link-row-scope"><?= e($scopeLabel) ?></span>
-                                <span class="share-link-row-meta"><?= e($meta) ?></span>
+                            <li class="share-link-row <?= $linkActive ? 'is-active' : 'is-revoked' ?>">
+                                <strong><?= $linkActive ? 'Active' : 'Revoked' ?></strong>
+                                <div class="share-link-row-body">
+                                    <?php if ($linkLabel !== ''): ?>
+                                        <span class="share-link-row-tag"><?= e($linkLabel) ?></span>
+                                    <?php endif; ?>
+                                    <span class="share-link-row-scope"><?= e($scopeLabel) ?></span>
+                                    <span class="share-link-row-meta"><?= e($meta) ?></span>
+                                </div>
+                                <?php if ($linkActive && $linkId > 0): ?>
+                                    <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" onsubmit="return confirm(<?= e($revokeConfirmJs) ?>);">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="<?= e((string) $shareRevokeAction) ?>">
+                                        <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
+                                        <?php if (($shareView ?? '') !== ''): ?>
+                                            <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                                        <?php endif; ?>
+                                        <input type="hidden" name="share_id" value="<?= $linkId ?>">
+                                        <button type="submit" class="button danger-btn share-link-revoke-one">🚫 Revoke</button>
+                                    </form>
+                                <?php endif; ?>
                             </li>
                         <?php endforeach; ?>
                     </ul>
