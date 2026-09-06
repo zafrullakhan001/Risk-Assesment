@@ -61,55 +61,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $checkResult['aheadBy'] . ' update' . ($checkResult['aheadBy'] === 1 ? '' : 's') . ' available.'
                 : 'This install is up to date with GitHub.';
         } elseif ($action === 'apply') {
-            $ref = trim((string) ($_POST['target_ref'] ?? ''));
-            session_write_close();
             @set_time_limit(0);
             ignore_user_abort(true);
             @ini_set('memory_limit', '512M');
-            while (ob_get_level() > 0) {
-                ob_end_clean();
-            }
-            header('Content-Type: text/html; charset=UTF-8');
-            header('Cache-Control: no-store');
-            header('X-Accel-Buffering: no');
-            echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Applying update</title>';
-            echo '<style>body{font-family:Segoe UI,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}';
-            echo '.box{text-align:center;max-width:28rem;padding:24px}.spin{width:36px;height:36px;margin:0 auto 16px;border:3px solid #444;border-top-color:#7dd3fc;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}';
-            echo 'p{line-height:1.5;color:#cbd5e1}</style></head><body><div class="box"><div class="spin"></div>';
-            echo '<p>Downloading and applying the update. Keep this tab open. This can take a few minutes.</p></div></body></html>';
-            flush();
-            if (function_exists('ob_flush')) {
-                @ob_flush();
-            }
-
+            @ini_set('display_errors', '0');
+            $ref = trim((string) ($_POST['target_ref'] ?? ''));
+            $applied = $updater->apply($ref);
             try {
-                $applied = $updater->apply($ref);
-                \RiskAssessment\Session::start();
-                $_SESSION['updater_flash'] = (string) $applied['message'];
-                try {
-                    $auth->users()->logAudit(
-                        'updater.apply',
-                        (int) $currentUser['id'],
-                        (string) $currentUser['username'],
-                        null,
-                        null,
-                        ['ref' => $ref]
-                    );
-                } catch (Throwable) {
-                    // Update already applied; audit logging is best-effort.
-                }
-            } catch (Throwable $exception) {
-                \RiskAssessment\Session::start();
-                $_SESSION['updater_error'] = $exception->getMessage();
+                $auth->users()->logAudit(
+                    'updater.apply',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    null,
+                    ['ref' => $ref]
+                );
+            } catch (Throwable) {
+                // Update already applied; audit logging is best-effort.
             }
-            echo '<script>window.location.replace("updates.php");</script>';
-            exit;
+            $flash = (string) $applied['message'];
         } else {
             throw new RuntimeException('Unknown action.');
         }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
+}
+
+$logged = $updater->consumeLastLog();
+if ($error === '' && $logged !== '') {
+    $error = $logged;
 }
 
 $status = $updater->status();
@@ -231,6 +212,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                 <?php endforeach; ?>
                             </div>
                             <button type="submit" class="button button-primary">Download and apply</button>
+                            <p class="pat-fineprint">The page stays on this screen and then shows success or the error. Wait for it to finish; do not close the tab.</p>
                         </form>
                     <?php endif; ?>
                 </section>

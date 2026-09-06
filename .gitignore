@@ -11,6 +11,7 @@
 !/database/snapshots/.gitkeep
 /database/.encryption_key
 /database/updater.lock
+/database/updater-last.log
 /database/update-staging/
 /dist/*
 !/dist/.htaccess

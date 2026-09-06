@@ -19,6 +19,7 @@ final class GitHubUpdater
     public const PAT_MANAGE_URL = 'https://github.com/settings/tokens';
     private const VERSION_FILE = 'VERSION.json';
     private const STAGING_DIR = 'database/update-staging';
+    private const LAST_LOG = 'database/updater-last.log';
 
     public function __construct(
         private readonly SettingsRepository $settings,
@@ -71,6 +72,7 @@ final class GitHubUpdater
      *   currentBranch: string,
      *   dirty: bool,
      *   lastAppliedAt: string,
+     *   lastError: string,
      *   updateMethod: string
      * }
      */
@@ -99,6 +101,7 @@ final class GitHubUpdater
             'currentBranch' => $caps['gitAvailable'] ? $this->currentBranch() : '',
             'dirty' => $caps['gitAvailable'] && $this->workingTreeDirty(),
             'lastAppliedAt' => $this->settings->get('updater_last_applied_at', ''),
+            'lastError' => $this->readLastLog(),
             'updateMethod' => 'github-zip',
         ];
     }
@@ -170,6 +173,7 @@ final class GitHubUpdater
         $this->assertCanApply();
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
+        @ini_set('display_errors', '0');
 
         $target = trim($ref);
         if ($target === '') {
@@ -208,6 +212,7 @@ final class GitHubUpdater
                 $sha = $this->githubRefSha($target);
             }
             $this->recordApplied($tag, $sha);
+            $this->clearLastLog();
 
             $label = $tag !== '' ? $tag : ($sha !== '' ? substr($sha, 0, 7) : $target);
 
@@ -217,6 +222,9 @@ final class GitHubUpdater
                 'short' => $label,
                 'message' => 'Updated to ' . $label . '. Reload the page (Ctrl+F5). Database and uploads were kept in place.',
             ];
+        } catch (\Throwable $exception) {
+            $this->writeLastLog($exception->getMessage() . ' in ' . basename($exception->getFile()) . ':' . $exception->getLine());
+            throw $exception;
         } finally {
             while (ob_get_level() > $bufferLevel) {
                 ob_end_clean();
@@ -272,6 +280,51 @@ final class GitHubUpdater
     public function clearToken(): void
     {
         $this->settings->delete('updater_github_token');
+    }
+
+    public function consumeLastLog(): string
+    {
+        $text = $this->readLastLog();
+        if ($text !== '') {
+            $this->clearLastLog();
+        }
+
+        return $text;
+    }
+
+    private function lastLogPath(): string
+    {
+        return $this->projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::LAST_LOG);
+    }
+
+    private function writeLastLog(string $message): void
+    {
+        $directory = dirname($this->lastLogPath());
+        if (!is_dir($directory)) {
+            @mkdir($directory, 0755, true);
+        }
+        @file_put_contents(
+            $this->lastLogPath(),
+            date('Y-m-d H:i:s') . "\n" . $message . "\n"
+        );
+    }
+
+    private function readLastLog(): string
+    {
+        $path = $this->lastLogPath();
+        if (!is_file($path)) {
+            return '';
+        }
+        $text = trim((string) file_get_contents($path));
+        return $text;
+    }
+
+    private function clearLastLog(): void
+    {
+        $path = $this->lastLogPath();
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
     /**
@@ -1060,60 +1113,39 @@ final class GitHubUpdater
         if (defined('CURLOPT_UNRESTRICTED_AUTH')) {
             $options[CURLOPT_UNRESTRICTED_AUTH] = false;
         }
-
-        $fileHandle = null;
-        $writeError = '';
-        if ($downloadPath !== null) {
-            $fileHandle = fopen($downloadPath, 'wb');
-            if ($fileHandle === false) {
-                curl_close($handle);
-                throw new RuntimeException('Unable to write the update zip.');
-            }
-            // Stream to disk. Never use CURLOPT_FILE on Windows — after GitHub
-            // redirects, libcurl can dump the zip onto the HTTP response instead.
-            $options[CURLOPT_RETURNTRANSFER] = false;
-            $options[CURLOPT_HEADER] = false;
-            $options[CURLOPT_WRITEFUNCTION] = static function ($curl, string $chunk) use ($fileHandle, &$writeError): int {
-                unset($curl);
-                if ($writeError !== '') {
-                    return 0;
-                }
-                $written = fwrite($fileHandle, $chunk);
-                if ($written === false) {
-                    $writeError = 'Unable to write downloaded bytes to disk.';
-                    return 0;
-                }
-
-                return $written;
-            };
-        } else {
-            $options[CURLOPT_RETURNTRANSFER] = true;
-            $options[CURLOPT_HEADER] = false;
-        }
+        $options[CURLOPT_RETURNTRANSFER] = true;
+        $options[CURLOPT_HEADER] = false;
         curl_setopt_array($handle, $options);
 
         $body = curl_exec($handle);
         $status = (int) curl_getinfo($handle, CURLINFO_HTTP_CODE);
         $error = curl_error($handle);
         curl_close($handle);
-        if (is_resource($fileHandle)) {
-            fclose($fileHandle);
-        }
 
-        if ($writeError !== '') {
-            throw new RuntimeException($writeError);
-        }
         if ($body === false) {
             throw new RuntimeException('GitHub request failed: ' . ($error !== '' ? $error : 'unknown error'));
         }
 
         if ($status < 200 || $status >= 300) {
             $text = is_string($body) ? $body : '';
-            if ($text === '' && $downloadPath !== null && is_file($downloadPath)) {
-                $text = (string) file_get_contents($downloadPath, false, null, 0, 2000);
-                @unlink($downloadPath);
-            }
             throw new RuntimeException($this->formatGithubHttpError($status, $text));
+        }
+
+        if ($downloadPath !== null) {
+            if (!is_string($body) || $body === '') {
+                throw new RuntimeException('GitHub returned an empty update file.');
+            }
+            if (!str_starts_with($body, 'PK')) {
+                throw new RuntimeException(
+                    'GitHub did not return a zip file. '
+                    . $this->formatGithubHttpError($status !== 0 ? $status : 200, substr($body, 0, 2000))
+                );
+            }
+            if (file_put_contents($downloadPath, $body) === false) {
+                throw new RuntimeException('Unable to save the update zip to disk.');
+            }
+
+            return '';
         }
 
         return is_string($body) ? $body : '';
