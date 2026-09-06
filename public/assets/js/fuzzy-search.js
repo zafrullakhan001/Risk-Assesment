@@ -296,6 +296,196 @@
       .filter(Boolean);
   }
 
+  function parseCatalogQuery(raw) {
+    const empty = {
+      words: [],
+      phrases: [],
+      excludes: [],
+      extensions: [],
+      types: [],
+      person: '',
+      modifiedBy: '',
+      createdBy: '',
+      paths: [],
+      has: [],
+      lacks: [],
+      rawRemainder: '',
+    };
+    let text = String(raw || '').trim();
+    if (!text) return empty;
+
+    const out = { ...empty, phrases: [], excludes: [], extensions: [], types: [], paths: [], has: [], lacks: [] };
+    const words = [];
+    const remainderParts = [];
+
+    const pushCsv = (list, value) => {
+      String(value || '')
+        .split(',')
+        .map((part) => part.trim().toLowerCase())
+        .filter(Boolean)
+        .forEach((part) => {
+          if (!list.includes(part)) list.push(part);
+        });
+    };
+
+    const normalizeType = (value) => {
+      const v = String(value || '').toLowerCase().replace(/^\.+/, '');
+      if (v === 'drawing' || v === 'drawings') return 'drawings';
+      if (v === 'image' || v === 'images' || v === 'img' || v === 'photo') return 'images';
+      if (v === 'folder' || v === 'folders') return 'folders';
+      if (v === 'cad' || v === 'dwg' || v === 'dxf') return 'cad';
+      if (v === 'visio' || v === 'vsdx' || v === 'vsd') return 'visio';
+      if (v === 'pdf') return 'pdf';
+      return v;
+    };
+
+    // Pull prefixed quoted values first: person:"Jane Doe"
+    text = text.replace(
+      /\b(ext|extension|type|person|modified|modifiedby|mod|created|createdby|author|path|in|has|contain|contains|lacks|missing|without):"([^"]*)"/gi,
+      (_, prefix, value) => {
+        const key = String(prefix || '').toLowerCase();
+        const val = String(value || '').trim();
+        const lower = val.toLowerCase();
+        remainderParts.push(`${key}:"${val}"`);
+        if (key === 'ext' || key === 'extension') pushCsv(out.extensions, lower.replace(/^\.+/, ''));
+        else if (key === 'type') pushCsv(out.types, normalizeType(lower));
+        else if (key === 'person') out.person = lower;
+        else if (key === 'modified' || key === 'modifiedby' || key === 'mod') out.modifiedBy = lower;
+        else if (key === 'created' || key === 'createdby' || key === 'author') out.createdBy = lower;
+        else if (key === 'path' || key === 'in') {
+          if (lower) out.paths.push(lower);
+        } else if (key === 'has' || key === 'contain' || key === 'contains') pushCsv(out.has, normalizeType(lower));
+        else if (key === 'lacks' || key === 'missing' || key === 'without') pushCsv(out.lacks, normalizeType(lower));
+        return ' ';
+      }
+    );
+
+    const tokens = [];
+    const re = /(-?)"([^"]*)"|(\S+)/g;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      if (match[2] !== undefined) {
+        tokens.push({ kind: match[1] === '-' ? 'exclude-phrase' : 'phrase', value: match[2] });
+      } else {
+        tokens.push({ kind: 'token', value: match[3] });
+      }
+    }
+
+    const takePrefixed = (token, prefixes) => {
+      const lower = token.toLowerCase();
+      for (const prefix of prefixes) {
+        if (lower.startsWith(prefix)) {
+          return token.slice(prefix.length).trim();
+        }
+      }
+      return null;
+    };
+
+    tokens.forEach((token) => {
+      if (token.kind === 'phrase') {
+        const phrase = token.value.trim().toLowerCase();
+        if (phrase) {
+          out.phrases.push(phrase);
+          remainderParts.push(`"${token.value.trim()}"`);
+        }
+        return;
+      }
+      if (token.kind === 'exclude-phrase') {
+        const phrase = token.value.trim().toLowerCase();
+        if (phrase) {
+          out.excludes.push(phrase);
+          remainderParts.push(`-"${token.value.trim()}"`);
+        }
+        return;
+      }
+
+      const value = token.value;
+      if (value.startsWith('-') && value.length > 1 && !value.includes(':')) {
+        const excluded = value.slice(1).toLowerCase();
+        if (excluded) {
+          out.excludes.push(excluded);
+          remainderParts.push(value);
+        }
+        return;
+      }
+
+      let taken = takePrefixed(value, ['ext:', 'extension:']);
+      if (taken !== null) {
+        pushCsv(out.extensions, taken.replace(/^\.+/, ''));
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['type:']);
+      if (taken !== null) {
+        pushCsv(
+          out.types,
+          taken
+            .split(',')
+            .map(normalizeType)
+            .join(',')
+        );
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['person:']);
+      if (taken !== null) {
+        out.person = taken.toLowerCase();
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['modified:', 'modifiedby:', 'mod:']);
+      if (taken !== null) {
+        out.modifiedBy = taken.toLowerCase();
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['created:', 'createdby:', 'author:']);
+      if (taken !== null) {
+        out.createdBy = taken.toLowerCase();
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['path:', 'in:']);
+      if (taken !== null) {
+        const pathVal = taken.toLowerCase();
+        if (pathVal) out.paths.push(pathVal);
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['has:', 'contain:', 'contains:']);
+      if (taken !== null) {
+        pushCsv(
+          out.has,
+          taken
+            .split(',')
+            .map(normalizeType)
+            .join(',')
+        );
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['lacks:', 'missing:', 'without:']);
+      if (taken !== null) {
+        pushCsv(
+          out.lacks,
+          taken
+            .split(',')
+            .map(normalizeType)
+            .join(',')
+        );
+        remainderParts.push(value);
+        return;
+      }
+
+      words.push(value.toLowerCase());
+      remainderParts.push(value);
+    });
+
+    out.words = words;
+    out.rawRemainder = remainderParts.join(' ');
+    return out;
+  }
+
   function combineSearchScores(primary, refine) {
     if (!refine || !refine.matched) return primary;
     if (!primary || !primary.matched) return primary;
@@ -335,6 +525,7 @@
     scoreTextAgainstQuery,
     scoreLabeledFieldsAgainstWords,
     getSearchWords,
+    parseCatalogQuery,
     combineSearchScores,
     matchKindLabel,
     formatMatchReason,

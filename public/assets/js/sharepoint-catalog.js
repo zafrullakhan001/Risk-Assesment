@@ -3022,10 +3022,27 @@
     deep: 'riskregister_sp_search_deep',
     scopes: publicShare ? 'riskregister_sp_public_search_scopes' : 'riskregister_sp_search_scopes',
     recent: publicShare ? 'riskregister_sp_public_search_recent' : 'riskregister_sp_search_recent',
+    saved: publicShare ? 'riskregister_sp_public_search_saved' : 'riskregister_sp_search_saved',
     listFilters: 'riskregister_sp_list_filters_open',
+    advancedOpen: publicShare ? 'riskregister_sp_public_search_advanced' : 'riskregister_sp_search_advanced',
   };
   const RECENT_MAX = 10;
   const RECENT_MIN_LEN = 2;
+  const SAVED_MAX = 12;
+  const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
+  const CAD_EXTS = new Set(['dwg', 'dxf']);
+  const VISIO_EXTS = new Set(['vsdx', 'vsd']);
+  const TYPE_CHIP_KEYS = new Set(['pdf', 'visio', 'cad', 'drawings', 'images', 'folders']);
+  const HAS_LACK_KEYS = new Set(['pdf', 'visio', 'cad', 'drawings', 'images', 'empty', 'stale']);
+  const MATCH_SCOPES = new Set(['all', 'names', 'files', 'people']);
+  const DATE_PRESETS = new Set(['', '7d', '30d', 'year', 'custom']);
+  const PRESENCE_MODES = new Set(['any', 'all', 'only', 'missing']);
+  const DAY_MS = 86400000;
+  const currentUser = {
+    name: (searchRoot.getAttribute('data-user-name') || '').trim().toLowerCase(),
+    display: (searchRoot.getAttribute('data-user-display') || '').trim().toLowerCase(),
+    email: (searchRoot.getAttribute('data-user-email') || '').trim().toLowerCase(),
+  };
   const LIST_SORT_KEYS = new Set(['name', 'match', 'items', 'modified', 'modified_by', 'created_by']);
   const LIST_SORT_DEFAULT_DIR = {
     name: 'asc',
@@ -3047,11 +3064,32 @@
   const input = document.getElementById('sharepoint-search-input');
   const clearBtn = document.getElementById('sharepoint-search-clear');
   const controls = document.getElementById('sharepoint-search-controls');
+  const advancedRoot = document.getElementById('sharepoint-search-advanced');
+  const advancedToggle = document.getElementById('sharepoint-advanced-toggle');
   const wordModeGroup = document.getElementById('sharepoint-word-mode');
+  const matchScopeGroup = document.getElementById('sharepoint-match-scope');
+  const typeChipsRoot = document.getElementById('sharepoint-type-chips');
   const fuzzyToggle = document.getElementById('sharepoint-fuzzy-toggle');
   const deepToggle = document.getElementById('sharepoint-deep-toggle');
   const refineInput = document.getElementById('sharepoint-refine-input');
   const refineClear = document.getElementById('sharepoint-refine-clear');
+  const suggestEl = document.getElementById('sharepoint-search-suggest');
+  const datePresetEl = document.getElementById('sharepoint-date-preset');
+  const dateFromEl = document.getElementById('sharepoint-date-from');
+  const dateToEl = document.getElementById('sharepoint-date-to');
+  const dateCustomWrap = document.getElementById('sharepoint-date-custom-wrap');
+  const dateCustomToWrap = document.getElementById('sharepoint-date-custom-to-wrap');
+  const personFilterEl = document.getElementById('sharepoint-person-filter');
+  const presenceFilterEl = document.getElementById('sharepoint-presence-filter');
+  const presenceWrap = document.getElementById('sharepoint-presence-wrap');
+  const missingWrap = document.getElementById('sharepoint-missing-wrap');
+  const missingSourceEl = document.getElementById('sharepoint-missing-source');
+  const hasFilterEl = document.getElementById('sharepoint-has-filter');
+  const lacksFilterEl = document.getElementById('sharepoint-lacks-filter');
+  const saveSearchBtn = document.getElementById('sharepoint-save-search');
+  const exportCsvBtn = document.getElementById('sharepoint-export-csv');
+  const savedRoot = document.getElementById('sharepoint-saved-searches');
+  const savedChips = document.getElementById('sharepoint-saved-chips');
   const statsEl = document.getElementById('sharepoint-search-stats');
   const metaEl = document.getElementById('sharepoint-catalog-meta');
   const resultCountEl = document.getElementById('sharepoint-result-count');
@@ -3119,6 +3157,57 @@
     return searchRoot.dataset.sourceKey ? [searchRoot.dataset.sourceKey] : [];
   };
 
+  const readCsvParam = (value, allowed) => {
+    const parts = String(value || '')
+      .split(',')
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    if (!allowed) return parts;
+    return parts.filter((part) => allowed.has(part));
+  };
+
+  const readUrlSearchState = () => {
+    const params = new URLSearchParams(window.location.search);
+    const matchScopeRaw = (params.get('scope') || 'all').trim().toLowerCase();
+    const matchScope = MATCH_SCOPES.has(matchScopeRaw) ? matchScopeRaw : 'all';
+    const datePresetRaw = (params.get('date') || '').trim().toLowerCase();
+    const datePreset = DATE_PRESETS.has(datePresetRaw) ? datePresetRaw : '';
+    const presenceRaw = (params.get('presence') || 'any').trim().toLowerCase();
+    const presence = PRESENCE_MODES.has(presenceRaw) ? presenceRaw : 'any';
+    const fuzzyParam = params.get('fuzzy');
+    const deepParam = params.get('deep');
+    const modeParam = (params.get('mode') || '').trim().toLowerCase();
+    return {
+      refine: (params.get('refine') || '').trim(),
+      matchScope,
+      types: readCsvParam(params.get('type'), TYPE_CHIP_KEYS),
+      datePreset,
+      dateFrom: (params.get('from') || '').trim(),
+      dateTo: (params.get('to') || '').trim(),
+      who: (params.get('who') || '').trim(),
+      presence,
+      missingSource: (params.get('missing') || '').trim(),
+      has: readCsvParam(params.get('has'), HAS_LACK_KEYS)[0] || '',
+      lacks: readCsvParam(params.get('lacks'), HAS_LACK_KEYS)[0] || '',
+      fuzzy:
+        fuzzyParam === null
+          ? localStorage.getItem(STORAGE.fuzzy) === '1'
+          : fuzzyParam === '1' || fuzzyParam === 'true',
+      deep:
+        deepParam === null
+          ? localStorage.getItem(STORAGE.deep) !== '0'
+          : deepParam !== '0' && deepParam !== 'false',
+      wordMode:
+        modeParam === 'or' || modeParam === 'and'
+          ? modeParam
+          : localStorage.getItem(STORAGE.wordMode) === 'or'
+            ? 'or'
+            : 'and',
+    };
+  };
+
+  const urlSearchState = readUrlSearchState();
+
   const state = {
     projects: [],
     sourceKey: searchRoot.dataset.sourceKey || '',
@@ -3129,10 +3218,20 @@
     lastSynced: searchRoot.dataset.lastSynced || '',
     lastStatus: searchRoot.dataset.lastStatus || '',
     query: searchRoot.dataset.initialQuery || '',
-    refine: '',
-    wordMode: localStorage.getItem(STORAGE.wordMode) === 'or' ? 'or' : 'and',
-    fuzzy: localStorage.getItem(STORAGE.fuzzy) === '1',
-    deep: localStorage.getItem(STORAGE.deep) !== '0',
+    refine: urlSearchState.refine,
+    wordMode: urlSearchState.wordMode,
+    fuzzy: urlSearchState.fuzzy,
+    deep: urlSearchState.deep,
+    matchScope: urlSearchState.matchScope,
+    types: urlSearchState.types,
+    datePreset: urlSearchState.datePreset,
+    dateFrom: urlSearchState.dateFrom,
+    dateTo: urlSearchState.dateTo,
+    who: urlSearchState.who,
+    presence: urlSearchState.presence,
+    missingSource: urlSearchState.missingSource || (missingSourceEl?.value || ''),
+    has: urlSearchState.has,
+    lacks: urlSearchState.lacks,
     page: 1,
     perPage: Number(searchRoot.dataset.perPage || perPageSelect?.value || 25) || 25,
     ready: false,
@@ -3147,6 +3246,24 @@
       } catch {
         return true;
       }
+    })(),
+    suggestOpen: false,
+    suggestIndex: -1,
+    suggestItems: [],
+    advancedOpen: (() => {
+      try {
+        if (localStorage.getItem(STORAGE.advancedOpen) === '1') return true;
+      } catch {
+        /* ignore */
+      }
+      return !!(
+        urlSearchState.datePreset ||
+        urlSearchState.who ||
+        (urlSearchState.presence && urlSearchState.presence !== 'any') ||
+        urlSearchState.has ||
+        urlSearchState.lacks ||
+        (urlSearchState.matchScope && urlSearchState.matchScope !== 'all')
+      );
     })(),
   };
 
@@ -3182,9 +3299,49 @@
     return out;
   };
 
+  const parseProjectDate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  const freshnessBucket = (lastModifiedMs) => {
+    if (lastModifiedMs == null) return 'unknown';
+    const age = Date.now() - lastModifiedMs;
+    if (age <= 30 * DAY_MS) return 'fresh';
+    if (age > 90 * DAY_MS) return 'stale';
+    return 'normal';
+  };
+
   const prepareSearchProject = (project) => {
     const entries = projectEntries(project);
     project._entries = entries;
+    const exts = new Set();
+    let hasDrawingsFolder = false;
+    entries.forEach((entry) => {
+      if (entry.kind === 'file') {
+        const ext = fileExtension(entry.name);
+        if (ext) exts.add(ext);
+      }
+      const hay = `${entry.name}\n${entry.path}`.toLowerCase();
+      if (/\bdrawings?\b/.test(hay)) hasDrawingsFolder = true;
+    });
+    project._exts = exts;
+    project._hasDrawingsFolder = hasDrawingsFolder;
+    project._hasPdf = exts.has('pdf');
+    project._hasCad = [...exts].some((ext) => CAD_EXTS.has(ext));
+    project._hasVisio = [...exts].some((ext) => VISIO_EXTS.has(ext));
+    project._hasImages = [...exts].some((ext) => IMAGE_EXTS.has(ext));
+    project._hasDrawings = hasDrawingsFolder || project._hasCad;
+    project._hasSubfolders =
+      (Array.isArray(project.folders) ? project.folders.length : 0) > 0 ||
+      entries.some((entry) => entry.kind === 'folder');
+    project._isEmpty = Number(project.file_count || 0) === 0;
+    const modifiedMs = parseProjectDate(project.last_modified);
+    project._modifiedMs = modifiedMs;
+    project._freshness = freshnessBucket(modifiedMs);
+    project._isStale = project._freshness === 'stale' || modifiedMs == null;
     const shallow = [
       project.project_name,
       project.source_title,
@@ -3197,20 +3354,59 @@
     project._hayDeep = [project._hayShallow]
       .concat(entries.map((entry) => `${entry.name}\n${entry.path}`.toLowerCase()))
       .join('\n');
+    project._hayNames = [project.project_name, project.source_title]
+      .map((value) => String(value || '').toLowerCase())
+      .filter(Boolean)
+      .join('\n');
+    project._hayPeople = [project.modified_by, project.person]
+      .map((value) => String(value || '').toLowerCase())
+      .filter(Boolean)
+      .join('\n');
+    project._hayFiles = entries.map((entry) => `${entry.name}\n${entry.path}`.toLowerCase()).join('\n');
     return project;
   };
 
   const haystackHasWords = (hay, words, mode) => {
     if (!hay) return false;
+    if (!words.length) return true;
     if (mode === 'or') return words.some((word) => hay.includes(word));
     return words.every((word) => hay.includes(word));
   };
 
-  const cheapProjectMatch = (project, words, mode, deep) => {
-    const hay = (deep ? project._hayDeep : project._hayShallow) || '';
+  const haystackHasPhrases = (hay, phrases) => {
+    if (!phrases.length) return true;
+    return phrases.every((phrase) => hay.includes(phrase));
+  };
+
+  const haystackHasExcludes = (hay, excludes) => {
+    if (!excludes.length) return false;
+    return excludes.some((token) => hay.includes(token));
+  };
+
+  const effectiveDeep = (matchScope = state.matchScope, deep = state.deep) => {
+    if (matchScope === 'files') return true;
+    if (matchScope === 'names' || matchScope === 'people') return false;
+    return !!deep;
+  };
+
+  const scopedHaystack = (project, matchScope = state.matchScope, deep = state.deep) => {
+    if (matchScope === 'names') return project._hayNames || '';
+    if (matchScope === 'people') return project._hayPeople || '';
+    if (matchScope === 'files') return project._hayFiles || '';
+    return (effectiveDeep(matchScope, deep) ? project._hayDeep : project._hayShallow) || '';
+  };
+
+  const cheapProjectMatch = (project, words, mode, deep, matchScope = state.matchScope) => {
+    const hay = scopedHaystack(project, matchScope, deep);
+    if (!words.length) return { matched: true, score: 100, kind: 'exact' };
     if (!haystackHasWords(hay, words, mode)) return { matched: false, score: 0, kind: 'none' };
     const name = String(project.project_name || '').toLowerCase();
-    const nameHit = mode === 'or' ? words.some((word) => name.includes(word)) : words.every((word) => name.includes(word));
+    const nameHit =
+      matchScope !== 'files' && matchScope !== 'people'
+        ? mode === 'or'
+          ? words.some((word) => name.includes(word))
+          : words.every((word) => name.includes(word))
+        : false;
     if (nameHit) {
       const exact = words.some((word) => name === word);
       return {
@@ -3221,10 +3417,41 @@
         snippet: project.project_name,
       };
     }
-    return { matched: true, score: 86, kind: 'contains', source: deep ? 'File' : 'Catalog' };
+    return {
+      matched: true,
+      score: 86,
+      kind: 'contains',
+      source: matchScope === 'people' ? 'Person' : effectiveDeep(matchScope, deep) ? 'File' : 'Catalog',
+    };
   };
 
-  const projectFields = (project, deep = true) => {
+  const projectFields = (project, deep = true, matchScope = 'all') => {
+    if (matchScope === 'names') {
+      return [
+        { text: project.project_name, sourceLabel: 'Project' },
+        { text: project.source_title, sourceLabel: 'Catalog' },
+      ];
+    }
+    if (matchScope === 'people') {
+      return [
+        { text: project.modified_by, sourceLabel: 'Modified By' },
+        { text: project.person, sourceLabel: 'Created By' },
+      ];
+    }
+    if (matchScope === 'files') {
+      const fields = [];
+      projectEntries(project).forEach((entry) => {
+        fields.push({
+          text: entry.name,
+          sourceLabel: entry.kind === 'folder' ? 'Folder' : 'File',
+          sourceName: entry.name,
+        });
+        if (entry.path && entry.path !== entry.name) {
+          fields.push({ text: entry.path, sourceLabel: 'Path', sourceName: entry.path });
+        }
+      });
+      return fields;
+    }
     const fields = [
       { text: project.project_name, sourceLabel: 'Project' },
       { text: project.source_title, sourceLabel: 'Catalog' },
@@ -3255,13 +3482,19 @@
     return fields;
   };
 
-  const scoreProject = (project, words, mode, fuzzy, deep = true) => {
+  const scoreProject = (project, words, mode, fuzzy, deep = true, matchScope = state.matchScope) => {
     if (!words.length) return { matched: true, score: 100, kind: 'exact' };
+    const useDeep = effectiveDeep(matchScope, deep);
     if (!fuzzy) {
-      const cheap = cheapProjectMatch(project, words, mode, deep);
+      const cheap = cheapProjectMatch(project, words, mode, useDeep, matchScope);
       if (!cheap.matched) return cheap;
     }
-    return Fuzzy.scoreLabeledFieldsAgainstWords(projectFields(project, deep), words, mode, fuzzy);
+    return Fuzzy.scoreLabeledFieldsAgainstWords(
+      projectFields(project, useDeep, matchScope),
+      words,
+      mode,
+      fuzzy
+    );
   };
 
   const collectDeepHits = (project, words, mode, fuzzy, limit = 4) => {
@@ -3310,8 +3543,17 @@
     </div>`;
   };
 
-  const scoreBadgeHtml = (match) => {
-    if (!match?.matched) return '<span class="sp-match-placeholder">—</span>';
+  const scoreBadgeHtml = (match, project = null) => {
+    const freshness = project?._freshness;
+    const freshnessBadge =
+      freshness === 'fresh'
+        ? '<span class="sp-fresh-badge sp-fresh-badge--fresh" title="Modified within 30 days">Fresh</span>'
+        : freshness === 'stale'
+          ? '<span class="sp-fresh-badge sp-fresh-badge--stale" title="Not modified in 90+ days (or undated)">Stale</span>'
+          : '';
+    if (!match?.matched) {
+      return `<span class="sp-match-placeholder">—</span>${freshnessBadge}`;
+    }
     const label = Fuzzy.matchKindLabel(match.kind);
     const reason = Fuzzy.formatMatchReason(match);
     const title = [
@@ -3326,6 +3568,7 @@
     return `<span class="sp-match-badge-wrap" title="${escapeHtml(title)}">
       <span class="sp-match-badge sp-match-badge--${tone}">${match.score}% <span>${escapeHtml(label)}</span></span>
       ${reason ? `<span class="sp-match-reason">Matched: ${escapeHtml(reason)}${match.snippet ? `<span class="sp-match-snippet">“${escapeHtml(match.snippet)}”</span>` : ''}</span>` : ''}
+      ${freshnessBadge}
     </span>`;
   };
 
@@ -3684,39 +3927,222 @@
     }
   };
 
-  const filteredProjects = () => {
-    const words = Fuzzy.getSearchWords(state.query);
-    const refineWords = Fuzzy.getSearchWords(state.refine);
-    rememberDefaultSort(words.length > 0);
+  const projectHasTrait = (project, trait) => {
+    const key = String(trait || '').toLowerCase();
+    if (key === 'pdf') return !!project._hasPdf;
+    if (key === 'visio') return !!project._hasVisio;
+    if (key === 'cad') return !!project._hasCad;
+    if (key === 'drawings') return !!project._hasDrawings;
+    if (key === 'images') return !!project._hasImages;
+    if (key === 'folders') return !!project._hasSubfolders;
+    if (key === 'empty') return !!project._isEmpty;
+    if (key === 'stale') return !!project._isStale;
+    if (key.startsWith('.') || /^[a-z0-9]+$/i.test(key)) {
+      const ext = key.replace(/^\./, '');
+      return project._exts instanceof Set && project._exts.has(ext);
+    }
+    return false;
+  };
 
-    let results;
-    if (!words.length) {
-      results = state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
+  const resolveMeAlias = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw !== 'me') return raw;
+    return currentUser.display || currentUser.name || currentUser.email || 'me';
+  };
+
+  const personMatchesValue = (project, value) => {
+    const needle = resolveMeAlias(value);
+    if (!needle) return true;
+    const hay = `${project.modified_by || ''}\n${project.person || ''}`.toLowerCase();
+    return hay.includes(needle);
+  };
+
+  const dateRangeBounds = () => {
+    const preset = state.datePreset || '';
+    if (!preset) return null;
+    const now = new Date();
+    if (preset === '7d') return { from: Date.now() - 7 * DAY_MS, to: null };
+    if (preset === '30d') return { from: Date.now() - 30 * DAY_MS, to: null };
+    if (preset === 'year') return { from: Date.UTC(now.getFullYear(), 0, 1), to: null };
+    if (preset === 'custom') {
+      const from = state.dateFrom ? Date.parse(`${state.dateFrom}T00:00:00`) : null;
+      const to = state.dateTo ? Date.parse(`${state.dateTo}T23:59:59`) : null;
+      if (!Number.isFinite(from) && !Number.isFinite(to)) return null;
+      return {
+        from: Number.isFinite(from) ? from : null,
+        to: Number.isFinite(to) ? to : null,
+      };
+    }
+    return null;
+  };
+
+  const projectPassesDate = (project) => {
+    const bounds = dateRangeBounds();
+    if (!bounds) return true;
+    const ms = project._modifiedMs;
+    if (ms == null) return false;
+    if (bounds.from != null && ms < bounds.from) return false;
+    if (bounds.to != null && ms > bounds.to) return false;
+    return true;
+  };
+
+  const projectPassesPresence = (project, presence) => {
+    if (state.presence === 'any' || state.scopeKeys.length < 2) return true;
+    const name = String(project.project_name || '')
+      .trim()
+      .toLowerCase();
+    const present = presence.get(name) || new Set();
+    if (state.presence === 'all') {
+      return state.scopeKeys.every((key) => present.has(key));
+    }
+    if (state.presence === 'only') {
+      const focus = state.sourceKey || state.scopeKeys[0];
+      if (!focus) return true;
+      if (!present.has(focus)) return false;
+      return state.scopeKeys.every((key) => key === focus || !present.has(key));
+    }
+    if (state.presence === 'missing') {
+      const missingKey = state.missingSource || '';
+      if (!missingKey) return true;
+      return !present.has(missingKey);
+    }
+    return true;
+  };
+
+  const advancedFiltersActive = () =>
+    state.types.length > 0 ||
+    !!state.datePreset ||
+    !!state.who ||
+    (state.presence !== 'any' && state.scopeKeys.length > 1) ||
+    !!state.has ||
+    !!state.lacks;
+
+  const parseActiveQuery = () =>
+    Fuzzy.parseCatalogQuery ? Fuzzy.parseCatalogQuery(state.query) : { words: Fuzzy.getSearchWords(state.query), phrases: [], excludes: [], extensions: [], types: [], person: '', modifiedBy: '', createdBy: '', paths: [], has: [], lacks: [] };
+
+  const scoreParsedProject = (project, parsed, refineParsed = null) => {
+    const useDeep = effectiveDeep(state.matchScope, state.deep);
+    const hay = scopedHaystack(project, state.matchScope, state.deep);
+    const fullHay = project._hayDeep || hay;
+
+    if (parsed.phrases.length && !haystackHasPhrases(hay, parsed.phrases)) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (haystackHasExcludes(fullHay, parsed.excludes)) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.paths.length) {
+      const pathHay = project._hayFiles || fullHay;
+      if (!parsed.paths.every((path) => pathHay.includes(path))) {
+        return { matched: false, score: 0, kind: 'none' };
+      }
+    }
+
+    const scoreWords = [...parsed.words];
+    if (parsed.phrases.length) {
+      // Phrases already required; still boost via word scoring when leftover words exist.
+    }
+    let match;
+    if (!scoreWords.length && (parsed.phrases.length || parsed.paths.length || parsed.extensions.length || parsed.types.length || parsed.has.length || parsed.lacks.length || parsed.person || parsed.modifiedBy || parsed.createdBy)) {
+      match = {
+        matched: true,
+        score: parsed.phrases.length ? 96 : 88,
+        kind: parsed.phrases.length ? 'exact' : 'contains',
+        source: parsed.paths.length ? 'Path' : 'Filter',
+        snippet: parsed.phrases[0] || parsed.paths[0] || '',
+      };
+    } else if (!scoreWords.length) {
+      match = { matched: true, score: 100, kind: 'exact' };
     } else {
-      results = state.projects
-        .map((project) => {
-          const match = state.fuzzy
-            ? scoreProject(project, words, state.wordMode, true, state.deep)
-            : cheapProjectMatch(project, words, state.wordMode, state.deep);
-          return { project, match, deepHits: { hits: [], total: 0 } };
+      match = state.fuzzy
+        ? scoreProject(project, scoreWords, state.wordMode, true, useDeep, state.matchScope)
+        : cheapProjectMatch(project, scoreWords, state.wordMode, useDeep, state.matchScope);
+    }
+    if (!match?.matched) return match;
+
+    if (refineParsed) {
+      const refineHay = scopedHaystack(project, state.matchScope, state.deep);
+      if (refineParsed.phrases.length && !haystackHasPhrases(refineHay, refineParsed.phrases)) {
+        return { matched: false, score: 0, kind: 'none' };
+      }
+      if (haystackHasExcludes(project._hayDeep || refineHay, refineParsed.excludes)) {
+        return { matched: false, score: 0, kind: 'none' };
+      }
+      if (refineParsed.words.length) {
+        const refineMatch = state.fuzzy
+          ? scoreProject(project, refineParsed.words, state.wordMode, true, useDeep, state.matchScope)
+          : cheapProjectMatch(project, refineParsed.words, state.wordMode, useDeep, state.matchScope);
+        if (!refineMatch.matched) return refineMatch;
+        match = Fuzzy.combineSearchScores(match, refineMatch);
+      }
+    }
+    return match;
+  };
+
+  const projectPassesQueryFilters = (project, parsed) => {
+    const typeNeedles = [...state.types, ...parsed.types];
+    if (typeNeedles.length && !typeNeedles.every((type) => projectHasTrait(project, type))) return false;
+    if (parsed.extensions.length && !parsed.extensions.every((ext) => projectHasTrait(project, ext))) return false;
+
+    const hasNeedles = [...(state.has ? [state.has] : []), ...parsed.has];
+    if (hasNeedles.length && !hasNeedles.every((trait) => projectHasTrait(project, trait))) return false;
+    const lackNeedles = [...(state.lacks ? [state.lacks] : []), ...parsed.lacks];
+    if (lackNeedles.length && !lackNeedles.every((trait) => !projectHasTrait(project, trait))) return false;
+
+    if (state.who && !personMatchesValue(project, state.who)) return false;
+    if (parsed.person && !personMatchesValue(project, parsed.person)) return false;
+    if (parsed.modifiedBy) {
+      const needle = resolveMeAlias(parsed.modifiedBy);
+      if (!String(project.modified_by || '').toLowerCase().includes(needle)) return false;
+    }
+    if (parsed.createdBy) {
+      const needle = resolveMeAlias(parsed.createdBy);
+      if (!String(project.person || '').toLowerCase().includes(needle)) return false;
+    }
+    if (!projectPassesDate(project)) return false;
+    return true;
+  };
+
+  const queryIsActive = (parsed = parseActiveQuery()) =>
+    !!(
+      parsed.words.length ||
+      parsed.phrases.length ||
+      parsed.excludes.length ||
+      parsed.extensions.length ||
+      parsed.types.length ||
+      parsed.paths.length ||
+      parsed.has.length ||
+      parsed.lacks.length ||
+      parsed.person ||
+      parsed.modifiedBy ||
+      parsed.createdBy ||
+      state.refine.trim() ||
+      advancedFiltersActive()
+    );
+
+  const filteredProjects = () => {
+    const parsed = parseActiveQuery();
+    const refineParsed = state.refine.trim()
+      ? Fuzzy.parseCatalogQuery
+        ? Fuzzy.parseCatalogQuery(state.refine)
+        : { words: Fuzzy.getSearchWords(state.refine), phrases: [], excludes: [] }
+      : null;
+    const searching = queryIsActive(parsed) || !!(refineParsed && (refineParsed.words?.length || refineParsed.phrases?.length));
+    rememberDefaultSort(searching);
+    const presence = presenceMap();
+
+    let results = state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
+
+    results = results.filter((row) => projectPassesQueryFilters(row.project, parsed));
+    results = results.filter((row) => projectPassesPresence(row.project, presence));
+
+    if (searching || parsed.words.length || parsed.phrases.length || (refineParsed && refineParsed.words?.length)) {
+      results = results
+        .map((row) => {
+          const match = scoreParsedProject(row.project, parsed, refineParsed);
+          return { project: row.project, match, deepHits: { hits: [], total: 0 } };
         })
         .filter((row) => row.match?.matched);
-
-      if (refineWords.length) {
-        results = results
-          .map((row) => {
-            const refineMatch = state.fuzzy
-              ? scoreProject(row.project, refineWords, state.wordMode, true, state.deep)
-              : cheapProjectMatch(row.project, refineWords, state.wordMode, state.deep);
-            if (!refineMatch.matched) return null;
-            return {
-              project: row.project,
-              match: Fuzzy.combineSearchScores(row.match, refineMatch),
-              deepHits: row.deepHits,
-            };
-          })
-          .filter(Boolean);
-      }
     }
 
     if (listFiltersActive()) {
@@ -3727,53 +4153,109 @@
     return results;
   };
 
+  const syncAdvancedPanel = () => {
+    const open = !!state.advancedOpen;
+    if (advancedRoot) {
+      advancedRoot.hidden = !open;
+      advancedRoot.classList.toggle('is-collapsed', !open);
+      advancedRoot.classList.toggle('is-open', open);
+    }
+    if (advancedToggle) {
+      advancedToggle.classList.toggle('is-open', open);
+      advancedToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const arrow = advancedToggle.querySelector('.sp-adv-toggle-arrow');
+      if (arrow) arrow.textContent = open ? '▴' : '▾';
+      advancedToggle.title = open
+        ? 'Hide advanced filters'
+        : 'Show date, person, presence, contains/lacks, scope, and save/export options';
+    }
+  };
+
+  const setAdvancedOpen = (open, persist = true) => {
+    state.advancedOpen = !!open;
+    syncAdvancedPanel();
+    if (!persist) return;
+    try {
+      localStorage.setItem(STORAGE.advancedOpen, state.advancedOpen ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
+
   const updateControlsVisibility = () => {
-    controls.hidden = false;
-    const words = Fuzzy.getSearchWords(state.query);
+    if (controls) controls.hidden = false;
+    syncAdvancedPanel();
+    const parsed = parseActiveQuery();
     const refineWords = Fuzzy.getSearchWords(state.refine);
-    const multi = words.length > 1 || refineWords.length > 1;
-    wordModeGroup.hidden = !multi;
-    clearBtn.classList.toggle('is-hidden', state.query.trim() === '');
-    refineClear.classList.toggle('is-hidden', state.refine.trim() === '');
-    fuzzyToggle.classList.toggle('is-active', state.fuzzy);
-    fuzzyToggle.setAttribute('aria-pressed', state.fuzzy ? 'true' : 'false');
+    const multi = parsed.words.length > 1 || refineWords.length > 1;
+    if (wordModeGroup) wordModeGroup.hidden = !multi;
+    clearBtn?.classList.toggle('is-hidden', state.query.trim() === '');
+    refineClear?.classList.toggle('is-hidden', state.refine.trim() === '');
+    fuzzyToggle?.classList.toggle('is-active', state.fuzzy);
+    fuzzyToggle?.setAttribute('aria-pressed', state.fuzzy ? 'true' : 'false');
     if (deepToggle) {
       deepToggle.classList.toggle('is-active', state.deep);
       deepToggle.setAttribute('aria-pressed', state.deep ? 'true' : 'false');
     }
-    wordModeGroup.querySelectorAll('[data-word-mode]').forEach((btn) => {
+    wordModeGroup?.querySelectorAll('[data-word-mode]').forEach((btn) => {
       const active = btn.getAttribute('data-word-mode') === state.wordMode;
       btn.classList.toggle('is-active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    matchScopeGroup?.querySelectorAll('[data-match-scope]').forEach((btn) => {
+      const active = btn.getAttribute('data-match-scope') === state.matchScope;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    typeChipsRoot?.querySelectorAll('[data-type-chip]').forEach((btn) => {
+      const key = btn.getAttribute('data-type-chip') || '';
+      const active = state.types.includes(key);
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (datePresetEl && datePresetEl.value !== state.datePreset) datePresetEl.value = state.datePreset || '';
+    if (dateFromEl && dateFromEl.value !== state.dateFrom) dateFromEl.value = state.dateFrom || '';
+    if (dateToEl && dateToEl.value !== state.dateTo) dateToEl.value = state.dateTo || '';
+    const customOpen = state.datePreset === 'custom';
+    dateCustomWrap?.classList.toggle('is-hidden', !customOpen);
+    if (dateCustomWrap) dateCustomWrap.hidden = !customOpen;
+    dateCustomToWrap?.classList.toggle('is-hidden', !customOpen);
+    if (dateCustomToWrap) dateCustomToWrap.hidden = !customOpen;
+    if (personFilterEl && personFilterEl.value !== state.who) personFilterEl.value = state.who || '';
+    if (presenceFilterEl && presenceFilterEl.value !== state.presence) presenceFilterEl.value = state.presence || 'any';
+    const showMissing = state.presence === 'missing' && state.scopeKeys.length > 1;
+    if (missingWrap) {
+      missingWrap.hidden = !showMissing;
+      missingWrap.classList.toggle('is-hidden', !showMissing);
+    }
+    if (missingSourceEl && state.missingSource && missingSourceEl.value !== state.missingSource) {
+      missingSourceEl.value = state.missingSource;
+    }
+    if (hasFilterEl && hasFilterEl.value !== state.has) hasFilterEl.value = state.has || '';
+    if (lacksFilterEl && lacksFilterEl.value !== state.lacks) lacksFilterEl.value = state.lacks || '';
+    if (presenceWrap) {
+      const showPresence = state.scopeKeys.length > 1 || availableSources.length > 1;
+      presenceWrap.hidden = !showPresence;
+      presenceWrap.classList.toggle('is-hidden', !showPresence);
+    }
   };
 
   const renderStats = (rows) => {
-    const searching = Fuzzy.getSearchWords(state.query).length > 0;
+    const parsed = parseActiveQuery();
+    const searching = queryIsActive(parsed);
     if (!searching) {
       statsEl.classList.add('is-hidden');
       statsEl.innerHTML = '';
       return;
     }
 
-    const scores = rows.map((row) => row.match?.score || 0);
+    const scores = rows.map((row) => row.match?.score || 0).filter((score) => score > 0);
     const exactCount = rows.filter((row) => row.match?.kind === 'exact').length;
-    const similarCount = rows.length - exactCount;
+    const similarCount = Math.max(0, rows.length - exactCount);
     const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
     const best = scores.length ? Math.max(...scores) : 0;
     const barTone = avg >= 90 ? 'high' : avg >= 75 ? 'mid' : 'low';
-    const fileHitCount = state.deep
-      ? rows.reduce((sum, row) => {
-          const words = Fuzzy.getSearchWords(state.query);
-          return (
-            sum +
-            projectEntries(row.project).reduce((count, entry) => {
-              const hay = `${entry.name}\n${entry.path}`.toLowerCase();
-              return haystackHasWords(hay, words, state.wordMode) ? count + 1 : count;
-            }, 0)
-          );
-        }, 0)
-      : 0;
+    const nestedMatchTotal = rows.reduce((sum, row) => sum + Number(row.deepHits?.total || 0), 0);
     const catalogCount = new Set(rows.map((row) => row.project.source_key).filter(Boolean)).size;
 
     statsEl.classList.remove('is-hidden');
@@ -3781,13 +4263,15 @@
       <div class="sp-stats-row">
         <span class="sp-stats-title">Search stats</span>
         <span>${rows.length} project${rows.length === 1 ? '' : 's'}</span>
+        ${nestedMatchTotal ? `<span>${nestedMatchTotal} nested match${nestedMatchTotal === 1 ? '' : 'es'}</span>` : ''}
         ${state.scopeKeys.length > 1 ? `<span>${catalogCount} catalog${catalogCount === 1 ? '' : 's'} hit</span>` : ''}
         <span class="sp-stats-exact">${exactCount} exact</span>
         <span class="sp-stats-similar">${similarCount} similar</span>
         <span class="sp-stats-avg">Avg ${avg}%</span>
         <span>Best ${best}%</span>
         ${state.fuzzy ? '<span class="sp-stats-fuzzy">Fuzzy on</span>' : ''}
-        ${state.deep ? `<span class="sp-stats-deep">Deep files on${fileHitCount ? ` · ${fileHitCount} nested hit${fileHitCount === 1 ? '' : 's'}` : ''}</span>` : '<span class="sp-stats-deep">Folder names only</span>'}
+        ${state.matchScope !== 'all' ? `<span class="sp-stats-scope">Scope: ${escapeHtml(state.matchScope)}</span>` : ''}
+        ${state.deep || state.matchScope === 'files' ? '<span class="sp-stats-deep">Deep files on</span>' : '<span class="sp-stats-deep">Folder names only</span>'}
         ${state.refine.trim() ? `<span class="sp-stats-refine">Refined with “${escapeHtml(state.refine.trim())}”</span>` : ''}
       </div>
       <div class="sp-stats-bar-track">
@@ -3799,7 +4283,7 @@
   };
 
   const renderMeta = (matchedCount) => {
-    const searching = Fuzzy.getSearchWords(state.query).length > 0;
+    const searching = queryIsActive();
     let html = `${matchedCount} project${matchedCount === 1 ? '' : 's'}${searching ? ' matched' : ''}`;
     html += ` · ${state.itemCount} catalog item${state.itemCount === 1 ? '' : 's'} total`;
     if (state.scopeKeys.length > 1) {
@@ -3810,7 +4294,7 @@
       if (state.lastStatus) html += ` (${escapeHtml(state.lastStatus)})`;
     }
     if (state.ready) html += ' · <span class="sp-live-pill">⚡ Live search</span>';
-    if (searching && state.deep) html += ' · <span class="sp-live-pill sp-live-pill--deep">📂 Deep files</span>';
+    if (searching && (state.deep || state.matchScope === 'files')) html += ' · <span class="sp-live-pill sp-live-pill--deep">📂 Deep files</span>';
     else if (searching) html += ' · folder names only';
     metaEl.innerHTML = html;
   };
@@ -3857,6 +4341,350 @@
     });
   };
 
+  const snapshotSearchState = () => ({
+    query: state.query,
+    refine: state.refine,
+    wordMode: state.wordMode,
+    fuzzy: state.fuzzy,
+    deep: state.deep,
+    matchScope: state.matchScope,
+    types: [...state.types],
+    datePreset: state.datePreset,
+    dateFrom: state.dateFrom,
+    dateTo: state.dateTo,
+    who: state.who,
+    presence: state.presence,
+    missingSource: state.missingSource,
+    has: state.has,
+    lacks: state.lacks,
+    scopeKeys: [...state.scopeKeys],
+  });
+
+  const readSavedSearches = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE.saved) || '[]');
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .filter((item) => item && typeof item === 'object' && String(item.name || '').trim())
+        .slice(0, SAVED_MAX);
+    } catch {
+      return [];
+    }
+  };
+
+  const writeSavedSearches = (items) => {
+    try {
+      localStorage.setItem(STORAGE.saved, JSON.stringify(items.slice(0, SAVED_MAX)));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  let savedPaintedKey = '';
+
+  const renderSavedSearches = () => {
+    if (!savedRoot || !savedChips) return;
+    const items = readSavedSearches();
+    const paintKey = items.map((item) => `${item.id}:${item.name}`).join('\u0001');
+    if (paintKey === savedPaintedKey) return;
+    savedPaintedKey = paintKey;
+    if (!items.length) {
+      savedRoot.hidden = true;
+      savedRoot.classList.add('is-hidden');
+      savedChips.innerHTML = '';
+      return;
+    }
+    savedRoot.hidden = false;
+    savedRoot.classList.remove('is-hidden');
+    savedChips.innerHTML = items
+      .map(
+        (item) => `<span class="sharepoint-recent-chip-wrap" role="listitem">
+          <button type="button" class="sharepoint-recent-chip" data-saved-id="${escapeHtml(String(item.id))}" title="${escapeHtml(item.query || item.name)}">${escapeHtml(item.name)}</button>
+          <button type="button" class="sharepoint-recent-remove" data-saved-remove="${escapeHtml(String(item.id))}" title="Remove saved search" aria-label="Remove saved search">×</button>
+        </span>`
+      )
+      .join('');
+  };
+
+  const applySavedSearch = (id) => {
+    const item = readSavedSearches().find((entry) => String(entry.id) === String(id));
+    if (!item || !item.state) return;
+    const snap = item.state;
+    state.query = String(snap.query || '');
+    state.refine = String(snap.refine || '');
+    state.wordMode = snap.wordMode === 'or' ? 'or' : 'and';
+    state.fuzzy = !!snap.fuzzy;
+    state.deep = snap.deep !== false;
+    state.matchScope = MATCH_SCOPES.has(snap.matchScope) ? snap.matchScope : 'all';
+    state.types = Array.isArray(snap.types) ? snap.types.filter((t) => TYPE_CHIP_KEYS.has(t)) : [];
+    state.datePreset = DATE_PRESETS.has(snap.datePreset) ? snap.datePreset : '';
+    state.dateFrom = String(snap.dateFrom || '');
+    state.dateTo = String(snap.dateTo || '');
+    state.who = String(snap.who || '');
+    state.presence = PRESENCE_MODES.has(snap.presence) ? snap.presence : 'any';
+    state.missingSource = String(snap.missingSource || '');
+    state.has = HAS_LACK_KEYS.has(snap.has) ? snap.has : '';
+    state.lacks = HAS_LACK_KEYS.has(snap.lacks) ? snap.lacks : '';
+    localStorage.setItem(STORAGE.fuzzy, state.fuzzy ? '1' : '0');
+    localStorage.setItem(STORAGE.deep, state.deep ? '1' : '0');
+    localStorage.setItem(STORAGE.wordMode, state.wordMode);
+    hideSuggestions();
+    if (
+      snap.matchScope !== 'all' ||
+      snap.datePreset ||
+      snap.who ||
+      (snap.presence && snap.presence !== 'any') ||
+      snap.has ||
+      snap.lacks
+    ) {
+      setAdvancedOpen(true);
+    }
+    applySearch({ resetPage: true, syncInputs: true });
+  };
+
+  const saveCurrentSearch = () => {
+    const label = window.prompt('Name this saved search', state.query.trim() || 'Saved search');
+    if (label == null) return;
+    const name = String(label).trim();
+    if (!name) return;
+    const items = readSavedSearches().filter((item) => item.name.toLowerCase() !== name.toLowerCase());
+    items.unshift({
+      id: `${Date.now()}`,
+      name,
+      query: state.query.trim(),
+      state: snapshotSearchState(),
+    });
+    writeSavedSearches(items);
+    savedPaintedKey = '';
+    renderSavedSearches();
+  };
+
+  const removeSavedSearch = (id) => {
+    writeSavedSearches(readSavedSearches().filter((item) => String(item.id) !== String(id)));
+    savedPaintedKey = '';
+    renderSavedSearches();
+  };
+
+  const populatePersonFilter = () => {
+    if (!personFilterEl) return;
+    const current = state.who || personFilterEl.value || '';
+    const people = new Map();
+    state.projects.forEach((project) => {
+      [project.modified_by, project.person].forEach((name) => {
+        const display = String(name || '').trim();
+        if (!display) return;
+        const key = display.toLowerCase();
+        if (!people.has(key)) people.set(key, display);
+      });
+    });
+    const sorted = [...people.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const hasMe = !!(currentUser.display || currentUser.name);
+    personFilterEl.innerHTML =
+      `<option value="">Anyone</option>` +
+      (hasMe ? `<option value="me">Me (${escapeHtml(searchRoot.getAttribute('data-user-display') || searchRoot.getAttribute('data-user-name') || 'me')})</option>` : '') +
+      sorted.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+    if (current && [...personFilterEl.options].some((opt) => opt.value === current)) {
+      personFilterEl.value = current;
+    } else {
+      personFilterEl.value = '';
+      state.who = '';
+    }
+  };
+
+  const hideSuggestions = () => {
+    state.suggestOpen = false;
+    state.suggestIndex = -1;
+    state.suggestItems = [];
+    if (suggestEl) {
+      suggestEl.hidden = true;
+      suggestEl.classList.add('is-hidden');
+      suggestEl.innerHTML = '';
+    }
+    input?.setAttribute('aria-expanded', 'false');
+  };
+
+  const buildSuggestions = (rawQuery) => {
+    const q = String(rawQuery || '').trim().toLowerCase();
+    if (q.length < 1) return [];
+    const items = [];
+    const push = (group, label, value, action, meta = '') => {
+      if (items.length >= 24) return;
+      items.push({ group, label, value, action, meta });
+    };
+
+    const projects = state.projects
+      .filter((project) => String(project.project_name || '').toLowerCase().includes(q))
+      .slice(0, 8);
+    projects.forEach((project) => {
+      push(
+        'Projects',
+        String(project.project_name || ''),
+        String(project.project_name || ''),
+        'open-project',
+        String(project.source_title || '')
+      );
+    });
+
+    const fileHits = [];
+    state.projects.forEach((project) => {
+      projectEntries(project).forEach((entry) => {
+        if (fileHits.length >= 8) return;
+        const name = String(entry.name || '');
+        if (!name.toLowerCase().includes(q)) return;
+        fileHits.push({
+          name,
+          projectName: String(project.project_name || ''),
+          sourceKey: String(project.source_key || ''),
+        });
+      });
+    });
+    fileHits.slice(0, 8).forEach((hit) => {
+      push('Files', hit.name, hit.name, 'set-query', hit.projectName);
+    });
+
+    const people = new Set();
+    state.projects.forEach((project) => {
+      [project.modified_by, project.person].forEach((name) => {
+        const display = String(name || '').trim();
+        if (display && display.toLowerCase().includes(q)) people.add(display);
+      });
+    });
+    [...people].slice(0, 8).forEach((name) => {
+      push('People', name, `person:${name.includes(' ') ? `"${name}"` : name}`, 'insert-operator');
+    });
+
+    const operators = [
+      { label: 'ext:pdf', value: 'ext:pdf' },
+      { label: 'ext:vsdx', value: 'ext:vsdx' },
+      { label: 'type:visio', value: 'type:visio' },
+      { label: 'type:cad', value: 'type:cad' },
+      { label: 'type:drawings', value: 'type:drawings' },
+      { label: 'person:me', value: 'person:me' },
+      { label: 'has:pdf', value: 'has:pdf' },
+      { label: 'has:visio', value: 'has:visio' },
+      { label: 'lacks:pdf', value: 'lacks:pdf' },
+      { label: 'path:drawings', value: 'path:drawings' },
+    ].filter((op) => op.label.includes(q) || q.endsWith(':') || q.length <= 2);
+    operators.slice(0, 8).forEach((op) => push('Operators', op.label, op.value, 'insert-operator'));
+
+    return items;
+  };
+
+  const renderSuggestions = () => {
+    if (!suggestEl || !input) return;
+    const items = buildSuggestions(input.value);
+    state.suggestItems = items;
+    state.suggestIndex = items.length ? 0 : -1;
+    if (!items.length) {
+      hideSuggestions();
+      return;
+    }
+    let html = '';
+    let lastGroup = '';
+    items.forEach((item, index) => {
+      if (item.group !== lastGroup) {
+        lastGroup = item.group;
+        html += `<div class="sp-suggest-group" role="presentation">${escapeHtml(item.group)}</div>`;
+      }
+      html += `<button type="button" class="sp-suggest-item${index === state.suggestIndex ? ' is-active' : ''}" role="option" data-suggest-index="${index}" aria-selected="${index === state.suggestIndex ? 'true' : 'false'}">
+        <span class="sp-suggest-label">${escapeHtml(item.label)}</span>
+        ${item.meta ? `<span class="sp-suggest-meta">${escapeHtml(item.meta)}</span>` : ''}
+      </button>`;
+    });
+    suggestEl.innerHTML = html;
+    suggestEl.hidden = false;
+    suggestEl.classList.remove('is-hidden');
+    state.suggestOpen = true;
+    input.setAttribute('aria-expanded', 'true');
+  };
+
+  const scheduleSuggestions = debouncePaint(() => {
+    if (document.activeElement === input) renderSuggestions();
+  }, 90);
+
+  const applySuggestion = (item) => {
+    if (!item) return;
+    hideSuggestions();
+    if (item.action === 'open-project') {
+      const project = state.projects.find(
+        (row) => String(row.project_name || '').toLowerCase() === String(item.value || '').toLowerCase()
+      );
+      if (project && typeof openProject === 'function') {
+        openProject(String(project.project_name || ''), String(project.source_key || state.sourceKey || ''));
+        return;
+      }
+      state.query = item.value;
+      applySearch({ resetPage: true, syncInputs: true });
+      return;
+    }
+    if (item.action === 'set-query') {
+      state.query = item.value;
+      applySearch({ resetPage: true, syncInputs: true });
+      return;
+    }
+    if (item.action === 'insert-operator') {
+      const current = String(input?.value || '').trim();
+      const next = current ? `${current} ${item.value}` : item.value;
+      state.query = next;
+      applySearch({ resetPage: true, syncInputs: true });
+      input?.focus();
+    }
+  };
+
+  const csvEscape = (value) => {
+    const text = String(value ?? '');
+    if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+  };
+
+  const exportFilteredCsv = () => {
+    const rows = filteredProjects();
+    const header = [
+      'project',
+      'catalog',
+      'files',
+      'folders',
+      'modified',
+      'modified_by',
+      'created_by',
+      'match_score',
+      'sharepoint_url',
+    ];
+    const lines = [header.join(',')];
+    rows.forEach(({ project, match }) => {
+      lines.push(
+        [
+          project.project_name,
+          project.source_title,
+          project.file_count,
+          project.folder_count,
+          project.last_modified,
+          project.modified_by,
+          project.person,
+          match?.score ?? '',
+          project.folder_url,
+        ]
+          .map(csvEscape)
+          .join(',')
+      );
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `catalog-search-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const isTypingTarget = (el) => {
+    if (!el) return false;
+    const tag = String(el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+  };
+
   const render = () => {
     updateControlsVisibility();
     updateHeading();
@@ -3866,25 +4694,36 @@
     const from = total === 0 ? 0 : (state.page - 1) * state.perPage + 1;
     const to = Math.min(total, state.page * state.perPage);
     const pageRows = rows.slice((state.page - 1) * state.perPage, state.page * state.perPage);
-    const searching = Fuzzy.getSearchWords(state.query).length > 0;
+    const parsed = parseActiveQuery();
+    const searching = queryIsActive(parsed);
     const presence = presenceMap();
+    const useDeep = effectiveDeep(state.matchScope, state.deep);
     if (searching) {
-      const words = Fuzzy.getSearchWords(state.query);
+      const words = [...parsed.words, ...parsed.phrases];
       pageRows.forEach((row) => {
-        row.match = scoreProject(row.project, words, state.wordMode, state.fuzzy, state.deep);
-        if (state.deep) {
+        row.match = scoreParsedProject(row.project, parsed);
+        if (useDeep && words.length) {
           row.deepHits = collectDeepHits(row.project, words, state.wordMode, state.fuzzy);
         }
       });
+      // Fill nested totals for stats on all rows (cheap path counts)
+      if (useDeep && words.length) {
+        rows.forEach((row) => {
+          if (row.deepHits?.total) return;
+          const hitSet = collectDeepHits(row.project, words, state.wordMode, state.fuzzy, 0);
+          row.deepHits = { hits: [], total: hitSet.total };
+        });
+      }
     }
 
-    resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() ? ' · filtered' : ''}`;
+    resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() || advancedFiltersActive() ? ' · filtered' : ''}`;
     renderMeta(total);
     renderStats(rows);
     renderPagination(total);
     syncListSortHeaders();
     syncListFilterUi();
     renderRecentSearches();
+    renderSavedSearches();
 
     if (pageRows.length === 0) {
       tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="8">${
@@ -3892,10 +4731,10 @@
           ? '⏳ Loading live search index…'
           : state.projects.length === 0
             ? '📁 No catalog items yet.'
-            : listFiltersActive()
-              ? 'No projects match these column filters. Clear filters or try another search.'
+            : listFiltersActive() || advancedFiltersActive()
+              ? 'No projects match these filters. Clear filters or try another search.'
               : searching
-              ? `No projects matched <strong>${escapeHtml(state.query.trim())}</strong> in the selected catalog${state.scopeKeys.length === 1 ? '' : 's'}. ${state.deep ? 'Try Fuzzy, OR mode, or another file or folder name.' : 'Turn on Deep files to search nested files, or try Fuzzy / OR mode.'}`
+              ? `No projects matched <strong>${escapeHtml(state.query.trim() || 'filters')}</strong> in the selected catalog${state.scopeKeys.length === 1 ? '' : 's'}. ${useDeep ? 'Try Fuzzy, OR mode, or another file or folder name.' : 'Turn on Deep files to search nested files, or try Fuzzy / OR mode.'}`
               : 'No projects to show.'
       }</td></tr>`;
       syncCompareBar();
@@ -3912,7 +4751,7 @@
         const person = String(project.person || '').trim();
         const selectId = selectionKey(sourceKey, name);
         const isSelected = state.selected.has(selectId);
-        const hitSet = searching && state.deep ? deepHits : null;
+        const hitSet = searching && useDeep ? deepHits : null;
         const openQuery = '';
         const extra = `${hitSet ? deepHitsHtml(hitSet) : ''}${coverageHtml(project, presence)}`;
         return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
@@ -3924,7 +4763,7 @@
           <td>
             ${projectNameCellHtml(project, sourceKey, sourceTitle, extra, openQuery)}
           </td>
-          <td class="sp-match-cell">${searching ? scoreBadgeHtml(match) : '<span class="sp-match-placeholder">—</span>'}</td>
+          <td class="sp-match-cell">${searching ? scoreBadgeHtml(match, project) : scoreBadgeHtml(null, project)}</td>
           <td class="sp-meta-cell">${itemCountsHtml(project)}</td>
           <td class="sp-meta-cell">${escapeHtml(formatModified(project.last_modified))}</td>
           <td class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
@@ -4043,8 +4882,22 @@
       params.set('sources', state.scopeKeys.join(','));
     }
     if (state.query.trim()) params.set('q', state.query.trim());
+    if (state.refine.trim()) params.set('refine', state.refine.trim());
+    if (state.matchScope && state.matchScope !== 'all') params.set('scope', state.matchScope);
+    if (state.types.length) params.set('type', state.types.join(','));
+    if (state.datePreset) params.set('date', state.datePreset);
+    if (state.datePreset === 'custom' && state.dateFrom) params.set('from', state.dateFrom);
+    if (state.datePreset === 'custom' && state.dateTo) params.set('to', state.dateTo);
+    if (state.who) params.set('who', state.who);
+    if (state.presence && state.presence !== 'any') params.set('presence', state.presence);
+    if (state.presence === 'missing' && state.missingSource) params.set('missing', state.missingSource);
+    if (state.has) params.set('has', state.has);
+    if (state.lacks) params.set('lacks', state.lacks);
+    if (state.fuzzy) params.set('fuzzy', '1');
+    if (!state.deep) params.set('deep', '0');
+    if (state.wordMode === 'or') params.set('mode', 'or');
     if (state.perPage !== 25) params.set('per', String(state.perPage));
-    if (state.page > 1 && !state.query.trim()) params.set('page', String(state.page));
+    if (state.page > 1 && !state.query.trim() && !advancedFiltersActive()) params.set('page', String(state.page));
     const qs = params.toString();
     const hash = catalogSolo
       ? ''
@@ -4123,6 +4976,7 @@
         state.lastStatus = payload.last_sync_status || state.lastStatus;
         state.loadingIndex = false;
         state.ready = true;
+        populatePersonFilter();
         applySearch({ resetPage: true, syncInputs: true });
       })
       .catch((error) => {
@@ -4151,6 +5005,7 @@
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
     state.query = input?.value || '';
+    hideSuggestions();
     scheduleTypedSearch.flush();
     scheduleRememberRecent.flush();
   });
@@ -4242,6 +5097,7 @@
     state.refine = '';
     scheduleTypedSearch.cancel();
     scheduleRememberRecent.cancel();
+    hideSuggestions();
     applySearch({ resetPage: true, syncInputs: true });
     input?.focus();
   });
@@ -4272,6 +5128,173 @@
       localStorage.setItem(STORAGE.wordMode, state.wordMode);
       applySearch();
     });
+  });
+
+  matchScopeGroup?.querySelectorAll('[data-match-scope]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('data-match-scope') || 'all';
+      state.matchScope = MATCH_SCOPES.has(next) ? next : 'all';
+      if (state.matchScope !== 'all') setAdvancedOpen(true);
+      applySearch({ resetPage: true });
+    });
+  });
+
+  advancedToggle?.addEventListener('click', () => {
+    setAdvancedOpen(!state.advancedOpen);
+  });
+
+  typeChipsRoot?.addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-type-chip]');
+    if (!chip) return;
+    const key = chip.getAttribute('data-type-chip') || '';
+    if (!TYPE_CHIP_KEYS.has(key)) return;
+    if (state.types.includes(key)) {
+      state.types = state.types.filter((item) => item !== key);
+    } else {
+      state.types = [...state.types, key];
+    }
+    applySearch({ resetPage: true });
+  });
+
+  datePresetEl?.addEventListener('change', () => {
+    const next = datePresetEl.value || '';
+    state.datePreset = DATE_PRESETS.has(next) ? next : '';
+    if (state.datePreset) setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  dateFromEl?.addEventListener('change', () => {
+    state.dateFrom = dateFromEl.value || '';
+    if (state.datePreset !== 'custom') state.datePreset = 'custom';
+    setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  dateToEl?.addEventListener('change', () => {
+    state.dateTo = dateToEl.value || '';
+    if (state.datePreset !== 'custom') state.datePreset = 'custom';
+    setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  personFilterEl?.addEventListener('change', () => {
+    state.who = personFilterEl.value || '';
+    if (state.who) setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  presenceFilterEl?.addEventListener('change', () => {
+    const next = presenceFilterEl.value || 'any';
+    state.presence = PRESENCE_MODES.has(next) ? next : 'any';
+    if (state.presence !== 'any') setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  missingSourceEl?.addEventListener('change', () => {
+    state.missingSource = missingSourceEl.value || '';
+    setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  hasFilterEl?.addEventListener('change', () => {
+    const next = hasFilterEl.value || '';
+    state.has = HAS_LACK_KEYS.has(next) ? next : '';
+    if (state.has) setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+  lacksFilterEl?.addEventListener('change', () => {
+    const next = lacksFilterEl.value || '';
+    state.lacks = HAS_LACK_KEYS.has(next) ? next : '';
+    if (state.lacks) setAdvancedOpen(true);
+    applySearch({ resetPage: true });
+  });
+
+  saveSearchBtn?.addEventListener('click', () => saveCurrentSearch());
+  exportCsvBtn?.addEventListener('click', () => exportFilteredCsv());
+
+  savedRoot?.addEventListener('click', (event) => {
+    const removeBtn = event.target.closest('[data-saved-remove]');
+    if (removeBtn) {
+      event.preventDefault();
+      removeSavedSearch(removeBtn.getAttribute('data-saved-remove') || '');
+      return;
+    }
+    const chip = event.target.closest('[data-saved-id]');
+    if (!chip) return;
+    event.preventDefault();
+    applySavedSearch(chip.getAttribute('data-saved-id') || '');
+  });
+
+  suggestEl?.addEventListener('mousedown', (event) => {
+    const btn = event.target.closest('[data-suggest-index]');
+    if (!btn) return;
+    event.preventDefault();
+    const index = Number(btn.getAttribute('data-suggest-index'));
+    applySuggestion(state.suggestItems[index]);
+  });
+
+  input?.addEventListener('keydown', (event) => {
+    if (!state.suggestOpen || !state.suggestItems.length) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      state.suggestIndex = (state.suggestIndex + 1) % state.suggestItems.length;
+      suggestEl
+        ?.querySelectorAll('.sp-suggest-item')
+        .forEach((el, idx) => {
+          const active = idx === state.suggestIndex;
+          el.classList.toggle('is-active', active);
+          el.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      state.suggestIndex =
+        (state.suggestIndex - 1 + state.suggestItems.length) % state.suggestItems.length;
+      suggestEl
+        ?.querySelectorAll('.sp-suggest-item')
+        .forEach((el, idx) => {
+          const active = idx === state.suggestIndex;
+          el.classList.toggle('is-active', active);
+          el.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+      return;
+    }
+    if (event.key === 'Enter' && state.suggestIndex >= 0) {
+      event.preventDefault();
+      applySuggestion(state.suggestItems[state.suggestIndex]);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideSuggestions();
+    }
+  });
+
+  input?.addEventListener('focus', () => {
+    if ((input.value || '').trim()) scheduleSuggestions();
+  });
+  input?.addEventListener('blur', () => {
+    window.setTimeout(() => hideSuggestions(), 120);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      input?.focus();
+      input?.select();
+      return;
+    }
+    if (event.key === 'Escape') {
+      if (state.suggestOpen) {
+        hideSuggestions();
+        return;
+      }
+      if (document.activeElement === input && state.query) {
+        state.query = '';
+        applySearch({ resetPage: true, syncInputs: true });
+      }
+    }
+  });
+
+  input?.addEventListener('input', () => {
+    if (searchComposing) return;
+    scheduleSuggestions();
   });
 
   scopesRoot?.querySelectorAll('.sharepoint-scope-check').forEach((input) => {

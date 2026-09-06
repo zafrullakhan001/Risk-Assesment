@@ -9179,6 +9179,14 @@ body.is-public-catalog-share .topbar-actions {
 }
 
 /* Compact catalog search card: hide help copy and tighten spacing */
+#sharepoint-search.upload-card,
+#sharepoint-search.search-card {
+    overflow: visible;
+}
+#sharepoint-search .sharepoint-catalog-body,
+#sharepoint-search .sharepoint-live-search-form {
+    overflow: visible;
+}
 #sharepoint-search.is-compact-chrome,
 #sharepoint-search[data-catalog-density="compact"] {
     padding: 0.65rem 0.9rem 0.7rem;
@@ -9240,11 +9248,32 @@ body.is-public-catalog-share .topbar-actions {
 #sharepoint-search.is-compact-chrome .search-wrap {
     height: 34px;
 }
+#sharepoint-search.is-compact-chrome .sharepoint-search-find-row {
+    gap: 0.35rem;
+}
+#sharepoint-search.is-compact-chrome .sp-search-advanced-toggle {
+    min-height: 34px;
+    padding: 0 0.55rem;
+    font-size: 0.72rem;
+}
 #sharepoint-search.is-compact-chrome .sharepoint-search-controls {
     margin-top: 0.3rem;
     gap: 0.35rem;
 }
+#sharepoint-search.is-compact-chrome .sp-search-cluster {
+    padding: 0.2rem 0.35rem;
+    gap: 0.25rem;
+}
+#sharepoint-search.is-compact-chrome .sp-search-cluster-label {
+    font-size: 0.62rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-advanced {
+    margin-top: 0.28rem;
+    gap: 0.35rem 0.45rem;
+    padding: 0.35rem 0.4rem;
+}
 #sharepoint-search.is-compact-chrome .sharepoint-recent-searches,
+#sharepoint-search.is-compact-chrome .sharepoint-saved-searches,
 #sharepoint-search.is-compact-chrome .sharepoint-search-stats {
     margin-top: 0.28rem;
 }
@@ -12484,9 +12513,331 @@ html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"
 .sharepoint-search-controls {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
+    align-items: flex-end;
+    gap: 0.55rem 0.75rem;
     margin-top: 0.65rem;
+}
+.sharepoint-search-find-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.45rem;
+    width: 100%;
+}
+.sharepoint-search-find-row .sharepoint-search-find-stack {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sharepoint-search-find-row .sharepoint-search-main {
+    width: 100%;
+}
+.sp-search-advanced-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 0 0.7rem;
+    border: 1px solid color-mix(in srgb, #2563eb 30%, var(--border, #e2e8f0));
+    border-radius: 0.55rem;
+    background: color-mix(in srgb, #2563eb 8%, var(--surface, #fff));
+    color: #1d4ed8;
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.sp-search-advanced-toggle:hover {
+    background: color-mix(in srgb, #2563eb 14%, var(--surface, #fff));
+}
+.sp-search-advanced-toggle.is-open {
+    background: color-mix(in srgb, #2563eb 18%, transparent);
+    border-color: color-mix(in srgb, #2563eb 45%, transparent);
+}
+.sp-adv-toggle-arrow {
+    font-size: 0.72rem;
+    line-height: 1;
+}
+.sp-search-cluster {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.45rem;
+    border-radius: 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--border, #e2e8f0) 85%, transparent);
+    background: color-mix(in srgb, var(--surface, #fff) 92%, #f8fafc);
+    min-width: 0;
+}
+.sp-search-cluster-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--muted, #64748b);
+    padding: 0 0.15rem;
+    white-space: nowrap;
+    cursor: help;
+}
+.sp-search-cluster--mode {
+    border-color: color-mix(in srgb, #0f766e 28%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #0f766e 6%, var(--surface, #fff));
+}
+.sp-search-cluster--mode .sp-search-cluster-label { color: #0f766e; }
+.sp-search-cluster--scope {
+    border-color: color-mix(in srgb, #2563eb 28%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #2563eb 6%, var(--surface, #fff));
+}
+.sp-search-cluster--scope .sp-search-cluster-label { color: #1d4ed8; }
+.sp-search-cluster--types {
+    border-color: color-mix(in srgb, #c2410c 24%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #ea580c 5%, var(--surface, #fff));
+}
+.sp-search-cluster--types .sp-search-cluster-label { color: #c2410c; }
+.sp-search-cluster--refine {
+    border-color: color-mix(in srgb, #7c3aed 24%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #7c3aed 5%, var(--surface, #fff));
+    flex: 1 1 11rem;
+}
+.sp-search-cluster--refine .sp-search-cluster-label { color: #6d28d9; }
+.sp-search-cluster--refine .sp-refine-wrap {
+    flex: 1 1 8rem;
+    min-width: 8rem;
+}
+.sp-search-fuzzy.is-active,
+.sp-search-fuzzy[aria-pressed="true"] {
+    background: color-mix(in srgb, #a855f7 16%, transparent);
+    color: #7e22ce;
+    border-color: color-mix(in srgb, #a855f7 35%, transparent);
+}
+.sp-search-deep.is-active,
+.sp-search-deep[aria-pressed="true"] {
+    background: color-mix(in srgb, #0f766e 14%, transparent);
+    color: #0f766e;
+    border-color: color-mix(in srgb, #0f766e 32%, transparent);
+}
+.sp-match-scope-group .sp-search-toggle.is-active,
+.sp-match-scope-group .sp-search-toggle[aria-pressed="true"] {
+    background: color-mix(in srgb, #2563eb 14%, transparent);
+    color: #1d4ed8;
+    border-color: color-mix(in srgb, #2563eb 30%, transparent);
+}
+.sharepoint-search-find-stack {
+    position: relative;
+    z-index: 20;
+}
+.sharepoint-search-suggest {
+    position: absolute;
+    z-index: 80;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.2rem);
+    max-height: min(22rem, 55vh);
+    overflow: auto;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.7rem;
+    background: var(--surface, #fff);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+    padding: 0.35rem;
+}
+.sharepoint-search-suggest.is-hidden,
+.sharepoint-search-suggest[hidden] {
+    display: none !important;
+}
+.sp-suggest-group {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #64748b);
+    padding: 0.35rem 0.55rem 0.2rem;
+}
+.sp-suggest-item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.45rem;
+    cursor: pointer;
+    color: inherit;
+}
+.sp-suggest-item:hover,
+.sp-suggest-item.is-active,
+.sp-suggest-item[aria-selected="true"] {
+    background: rgba(13, 148, 136, 0.12);
+}
+.sp-suggest-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sp-suggest-meta {
+    font-size: 0.72rem;
+    color: var(--muted, #64748b);
+    flex: 0 0 auto;
+}
+.sharepoint-type-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+}
+.sp-type-chip {
+    border: 1px solid var(--border, #e2e8f0);
+    background: var(--surface, #fff);
+    font-weight: 700;
+}
+.sp-type-chip--pdf.is-active,
+.sp-type-chip--pdf[aria-pressed="true"] {
+    color: #b91c1c;
+    background: color-mix(in srgb, #ef4444 14%, transparent);
+    border-color: color-mix(in srgb, #ef4444 40%, transparent);
+}
+.sp-type-chip--visio.is-active,
+.sp-type-chip--visio[aria-pressed="true"] {
+    color: #4338ca;
+    background: color-mix(in srgb, #6366f1 14%, transparent);
+    border-color: color-mix(in srgb, #6366f1 40%, transparent);
+}
+.sp-type-chip--cad.is-active,
+.sp-type-chip--cad[aria-pressed="true"] {
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 16%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 42%, transparent);
+}
+.sp-type-chip--drawings.is-active,
+.sp-type-chip--drawings[aria-pressed="true"] {
+    color: #0369a1;
+    background: color-mix(in srgb, #0ea5e9 14%, transparent);
+    border-color: color-mix(in srgb, #0ea5e9 40%, transparent);
+}
+.sp-type-chip--images.is-active,
+.sp-type-chip--images[aria-pressed="true"] {
+    color: #a21caf;
+    background: color-mix(in srgb, #d946ef 12%, transparent);
+    border-color: color-mix(in srgb, #d946ef 36%, transparent);
+}
+.sp-type-chip--folders.is-active,
+.sp-type-chip--folders[aria-pressed="true"] {
+    color: #0f766e;
+    background: color-mix(in srgb, #14b8a6 14%, transparent);
+    border-color: color-mix(in srgb, #14b8a6 38%, transparent);
+}
+.sharepoint-search-advanced {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.45rem 0.65rem;
+    margin-top: 0.55rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--border, #e2e8f0) 90%, transparent);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, #f8fafc 80%, transparent),
+        color-mix(in srgb, var(--surface, #fff) 96%, #f1f5f9)
+    );
+}
+.sharepoint-search-advanced[hidden],
+.sharepoint-search-advanced.is-collapsed:not(.is-open) {
+    display: none !important;
+}
+.sp-adv-field {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted, #64748b);
+    cursor: help;
+}
+.sp-adv-field.is-hidden,
+.sp-adv-field[hidden] {
+    display: none !important;
+}
+.sp-adv-field select,
+.sp-adv-field input[type="date"] {
+    min-height: 2rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.45rem;
+    background: var(--surface, #fff);
+    color: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.25rem 0.45rem;
+}
+.sp-adv-field--date span { color: #0369a1; }
+.sp-adv-field--person span { color: #7c3aed; }
+.sp-adv-field--presence span { color: #0f766e; }
+.sp-adv-field--has span { color: #15803d; }
+.sp-adv-field--lacks span { color: #b91c1c; }
+.sp-adv-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+    margin-left: auto;
+}
+.sp-adv-save {
+    border-color: color-mix(in srgb, #0f766e 35%, var(--border, #e2e8f0)) !important;
+    color: #0f766e !important;
+}
+.sp-adv-export {
+    border-color: color-mix(in srgb, #2563eb 35%, var(--border, #e2e8f0)) !important;
+    color: #1d4ed8 !important;
+}
+.sharepoint-saved-searches {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.55rem;
+    margin-top: 0.55rem;
+}
+.sharepoint-saved-searches.is-hidden,
+.sharepoint-saved-searches[hidden] {
+    display: none !important;
+}
+.sp-fresh-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.35rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.sp-fresh-badge--fresh {
+    color: #166534;
+    background: color-mix(in srgb, #22c55e 18%, transparent);
+}
+.sp-fresh-badge--stale {
+    color: #9a3412;
+    background: color-mix(in srgb, #f97316 16%, transparent);
+}
+.sp-stats-scope {
+    color: #0f766e;
+}
+[data-theme="indigo"] .sp-search-cluster {
+    background: color-mix(in srgb, var(--card, #111a2b) 90%, transparent);
+    border-color: color-mix(in srgb, var(--line, #243247) 90%, transparent);
+}
+[data-theme="indigo"] .sharepoint-search-advanced {
+    background: color-mix(in srgb, var(--card, #111a2b) 88%, transparent);
+    border-color: var(--line, #243247);
+}
+[data-theme="indigo"] .sp-type-chip {
+    background: color-mix(in srgb, var(--card, #111a2b) 92%, transparent);
 }
 .sharepoint-recent-searches {
     display: flex;

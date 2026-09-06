@@ -594,6 +594,7 @@ final class SharePointCatalogRepository
      *   file_count: int,
      *   folder_count: int,
      *   last_modified: string,
+     *   date_created: string,
      *   modified_by: string,
      *   person: string,
      *   names: list<string>,
@@ -609,7 +610,7 @@ final class SharePointCatalogRepository
 
         $statement = $this->pdo->prepare(
             'SELECT project_name, name, item_type, relative_path, web_url,
-                    last_modified, modified_by, person
+                    last_modified, date_created, modified_by, person
              FROM sharepoint_items
              WHERE source_key = :source_key
              ORDER BY LOWER(project_name) ASC, id ASC'
@@ -636,6 +637,7 @@ final class SharePointCatalogRepository
                     'file_count' => 0,
                     'folder_count' => 0,
                     'last_modified' => '',
+                    'date_created' => '',
                     'modified_by' => '',
                     'person' => '',
                     'names' => [],
@@ -646,6 +648,9 @@ final class SharePointCatalogRepository
                     '_path_set' => [],
                     '_file_set' => [],
                     '_folder_set' => [],
+                    '_max_modified' => '',
+                    '_min_created' => '',
+                    '_root_created' => '',
                 ];
             }
 
@@ -655,6 +660,8 @@ final class SharePointCatalogRepository
             $webUrl = trim((string) ($row['web_url'] ?? ''));
             $entryPath = $path !== '' ? $path : $name;
             $entryKey = strtolower($entryPath);
+            $lastModified = trim((string) ($row['last_modified'] ?? ''));
+            $dateCreated = trim((string) ($row['date_created'] ?? ''));
 
             $projects[$projectName]['item_count']++;
             if ($itemType === 'folder') {
@@ -670,6 +677,19 @@ final class SharePointCatalogRepository
             if ($path !== '' && !isset($projects[$projectName]['_path_set'][$path])) {
                 $projects[$projectName]['_path_set'][$path] = true;
                 $projects[$projectName]['paths'][] = $path;
+            }
+
+            if ($lastModified !== '') {
+                $prevMax = (string) ($projects[$projectName]['_max_modified'] ?? '');
+                if ($prevMax === '' || strcmp($lastModified, $prevMax) > 0) {
+                    $projects[$projectName]['_max_modified'] = $lastModified;
+                }
+            }
+            if ($dateCreated !== '') {
+                $prevMin = (string) ($projects[$projectName]['_min_created'] ?? '');
+                if ($prevMin === '' || strcmp($dateCreated, $prevMin) < 0) {
+                    $projects[$projectName]['_min_created'] = $dateCreated;
+                }
             }
 
             $isRoot = $itemType === 'folder'
@@ -689,11 +709,19 @@ final class SharePointCatalogRepository
                     ];
                 }
             }
-            if ($isRoot && $webUrl !== '' && $projects[$projectName]['folder_url'] === '') {
-                $projects[$projectName]['folder_url'] = $webUrl;
-                $projects[$projectName]['last_modified'] = (string) ($row['last_modified'] ?? '');
-                $projects[$projectName]['modified_by'] = (string) ($row['modified_by'] ?? '');
-                $projects[$projectName]['person'] = (string) ($row['person'] ?? '');
+            if ($isRoot) {
+                if ($webUrl !== '' && $projects[$projectName]['folder_url'] === '') {
+                    $projects[$projectName]['folder_url'] = $webUrl;
+                }
+                if ($projects[$projectName]['modified_by'] === '') {
+                    $projects[$projectName]['modified_by'] = (string) ($row['modified_by'] ?? '');
+                }
+                if ($projects[$projectName]['person'] === '') {
+                    $projects[$projectName]['person'] = (string) ($row['person'] ?? '');
+                }
+                if ($dateCreated !== '' && $projects[$projectName]['_root_created'] === '') {
+                    $projects[$projectName]['_root_created'] = $dateCreated;
+                }
             }
 
             if ($projects[$projectName]['folder_url'] === '' && $webUrl !== '' && $itemType === 'folder') {
@@ -703,10 +731,20 @@ final class SharePointCatalogRepository
 
         $out = [];
         foreach ($projects as $project) {
-            if ($project['last_modified'] === '') {
-                // Keep empty; client shows em dash. Root metadata was preferred above.
-            }
-            unset($project['_name_set'], $project['_path_set'], $project['_file_set'], $project['_folder_set']);
+            $maxModified = (string) ($project['_max_modified'] ?? '');
+            $rootCreated = (string) ($project['_root_created'] ?? '');
+            $minCreated = (string) ($project['_min_created'] ?? '');
+            $project['last_modified'] = $maxModified !== '' ? $maxModified : (string) ($project['last_modified'] ?? '');
+            $project['date_created'] = $rootCreated !== '' ? $rootCreated : $minCreated;
+            unset(
+                $project['_name_set'],
+                $project['_path_set'],
+                $project['_file_set'],
+                $project['_folder_set'],
+                $project['_max_modified'],
+                $project['_min_created'],
+                $project['_root_created']
+            );
             $out[] = $project;
         }
 

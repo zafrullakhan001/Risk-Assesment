@@ -430,101 +430,14 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                 </details>
             </section>
 
-            <section class="upload-card search-card is-compact-chrome" id="sharepoint-search"
-                     data-catalog-density="compact"
-                     data-source-key="<?= e($activeSourceKey) ?>"
-                     data-source-title="<?= e($activeTitle) ?>"
-                     data-solo="0"
-                     data-public="1"
-                     data-api-base="catalog-share.php"
-                     data-share-token="<?= e($token) ?>"
-                     data-sources="<?= e((string) $sourcesJson) ?>"
-                     data-initial-query="<?= e($query) ?>"
-                     data-per-page="<?= (int) $perPage ?>"
-                     data-item-count="<?= (int) $itemCount ?>"
-                     data-project-count="<?= (int) $projectCount ?>"
-                     data-last-synced="<?= e($activeLastSynced) ?>"
-                     data-last-status="<?= e($activeLastStatus) ?>">
-                <details class="sharepoint-catalog-shell" id="sharepoint-catalog-shell" open>
-                    <summary class="sharepoint-search-head sharepoint-catalog-summary">
-                        <div class="sharepoint-search-intro">
-                            <h2 id="sharepoint-search-heading">🔎 <?= e($activeTitle) ?></h2>
-                            <p>Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By.</p>
-                        </div>
-                        <div class="sharepoint-search-head-tools" data-no-toggle onclick="event.stopPropagation()">
-                            <div class="sp-view-toggle sharepoint-catalog-view-toggle" role="group" aria-label="Catalog layout">
-                                <button type="button" class="sp-view-btn" data-catalog-density="comfort" title="Show the full search card" aria-pressed="false">Comfort</button>
-                                <button type="button" class="sp-view-btn is-active" data-catalog-density="compact" title="Compact search card" aria-pressed="true">Compact</button>
-                            </div>
-                            <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
-                        </div>
-                    </summary>
-                    <div class="sharepoint-catalog-body">
-                        <?php if (count($allSources) > 1): ?>
-                            <div class="sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
-                                <div class="sharepoint-search-scopes-head">
-                                    <span class="sharepoint-search-scopes-label">Search in</span>
-                                    <button type="button" class="button ghost sharepoint-scopes-all" id="sharepoint-scopes-all">All catalogs</button>
-                                    <button type="button" class="button ghost sharepoint-scopes-active" id="sharepoint-scopes-active">This catalog only</button>
-                                    <button type="button" class="button ghost sharepoint-scopes-colors is-active" id="sharepoint-scopes-colors" aria-pressed="true" title="Color each catalog differently">🎨 Distinct colors</button>
-                                    <button type="button" class="button ghost sharepoint-scopes-color-reset" id="sharepoint-scopes-color-reset" hidden>Reset colors</button>
-                                </div>
-                                <div class="sharepoint-search-scopes-list">
-                                    <?php foreach ($allSources as $src): ?>
-                                        <?php
-                                        $srcKey = (string) ($src['source_key'] ?? '');
-                                        $srcTitle = (string) ($src['title'] ?? $srcKey);
-                                        $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
-                                        $srcHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
-                                        $checked = $srcKey === $activeSourceKey;
-                                        ?>
-                                        <div class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>">
-                                            <label class="sharepoint-scope-chip-main">
-                                                <input type="checkbox" class="sharepoint-scope-check" value="<?= e($srcKey) ?>"<?= $checked ? ' checked' : '' ?>>
-                                                <span><?= e($srcTitle) ?></span>
-                                            </label>
-                                            <button type="button" class="sharepoint-scope-color-btn" data-source-key="<?= e($srcKey) ?>" title="Choose color for <?= e($srcTitle) ?>" aria-label="Choose color for <?= e($srcTitle) ?>" aria-haspopup="dialog" aria-expanded="false" style="--catalog-tone: <?= e($srcHex) ?>"></button>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                        <form method="get" class="search-form sharepoint-live-search-form" action="catalog-share.php" id="sharepoint-search-form" role="search">
-                            <input type="hidden" name="t" value="<?= e($token) ?>">
-                            <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
-                            <div class="search-wrap search-wrap-wide sharepoint-search-main">
-                                <span aria-hidden="true">Find</span>
-                                <input type="search" name="q" id="sharepoint-search-input" value="<?= e($query) ?>"
-                                       placeholder="Search projects, nested files, people…" autocomplete="off"
-                                       aria-label="Search SharePoint catalog">
-                                <button type="button" class="sharepoint-search-clear<?= $query === '' ? ' is-hidden' : '' ?>" id="sharepoint-search-clear" title="Clear search" aria-label="Clear search">×</button>
-                            </div>
-                            <div class="sharepoint-search-controls" id="sharepoint-search-controls" hidden>
-                                <div class="sp-search-toggle-group" role="group" aria-label="Match spaced words with AND or OR" id="sharepoint-word-mode" hidden>
-                                    <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
-                                    <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
-                                </div>
-                                <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
-                                <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Search nested files and subfolders" aria-pressed="true">Deep files</button>
-                                <div class="sp-refine-wrap">
-                                    <input type="search" id="sharepoint-refine-input" placeholder="Refine results…" autocomplete="off" aria-label="Search within current results">
-                                    <button type="button" class="sp-refine-clear is-hidden" id="sharepoint-refine-clear" title="Clear refine search" aria-label="Clear refine search">✕</button>
-                                </div>
-                            </div>
-                        </form>
-                        <div class="sharepoint-recent-searches is-hidden" id="sharepoint-recent-searches" hidden>
-                            <span class="sharepoint-recent-label">Recent</span>
-                            <div class="sharepoint-recent-chips" id="sharepoint-recent-chips" role="list" aria-label="Recent searches"></div>
-                            <button type="button" class="sharepoint-recent-clear" id="sharepoint-recent-clear" hidden>Clear</button>
-                        </div>
-                        <div class="sharepoint-search-stats is-hidden" id="sharepoint-search-stats" aria-live="polite"></div>
-                        <p class="panel-help sharepoint-catalog-meta" id="sharepoint-catalog-meta">
-                            <?= (int) $projectCount ?> project<?= $projectCount === 1 ? '' : 's' ?>
-                            · <?= (int) $itemCount ?> catalog item<?= $itemCount === 1 ? '' : 's' ?> total
-                        </p>
-                    </div>
-                </details>
-            </section>
+            <?php
+            $searchCardPublic = true;
+            $catalogSolo = false;
+            $searchFormAction = 'catalog-share.php';
+            $searchShareToken = $token;
+            $metaProjectCount = $projectCount;
+            require __DIR__ . '/includes/sharepoint-search-card.php';
+            ?>
 
             <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact">
                 <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
