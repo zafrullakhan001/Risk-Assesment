@@ -8865,6 +8865,140 @@ html.is-compact .site-footer {
 }
 
 
+.sharepoint-search-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+.sharepoint-search-intro {
+    min-width: 0;
+    flex: 1 1 18rem;
+}
+.sharepoint-search-intro p {
+    margin: 6px 0 14px;
+    color: var(--muted, #5b6b7c);
+    font-size: 14px;
+}
+.sharepoint-search-head-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+}
+.sharepoint-catalog-view-toggle {
+    flex-shrink: 0;
+}
+
+/* Compact catalog search card: hide help copy and tighten spacing */
+#sharepoint-search.is-compact-chrome,
+#sharepoint-search[data-catalog-density="compact"] {
+    padding: 0.65rem 0.9rem 0.7rem;
+    margin-top: 0.55rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-head {
+    align-items: center;
+    gap: 0.35rem 0.85rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-intro h2,
+#sharepoint-search.is-compact-chrome #sharepoint-search-heading {
+    font-size: 1.05rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-intro p {
+    display: none;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-scopes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.65rem;
+    margin: 0.3rem 0 0.1rem;
+    padding: 0.3rem 0.55rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-scopes-head {
+    margin-bottom: 0;
+    gap: 0.3rem 0.45rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-scopes-label {
+    display: none;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-scopes-head .button {
+    min-height: 1.7rem;
+    height: 1.7rem;
+    padding: 0 0.55rem;
+    font-size: 0.75rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-scopes-colors {
+    margin-left: 0.1rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-scopes-hint {
+    display: none;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-scope-chip {
+    padding: 0.18rem 0.5rem 0.18rem 0.55rem;
+    font-size: 0.78rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-scope-color-btn {
+    width: 0.82rem;
+    height: 0.82rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-live-search-form {
+    gap: 6px;
+    margin-top: 0.2rem;
+}
+#sharepoint-search.is-compact-chrome .search-wrap {
+    height: 34px;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-search-controls {
+    margin-top: 0.3rem;
+    gap: 0.35rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-recent-searches,
+#sharepoint-search.is-compact-chrome .sharepoint-search-stats {
+    margin-top: 0.28rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-catalog-meta {
+    margin-top: 0.3rem;
+    margin-bottom: 0;
+    font-size: 0.78rem;
+}
+.sharepoint-catalog-solo-page #sharepoint-search.is-compact-chrome {
+    margin: 0 0 0.85rem;
+}
+.sharepoint-catalog-solo-page .search-card {
+    margin: 0 0 1.5rem;
+}
+.sharepoint-catalog-solo-page .sharepoint-table-card {
+    margin-top: 0;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-panel {
+    margin: 0;
+    padding: 1.15rem 1.2rem 1.4rem;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-summary {
+    cursor: default;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-shell:not([open]) .sharepoint-sources-body {
+    display: block;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-grid {
+    gap: 1.25rem;
+    margin: 1rem 0 1.4rem;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-sources-grid {
+    gap: 0.85rem;
+    margin: 0.85rem 0 1.2rem;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-table-wrap {
+    margin: 1rem 0 1.4rem;
+}
+.sharepoint-folders-solo-page .sharepoint-add-source-shell,
+.sharepoint-folders-solo-page .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-add-source-shell {
+    margin-top: 1.35rem;
+}
+
 /* ---- SharePoint catalog ---- */
 .sharepoint-catalog-page .sharepoint-catalog-meta {
     margin-top: 0.75rem;
@@ -9614,9 +9748,23 @@ html.is-compact .site-footer {
 .sharepoint-folders-view-toggle {
     flex-shrink: 0;
 }
+.sharepoint-sources-panel[data-folders-view="compact"] {
+    padding: 0.7rem 0.9rem 0.8rem;
+    margin: 0.55rem 0 0.9rem;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-sources-summary .panel-help {
+    display: none;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-sources-summary h2 {
+    font-size: 1.05rem;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-sources-body {
+    padding-top: 0;
+}
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-sources-grid {
     grid-template-columns: 1fr;
     gap: 0.45rem;
+    margin: 0.35rem 0 0.4rem;
 }
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-card {
     display: grid;
@@ -9643,6 +9791,16 @@ html.is-compact .site-footer {
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-actions .button {
     min-height: 2.1rem;
     padding: 0.2rem 0.55rem 0.2rem 0.28rem;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-sources-table-wrap {
+    margin: 0.35rem 0 0.45rem;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-add-source-shell {
+    margin-top: 0.5rem;
+}
+.sharepoint-folders-solo-page .sharepoint-sources-panel[data-folders-view="compact"] {
+    padding: 1.05rem 1.15rem 1.3rem;
+    margin: 0;
 }
 .sharepoint-sources-panel[data-folders-view="table"] .sharepoint-sources-grid { display: none; }
 .sharepoint-sources-panel[data-folders-view="table"] .sharepoint-sources-table-wrap { display: block; }
@@ -11549,7 +11707,7 @@ html.sp-workspace-scroll-lock body {
     border-radius: 999px;
     background: var(--surface, #fff);
     font-size: 0.85rem;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
 }
 .sharepoint-scope-chip.is-active {
@@ -11561,6 +11719,172 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-scope-chip input {
     margin: 0;
     accent-color: var(--accent, #0f766e);
+}
+.sharepoint-scope-chip-main {
+    display: inline-flex;
+    align-items: center;
+    gap: inherit;
+    min-width: 0;
+    cursor: pointer;
+}
+.sharepoint-scope-color-btn {
+    appearance: none;
+    width: 0.95rem;
+    height: 0.95rem;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--catalog-tone, #0f766e) 65%, #fff);
+    border-radius: 999px;
+    background: var(--catalog-tone, #0f766e);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.sharepoint-scope-color-btn:hover,
+.sharepoint-scope-color-btn[aria-expanded="true"] {
+    outline: 2px solid color-mix(in srgb, var(--catalog-tone, #0f766e) 45%, transparent);
+    outline-offset: 1px;
+}
+html[data-catalog-colors="uniform"] .sharepoint-scope-color-btn,
+html:not([data-catalog-colors="distinct"]) .sharepoint-scope-color-btn {
+    display: none;
+}
+.sharepoint-scopes-color-reset {
+    font-weight: 700;
+}
+html[data-catalog-colors="uniform"] .sharepoint-scopes-color-reset,
+html:not([data-catalog-colors="distinct"]) .sharepoint-scopes-color-reset {
+    display: none !important;
+}
+.sharepoint-catalog-color-pop {
+    position: fixed;
+    z-index: 80;
+    width: 232px;
+    padding: 0.7rem 0.75rem 0.65rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 12px;
+    background: var(--surface, #fff);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
+.sharepoint-catalog-color-pop[hidden] {
+    display: none !important;
+}
+.sharepoint-catalog-color-pop-kicker {
+    margin: 0 0 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--ink, #0c1524);
+    line-height: 1.3;
+}
+.sharepoint-catalog-color-presets {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-bottom: 0.65rem;
+}
+.sharepoint-catalog-color-preset {
+    appearance: none;
+    width: 100%;
+    aspect-ratio: 1;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 999px;
+    cursor: pointer;
+    padding: 0;
+}
+.sharepoint-catalog-color-preset.is-selected,
+.sharepoint-catalog-color-preset:focus-visible {
+    outline: 2px solid var(--accent, #0f766e);
+    outline-offset: 1px;
+}
+.sharepoint-catalog-color-custom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--muted, #64748b);
+    margin-bottom: 0.5rem;
+}
+.sharepoint-catalog-color-custom input[type="color"] {
+    width: 2.4rem;
+    height: 1.55rem;
+    padding: 0;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.4rem;
+    background: var(--surface, #fff);
+    cursor: pointer;
+}
+.sharepoint-catalog-color-reset-one {
+    appearance: none;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--muted, #64748b);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0.25rem 0 0;
+    text-align: left;
+}
+.sharepoint-catalog-color-reset-one:hover {
+    color: var(--ink, #0c1524);
+}
+.sharepoint-scopes-colors.is-active,
+.sharepoint-scopes-colors[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--accent, #0f766e) 45%, transparent);
+    background: color-mix(in srgb, var(--accent, #0f766e) 12%, var(--surface, #fff));
+    color: var(--accent, #0f766e);
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone] {
+    border-color: color-mix(in srgb, var(--catalog-tone) 42%, var(--border, #e2e8f0));
+    color: var(--catalog-tone-ink, var(--catalog-tone));
+    background: color-mix(in srgb, var(--catalog-tone) 12%, var(--surface, #fff));
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone].is-active {
+    border-color: color-mix(in srgb, var(--catalog-tone) 58%, transparent);
+    background: color-mix(in srgb, var(--catalog-tone) 16%, var(--surface, #fff));
+    color: var(--catalog-tone-ink, var(--catalog-tone));
+    font-weight: 600;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone] input {
+    accent-color: var(--catalog-tone);
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="public"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="public"] {
+    --catalog-tone: #0f766e;
+    --catalog-tone-ink: #115e59;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="private"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="private"] {
+    --catalog-tone: #e11d48;
+    --catalog-tone-ink: #9f1239;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="dump"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="dump"] {
+    --catalog-tone: #d97706;
+    --catalog-tone-ink: #92400e;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="violet"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="violet"] {
+    --catalog-tone: #7c3aed;
+    --catalog-tone-ink: #5b21b6;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="sky"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="sky"] {
+    --catalog-tone: #0284c7;
+    --catalog-tone-ink: #075985;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="lime"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="lime"] {
+    --catalog-tone: #65a30d;
+    --catalog-tone-ink: #3f6212;
+}
+html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="slate"],
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"] {
+    --catalog-tone: #475569;
+    --catalog-tone-ink: #334155;
 }
 .sharepoint-scopes-hint {
     margin: 0.55rem 0 0;
@@ -12298,6 +12622,38 @@ html.sp-workspace-scroll-lock body {
     outline: 2px solid var(--primary, #0e7490);
     outline-offset: 2px;
 }
+.sp-od-scopes-colors {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--primary, #0e7490) 28%, var(--line, #d0dae4));
+    background: var(--card, #fff);
+    color: var(--primary, #0e7490);
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.78rem;
+    line-height: 1;
+    padding: 0.42rem 0.78rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.sp-od-scopes-colors:hover {
+    background: color-mix(in srgb, var(--primary, #0e7490) 10%, var(--card, #fff));
+}
+.sp-od-scopes-colors.is-active,
+.sp-od-scopes-colors[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--primary, #0e7490) 14%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 38%, var(--line, #d0dae4));
+    color: var(--primary-dark, #155e75);
+}
+.sp-od-scopes-colors:focus-visible {
+    outline: 2px solid var(--primary, #0e7490);
+    outline-offset: 2px;
+}
+html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-catalog-tone]:hover {
+    border-color: color-mix(in srgb, var(--catalog-tone) 55%, var(--line, #d0dae4));
+}
 .sp-od-scopes-list {
     display: flex;
     flex-wrap: wrap;
@@ -12781,15 +13137,86 @@ html.sp-workspace-scroll-lock body {
     place-items: center;
     min-width: 2.35rem;
     height: 1.85rem;
+    border: 0;
     border-radius: 0.4rem;
     color: var(--ink, #0c1524);
+    font: inherit;
     font-variant-numeric: tabular-nums;
+    font-weight: 600;
     cursor: pointer;
+    padding: 0;
+}
+.sp-od-heat-cell:focus-visible {
+    outline: 2px solid var(--primary, #0e7490);
+    outline-offset: 2px;
 }
 .sp-od-heat-cell.is-empty {
     background: color-mix(in srgb, var(--paper, #e8eef3) 80%, transparent) !important;
     color: transparent;
     cursor: default;
+    pointer-events: none;
+}
+.sp-od-cell-dialog {
+    width: min(28rem, calc(100vw - 2rem));
+    max-height: min(32rem, calc(100vh - 2rem));
+    padding: 0;
+    border: 1px solid var(--line, #d0dae4);
+    border-radius: 0.85rem;
+    background: var(--card, #fff);
+    color: var(--ink, #0c1524);
+    box-shadow: 0 18px 48px rgba(12, 21, 36, 0.22);
+}
+.sp-od-cell-dialog::backdrop {
+    background: rgba(12, 21, 36, 0.42);
+}
+.sp-od-cell-dialog-body {
+    display: flex;
+    flex-direction: column;
+    max-height: min(32rem, calc(100vh - 2rem));
+}
+.sp-od-cell-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 1rem 1rem 0.75rem;
+    border-bottom: 1px solid var(--line, #d0dae4);
+}
+.sp-od-cell-dialog-head .eyebrow {
+    margin-bottom: 0.2rem;
+}
+.sp-od-cell-dialog-head h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.25;
+}
+.sp-od-cell-dialog-head .response-dialog-sub {
+    margin: 0.25rem 0 0;
+}
+.sp-od-cell-dialog-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem 0.85rem 0.85rem;
+    overflow: auto;
+}
+.sp-od-cell-dialog-list > li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--line, #d0dae4) 70%, transparent);
+}
+.sp-od-cell-dialog-list > li:last-child {
+    border-bottom: 0;
+}
+.sp-od-cell-empty {
+    padding: 1rem 0.4rem;
+    text-align: center;
+    color: var(--muted, #5b6b7c);
+    display: block !important;
+}
+[data-theme="indigo"] .sp-od-cell-dialog {
+    background: color-mix(in srgb, var(--card, #111a2b) 96%, #000);
+    border-color: color-mix(in srgb, var(--line, #334155) 80%, transparent);
 }
 .sp-od-empty,
 .sp-od-chart-empty,

@@ -19,6 +19,8 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
+  const escapeAttr = (value) => escapeHtml(value).replace(/\r?\n/g, '&#10;');
+
   const ownerColor = (hue, alpha = 1) =>
     `hsla(${Number(hue) || 200}, 62%, 46%, ${alpha})`;
 
@@ -53,6 +55,101 @@
     if (grain === 'quarter') return project.quarter || '';
     return project.month || '';
   };
+
+  const TOOLTIP_NAME_CAP = 8;
+
+  const projectsForOwnerPeriod = (view, ownerKey, period) => {
+    const owner = (view.owners || []).find((row) => row.key === ownerKey);
+    if (!owner) return [];
+    return (owner.projects || [])
+      .filter((project) => periodOf(project, state.grain) === period)
+      .slice()
+      .sort((a, b) => String(b.date_created || '').localeCompare(String(a.date_created || '')));
+  };
+
+  const projectsForOthersPeriod = (view, period, topKeys) => {
+    const keys = topKeys instanceof Set ? topKeys : new Set(topKeys || []);
+    const rows = [];
+    (view.owners || []).forEach((owner) => {
+      if (keys.has(owner.key)) return;
+      (owner.projects || []).forEach((project) => {
+        if (periodOf(project, state.grain) === period) {
+          rows.push({ ...project, owner_key: owner.key, owner_name: owner.name, hue: owner.hue });
+        }
+      });
+    });
+    return rows.sort((a, b) => String(b.date_created || '').localeCompare(String(a.date_created || '')));
+  };
+
+  const tooltipForBucket = (label, period, projects) => {
+    const count = projects.length;
+    const lines = [`${label} · ${formatPeriod(period, state.grain)} · ${count}`];
+    const shown = projects.slice(0, TOOLTIP_NAME_CAP);
+    shown.forEach((project) => {
+      lines.push(project.project_name || 'Untitled project');
+    });
+    if (count > TOOLTIP_NAME_CAP) {
+      lines.push(`and ${count - TOOLTIP_NAME_CAP} more…`);
+    }
+    if (count > 0) lines.push('Click to open list');
+    return lines.join('\n');
+  };
+
+  const renderProjectListItems = (projects, { showOwner = false } = {}) =>
+    projects
+      .map((project) => {
+        const meta = [
+          showOwner ? project.owner_name || '' : '',
+          project.source_title || '',
+          project.date_created ? formatDay(project.date_created) : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return `<li>
+          <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}">
+            <strong>${escapeHtml(project.project_name)}</strong>
+            <span>${escapeHtml(meta)}</span>
+          </button>
+          ${
+            project.folder_url
+              ? `<a class="sp-od-open-sp" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint">🔗</a>`
+              : ''
+          }
+        </li>`;
+      })
+      .join('');
+
+  const cellDialog = document.getElementById('sp-od-cell-dialog');
+  const cellDialogTitle = document.getElementById('sp-od-cell-dialog-title');
+  const cellDialogSub = document.getElementById('sp-od-cell-dialog-sub');
+  const cellDialogList = document.getElementById('sp-od-cell-dialog-list');
+
+  const closeCellDialog = () => {
+    if (cellDialog?.open) cellDialog.close();
+  };
+
+  const openCellDialog = ({ label, period, projects, showOwner = false }) => {
+    if (!cellDialog || !cellDialogTitle || !cellDialogSub || !cellDialogList) return;
+    const count = projects.length;
+    cellDialogTitle.textContent = `${label} · ${formatPeriod(period, state.grain)}`;
+    cellDialogSub.textContent = `${count} project folder${count === 1 ? '' : 's'}`;
+    cellDialogList.innerHTML = count
+      ? renderProjectListItems(projects, { showOwner })
+      : `<li class="sp-od-cell-empty">No project folders in this period.</li>`;
+    cellDialogList.querySelectorAll('.sp-od-project').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const name = btn.getAttribute('data-project-name') || '';
+        const source = btn.getAttribute('data-source-key') || '';
+        window.RiskRegisterSharePoint?.openProject?.(name, source);
+      });
+    });
+    if (!cellDialog.open) cellDialog.showModal();
+  };
+
+  document.getElementById('sp-od-cell-dialog-close')?.addEventListener('click', () => closeCellDialog());
+  cellDialog?.addEventListener('click', (event) => {
+    if (event.target === cellDialog) closeCellDialog();
+  });
 
   const availableSources = (() => {
     try {
@@ -331,31 +428,39 @@
           const focusH = (focusCount / scaleMax) * chartH;
           if (focusCount) {
             const owner = view.owners.find((row) => row.key === selected);
+            const focusProjects = projectsForOwnerPeriod(view, selected, period);
+            const tip = tooltipForBucket(owner?.name || '', period, focusProjects);
             segments.push(
               `<rect class="sp-od-bar-seg" x="${x}" y="${(chartH - Math.max(3, focusH)).toFixed(1)}" width="${barW}" height="${Math.max(3, focusH).toFixed(1)}" rx="3"
                 fill="${ownerColor(owner?.hue ?? hueFor(selected), 0.95)}" data-period="${escapeHtml(period)}" data-owner="${escapeHtml(selected)}"
-                data-count="${focusCount}" data-label="${escapeHtml(owner?.name || '')}"><title>${escapeHtml(owner?.name || '')} · ${formatPeriod(period, state.grain)} · ${focusCount}</title></rect>`
+                data-count="${focusCount}" data-label="${escapeHtml(owner?.name || '')}"><title>${escapeHtml(tip)}</title></rect>`
             );
           }
         } else {
           let y = chartH;
-          const pushSeg = (ownerKey, count, hue, label) => {
+          const pushSeg = (ownerKey, count, hue, label, projects) => {
             if (!count) return;
             const h = Math.max(3, (count / scaleMax) * chartH);
             y -= h;
+            const tip = tooltipForBucket(label, period, projects);
             segments.push(
               `<rect class="sp-od-bar-seg" x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" rx="3"
                 fill="${ownerColor(hue, 0.92)}" data-period="${escapeHtml(period)}" data-owner="${escapeHtml(ownerKey)}"
-                data-count="${count}" data-label="${escapeHtml(label)}"><title>${escapeHtml(label)} · ${formatPeriod(period, state.grain)} · ${count}</title></rect>`
+                data-count="${count}" data-label="${escapeHtml(label)}"><title>${escapeHtml(tip)}</title></rect>`
             );
           };
-          top.forEach((owner) => pushSeg(owner.key, bucket.owners[owner.key] || 0, owner.hue, owner.name));
+          top.forEach((owner) =>
+            pushSeg(
+              owner.key,
+              bucket.owners[owner.key] || 0,
+              owner.hue,
+              owner.name,
+              projectsForOwnerPeriod(view, owner.key, period)
+            )
+          );
           if (hasOthers) {
-            let otherCount = 0;
-            Object.entries(bucket.owners).forEach(([key, count]) => {
-              if (!keys.has(key)) otherCount += count;
-            });
-            pushSeg('_others', otherCount, 220, 'Others');
+            const otherProjects = projectsForOthersPeriod(view, period, keys);
+            pushSeg('_others', otherProjects.length, 220, 'Others', otherProjects);
           }
         }
         const label = formatPeriod(period, state.grain);
@@ -389,7 +494,7 @@
     return `<div class="sp-od-chart-wrap">
       <div class="sp-od-chart-head">
         <h3>Projects created over time</h3>
-        <p>${selected ? 'Showing this owner’s folders by period. Click again to return to the stacked view.' : 'Stacked by owner. Click a person or a bar to focus their work.'}</p>
+        <p>${selected ? 'Showing this owner’s folders by period. Click a bar segment to list those projects, or click the person again to return to the stacked view.' : 'Stacked by owner. Click a person to focus them, or click a bar segment to list those project folders.'}</p>
       </div>
       <div class="sp-od-chart-scroll">
         <svg class="sp-od-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Projects created by ${state.grain}">
@@ -485,7 +590,7 @@
     return `<div class="sp-od-heat">
       <div class="sp-od-chart-head">
         <h3>Owner × ${state.grain} heatmap</h3>
-        <p>Darker cells mean more project folders created in that period.${wide ? ' Scroll sideways to see every year.' : ''}</p>
+        <p>Darker cells mean more project folders created in that period. Click a cell to list those project folders.${wide ? ' Scroll sideways to see every year.' : ''}</p>
       </div>
       <div class="sp-od-heat-scroll${wide ? ' is-wide' : ''}" tabindex="0" role="region" aria-label="Owner heatmap by ${state.grain}">
         <table class="sp-od-heat-table">
@@ -509,7 +614,12 @@
                       const count = view.byPeriod[period]?.owners?.[owner.key] || 0;
                       const t = count / maxCell;
                       const bg = count ? ownerColor(owner.hue, 0.12 + t * 0.78) : 'transparent';
-                      return `<td><span class="sp-od-heat-cell${count ? '' : ' is-empty'}" style="background:${bg}" title="${escapeHtml(owner.name)} · ${formatPeriod(period, state.grain)} · ${count}" data-owner-key="${escapeHtml(owner.key)}">${count || ''}</span></td>`;
+                      if (!count) {
+                        return `<td><span class="sp-od-heat-cell is-empty" style="background:transparent" aria-hidden="true"></span></td>`;
+                      }
+                      const cellProjects = projectsForOwnerPeriod(view, owner.key, period);
+                      const tip = tooltipForBucket(owner.name, period, cellProjects);
+                      return `<td><button type="button" class="sp-od-heat-cell" style="background:${bg}" title="${escapeAttr(tip)}" data-owner-key="${escapeHtml(owner.key)}" data-period="${escapeHtml(period)}" data-label="${escapeHtml(owner.name)}" aria-label="${escapeAttr(tip.replace(/\n/g, '. '))}">${count}</button></td>`;
                     })
                     .join('')}
                 </tr>`;
@@ -663,8 +773,16 @@
 
   const bindBody = () => {
     body.querySelectorAll('[data-owner-key]').forEach((el) => {
-      if (el.tagName === 'SPAN' && el.classList.contains('sp-od-heat-cell')) {
-        el.addEventListener('click', () => toggleOwner(el.getAttribute('data-owner-key') || ''));
+      if (el.tagName === 'BUTTON' && el.classList.contains('sp-od-heat-cell')) {
+        el.addEventListener('click', () => {
+          const ownerKey = el.getAttribute('data-owner-key') || '';
+          const period = el.getAttribute('data-period') || '';
+          const label = el.getAttribute('data-label') || '';
+          if (!ownerKey || !period) return;
+          const view = buildView();
+          const projects = projectsForOwnerPeriod(view, ownerKey, period);
+          openCellDialog({ label, period, projects, showOwner: false });
+        });
         return;
       }
       if (el.tagName === 'RECT') return;
@@ -676,8 +794,19 @@
     body.querySelectorAll('.sp-od-bar-seg').forEach((el) => {
       el.addEventListener('click', () => {
         const key = el.getAttribute('data-owner') || '';
-        if (key === '_others') return;
-        toggleOwner(key);
+        const period = el.getAttribute('data-period') || '';
+        const label = el.getAttribute('data-label') || '';
+        if (!period) return;
+        const view = buildView();
+        if (key === '_others') {
+          const { keys } = seriesOwners(view);
+          const projects = projectsForOthersPeriod(view, period, keys);
+          openCellDialog({ label: 'Others', period, projects, showOwner: true });
+          return;
+        }
+        if (!key) return;
+        const projects = projectsForOwnerPeriod(view, key, period);
+        openCellDialog({ label: label || key, period, projects, showOwner: false });
       });
     });
     document.getElementById('sp-owner-clear')?.addEventListener('click', () => {

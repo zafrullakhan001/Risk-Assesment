@@ -8,6 +8,358 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
+  const CATALOG_COLORS_KEY = 'riskregister_sp_catalog_colors';
+  const CATALOG_CUSTOM_COLORS_KEY = 'riskregister_sp_catalog_custom_colors';
+  const CATALOG_EXTRA_TONES = ['violet', 'sky', 'lime', 'slate'];
+  const CATALOG_TONE_HEX = {
+    public: '#0f766e',
+    private: '#e11d48',
+    dump: '#d97706',
+    violet: '#7c3aed',
+    sky: '#0284c7',
+    lime: '#65a30d',
+    slate: '#475569',
+  };
+  let catalogToneByKey = {};
+  let catalogCustomColors = {};
+  let catalogColorPopKey = '';
+  let catalogColorPopAnchor = null;
+
+  const catalogToneFromHay = (hay) => {
+    const text = String(hay || '').toLowerCase();
+    if (/\bprivate\b/.test(text)) return 'private';
+    if (/\bpublic\b/.test(text)) return 'public';
+    if (/\b(tprm|dump|legacy)\b/.test(text)) return 'dump';
+    return '';
+  };
+
+  const readSourcesJson = (el) => {
+    try {
+      const raw = JSON.parse(el?.dataset?.sources || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const buildCatalogToneMap = (sources) => {
+    const map = {};
+    let extra = 0;
+    (Array.isArray(sources) ? sources : []).forEach((src) => {
+      const key = String(src?.source_key || '').trim();
+      if (!key) return;
+      const given = String(src?.tone || '').trim();
+      if (given) {
+        map[key] = given;
+        return;
+      }
+      map[key] =
+        catalogToneFromHay(`${src?.title || ''} ${key}`) ||
+        CATALOG_EXTRA_TONES[extra++ % CATALOG_EXTRA_TONES.length];
+    });
+    return map;
+  };
+
+  const refreshCatalogToneMap = () => {
+    catalogToneByKey = {
+      ...buildCatalogToneMap(readSourcesJson(document.getElementById('sharepoint-owner-dash'))),
+      ...buildCatalogToneMap(readSourcesJson(document.getElementById('sharepoint-search'))),
+    };
+  };
+
+  const catalogToneFor = (sourceKey, title = '') => {
+    const key = String(sourceKey || '').trim();
+    if (key && catalogToneByKey[key]) return catalogToneByKey[key];
+    return catalogToneFromHay(`${title} ${key}`) || 'slate';
+  };
+
+  const normalizeHex = (value) => {
+    const raw = String(value || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(raw)) return raw.toLowerCase();
+    if (/^[0-9a-f]{6}$/i.test(raw)) return `#${raw.toLowerCase()}`;
+    const short = /^#([0-9a-f]{3})$/i.exec(raw);
+    if (!short) return '';
+    const [a, b, c] = short[1].toLowerCase().split('');
+    return `#${a}${a}${b}${b}${c}${c}`;
+  };
+
+  const hexToRgb = (hex) => {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  };
+
+  const rgbToHex = ({ r, g, b }) =>
+    `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
+
+  const inkFromHex = (hex) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return '#334155';
+    const y = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+    const factor = y > 160 ? 0.42 : 0.72;
+    return rgbToHex({
+      r: Math.round(rgb.r * factor),
+      g: Math.round(rgb.g * factor),
+      b: Math.round(rgb.b * factor),
+    });
+  };
+
+  const cssEscapeValue = (value) => {
+    const text = String(value || '');
+    if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(text);
+    return text.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  };
+
+  const defaultHexForKey = (key) => CATALOG_TONE_HEX[catalogToneByKey[key] || 'slate'] || '#475569';
+
+  const hexForSource = (key) => catalogCustomColors[key] || defaultHexForKey(key);
+
+  const readCustomCatalogColors = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CATALOG_CUSTOM_COLORS_KEY) || '{}');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+      const out = {};
+      Object.entries(raw).forEach(([key, value]) => {
+        const hex = normalizeHex(value);
+        if (key && hex) out[String(key)] = hex;
+      });
+      return out;
+    } catch {
+      return {};
+    }
+  };
+
+  const saveCustomCatalogColors = () => {
+    try {
+      localStorage.setItem(CATALOG_CUSTOM_COLORS_KEY, JSON.stringify(catalogCustomColors));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const syncCatalogColorResetButtons = () => {
+    const hasCustom = Object.keys(catalogCustomColors).length > 0;
+    const distinct = document.documentElement.getAttribute('data-catalog-colors') === 'distinct';
+    document.querySelectorAll('.sharepoint-scopes-color-reset').forEach((btn) => {
+      btn.hidden = !distinct || !hasCustom;
+    });
+  };
+
+  const paintCatalogColorStyles = () => {
+    const keys = new Set([...Object.keys(catalogToneByKey), ...Object.keys(catalogCustomColors)]);
+    document.querySelectorAll('.sharepoint-scope-chip[data-source-key], .sharepoint-scope-color-btn[data-source-key]').forEach((el) => {
+      const key = el.getAttribute('data-source-key') || '';
+      if (key) keys.add(key);
+    });
+    const rules = [];
+    keys.forEach((key) => {
+      if (!catalogCustomColors[key]) return;
+      const hex = catalogCustomColors[key];
+      const ink = inkFromHex(hex);
+      const sel = `[data-source-key="${cssEscapeValue(key)}"]`;
+      rules.push(
+        `html[data-catalog-colors="distinct"] .sharepoint-scope-chip${sel}, html[data-catalog-colors="distinct"] .sp-catalog-badge${sel}, html[data-catalog-colors="distinct"] .sharepoint-scope-color-btn${sel} { --catalog-tone: ${hex}; --catalog-tone-ink: ${ink}; }`
+      );
+    });
+    let styleEl = document.getElementById('sharepoint-catalog-color-vars');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'sharepoint-catalog-color-vars';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = rules.join('\n');
+    document.querySelectorAll('.sharepoint-scope-color-btn[data-source-key]').forEach((btn) => {
+      const key = btn.getAttribute('data-source-key') || '';
+      if (!key) return;
+      btn.style.setProperty('--catalog-tone', hexForSource(key));
+    });
+    syncCatalogColorResetButtons();
+  };
+
+  const setCatalogCustomColor = (key, hex) => {
+    const sourceKey = String(key || '').trim();
+    const next = normalizeHex(hex);
+    if (!sourceKey || !next) return;
+    catalogCustomColors[sourceKey] = next;
+    saveCustomCatalogColors();
+    paintCatalogColorStyles();
+  };
+
+  const resetCatalogCustomColor = (key) => {
+    const sourceKey = String(key || '').trim();
+    if (!sourceKey || !catalogCustomColors[sourceKey]) return;
+    delete catalogCustomColors[sourceKey];
+    saveCustomCatalogColors();
+    paintCatalogColorStyles();
+  };
+
+  const resetAllCatalogCustomColors = () => {
+    catalogCustomColors = {};
+    saveCustomCatalogColors();
+    paintCatalogColorStyles();
+  };
+
+  const catalogColorPop = () => document.getElementById('sharepoint-catalog-color-pop');
+
+  const closeCatalogColorPop = () => {
+    const pop = catalogColorPop();
+    if (pop) pop.hidden = true;
+    catalogColorPopKey = '';
+    document.querySelectorAll('.sharepoint-scope-color-btn[aria-expanded="true"]').forEach((btn) => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
+    catalogColorPopAnchor = null;
+  };
+
+  const placeCatalogColorPop = (anchor) => {
+    const pop = catalogColorPop();
+    if (!pop || !anchor) return;
+    pop.hidden = false;
+    const rect = anchor.getBoundingClientRect();
+    const width = pop.offsetWidth || 232;
+    const height = pop.offsetHeight || 220;
+    const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left));
+    let top = rect.bottom + 8;
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - height - 8);
+    }
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  };
+
+  const openCatalogColorPop = (anchor) => {
+    const key = String(anchor?.getAttribute('data-source-key') || '').trim();
+    const pop = catalogColorPop();
+    if (!key || !pop) return;
+    const chip = anchor.closest('.sharepoint-scope-chip');
+    const title =
+      chip?.querySelector('.sharepoint-scope-chip-main span')?.textContent?.trim() ||
+      catalogToneByKey[key] ||
+      'Catalog';
+    const titleEl = document.getElementById('sharepoint-catalog-color-pop-title');
+    if (titleEl) titleEl.textContent = title;
+    const native = document.getElementById('sharepoint-catalog-color-native');
+    const hex = hexForSource(key);
+    if (native) native.value = hex;
+    pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
+      btn.classList.toggle('is-selected', normalizeHex(btn.getAttribute('data-hex')) === hex);
+    });
+    document.querySelectorAll('.sharepoint-scope-color-btn').forEach((btn) => {
+      btn.setAttribute('aria-expanded', btn === anchor ? 'true' : 'false');
+    });
+    catalogColorPopKey = key;
+    catalogColorPopAnchor = anchor;
+    placeCatalogColorPop(anchor);
+  };
+
+  const catalogBadgeHtml = (label, sourceKey) => {
+    const text = String(label || '').trim();
+    if (!text) return '';
+    const key = String(sourceKey || '').trim();
+    const tone = catalogToneFor(key, text).replace(/[^a-z0-9_-]/gi, '') || 'slate';
+    const srcAttr = key ? ` data-source-key="${escapeHtml(key)}"` : '';
+    return `<span class="sp-catalog-badge" data-catalog-tone="${escapeHtml(tone)}"${srcAttr}>${escapeHtml(text)}</span>`;
+  };
+
+  const readCatalogColorsOn = () => {
+    try {
+      return localStorage.getItem(CATALOG_COLORS_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  };
+
+  const applyCatalogColors = (on) => {
+    const enabled = on !== false;
+    document.documentElement.setAttribute('data-catalog-colors', enabled ? 'distinct' : 'uniform');
+    document.querySelectorAll('#sharepoint-scopes-colors, #sp-owner-scopes-colors').forEach((btn) => {
+      btn.classList.toggle('is-active', enabled);
+      btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    });
+    try {
+      localStorage.setItem(CATALOG_COLORS_KEY, enabled ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    if (!enabled) closeCatalogColorPop();
+    paintCatalogColorStyles();
+    return enabled;
+  };
+
+  const bindCatalogColorToggle = () => {
+    refreshCatalogToneMap();
+    catalogCustomColors = readCustomCatalogColors();
+    document.querySelectorAll('#sharepoint-scopes-colors, #sp-owner-scopes-colors').forEach((btn) => {
+      if (btn.dataset.colorBound === '1') return;
+      btn.dataset.colorBound = '1';
+      btn.addEventListener('click', () => {
+        applyCatalogColors(document.documentElement.getAttribute('data-catalog-colors') !== 'distinct');
+      });
+    });
+    document.querySelectorAll('.sharepoint-scopes-color-reset').forEach((btn) => {
+      if (btn.dataset.colorBound === '1') return;
+      btn.dataset.colorBound = '1';
+      btn.addEventListener('click', () => {
+        resetAllCatalogCustomColors();
+        closeCatalogColorPop();
+      });
+    });
+    document.querySelectorAll('.sharepoint-scope-color-btn').forEach((btn) => {
+      if (btn.dataset.colorBound === '1') return;
+      btn.dataset.colorBound = '1';
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (document.documentElement.getAttribute('data-catalog-colors') !== 'distinct') return;
+        if (catalogColorPopKey === btn.getAttribute('data-source-key') && catalogColorPop() && !catalogColorPop().hidden) {
+          closeCatalogColorPop();
+          return;
+        }
+        openCatalogColorPop(btn);
+      });
+    });
+    const pop = catalogColorPop();
+    if (pop && pop.dataset.colorBound !== '1') {
+      pop.dataset.colorBound = '1';
+      pop.addEventListener('click', (event) => event.stopPropagation());
+      pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (!catalogColorPopKey) return;
+          setCatalogCustomColor(catalogColorPopKey, btn.getAttribute('data-hex'));
+          openCatalogColorPop(catalogColorPopAnchor || btn);
+        });
+      });
+      const native = document.getElementById('sharepoint-catalog-color-native');
+      native?.addEventListener('input', () => {
+        if (!catalogColorPopKey) return;
+        setCatalogCustomColor(catalogColorPopKey, native.value);
+        pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
+          btn.classList.toggle('is-selected', normalizeHex(btn.getAttribute('data-hex')) === normalizeHex(native.value));
+        });
+      });
+      document.getElementById('sharepoint-catalog-color-reset-one')?.addEventListener('click', () => {
+        if (!catalogColorPopKey) return;
+        resetCatalogCustomColor(catalogColorPopKey);
+        if (catalogColorPopAnchor) openCatalogColorPop(catalogColorPopAnchor);
+      });
+      document.addEventListener('click', (event) => {
+        if (!pop || pop.hidden) return;
+        if (event.target.closest('.sharepoint-scope-color-btn') || event.target.closest('#sharepoint-catalog-color-pop')) {
+          return;
+        }
+        closeCatalogColorPop();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeCatalogColorPop();
+      });
+      window.addEventListener('resize', () => {
+        if (catalogColorPopAnchor && pop && !pop.hidden) placeCatalogColorPop(catalogColorPopAnchor);
+      });
+    }
+    applyCatalogColors(readCatalogColorsOn());
+  };
+
   /** Schedule work after the browser paints so typing is not blocked. */
   const debouncePaint = (fn, waitMs) => {
     let timer = 0;
@@ -574,6 +926,7 @@
     fuzzy: 'riskregister_sp_search_fuzzy',
     compareDensity: 'riskregister_sp_compare_density',
     listDensity: 'riskregister_sp_list_density',
+    catalogDensity: 'riskregister_sp_catalog_density',
   };
 
   const readDialogDensity = () => {
@@ -644,6 +997,46 @@
       });
     });
     applyListDensity(readListDensity());
+  };
+
+  const readCatalogDensity = () => {
+    try {
+      return localStorage.getItem(SEARCH_PREF.catalogDensity) === 'comfort' ? 'comfort' : 'compact';
+    } catch {
+      return 'compact';
+    }
+  };
+
+  const applyCatalogDensity = (next) => {
+    const density = next === 'comfort' ? 'comfort' : 'compact';
+    const card = document.getElementById('sharepoint-search');
+    if (card) {
+      card.classList.toggle('is-compact-chrome', density === 'compact');
+      card.setAttribute('data-catalog-density', density);
+      card.querySelectorAll('.sp-view-btn[data-catalog-density]').forEach((btn) => {
+        const active = btn.getAttribute('data-catalog-density') === density;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+    try {
+      localStorage.setItem(SEARCH_PREF.catalogDensity, density);
+    } catch {
+      /* ignore */
+    }
+    return density;
+  };
+
+  const bindCatalogDensityToggle = () => {
+    const card = document.getElementById('sharepoint-search');
+    if (!card || card.dataset.catalogDensityBound === '1') return;
+    card.dataset.catalogDensityBound = '1';
+    card.querySelectorAll('.sp-view-btn[data-catalog-density]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyCatalogDensity(btn.getAttribute('data-catalog-density') || 'compact');
+      });
+    });
+    applyCatalogDensity(readCatalogDensity());
   };
 
   const readSearchPrefs = () => ({
@@ -1220,7 +1613,7 @@
       </div>
       <div class="sp-project-meta-line">
         <span class="sp-type-badge sp-type-badge--${escapeHtml(meta.tone)}">${escapeHtml(typeLabel)}</span>
-        <span class="sp-catalog-badge">${escapeHtml(sourceTitle)}</span>
+        ${catalogBadgeHtml(sourceTitle, sourceKey)}
       </div>
       ${extraHtml}
     </div>`;
@@ -1507,8 +1900,9 @@
       const folders = allItems.filter((item) => isFolderItem(item)).length;
       const files = allItems.length - folders;
       const catalogLabel = String(project.source_title || '').trim();
+      const catalogBadge = catalogBadgeHtml(catalogLabel, project.source_key || currentSourceKey);
       subEl.innerHTML = `${
-        catalogLabel ? `<span class="sp-catalog-badge">${escapeHtml(catalogLabel)}</span> · ` : ''
+        catalogBadge ? `${catalogBadge} · ` : ''
       }📦 <strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}`;
       renderProjectActivityStats(
         statsEl,
@@ -1900,10 +2294,11 @@
     const fillSide = (side, project, stats) => {
       const els = sideEls[side];
       const catalog = String(project.source_title || project.source_key || '').trim();
+      const catalogBadge = catalogBadgeHtml(catalog, project.source_key);
       const items = Array.isArray(project.items) ? project.items : [];
       els.title.textContent = String(project.project_name || 'Project');
       els.sub.innerHTML = `${
-        catalog ? `<span class="sp-catalog-badge">${escapeHtml(catalog)}</span> · ` : ''
+        catalogBadge ? `${catalogBadge} · ` : ''
       }${items.length} item${items.length === 1 ? '' : 's'} · showing ${stats.shown}`;
       if (project.folder_url) {
         els.actions.innerHTML = `<div class="sp-dialog-folder-actions sp-compare-folder-actions">
@@ -2381,6 +2776,8 @@
   });
 
   bindListDensityToggle();
+  bindCatalogDensityToggle();
+  bindCatalogColorToggle();
 
   /* ---- Live LinkNest-style search ---- */
   const searchRoot = document.getElementById('sharepoint-search');
@@ -3435,6 +3832,8 @@
 
   const syncUrl = () => {
     const params = new URLSearchParams();
+    const catalogSolo = searchRoot.getAttribute('data-solo') === '1';
+    if (catalogSolo) params.set('view', 'catalog');
     if (state.sourceKey) params.set('source', state.sourceKey);
     if (state.scopeKeys.length > 1) {
       params.set('sources', state.scopeKeys.join(','));
@@ -3443,7 +3842,11 @@
     if (state.perPage !== 25) params.set('per', String(state.perPage));
     if (state.page > 1 && !state.query.trim()) params.set('page', String(state.page));
     const qs = params.toString();
-    const hash = window.location.hash === '#sharepoint-owner-dash' ? '#sharepoint-owner-dash' : '#sharepoint-search';
+    const hash = catalogSolo
+      ? ''
+      : window.location.hash === '#sharepoint-owner-dash'
+        ? '#sharepoint-owner-dash'
+        : '#sharepoint-search';
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`;
     window.history.replaceState(null, '', next);
   };
@@ -3705,7 +4108,8 @@
     state.perPage = Number(perPageSelect.value) || 25;
     applySearch();
     const sourceQs = state.sourceKey ? `&source=${encodeURIComponent(state.sourceKey)}` : '';
-    const saveUrl = `sharepoint.php?per=${encodeURIComponent(String(state.perPage))}${sourceQs}#sharepoint-search`;
+    const viewQs = searchRoot.getAttribute('data-solo') === '1' ? '&view=catalog' : '';
+    const saveUrl = `sharepoint.php?per=${encodeURIComponent(String(state.perPage))}${sourceQs}${viewQs}#sharepoint-search`;
     fetch(saveUrl, { credentials: 'same-origin' }).catch(() => {});
   });
 
@@ -3734,6 +4138,46 @@
   } else {
     renderRecentSearches();
   }
+
+  const catalogPageUrl = () => {
+    const url = new URL('sharepoint.php', window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('view', 'catalog');
+    if (state.sourceKey) url.searchParams.set('source', state.sourceKey);
+    if (state.scopeKeys.length > 1) {
+      url.searchParams.set('sources', state.scopeKeys.join(','));
+    }
+    const q = String(state.query || '').trim();
+    if (q) url.searchParams.set('q', q);
+    if (state.perPage && Number(state.perPage) !== 25) {
+      url.searchParams.set('per', String(state.perPage));
+    }
+    return url.toString();
+  };
+
+  document.getElementById('sp-catalog-open-tab')?.addEventListener('click', (event) => {
+    const link = event.currentTarget;
+    if (link instanceof HTMLAnchorElement) {
+      link.href = catalogPageUrl();
+    }
+  });
+
+  document.getElementById('sp-catalog-open-window')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    const features =
+      'popup=yes,width=1480,height=920,left=40,top=40,menubar=no,toolbar=no,location=yes,status=yes,resizable=yes,scrollbars=yes';
+    const win = window.open(catalogPageUrl(), 'riskregister-sp-catalog', features);
+    if (win) {
+      try {
+        win.opener = null;
+      } catch {
+        /* ignore */
+      }
+      win.focus();
+    }
+  });
+
   loadIndex();
 })();
 
@@ -3742,14 +4186,52 @@
   const ADMIN_KEY = 'ra-sp-admin-open';
   const ADD_KEY = 'ra-sp-add-folder-open';
   const FOLDERS_KEY = 'ra-sp-folders-open';
-  const allowedViews = ['cards', 'compact', 'table'];
+  const allowedViews = ['comfort', 'compact', 'table'];
+  const normalizeFoldersView = (view) => {
+    if (view === 'cards') return 'comfort';
+    return allowedViews.includes(view) ? view : 'compact';
+  };
   const panel = document.getElementById('sharepoint-sources');
   const grid = document.getElementById('sharepoint-sources-grid');
   const tableWrap = document.getElementById('sharepoint-sources-table-wrap');
   const toggle = panel?.querySelector('.sharepoint-folders-view-toggle');
+  const foldersSolo = panel?.getAttribute('data-solo') === '1';
+
+  const foldersPageUrl = () => {
+    const url = new URL('sharepoint.php', window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('view', 'folders');
+    return url.toString();
+  };
+
+  panel?.querySelectorAll('[data-no-toggle]').forEach((el) => {
+    el.addEventListener('click', (event) => event.stopPropagation());
+    el.addEventListener('pointerdown', (event) => event.stopPropagation());
+  });
+
+  document.getElementById('sp-folders-open-tab')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+
+  document.getElementById('sp-folders-open-window')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const features =
+      'popup=yes,width=1480,height=920,left=40,top=40,menubar=no,toolbar=no,location=yes,status=yes,resizable=yes,scrollbars=yes';
+    const win = window.open(foldersPageUrl(), 'riskregister-sp-folders', features);
+    if (win) {
+      try {
+        win.opener = null;
+      } catch {
+        /* ignore */
+      }
+      win.focus();
+    }
+  });
 
   const applyFoldersView = (view) => {
-    const next = allowedViews.includes(view) ? view : 'cards';
+    const next = normalizeFoldersView(view);
     if (!panel) return;
     panel.setAttribute('data-folders-view', next);
     if (grid) grid.hidden = next === 'table';
@@ -3768,9 +4250,9 @@
 
   const savedView = (() => {
     try {
-      return localStorage.getItem(VIEW_KEY) || 'cards';
+      return normalizeFoldersView(localStorage.getItem(VIEW_KEY) || 'compact');
     } catch {
-      return 'cards';
+      return 'compact';
     }
   })();
   applyFoldersView(savedView);
@@ -3780,25 +4262,39 @@
     event.stopPropagation();
     const btn = event.target.closest('[data-folders-view]');
     if (!btn) return;
-    applyFoldersView(btn.getAttribute('data-folders-view') || 'cards');
+    applyFoldersView(btn.getAttribute('data-folders-view') || 'compact');
+  });
+
+  const foldersSummary = panel?.querySelector('.sharepoint-sources-summary');
+  foldersSummary?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-no-toggle], a, button, input, select, label')) {
+      event.preventDefault();
+    }
   });
 
   const foldersShell = document.getElementById('sharepoint-sources-shell');
   if (foldersShell) {
-    try {
-      const savedFolders = localStorage.getItem(FOLDERS_KEY);
-      if (savedFolders === '0') foldersShell.open = false;
-      else if (savedFolders === '1') foldersShell.open = true;
-    } catch {
-      /* ignore */
-    }
-    foldersShell.addEventListener('toggle', () => {
+    if (foldersSolo) {
+      foldersShell.open = true;
+      foldersShell.addEventListener('toggle', () => {
+        if (!foldersShell.open) foldersShell.open = true;
+      });
+    } else {
       try {
-        localStorage.setItem(FOLDERS_KEY, foldersShell.open ? '1' : '0');
+        const savedFolders = localStorage.getItem(FOLDERS_KEY);
+        if (savedFolders === '0') foldersShell.open = false;
+        else if (savedFolders === '1') foldersShell.open = true;
       } catch {
         /* ignore */
       }
-    });
+      foldersShell.addEventListener('toggle', () => {
+        try {
+          localStorage.setItem(FOLDERS_KEY, foldersShell.open ? '1' : '0');
+        } catch {
+          /* ignore */
+        }
+      });
+    }
   }
 
   const adminShell = document.getElementById('sharepoint-admin-shell');

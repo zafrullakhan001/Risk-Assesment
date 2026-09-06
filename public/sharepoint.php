@@ -595,13 +595,67 @@ foreach ($allSources as $src) {
     $sourceCounts[$key] = $catalog->count($key);
 }
 
-$sharepointListUrl = static function (array $overrides = []) use ($query, $perPage, $page, $activeSourceKey): string {
+$catalogTones = [];
+$catalogToneExtra = 0;
+$catalogToneExtras = ['violet', 'sky', 'lime', 'slate'];
+foreach ($allSources as $src) {
+    $key = (string) ($src['source_key'] ?? '');
+    if ($key === '') {
+        continue;
+    }
+    $hay = strtolower(trim((string) ($src['title'] ?? '') . ' ' . $key));
+    if (preg_match('/\bprivate\b/', $hay) === 1) {
+        $catalogTones[$key] = 'private';
+    } elseif (preg_match('/\bpublic\b/', $hay) === 1) {
+        $catalogTones[$key] = 'public';
+    } elseif (preg_match('/\b(tprm|dump|legacy)\b/', $hay) === 1) {
+        $catalogTones[$key] = 'dump';
+    } else {
+        $catalogTones[$key] = $catalogToneExtras[$catalogToneExtra % count($catalogToneExtras)];
+        $catalogToneExtra++;
+    }
+}
+
+$catalogToneHex = [
+    'public' => '#0f766e',
+    'private' => '#e11d48',
+    'dump' => '#d97706',
+    'violet' => '#7c3aed',
+    'sky' => '#0284c7',
+    'lime' => '#65a30d',
+    'slate' => '#475569',
+];
+$catalogColorPresets = [
+    '#0f766e' => 'Teal',
+    '#e11d48' => 'Rose',
+    '#d97706' => 'Amber',
+    '#7c3aed' => 'Violet',
+    '#0284c7' => 'Sky',
+    '#65a30d' => 'Lime',
+    '#2563eb' => 'Blue',
+    '#db2777' => 'Pink',
+    '#4f46e5' => 'Indigo',
+    '#0891b2' => 'Cyan',
+    '#c2410c' => 'Rust',
+    '#475569' => 'Slate',
+];
+
+$viewMode = trim((string) ($_GET['view'] ?? ''));
+$ownerSolo = $viewMode === 'owners';
+$catalogSolo = $viewMode === 'catalog';
+$foldersSolo = $viewMode === 'folders';
+$panelSolo = $ownerSolo || $catalogSolo || $foldersSolo;
+
+$sharepointListUrl = static function (array $overrides = []) use ($query, $perPage, $page, $activeSourceKey, $catalogSolo): string {
     $params = array_merge([
         'source' => $activeSourceKey,
         'q' => $query,
         'page' => $page,
         'per' => $perPage,
     ], $overrides);
+    if ($catalogSolo) {
+        $params['view'] = 'catalog';
+    }
     if (($params['q'] ?? '') === '') {
         unset($params['q']);
     }
@@ -613,6 +667,9 @@ $sharepointListUrl = static function (array $overrides = []) use ($query, $perPa
     }
     if (($params['source'] ?? '') === '') {
         unset($params['source']);
+    }
+    if (($params['view'] ?? '') === '') {
+        unset($params['view']);
     }
     $qs = http_build_query($params);
 
@@ -692,29 +749,52 @@ $activeFolderUrl = (string) ($activeSource['folder_url'] ?? '');
 $activeLastSynced = (string) ($activeSource['last_synced_at'] ?? '');
 $activeLastStatus = (string) ($activeSource['last_sync_status'] ?? '');
 $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
-$ownerSolo = trim((string) ($_GET['view'] ?? '')) === 'owners';
 $ownerDashUrl = 'sharepoint.php?view=owners';
+$catalogDashUrl = 'sharepoint.php?view=catalog&source=' . rawurlencode($activeSourceKey);
+if ($query !== '') {
+    $catalogDashUrl .= '&q=' . rawurlencode($query);
+}
+$foldersDashUrl = 'sharepoint.php?view=folders';
+$pageHeading = $ownerSolo
+    ? '👤 Project owners'
+    : ($foldersSolo ? '📁 SharePoint folders' : ($catalogSolo ? '🔎 ' . $activeTitle : '📁 SharePoint catalog'));
+$pageTitle = $ownerSolo
+    ? 'Project owners'
+    : ($foldersSolo ? 'SharePoint folders' : $activeTitle);
+$soloPageClass = $ownerSolo
+    ? ' sharepoint-owner-solo-page'
+    : ($catalogSolo ? ' sharepoint-catalog-solo-page' : ($foldersSolo ? ' sharepoint-folders-solo-page' : ''));
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($ownerSolo ? 'Project owners' : $activeTitle) ?> · SharePoint · <?= e($branding->documentTitle()) ?></title>
+    <title><?= e($pageTitle) ?> · SharePoint · <?= e($branding->documentTitle()) ?></title>
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
+    <script>
+    (function () {
+        try {
+            var on = localStorage.getItem('riskregister_sp_catalog_colors') !== '0';
+            document.documentElement.setAttribute('data-catalog-colors', on ? 'distinct' : 'uniform');
+        } catch (e) {
+            document.documentElement.setAttribute('data-catalog-colors', 'distinct');
+        }
+    })();
+    </script>
     <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
 </head>
 <body>
-    <div class="shell upload-page sharepoint-catalog-page<?= $ownerSolo ? ' sharepoint-owner-solo-page' : '' ?>">
+    <div class="shell upload-page sharepoint-catalog-page<?= e($soloPageClass) ?>">
         <header class="topbar topbar-uplift">
             <a class="brand brand-link" href="index.php#find-projects" title="Find projects by name">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div class="brand-text">
                     <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
-                    <h1><?= $ownerSolo ? '👤 Project owners' : '📁 SharePoint catalog' ?></h1>
+                    <h1><?= e($pageHeading) ?></h1>
                 </div>
             </a>
             <div class="topbar-actions">
@@ -731,6 +811,7 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
 
         <main>
             <?php if (!$ownerSolo): ?>
+            <?php if (!$panelSolo): ?>
             <section class="hero hero-compact">
                 <div class="hero-main">
                     <div class="hero-head">
@@ -748,6 +829,7 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                     </div>
                 </div>
             </section>
+            <?php endif; ?>
 
             <?php if ($error !== ''): ?>
                 <div class="alert alert-error">⚠️ <?= e($error) ?></div>
@@ -756,22 +838,31 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                 <div class="alert alert-success">✅ <?= e($flash) ?></div>
             <?php endif; ?>
 
+            <?php if (!$panelSolo): ?>
             <?php $homeTab = 'sharepoint'; require __DIR__ . '/includes/home-section-tabs.php'; ?>
+            <?php endif; ?>
 
-            <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-folders-view="cards">
+            <?php if (!$catalogSolo): ?>
+            <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-folders-view="compact" data-solo="<?= $foldersSolo ? '1' : '0' ?>">
                 <details class="sharepoint-sources-shell" id="sharepoint-sources-shell" open>
                     <summary class="card-heading sharepoint-sources-heading sharepoint-sources-summary">
                         <div>
                             <h2>📁 SharePoint folders</h2>
                             <p class="panel-help">Each folder has its own catalog and search. Use <strong>Sync</strong> for one-click Microsoft login (MFA in popup), or Console sync as a fallback.</p>
                         </div>
-                        <div class="sharepoint-sources-summary-tools">
+                        <div class="sharepoint-sources-summary-tools" data-no-toggle onclick="event.stopPropagation()">
                             <div class="sp-view-toggle sharepoint-folders-view-toggle" role="group" aria-label="Folder layout">
-                                <button type="button" class="sp-view-btn is-active" data-folders-view="cards" aria-pressed="true" title="Card view">▦ Cards</button>
-                                <button type="button" class="sp-view-btn" data-folders-view="compact" aria-pressed="false" title="Compact view">☰ Compact</button>
-                                <button type="button" class="sp-view-btn" data-folders-view="table" aria-pressed="false" title="Table view">▥ Table</button>
+                                <button type="button" class="sp-view-btn" data-folders-view="comfort" aria-pressed="false" title="Roomier folder cards">Comfort</button>
+                                <button type="button" class="sp-view-btn is-active" data-folders-view="compact" aria-pressed="true" title="Shrink the folder panel so catalog search has more room">Compact</button>
+                                <button type="button" class="sp-view-btn" data-folders-view="table" aria-pressed="false" title="Table view">Table</button>
                             </div>
-                            <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
+                            <?php if ($foldersSolo): ?>
+                                <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← SharePoint</a>
+                            <?php else: ?>
+                                <a class="button ghost-light" id="sp-folders-open-tab" href="<?= e($foldersDashUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open SharePoint folders in a new browser tab">↗ New tab</a>
+                                <button type="button" class="button ghost" id="sp-folders-open-window" title="Open SharePoint folders in a separate window">🗗 Window</button>
+                                <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
+                            <?php endif; ?>
                         </div>
                     </summary>
                     <div class="sharepoint-sources-body">
@@ -1015,16 +1106,41 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                 </details>
             </section>
             <?php endif; ?>
+            <?php if ($foldersSolo && $isAdmin): ?>
+                <?php if ($enableOneClickSync): ?>
+                    <section class="visually-hidden" id="sharepoint-msal-sync"
+                             data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
+                             data-source-key="<?= e($activeSourceKey) ?>"
+                             data-tenant-id="<?= e((string) ($status['tenant_id'] ?? '')) ?>"
+                             data-client-id="<?= e($thisClientIdSafe) ?>">
+                        <p id="sharepoint-msal-status" aria-live="polite"></p>
+                    </section>
+                <?php endif; ?>
+                <?php if ($enableConsoleSync): ?>
+                    <section class="visually-hidden" id="sharepoint-mfa-sync"
+                             data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
+                             data-source-key="<?= e($activeSourceKey) ?>">
+                        <a id="sharepoint-mfa-open" href="<?= e($activeFolderUrl) ?>" hidden></a>
+                        <input type="hidden" id="sharepoint-mfa-source-key" value="<?= e($activeSourceKey) ?>">
+                        <p id="sharepoint-mfa-status" aria-live="polite"></p>
+                        <textarea id="sharepoint-mfa-script" hidden readonly></textarea>
+                    </section>
+                <?php endif; ?>
+            <?php endif; ?>
+            <?php endif; ?>
 
+            <?php if (!$catalogSolo && !$foldersSolo): ?>
             <section
                 class="upload-card sp-owner-dash"
                 id="sharepoint-owner-dash"
                 data-solo="<?= $ownerSolo ? '1' : '0' ?>"
                 data-active-source="<?= e($activeSourceKey) ?>"
-                data-sources="<?= e(json_encode(array_map(static function (array $src): array {
+                data-sources="<?= e(json_encode(array_map(static function (array $src) use ($catalogTones): array {
+                    $key = (string) ($src['source_key'] ?? '');
                     return [
-                        'source_key' => (string) ($src['source_key'] ?? ''),
+                        'source_key' => $key,
                         'title' => (string) ($src['title'] ?? $src['source_key'] ?? ''),
+                        'tone' => (string) ($catalogTones[$key] ?? 'slate'),
                     ];
                 }, $allSources), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>"
             >
@@ -1084,17 +1200,24 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                                         <b class="sp-od-scopes-count" id="sp-owner-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
                                     </span>
                                     <button type="button" class="sp-od-scopes-all is-active" id="sp-owner-scopes-all" disabled>All selected</button>
+                                    <button type="button" class="sp-od-scopes-colors is-active" id="sp-owner-scopes-colors" aria-pressed="true" title="Color each catalog differently so they are easier to tell apart">🎨 Colors</button>
+                                    <button type="button" class="sp-od-scopes-colors sharepoint-scopes-color-reset" id="sp-owner-scopes-color-reset" hidden>Reset colors</button>
                                 </div>
                                 <div class="sp-od-scopes-list">
                                     <?php foreach ($allSources as $src): ?>
                                         <?php
                                         $srcKey = (string) ($src['source_key'] ?? '');
                                         $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                        $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
+                                        $srcHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                                         ?>
-                                        <label class="sharepoint-scope-chip is-active">
-                                            <input type="checkbox" class="sp-owner-scope-check" value="<?= e($srcKey) ?>" checked>
-                                            <span><?= e($srcTitle) ?></span>
-                                        </label>
+                                        <div class="sharepoint-scope-chip is-active" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>">
+                                            <label class="sharepoint-scope-chip-main">
+                                                <input type="checkbox" class="sp-owner-scope-check" value="<?= e($srcKey) ?>" checked>
+                                                <span><?= e($srcTitle) ?></span>
+                                            </label>
+                                            <button type="button" class="sharepoint-scope-color-btn" data-source-key="<?= e($srcKey) ?>" title="Choose color for <?= e($srcTitle) ?>" aria-label="Choose color for <?= e($srcTitle) ?>" aria-haspopup="dialog" aria-expanded="false" style="--catalog-tone: <?= e($srcHex) ?>"></button>
+                                        </div>
                                     <?php endforeach; ?>
                                 </div>
                             </div>
@@ -1105,15 +1228,33 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                     </div>
                 </details>
             </section>
+            <dialog class="response-dialog sp-od-cell-dialog" id="sp-od-cell-dialog" aria-labelledby="sp-od-cell-dialog-title">
+                <div class="sp-od-cell-dialog-body">
+                    <div class="sp-od-cell-dialog-head">
+                        <div>
+                            <div class="eyebrow">Project folders</div>
+                            <h3 id="sp-od-cell-dialog-title">Owner · Period</h3>
+                            <p class="response-dialog-sub" id="sp-od-cell-dialog-sub"></p>
+                        </div>
+                        <button type="button" class="button ghost response-dialog-close" id="sp-od-cell-dialog-close" aria-label="Close">✕</button>
+                    </div>
+                    <ul class="sp-od-cell-dialog-list" id="sp-od-cell-dialog-list"></ul>
+                </div>
+            </dialog>
+            <?php endif; ?>
 
-            <?php if (!$ownerSolo): ?>
-            <section class="upload-card search-card" id="sharepoint-search"
+            <?php if (!$ownerSolo && !$foldersSolo): ?>
+            <section class="upload-card search-card is-compact-chrome" id="sharepoint-search"
+                     data-catalog-density="compact"
                      data-source-key="<?= e($activeSourceKey) ?>"
                      data-source-title="<?= e($activeTitle) ?>"
-                     data-sources="<?= e(json_encode(array_map(static function (array $src): array {
+                     data-solo="<?= $catalogSolo ? '1' : '0' ?>"
+                     data-sources="<?= e(json_encode(array_map(static function (array $src) use ($catalogTones): array {
+                         $key = (string) ($src['source_key'] ?? '');
                          return [
-                             'source_key' => (string) ($src['source_key'] ?? ''),
+                             'source_key' => $key,
                              'title' => (string) ($src['title'] ?? $src['source_key'] ?? ''),
+                             'tone' => (string) ($catalogTones[$key] ?? 'slate'),
                              'folder_path' => (string) ($src['folder_path'] ?? ''),
                              'site_host' => (string) ($src['site_host'] ?? ''),
                              'site_path' => (string) ($src['site_path'] ?? ''),
@@ -1125,26 +1266,49 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                      data-project-count="<?= (int) $projectCount ?>"
                      data-last-synced="<?= e($activeLastSynced) ?>"
                      data-last-status="<?= e($activeLastStatus) ?>">
-                <h2 id="sharepoint-search-heading">🔎 <?= e($activeTitle) ?></h2>
-                <p>Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on.</p>
+                <div class="sharepoint-search-head">
+                    <div class="sharepoint-search-intro">
+                        <h2 id="sharepoint-search-heading">🔎 <?= e($activeTitle) ?></h2>
+                        <p>Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on.</p>
+                    </div>
+                    <div class="sharepoint-search-head-tools">
+                        <div class="sp-view-toggle sharepoint-catalog-view-toggle" role="group" aria-label="Catalog layout">
+                            <button type="button" class="sp-view-btn" data-catalog-density="comfort" title="Show the full search card" aria-pressed="false">Comfort</button>
+                            <button type="button" class="sp-view-btn is-active" data-catalog-density="compact" title="Shrink the search card so the project list has more room" aria-pressed="true">Compact</button>
+                        </div>
+                        <?php if ($catalogSolo): ?>
+                            <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← SharePoint</a>
+                        <?php else: ?>
+                            <a class="button ghost-light" id="sp-catalog-open-tab" href="<?= e($catalogDashUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open this catalog in a new browser tab">↗ New tab</a>
+                            <button type="button" class="button ghost" id="sp-catalog-open-window" title="Open this catalog in a separate window">🗗 Window</button>
+                        <?php endif; ?>
+                    </div>
+                </div>
                 <?php if (count($allSources) > 1): ?>
                     <div class="sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
                         <div class="sharepoint-search-scopes-head">
                             <span class="sharepoint-search-scopes-label">Search in</span>
                             <button type="button" class="button ghost sharepoint-scopes-all" id="sharepoint-scopes-all">All catalogs</button>
                             <button type="button" class="button ghost sharepoint-scopes-active" id="sharepoint-scopes-active">This catalog only</button>
+                            <button type="button" class="button ghost sharepoint-scopes-colors is-active" id="sharepoint-scopes-colors" aria-pressed="true" title="Color each catalog differently so Public, Private, and other folders are easier to tell apart">🎨 Distinct colors</button>
+                            <button type="button" class="button ghost sharepoint-scopes-color-reset" id="sharepoint-scopes-color-reset" hidden>Reset colors</button>
                         </div>
                         <div class="sharepoint-search-scopes-list">
                             <?php foreach ($allSources as $src): ?>
                                 <?php
                                 $srcKey = (string) ($src['source_key'] ?? '');
                                 $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
+                                $srcHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                                 $checked = $srcKey === $activeSourceKey;
                                 ?>
-                                <label class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?>">
-                                    <input type="checkbox" class="sharepoint-scope-check" value="<?= e($srcKey) ?>"<?= $checked ? ' checked' : '' ?>>
-                                    <span><?= e($srcTitle) ?></span>
-                                </label>
+                                <div class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>">
+                                    <label class="sharepoint-scope-chip-main">
+                                        <input type="checkbox" class="sharepoint-scope-check" value="<?= e($srcKey) ?>"<?= $checked ? ' checked' : '' ?>>
+                                        <span><?= e($srcTitle) ?></span>
+                                    </label>
+                                    <button type="button" class="sharepoint-scope-color-btn" data-source-key="<?= e($srcKey) ?>" title="Choose color for <?= e($srcTitle) ?>" aria-label="Choose color for <?= e($srcTitle) ?>" aria-haspopup="dialog" aria-expanded="false" style="--catalog-tone: <?= e($srcHex) ?>"></button>
+                                </div>
                             <?php endforeach; ?>
                         </div>
                         <p class="panel-help sharepoint-scopes-hint">Select more than one catalog to compare — results show where a project is found and where it is missing.</p>
@@ -1152,6 +1316,9 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                 <?php endif; ?>
                 <form method="get" class="search-form sharepoint-live-search-form" action="sharepoint.php" id="sharepoint-search-form" role="search">
                     <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
+                    <?php if ($catalogSolo): ?>
+                        <input type="hidden" name="view" value="catalog">
+                    <?php endif; ?>
                     <div class="search-wrap search-wrap-wide sharepoint-search-main">
                         <span aria-hidden="true">Find</span>
                         <input type="search" name="q" id="sharepoint-search-input" value="<?= e($query) ?>"
@@ -1311,7 +1478,7 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                                                 </div>
                                                 <div class="sp-project-meta-line">
                                                     <span class="sp-type-badge sp-type-badge--<?= e((string) $rowMeta['tone']) ?>"><?= e($rowTypeLabel) ?></span>
-                                                    <span class="sp-catalog-badge"><?= e($activeTitle) ?></span>
+                                                    <span class="sp-catalog-badge" data-catalog-tone="<?= e((string) ($catalogTones[$activeSourceKey] ?? 'slate')) ?>" data-source-key="<?= e($activeSourceKey) ?>"><?= e($activeTitle) ?></span>
                                                 </div>
                                             </div>
                                         </td>
@@ -1374,6 +1541,9 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                     </div>
                     <form method="get" class="pagination-per-page" action="sharepoint.php#sharepoint-search" id="sharepoint-per-page-form">
                         <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
+                        <?php if ($catalogSolo): ?>
+                            <input type="hidden" name="view" value="catalog">
+                        <?php endif; ?>
                         <?php if ($query !== ''): ?>
                             <input type="hidden" name="q" value="<?= e($query) ?>" id="sharepoint-per-page-q">
                         <?php endif; ?>
@@ -1388,7 +1558,6 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                     </form>
                 </nav>
             </section>
-            <?php endif; ?>
 
             <dialog class="response-dialog sharepoint-project-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-project-dialog" aria-labelledby="sharepoint-project-dialog-title" data-density="compact">
                 <div class="response-dialog-form sharepoint-project-dialog-body">
@@ -1709,8 +1878,9 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                     </div>
                 </div>
             </dialog>
+            <?php endif; ?>
 
-            <?php if ($isAdmin && !$ownerSolo): ?>
+            <?php if ($isAdmin && !$panelSolo): ?>
                 <section class="upload-card sharepoint-admin-card" id="sharepoint-admin">
                     <details class="sharepoint-admin-shell" id="sharepoint-admin-shell" open>
                         <summary class="sharepoint-admin-shell-summary">
@@ -1974,20 +2144,35 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                 </section>
             <?php endif; ?>
         </main>
+        <div class="sharepoint-catalog-color-pop" id="sharepoint-catalog-color-pop" hidden role="dialog" aria-label="Choose catalog color">
+            <p class="sharepoint-catalog-color-pop-kicker" id="sharepoint-catalog-color-pop-title">Catalog color</p>
+            <div class="sharepoint-catalog-color-presets" role="list">
+                <?php foreach ($catalogColorPresets as $hex => $name): ?>
+                    <button type="button" class="sharepoint-catalog-color-preset" data-hex="<?= e($hex) ?>" title="<?= e($name) ?>" aria-label="<?= e($name) ?>" style="background: <?= e($hex) ?>"></button>
+                <?php endforeach; ?>
+            </div>
+            <label class="sharepoint-catalog-color-custom">
+                <span>Custom</span>
+                <input type="color" id="sharepoint-catalog-color-native" value="#0f766e" aria-label="Custom catalog color">
+            </label>
+            <button type="button" class="sharepoint-catalog-color-reset-one" id="sharepoint-catalog-color-reset-one">Reset this catalog</button>
+        </div>
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <?php if (!$catalogSolo && !$foldersSolo): ?>
     <script src="assets/js/sharepoint-owner-stats.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-stats.js') ?>"></script>
-        <?php if (!$ownerSolo && $isAdmin): ?>
+    <?php endif; ?>
+        <?php if (!$ownerSolo && !$catalogSolo && $isAdmin): ?>
         <script src="assets/js/sharepoint-source-delete.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-source-delete.js') ?>"></script>
         <?php endif; ?>
-        <?php if (!$ownerSolo && $isAdmin && $enableOneClickSync): ?>
+        <?php if (!$ownerSolo && !$catalogSolo && $isAdmin && $enableOneClickSync): ?>
         <script src="assets/vendor/msal-browser.min.js?v=<?= filemtime(__DIR__ . '/assets/vendor/msal-browser.min.js') ?>"></script>
         <script src="assets/js/sharepoint-msal-sync.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-msal-sync.js') ?>"></script>
         <?php endif; ?>
-        <?php if (!$ownerSolo && $isAdmin && $enableConsoleSync): ?>
+        <?php if (!$ownerSolo && !$catalogSolo && $isAdmin && $enableConsoleSync): ?>
         <script src="assets/js/sharepoint-mfa-sync.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-mfa-sync.js') ?>"></script>
         <script src="assets/js/sharepoint-mfa-ui.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-mfa-ui.js') ?>"></script>
         <?php endif; ?>
