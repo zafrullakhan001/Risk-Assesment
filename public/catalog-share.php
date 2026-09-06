@@ -462,36 +462,36 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                             <table class="sharepoint-projects-table" id="sharepoint-projects-table">
                                 <thead>
                                     <tr>
-                                        <th scope="col" class="sharepoint-select-col"><span class="visually-hidden">Select</span></th>
-                                        <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" aria-sort="ascending">
+                                        <th scope="col" class="sharepoint-select-col" data-col="select"><span class="visually-hidden">Select</span></th>
+                                        <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" data-col="name" aria-sort="ascending">
                                             <button type="button" class="sp-dialog-sort-btn" data-sort="name" title="Sort by project name">📂 Project</button>
                                         </th>
-                                        <th scope="col" class="is-sortable" data-sort="match" aria-sort="none">
+                                        <th scope="col" class="is-sortable" data-sort="match" data-col="match" aria-sort="none">
                                             <button type="button" class="sp-dialog-sort-btn" data-sort="match" title="Sort by match, type, or catalog">🎯 Match</button>
                                         </th>
-                                        <th scope="col" class="is-sortable" data-sort="items" aria-sort="none">
+                                        <th scope="col" class="is-sortable" data-sort="items" data-col="items" aria-sort="none">
                                             <button type="button" class="sp-dialog-sort-btn" data-sort="items" title="Sort by folder and file count">📦 Items</button>
                                         </th>
-                                        <th scope="col" class="is-sortable" data-sort="modified" aria-sort="none">
+                                        <th scope="col" class="is-sortable" data-sort="modified" data-col="modified" aria-sort="none">
                                             <button type="button" class="sp-dialog-sort-btn" data-sort="modified" title="Sort by modified date">🕒 Modified</button>
                                         </th>
-                                        <th scope="col" class="is-sortable" data-sort="modified_by" aria-sort="none">
+                                        <th scope="col" class="is-sortable" data-sort="modified_by" data-col="modified_by" aria-sort="none">
                                             <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by" title="Sort by who last modified">👤 Modified By</button>
                                         </th>
-                                        <th scope="col" class="is-sortable" data-sort="created_by" aria-sort="none">
+                                        <th scope="col" class="is-sortable" data-sort="created_by" data-col="created_by" aria-sort="none">
                                             <button type="button" class="sp-dialog-sort-btn" data-sort="created_by" title="Sort by who created">🙋 Created By</button>
                                         </th>
-                                        <th scope="col"><span class="visually-hidden">Open</span></th>
+                                        <th scope="col" data-col="actions"><span class="visually-hidden">Actions</span></th>
                                     </tr>
                                     <tr class="sharepoint-table-filters" id="sharepoint-table-filters">
-                                        <th scope="col" class="sharepoint-select-col"></th>
-                                        <th scope="col"><input type="search" class="sharepoint-col-filter" data-filter="name" placeholder="Filter project…" autocomplete="off" aria-label="Filter by project name"></th>
-                                        <th scope="col"><input type="search" class="sharepoint-col-filter" data-filter="match" placeholder="Type / catalog…" autocomplete="off" aria-label="Filter by match, type, or catalog"></th>
-                                        <th scope="col"><input type="search" class="sharepoint-col-filter" data-filter="items" placeholder="Count…" autocomplete="off" aria-label="Filter by item counts"></th>
-                                        <th scope="col"><input type="search" class="sharepoint-col-filter" data-filter="modified" placeholder="Date…" autocomplete="off" aria-label="Filter by modified date"></th>
-                                        <th scope="col"><input type="search" class="sharepoint-col-filter" data-filter="modified_by" placeholder="Name…" autocomplete="off" aria-label="Filter by modified by"></th>
-                                        <th scope="col"><input type="search" class="sharepoint-col-filter" data-filter="created_by" placeholder="Name…" autocomplete="off" aria-label="Filter by created by"></th>
-                                        <th scope="col" class="sharepoint-filter-actions">
+                                        <th scope="col" class="sharepoint-select-col" data-col="select"></th>
+                                        <th scope="col" data-col="name"><input type="search" class="sharepoint-col-filter" data-filter="name" placeholder="Filter project…" autocomplete="off" aria-label="Filter by project name"></th>
+                                        <th scope="col" data-col="match"><input type="search" class="sharepoint-col-filter" data-filter="match" placeholder="Type / catalog…" autocomplete="off" aria-label="Filter by match, type, or catalog"></th>
+                                        <th scope="col" data-col="items"><input type="search" class="sharepoint-col-filter" data-filter="items" placeholder="Count…" autocomplete="off" aria-label="Filter by item counts"></th>
+                                        <th scope="col" data-col="modified"><input type="search" class="sharepoint-col-filter" data-filter="modified" placeholder="Date…" autocomplete="off" aria-label="Filter by modified date"></th>
+                                        <th scope="col" data-col="modified_by"><input type="search" class="sharepoint-col-filter" data-filter="modified_by" placeholder="Name…" autocomplete="off" aria-label="Filter by modified by"></th>
+                                        <th scope="col" data-col="created_by"><input type="search" class="sharepoint-col-filter" data-filter="created_by" placeholder="Name…" autocomplete="off" aria-label="Filter by created by"></th>
+                                        <th scope="col" class="sharepoint-filter-actions" data-col="actions">
                                             <button type="button" class="button ghost sharepoint-filters-clear is-hidden" id="sharepoint-filters-clear" title="Clear column filters">Clear</button>
                                         </th>
                                     </tr>
@@ -538,6 +538,7 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
+    <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
 </body>

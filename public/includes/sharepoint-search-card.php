@@ -175,6 +175,11 @@ foreach ($allSources as $src) {
                         </div>
                         <div class="sharepoint-search-suggest is-hidden" id="sharepoint-search-suggest" role="listbox" hidden aria-label="Search suggestions"></div>
                     </div>
+                    <div class="sharepoint-search-find-toggles" role="group" aria-label="Search match options">
+                        <button type="button" class="sp-search-toggle sp-search-suggest-toggle" id="sharepoint-suggest-toggle" title="Suggestions — show the search dropdown with project, file, people, and operator hints while typing" aria-pressed="false">▾ Suggest</button>
+                        <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Fuzzy — tolerate typos and similar-sounding words (e.g. Encore ≈ Encor)" aria-pressed="false">✨ Fuzzy</button>
+                        <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Deep files — also search nested file and folder names/paths inside each project (not file contents)" aria-pressed="true">📂 Deep files</button>
+                    </div>
                     <button type="button" class="sp-search-advanced-toggle" id="sharepoint-advanced-toggle" aria-expanded="false" aria-controls="sharepoint-search-advanced" title="Show date, person, presence, contains/lacks, and save/export options">
                         <span class="sp-adv-toggle-label">Advanced</span>
                         <span class="sp-adv-toggle-arrow" aria-hidden="true">▾</span>
@@ -182,14 +187,12 @@ foreach ($allSources as $src) {
                 </div>
 
                 <div class="sharepoint-search-controls" id="sharepoint-search-controls" hidden>
-                    <div class="sp-search-cluster sp-search-cluster--mode" role="group" aria-label="Match style">
+                    <div class="sp-search-cluster sp-search-cluster--mode" id="sharepoint-match-cluster" role="group" aria-label="Match style" hidden>
                         <span class="sp-search-cluster-label" title="How words are matched">⚙️ Match</span>
                         <div class="sp-search-toggle-group" role="group" aria-label="Match spaced words with AND or OR" id="sharepoint-word-mode" hidden>
                             <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="AND — every word must appear somewhere in the project" aria-pressed="true">AND</button>
                             <button type="button" class="sp-search-toggle" data-word-mode="or" title="OR — match if any word appears" aria-pressed="false">OR</button>
                         </div>
-                        <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Fuzzy — tolerate typos and similar-sounding words (e.g. Encore ≈ Encor)" aria-pressed="false">✨ Fuzzy</button>
-                        <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Deep files — also search nested file and folder names/paths inside each project (not file contents)" aria-pressed="true">📂 Deep files</button>
                     </div>
 
                     <div class="sp-search-cluster sp-search-cluster--types" role="group" aria-label="File type filters">
@@ -197,9 +200,6 @@ foreach ($allSources as $src) {
                         <div class="sharepoint-type-chips" id="sharepoint-type-chips" role="group" aria-label="File type filters">
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--pdf" data-type-chip="pdf" title="Has at least one PDF file" aria-pressed="false">📕 PDF</button>
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--visio" data-type-chip="visio" title="Has Visio diagrams (.vsdx / .vsd)" aria-pressed="false">📐 Visio</button>
-                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--cad" data-type-chip="cad" title="Has CAD drawings (.dwg / .dxf)" aria-pressed="false">🏗️ CAD</button>
-                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--drawings" data-type-chip="drawings" title="Has a Drawings folder or CAD files" aria-pressed="false">✏️ Drawings</button>
-                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--images" data-type-chip="images" title="Has image files (jpg, png, …)" aria-pressed="false">🖼️ Images</button>
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--folders" data-type-chip="folders" title="Has nested subfolders" aria-pressed="false">📂 Folders</button>
                         </div>
                     </div>
@@ -270,13 +270,10 @@ foreach ($allSources as $src) {
                     </label>
                     <label class="sp-adv-field sp-adv-field--has" title="Projects that include this content">
                         <span>✅ Contains</span>
-                        <select id="sharepoint-has-filter" aria-label="Projects that contain" title="Keep projects that have this (PDF, Visio, CAD, Drawings folder, images, empty, or stale)">
+                        <select id="sharepoint-has-filter" aria-label="Projects that contain" title="Keep projects that have this (PDF, Visio, empty, or stale)">
                             <option value="">—</option>
                             <option value="pdf">📕 PDF</option>
                             <option value="visio">📐 Visio</option>
-                            <option value="cad">🏗️ CAD</option>
-                            <option value="drawings">✏️ Drawings</option>
-                            <option value="images">🖼️ Images</option>
                             <option value="empty">📭 Empty (no files)</option>
                             <option value="stale">⏳ Stale (90+ days)</option>
                         </select>
@@ -287,9 +284,6 @@ foreach ($allSources as $src) {
                             <option value="">—</option>
                             <option value="pdf">📕 PDF</option>
                             <option value="visio">📐 Visio</option>
-                            <option value="cad">🏗️ CAD</option>
-                            <option value="drawings">✏️ Drawings</option>
-                            <option value="images">🖼️ Images</option>
                             <option value="empty">📭 Empty (no files)</option>
                             <option value="stale">⏳ Stale (90+ days)</option>
                         </select>

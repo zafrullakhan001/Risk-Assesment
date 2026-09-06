@@ -9251,6 +9251,11 @@ body.is-public-catalog-share .topbar-actions {
 #sharepoint-search.is-compact-chrome .sharepoint-search-find-row {
     gap: 0.35rem;
 }
+#sharepoint-search.is-compact-chrome .sharepoint-search-find-toggles .sp-search-toggle {
+    min-height: 34px;
+    padding: 0 0.5rem;
+    font-size: 0.72rem;
+}
 #sharepoint-search.is-compact-chrome .sp-search-advanced-toggle {
     min-height: 34px;
     padding: 0 0.55rem;
@@ -10651,8 +10656,250 @@ body.is-public-catalog-share .topbar-actions {
     line-height: 1.3;
 }
 .sharepoint-project-actions {
-    width: 3rem;
+    width: auto;
+    min-width: 6.5rem;
     text-align: right;
+    white-space: nowrap;
+}
+.sharepoint-project-action-group {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.28rem;
+}
+.sharepoint-project-action-group .sp-copy-link-btn,
+.sharepoint-project-action-group .sp-project-copy-btn {
+    width: 1.85rem;
+    height: 1.85rem;
+    min-width: 1.85rem;
+    min-height: 1.85rem;
+    margin: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    border-radius: 0.55rem;
+}
+.sp-qr-btn {
+    min-height: 1.85rem;
+    min-width: 1.85rem;
+    padding: 0 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+.sp-tree-cell .sp-qr-btn {
+    flex: 0 0 auto;
+}
+.sharepoint-qr-dialog {
+    width: min(26rem, calc(100vw - 1.5rem));
+    max-width: 26rem;
+}
+.sharepoint-qr-dialog-body {
+    display: grid;
+    gap: 0.85rem;
+}
+.sharepoint-qr-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+.sharepoint-qr-head-brand {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    min-width: 3.25rem;
+    min-height: 3.25rem;
+}
+.sharepoint-qr-org-logo {
+    max-width: 4.5rem;
+    max-height: 2.75rem;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+.sharepoint-qr-org-fallback {
+    font-size: 1.55rem;
+    line-height: 1;
+}
+.sharepoint-qr-head-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sharepoint-qr-catalog-wrap {
+    margin-top: 0.45rem;
+}
+.sharepoint-qr-catalog-wrap .sp-catalog-badge {
+    font-size: 0.74rem;
+}
+.sharepoint-qr-frame {
+    display: grid;
+    place-items: center;
+    margin: 0 auto;
+    padding: 0.85rem;
+    width: min(15rem, 100%);
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 0.85rem;
+    background: #fff;
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
+}
+.sharepoint-qr-mark {
+    position: relative;
+    width: 100%;
+    display: grid;
+    place-items: center;
+}
+.sharepoint-qr-frame svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.sharepoint-qr-brand {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    /* Keep the quiet zone small so ECC H still scans, but leave real room for the favicon. */
+    width: clamp(2.1rem, 22%, 3rem);
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border-radius: 0.4rem;
+    background: #fff;
+    box-shadow: 0 0 0 3px #fff;
+    overflow: hidden;
+    pointer-events: none;
+    /* % padding is relative to the QR width (not this box) and was collapsing the img to 0×0. */
+    padding: 0.18rem;
+    box-sizing: border-box;
+}
+.sharepoint-qr-brand img,
+.sharepoint-qr-favicon {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    object-position: center;
+    display: block;
+}
+.sharepoint-qr-favicon.is-wide {
+    width: 100%;
+    height: auto;
+    max-height: 78%;
+}
+.sharepoint-qr-favicon.is-tall {
+    width: auto;
+    height: 100%;
+    max-width: 78%;
+}
+.sharepoint-qr-brand--fallback {
+    font-size: clamp(0.8rem, 3.6vw, 1.05rem);
+    line-height: 1;
+    padding: 0;
+}
+.sharepoint-qr-hint {
+    margin: 0;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--muted, #64748b);
+}
+.sharepoint-qr-size {
+    margin: -0.2rem 0 0;
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    color: #64748b;
+    font-variant-numeric: tabular-nums;
+}
+.sharepoint-qr-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--line, #e2e8f0);
+}
+.sharepoint-qr-actions-left {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+.sharepoint-qr-icon-btn {
+    appearance: none;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 2.35rem;
+    height: 2.35rem;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, #94a3b8 35%, var(--line, #e2e8f0));
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, #e2e8f0 55%, #fff);
+    color: #334155;
+    text-decoration: none;
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+.sharepoint-qr-icon-btn:hover,
+.sharepoint-qr-icon-btn:focus-visible {
+    background: color-mix(in srgb, #cbd5e1 45%, #fff);
+    border-color: color-mix(in srgb, #64748b 35%, var(--line, #e2e8f0));
+    color: #0f172a;
+    outline: none;
+}
+.sharepoint-qr-icon-btn:active {
+    transform: translateY(1px);
+}
+.sharepoint-qr-icon-btn.is-ok {
+    background: color-mix(in srgb, #22c55e 16%, #fff);
+    border-color: color-mix(in srgb, #16a34a 35%, var(--line, #e2e8f0));
+    color: #166534;
+}
+.sharepoint-qr-icon-btn.is-bad {
+    background: color-mix(in srgb, #f97316 16%, #fff);
+    border-color: color-mix(in srgb, #ea580c 35%, var(--line, #e2e8f0));
+    color: #9a3412;
+}
+.sharepoint-qr-icon-btn--close {
+    width: auto;
+    min-width: 2.35rem;
+    padding: 0 0.85rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+.sharepoint-qr-close-label {
+    font-size: 0.86rem;
+}
+.sharepoint-qr-error {
+    margin: 0;
+    color: #b45309;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+@media (max-width: 420px) {
+    .sharepoint-qr-icon-btn--close .sharepoint-qr-close-label {
+        display: none;
+    }
+    .sharepoint-qr-icon-btn--close {
+        width: 2.35rem;
+        padding: 0;
+    }
 }
 .sharepoint-item-counts {
     display: inline-flex;
@@ -10771,13 +11018,24 @@ body.is-public-catalog-share .topbar-actions {
 .sharepoint-table-card.is-compact-rows .sp-person-cell {
     font-size: 0.82rem;
 }
-.sharepoint-table-card.is-compact-rows .sharepoint-open-sp {
+.sharepoint-table-card.is-compact-rows .sharepoint-open-sp,
+.sharepoint-table-card.is-compact-rows .sp-qr-btn,
+.sharepoint-table-card.is-compact-rows .sharepoint-project-action-group .sp-copy-link-btn,
+.sharepoint-table-card.is-compact-rows .sharepoint-project-action-group .sp-project-copy-btn {
     min-height: 1.65rem;
     width: 1.65rem;
+    min-width: 1.65rem;
     padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+.sharepoint-table-card.is-compact-rows .sp-qr-btn {
+    font-size: 0.62rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-project-action-group .sp-copy-link-btn,
+.sharepoint-table-card.is-compact-rows .sharepoint-project-action-group .sp-project-copy-btn {
+    font-size: 0.7rem;
 }
 .sharepoint-table-card.is-compact-rows .sp-match-badge-wrap {
     flex-direction: row;
@@ -10789,6 +11047,167 @@ body.is-public-catalog-share .topbar-actions {
 }
 .sharepoint-table-card.is-compact-rows .sharepoint-select-col {
     vertical-align: middle;
+}
+
+/* SharePoint catalog — tablet / phone essentials */
+@media (max-width: 980px) {
+    .sharepoint-catalog-page .shell {
+        padding-left: max(0.65rem, env(safe-area-inset-left));
+        padding-right: max(0.65rem, env(safe-area-inset-right));
+    }
+    .sharepoint-catalog-page .topbar {
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+    .sharepoint-catalog-page .topbar-actions {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        padding-bottom: 0.15rem;
+        flex-wrap: nowrap;
+    }
+    .sharepoint-catalog-page main > .hero,
+    .sharepoint-catalog-page main > .hero-compact {
+        padding: 0.85rem 0.9rem;
+    }
+    .sharepoint-catalog-page main > .hero h2,
+    .sharepoint-catalog-page main > .hero-compact h2 {
+        font-size: clamp(1.15rem, 5vw, 1.55rem);
+    }
+    .sharepoint-search-find-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .sharepoint-search-find-row .sharepoint-search-find-stack {
+        width: 100%;
+    }
+    .sharepoint-search-find-toggles,
+    .sharepoint-search-controls {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    .sharepoint-table-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .sharepoint-table-toolbar-tools,
+    .sharepoint-compare-bar {
+        width: 100%;
+    }
+    .sharepoint-compare-bar .button {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+    /* Essentials only: select · project · actions (+ modified on tablet) */
+    .sharepoint-projects-table [data-col="match"],
+    .sharepoint-projects-table [data-col="items"],
+    .sharepoint-projects-table [data-col="modified_by"],
+    .sharepoint-projects-table [data-col="created_by"] {
+        display: none;
+    }
+    .sharepoint-projects-table [data-col="name"] {
+        width: 100%;
+    }
+    .sharepoint-projects-table .sp-project-cell {
+        min-width: 0;
+    }
+    .sharepoint-projects-wrap {
+        overflow-x: visible;
+    }
+}
+
+@media (max-width: 720px) {
+    .sharepoint-projects-table [data-col="modified"] {
+        display: none;
+    }
+    .sharepoint-table-card.is-compact-rows .sp-project-cell {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.28rem;
+    }
+    .sharepoint-table-card.is-compact-rows .sp-project-cell .sp-tree-cell {
+        width: 100%;
+        min-width: 0;
+    }
+    .sharepoint-table-card.is-compact-rows .sp-file-name {
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .sharepoint-table-card.is-compact-rows .sp-project-cell .sp-project-meta-line {
+        flex-wrap: wrap;
+        white-space: normal;
+        max-width: 100%;
+    }
+    .sharepoint-project-actions {
+        min-width: 0;
+        padding-left: 0.25rem;
+    }
+    .sharepoint-project-action-group {
+        flex-direction: column;
+        gap: 0.22rem;
+    }
+    .sharepoint-select-col {
+        width: 1.85rem;
+        padding-left: 0.35rem;
+        padding-right: 0.2rem;
+    }
+    .sharepoint-catalog-page .pagination {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .sharepoint-catalog-page .pagination-per-page {
+        width: 100%;
+    }
+    .sharepoint-search-scopes {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        scrollbar-width: thin;
+        padding-bottom: 0.2rem;
+    }
+    .sharepoint-search-intro p,
+    .sharepoint-catalog-page .eyebrow + p {
+        font-size: 0.86rem;
+    }
+    .sharepoint-catalog-page main > .upload-card,
+    .sharepoint-catalog-page main > #sharepoint-sources,
+    .sharepoint-catalog-page main > #sharepoint-owner-dash,
+    .sharepoint-catalog-page main > #sharepoint-search,
+    .sharepoint-catalog-page main > #sharepoint-table-card,
+    .sharepoint-catalog-page main > #sharepoint-admin,
+    .sharepoint-catalog-page main > #catalog-share-panel,
+    .sharepoint-catalog-page main > #owners-share-panel {
+        border-radius: 0.85rem;
+        margin-left: 0;
+        margin-right: 0;
+    }
+    .sharepoint-qr-dialog {
+        width: min(26rem, calc(100vw - 0.75rem));
+    }
+}
+
+@media (max-width: 480px) {
+    .sharepoint-catalog-page .topbar .brand-title,
+    .sharepoint-catalog-page .topbar h1 {
+        max-width: 9.5rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .sharepoint-compare-hint {
+        display: none;
+    }
+    .sharepoint-table-collapsed-title,
+    .sharepoint-table-summary-lead {
+        font-size: 0.86rem;
+    }
+    .sharepoint-project-action-group {
+        flex-direction: row;
+    }
 }
 .sharepoint-compare-bar {
     display: flex;
@@ -10859,6 +11278,26 @@ html.sp-workspace-scroll-lock body {
 .sp-workspace-dialog[open] {
     display: flex;
     flex-direction: column;
+}
+.sp-workspace-dialog.is-entering {
+    animation: sp-workspace-dialog-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.sp-workspace-dialog.is-entering::backdrop {
+    animation: sp-workspace-backdrop-in 0.34s ease-out both;
+}
+@keyframes sp-workspace-dialog-in {
+    from {
+        opacity: 0;
+        translate: 0 14px;
+    }
+    to {
+        opacity: 1;
+        translate: 0 0;
+    }
+}
+@keyframes sp-workspace-backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 .sp-workspace-dialog.sharepoint-compare-dialog {
     width: min(1480px, 98vw);
@@ -12098,6 +12537,31 @@ html.sp-workspace-scroll-lock body {
 .sp-dialog-row--folder:hover {
     background: rgba(251, 191, 36, 0.2);
 }
+.sp-dialog-row.is-settling {
+    animation: sp-row-settle-fade 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-settle-delay, 0ms);
+}
+.sp-dialog-row.is-settling td {
+    animation: sp-row-settle 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-settle-delay, 0ms);
+}
+.sp-dialog-row.is-collapsing td {
+    will-change: transform;
+}
+@keyframes sp-row-settle {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes sp-row-settle-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
 .sp-file-link {
     display: inline-flex;
     align-items: flex-start;
@@ -12519,17 +12983,51 @@ html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"
 }
 .sharepoint-search-find-row {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: stretch;
     gap: 0.45rem;
     width: 100%;
 }
 .sharepoint-search-find-row .sharepoint-search-find-stack {
-    flex: 1 1 auto;
+    flex: 1 1 16rem;
     min-width: 0;
 }
 .sharepoint-search-find-row .sharepoint-search-main {
     width: 100%;
+}
+.sharepoint-search-find-toggles {
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+.sharepoint-search-find-toggles .sp-search-toggle {
+    min-height: 34px;
+    padding: 0 0.65rem;
+    white-space: nowrap;
+    border: 1px solid var(--border, #e2e8f0);
+    background: color-mix(in srgb, var(--surface, #fff) 92%, #f8fafc);
+    border-radius: 0.55rem;
+}
+.sharepoint-search-find-toggles .sp-search-toggle.is-active,
+.sharepoint-search-find-toggles .sp-search-toggle[aria-pressed="true"] {
+    background: rgba(13, 148, 136, 0.12);
+    color: #0f766e;
+    border-color: rgba(13, 148, 136, 0.25);
+}
+.sharepoint-search-find-row .sp-search-advanced-toggle {
+    align-self: stretch;
+}
+
+@media (max-width: 720px) {
+    .sharepoint-search-find-toggles {
+        flex: 1 1 auto;
+    }
+    .sharepoint-search-find-toggles .sp-search-toggle {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
 }
 .sp-search-advanced-toggle {
     display: inline-flex;
@@ -12824,6 +13322,11 @@ html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"
 .sp-fresh-badge--stale {
     color: #9a3412;
     background: color-mix(in srgb, #f97316 16%, transparent);
+}
+.sp-fresh-badge--age {
+    text-transform: none;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
 }
 .sp-stats-scope {
     color: #0f766e;

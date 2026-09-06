@@ -1534,50 +1534,50 @@ $soloPageClass = $ownerSolo
                     <table class="sharepoint-projects-table" id="sharepoint-projects-table">
                         <thead>
                             <tr>
-                                <th scope="col" class="sharepoint-select-col">
+                                <th scope="col" class="sharepoint-select-col" data-col="select">
                                     <span class="visually-hidden">Select</span>
                                 </th>
-                                <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" aria-sort="ascending">
+                                <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" data-col="name" aria-sort="ascending">
                                     <button type="button" class="sp-dialog-sort-btn" data-sort="name" title="Sort by project name">📂 Project</button>
                                 </th>
-                                <th scope="col" class="is-sortable" data-sort="match" aria-sort="none">
+                                <th scope="col" class="is-sortable" data-sort="match" data-col="match" aria-sort="none">
                                     <button type="button" class="sp-dialog-sort-btn" data-sort="match" title="Sort by match, type, or catalog">🎯 Match</button>
                                 </th>
-                                <th scope="col" class="is-sortable" data-sort="items" aria-sort="none">
+                                <th scope="col" class="is-sortable" data-sort="items" data-col="items" aria-sort="none">
                                     <button type="button" class="sp-dialog-sort-btn" data-sort="items" title="Sort by folder and file count">📦 Items</button>
                                 </th>
-                                <th scope="col" class="is-sortable" data-sort="modified" aria-sort="none">
+                                <th scope="col" class="is-sortable" data-sort="modified" data-col="modified" aria-sort="none">
                                     <button type="button" class="sp-dialog-sort-btn" data-sort="modified" title="Sort by modified date">🕒 Modified</button>
                                 </th>
-                                <th scope="col" class="is-sortable" data-sort="modified_by" aria-sort="none">
+                                <th scope="col" class="is-sortable" data-sort="modified_by" data-col="modified_by" aria-sort="none">
                                     <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by" title="Sort by who last modified">👤 Modified By</button>
                                 </th>
-                                <th scope="col" class="is-sortable" data-sort="created_by" aria-sort="none">
+                                <th scope="col" class="is-sortable" data-sort="created_by" data-col="created_by" aria-sort="none">
                                     <button type="button" class="sp-dialog-sort-btn" data-sort="created_by" title="Sort by who created">🙋 Created By</button>
                                 </th>
-                                <th scope="col"><span class="visually-hidden">Open</span></th>
+                                <th scope="col" data-col="actions"><span class="visually-hidden">Actions</span></th>
                             </tr>
                             <tr class="sharepoint-table-filters" id="sharepoint-table-filters">
-                                <th scope="col" class="sharepoint-select-col"></th>
-                                <th scope="col">
+                                <th scope="col" class="sharepoint-select-col" data-col="select"></th>
+                                <th scope="col" data-col="name">
                                     <input type="search" class="sharepoint-col-filter" data-filter="name" placeholder="Filter project…" autocomplete="off" aria-label="Filter by project name">
                                 </th>
-                                <th scope="col">
+                                <th scope="col" data-col="match">
                                     <input type="search" class="sharepoint-col-filter" data-filter="match" placeholder="Type / catalog…" autocomplete="off" aria-label="Filter by match, type, or catalog">
                                 </th>
-                                <th scope="col">
+                                <th scope="col" data-col="items">
                                     <input type="search" class="sharepoint-col-filter" data-filter="items" placeholder="Count…" autocomplete="off" aria-label="Filter by item counts">
                                 </th>
-                                <th scope="col">
+                                <th scope="col" data-col="modified">
                                     <input type="search" class="sharepoint-col-filter" data-filter="modified" placeholder="Date…" autocomplete="off" aria-label="Filter by modified date">
                                 </th>
-                                <th scope="col">
+                                <th scope="col" data-col="modified_by">
                                     <input type="search" class="sharepoint-col-filter" data-filter="modified_by" placeholder="Name…" autocomplete="off" aria-label="Filter by modified by">
                                 </th>
-                                <th scope="col">
+                                <th scope="col" data-col="created_by">
                                     <input type="search" class="sharepoint-col-filter" data-filter="created_by" placeholder="Name…" autocomplete="off" aria-label="Filter by created by">
                                 </th>
-                                <th scope="col" class="sharepoint-filter-actions">
+                                <th scope="col" class="sharepoint-filter-actions" data-col="actions">
                                     <button type="button" class="button ghost sharepoint-filters-clear is-hidden" id="sharepoint-filters-clear" title="Clear column filters">Clear</button>
                                 </th>
                             </tr>
@@ -1613,12 +1613,12 @@ $soloPageClass = $ownerSolo
                                     $selectId = $activeSourceKey . '::' . $projectName;
                                     ?>
                                     <tr class="sharepoint-project-row" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>" tabindex="0">
-                                        <td class="sharepoint-select-col" onclick="event.stopPropagation()">
+                                        <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
                                             <label class="sharepoint-row-select">
                                                 <input type="checkbox" class="sharepoint-compare-check" value="<?= e($selectId) ?>" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>" aria-label="Select <?= e($projectName) ?> for compare">
                                             </label>
                                         </td>
-                                        <td>
+                                        <td data-col="name">
                                             <div class="sp-project-cell">
                                                 <div class="sp-tree-cell">
                                                     <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>">
@@ -1627,9 +1627,6 @@ $soloPageClass = $ownerSolo
                                                             <span class="sp-file-name"><?= e($projectName) ?></span>
                                                         </span>
                                                     </button>
-                                                    <?php if ($folderUrl !== ''): ?>
-                                                        <button type="button" class="sp-copy-link-btn" data-copy-url="<?= e($folderUrl) ?>" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for <?= e($projectName) ?>" onclick="event.stopPropagation()">📋</button>
-                                                    <?php endif; ?>
                                                 </div>
                                                 <div class="sp-project-meta-line">
                                                     <span class="sp-type-badge sp-type-badge--<?= e((string) $rowMeta['tone']) ?>"><?= e($rowTypeLabel) ?></span>
@@ -1637,8 +1634,8 @@ $soloPageClass = $ownerSolo
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="sp-match-cell"><span class="sp-match-placeholder">—</span></td>
-                                        <td class="sp-meta-cell">
+                                        <td class="sp-match-cell" data-col="match"><span class="sp-match-placeholder">—</span></td>
+                                        <td class="sp-meta-cell" data-col="items">
                                             <span class="sharepoint-item-counts" title="<?= (int) $folderCount ?> folders · <?= (int) $fileCount ?> files">
                                                 <?php if ($folderCount > 0): ?>
                                                     <span class="sp-type-badge sp-type-badge--folder">📁 <?= (int) $folderCount ?></span>
@@ -1651,12 +1648,16 @@ $soloPageClass = $ownerSolo
                                                 <?php endif; ?>
                                             </span>
                                         </td>
-                                        <td class="sp-meta-cell"><?= $modifiedDisplay !== '' ? e($modifiedDisplay) : '—' ?></td>
-                                        <td class="sp-meta-cell"><?= $modifiedBy !== '' ? '👤 ' . e($modifiedBy) : '—' ?></td>
-                                        <td class="sp-meta-cell"><?= $person !== '' ? '🙋 ' . e($person) : '—' ?></td>
-                                        <td class="sharepoint-project-actions">
+                                        <td class="sp-meta-cell" data-col="modified"><?= $modifiedDisplay !== '' ? e($modifiedDisplay) : '—' ?></td>
+                                        <td class="sp-meta-cell" data-col="modified_by"><?= $modifiedBy !== '' ? '👤 ' . e($modifiedBy) : '—' ?></td>
+                                        <td class="sp-meta-cell" data-col="created_by"><?= $person !== '' ? '🙋 ' . e($person) : '—' ?></td>
+                                        <td class="sharepoint-project-actions" data-col="actions">
                                             <?php if ($folderUrl !== ''): ?>
-                                                <a class="button ghost-light sharepoint-open-sp" href="<?= e($folderUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
+                                                <div class="sharepoint-project-action-group">
+                                                    <a class="button ghost-light sharepoint-open-sp" href="<?= e($folderUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
+                                                    <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="<?= e($folderUrl) ?>" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for <?= e($projectName) ?>" onclick="event.stopPropagation()">📋</button>
+                                                    <button type="button" class="button ghost-light sp-qr-btn" data-qr-url="<?= e($folderUrl) ?>" data-qr-label="<?= e($projectName) ?>" data-qr-source-key="<?= e($activeSourceKey) ?>" data-qr-catalog="<?= e($activeTitle) ?>" title="Show QR code for mobile scan" aria-label="Show QR code for <?= e($projectName) ?>" onclick="event.stopPropagation()">QR</button>
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
@@ -1999,6 +2000,7 @@ $soloPageClass = $ownerSolo
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
+    <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
     <?php if ($isAdmin && !$foldersSolo): ?>

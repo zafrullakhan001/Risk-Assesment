@@ -399,3 +399,90 @@ declare(strict_types=1);
                     </div>
                 </div>
             </dialog>
+
+<?php
+$qrBranding = \RiskAssessment\Branding::current();
+$qrLogoUrl = (string) ($qrBranding->logoUrl() ?: '');
+// Center QR mark uses the uploaded favicon only — never the wide logo.
+$qrFaviconUrl = $qrBranding->hasCustomFavicon()
+    ? (string) ($qrBranding->faviconUrl() ?: '')
+    : '';
+?>
+            <dialog
+                class="response-dialog sharepoint-qr-dialog"
+                id="sharepoint-qr-dialog"
+                aria-labelledby="sharepoint-qr-dialog-title"
+                data-brand-logo="<?= e($qrLogoUrl) ?>"
+                data-brand-favicon="<?= e($qrFaviconUrl) ?>"
+                data-brand-title="<?= e((string) $qrBranding->brandTitle()) ?>"
+            >
+                <div class="response-dialog-form sharepoint-qr-dialog-body">
+                    <div class="response-dialog-head sharepoint-qr-head">
+                        <div class="sharepoint-qr-head-brand" id="sharepoint-qr-head-brand" aria-hidden="true"></div>
+                        <div class="sharepoint-qr-head-copy">
+                            <div class="eyebrow">📱 Mobile scan</div>
+                            <h3 id="sharepoint-qr-dialog-title">QR Code</h3>
+                            <p class="response-dialog-sub" id="sharepoint-qr-dialog-sub">Scan with your phone camera to open this link.</p>
+                            <div class="sharepoint-qr-catalog-wrap" id="sharepoint-qr-catalog-wrap" hidden></div>
+                        </div>
+                        <button type="button" class="button ghost response-dialog-close" id="sharepoint-qr-dialog-close" aria-label="Close">✕</button>
+                    </div>
+                    <div class="sharepoint-qr-frame" id="sharepoint-qr-frame" aria-live="polite"></div>
+                    <p class="sharepoint-qr-hint">Scan with your phone camera to open this link</p>
+                    <p class="sharepoint-qr-size" id="sharepoint-qr-size" hidden></p>
+                    <div class="sharepoint-qr-actions" role="toolbar" aria-label="QR code actions">
+                        <div class="sharepoint-qr-actions-left">
+                            <a
+                                class="sharepoint-qr-icon-btn"
+                                id="sharepoint-qr-open"
+                                href="#"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open link"
+                                aria-label="Open link"
+                            >
+                                <span aria-hidden="true">🔗</span>
+                            </a>
+                            <button
+                                type="button"
+                                class="sharepoint-qr-icon-btn"
+                                id="sharepoint-qr-share"
+                                title="Share link"
+                                aria-label="Share link"
+                            >
+                                <span aria-hidden="true">↗</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="sharepoint-qr-icon-btn"
+                                id="sharepoint-qr-copy"
+                                data-copy-url=""
+                                title="Copy URL"
+                                aria-label="Copy URL"
+                            >
+                                <span aria-hidden="true">📋</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="sharepoint-qr-icon-btn"
+                                id="sharepoint-qr-print"
+                                title="Print QR code"
+                                aria-label="Print QR code"
+                            >
+                                <span aria-hidden="true">🖨️</span>
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            class="sharepoint-qr-icon-btn sharepoint-qr-icon-btn--close"
+                            id="sharepoint-qr-done"
+                            value="cancel"
+                            title="Close"
+                            aria-label="Close"
+                        >
+                            <span aria-hidden="true">✕</span>
+                            <span class="sharepoint-qr-close-label">Close</span>
+                        </button>
+                    </div>
+                </div>
+            </dialog>

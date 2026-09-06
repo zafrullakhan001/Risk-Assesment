@@ -1318,6 +1318,97 @@
   const treeRevealKey = (query, kind, ext, prefs) =>
     `${String(query || '').trim()}|${kind || 'all'}|${(Array.isArray(ext) ? ext : []).slice().sort().join(',')}|${prefs?.wordMode || ''}|${prefs?.fuzzy ? '1' : '0'}`;
 
+  const prefersReducedMotion = () =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const playWorkspaceDialogEnter = (dialog) => {
+    if (!dialog || prefersReducedMotion()) return;
+    dialog.classList.remove('is-entering');
+    void dialog.offsetWidth;
+    dialog.classList.add('is-entering');
+    const done = (event) => {
+      if (event.target !== dialog) return;
+      dialog.classList.remove('is-entering');
+      dialog.removeEventListener('animationend', done);
+    };
+    dialog.addEventListener('animationend', done);
+    window.setTimeout(() => {
+      dialog.classList.remove('is-entering');
+      dialog.removeEventListener('animationend', done);
+    }, 420);
+  };
+
+  const snapshotTreeRowTops = (tbody) => {
+    const map = new Map();
+    tbody?.querySelectorAll('tr.sp-dialog-row[data-tree-path]').forEach((row) => {
+      const path = (row.getAttribute('data-tree-path') || '').toLowerCase();
+      if (path) map.set(path, row.getBoundingClientRect().top);
+    });
+    return map;
+  };
+
+  const settleTreeRows = (tbody, previousTops) => {
+    if (!tbody || prefersReducedMotion()) return;
+    const rows = [...tbody.querySelectorAll('tr.sp-dialog-row[data-tree-path]')];
+    if (rows.length === 0) return;
+
+    window.requestAnimationFrame(() => {
+      const shifting = [];
+      let appearIndex = 0;
+
+      rows.forEach((row) => {
+        const path = (row.getAttribute('data-tree-path') || '').toLowerCase();
+        const prevTop = previousTops.get(path);
+        row.classList.remove('is-settling', 'is-collapsing');
+        row.style.removeProperty('--sp-settle-delay');
+
+        if (prevTop == null) {
+          row.classList.add('is-settling');
+          row.style.setProperty('--sp-settle-delay', `${Math.min(appearIndex * 14, 180)}ms`);
+          appearIndex += 1;
+          const clear = (event) => {
+            if (event.target !== row && event.target.parentElement !== row) return;
+            row.classList.remove('is-settling');
+            row.style.removeProperty('--sp-settle-delay');
+          };
+          row.addEventListener('animationend', clear, { once: true });
+          return;
+        }
+
+        const delta = prevTop - row.getBoundingClientRect().top;
+        if (Math.abs(delta) < 1.5) return;
+        shifting.push({ row, delta });
+      });
+
+      if (shifting.length === 0) return;
+
+      shifting.forEach(({ row, delta }) => {
+        row.classList.add('is-collapsing');
+        row.querySelectorAll('td').forEach((td) => {
+          td.style.transition = 'none';
+          td.style.transform = `translateY(${delta}px)`;
+        });
+      });
+      void tbody.offsetHeight;
+      shifting.forEach(({ row }) => {
+        const cells = row.querySelectorAll('td');
+        cells.forEach((td) => {
+          td.style.transition = 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)';
+          td.style.transform = 'none';
+        });
+        const clear = (event) => {
+          if (event.target?.tagName !== 'TD') return;
+          row.classList.remove('is-collapsing');
+          cells.forEach((td) => {
+            td.style.transition = '';
+            td.style.transform = '';
+          });
+        };
+        row.addEventListener('transitionend', clear, { once: true });
+      });
+    });
+  };
+
   const buildTreeNodes = (items) => {
     const byPath = new Map();
     const roots = [];
@@ -1569,7 +1660,374 @@
     });
   };
 
-  const nameCellHtml = (item, depth = 0, treeToggle = '') => {
+  const qrButtonHtml = (url, ariaName = 'link', meta = {}) => {
+    const href = String(url || '').trim();
+    if (!href) return '';
+    const sourceKey = String(meta.sourceKey || '').trim();
+    const catalog = String(meta.catalog || '').trim();
+    const sourceAttr = sourceKey ? ` data-qr-source-key="${escapeHtml(sourceKey)}"` : '';
+    const catalogAttr = catalog ? ` data-qr-catalog="${escapeHtml(catalog)}"` : '';
+    return `<button type="button" class="button ghost-light sp-qr-btn" data-qr-url="${escapeHtml(href)}" data-qr-label="${escapeHtml(ariaName)}"${sourceAttr}${catalogAttr} title="Show QR code for mobile scan" aria-label="Show QR code for ${escapeHtml(ariaName)}" onclick="event.stopPropagation()">QR</button>`;
+  };
+
+  const initQrDialog = () => {
+    const dialog = document.getElementById('sharepoint-qr-dialog');
+    if (!dialog) return null;
+    const frame = document.getElementById('sharepoint-qr-frame');
+    const openLink = document.getElementById('sharepoint-qr-open');
+    const copyBtn = document.getElementById('sharepoint-qr-copy');
+    const shareBtn = document.getElementById('sharepoint-qr-share');
+    const printBtn = document.getElementById('sharepoint-qr-print');
+    const closeBtn = document.getElementById('sharepoint-qr-dialog-close');
+    const doneBtn = document.getElementById('sharepoint-qr-done');
+    const subEl = document.getElementById('sharepoint-qr-dialog-sub');
+    const headBrandEl = document.getElementById('sharepoint-qr-head-brand');
+    const catalogWrap = document.getElementById('sharepoint-qr-catalog-wrap');
+    const sizeEl = document.getElementById('sharepoint-qr-size');
+    let currentUrl = '';
+    let currentLabel = '';
+    let currentCatalog = '';
+    let currentSourceKey = '';
+
+    const close = () => {
+      if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+    };
+
+    const flashIconBtn = (btn, ok) => {
+      if (!btn) return;
+      btn.classList.toggle('is-ok', !!ok);
+      btn.classList.toggle('is-bad', !ok);
+      window.setTimeout(() => {
+        btn.classList.remove('is-ok', 'is-bad');
+      }, 1200);
+    };
+
+    const brandTitle = () =>
+      String(dialog.getAttribute('data-brand-title') || 'AdventHealth').trim() || 'AdventHealth';
+
+    const logoUrl = () => String(dialog.getAttribute('data-brand-logo') || '').trim();
+    const faviconUrl = () => String(dialog.getAttribute('data-brand-favicon') || '').trim();
+
+    const utf8Bytes = (text) => {
+      try {
+        return new TextEncoder().encode(String(text || '')).length;
+      } catch {
+        return String(text || '').length;
+      }
+    };
+
+    const formatKb = (bytes) => {
+      const n = Math.max(0, Number(bytes) || 0);
+      if (n < 1024) return `${n} B`;
+      const kb = n / 1024;
+      return `${kb < 10 ? kb.toFixed(2) : kb.toFixed(1)} KB`;
+    };
+
+    const headBrandHtml = () => {
+      // Logo stays in the header only.
+      const image = logoUrl() || faviconUrl();
+      const title = brandTitle();
+      if (image) {
+        return `<img class="sharepoint-qr-org-logo" src="${escapeHtml(image)}" alt="${escapeHtml(title)}" title="${escapeHtml(title)}">`;
+      }
+      return `<span class="sharepoint-qr-org-fallback" title="${escapeHtml(title)}" aria-hidden="true">❤️</span>`;
+    };
+
+    const brandCenterHtml = () => {
+      // Center mark uses favicon only (not the wide logo).
+      const image = faviconUrl();
+      const title = brandTitle();
+      if (image) {
+        return `<span class="sharepoint-qr-brand" aria-hidden="true"><img class="sharepoint-qr-favicon" src="${escapeHtml(image)}" alt="" width="28" height="28" decoding="async"></span>`;
+      }
+      return `<span class="sharepoint-qr-brand sharepoint-qr-brand--fallback" aria-hidden="true" title="${escapeHtml(title)}">❤️</span>`;
+    };
+
+    const fitCenterFavicon = () => {
+      const img = frame?.querySelector('.sharepoint-qr-favicon');
+      if (!img) return;
+      const apply = () => {
+        const w = img.naturalWidth || 0;
+        const h = img.naturalHeight || 0;
+        if (!w || !h) return;
+        const ratio = w / h;
+        img.classList.toggle('is-wide', ratio > 1.35);
+        img.classList.toggle('is-tall', ratio < 0.75);
+        img.classList.toggle('is-square', ratio >= 0.75 && ratio <= 1.35);
+      };
+      if (img.complete && img.naturalWidth) apply();
+      else img.addEventListener('load', apply, { once: true });
+    };
+
+    const syncQrSizeFooter = (svgMarkup, url) => {
+      if (!sizeEl) return;
+      const qrBytes = utf8Bytes(svgMarkup);
+      const payloadBytes = utf8Bytes(url);
+      if (!qrBytes) {
+        sizeEl.hidden = true;
+        sizeEl.textContent = '';
+        return;
+      }
+      sizeEl.hidden = false;
+      sizeEl.textContent = `QR size ${formatKb(qrBytes)} · link payload ${formatKb(payloadBytes)}`;
+      sizeEl.title = `Generated QR markup: ${qrBytes} bytes. Encoded URL: ${payloadBytes} bytes.`;
+    };
+
+    const syncCatalogBadge = () => {
+      if (!catalogWrap) return;
+      const badge = catalogBadgeHtml(currentCatalog, currentSourceKey);
+      if (!badge) {
+        catalogWrap.hidden = true;
+        catalogWrap.innerHTML = '';
+        return;
+      }
+      catalogWrap.hidden = false;
+      catalogWrap.innerHTML = badge;
+    };
+
+    if (headBrandEl) {
+      headBrandEl.innerHTML = headBrandHtml();
+    }
+
+    closeBtn?.addEventListener('click', close);
+    doneBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      close();
+    });
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) close();
+    });
+
+    copyBtn?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const url = copyBtn.getAttribute('data-copy-url') || currentUrl;
+      if (!url) return;
+      const ok = await copyTextToClipboard(url);
+      flashIconBtn(copyBtn, ok);
+    });
+
+    const canNativeShare = typeof navigator.share === 'function';
+    if (shareBtn) {
+      shareBtn.title = canNativeShare
+        ? 'Share this link with another app'
+        : 'Share is unavailable here — copies the link instead';
+      shareBtn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        if (!currentUrl) return;
+        const title = currentLabel || brandTitle() || 'SharePoint link';
+        try {
+          if (canNativeShare) {
+            await navigator.share({ title, text: title, url: currentUrl });
+            flashIconBtn(shareBtn, true);
+            return;
+          }
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+        }
+        const ok = await copyTextToClipboard(currentUrl);
+        flashIconBtn(shareBtn, ok);
+      });
+    }
+
+    printBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (!frame || !frame.querySelector('.sharepoint-qr-mark, svg')) return;
+      const title = currentLabel || 'QR Code';
+
+      const absoluteUrl = (rel) => {
+        try {
+          return new URL(String(rel || ''), window.location.href).href;
+        } catch {
+          return String(rel || '');
+        }
+      };
+
+      const dataUrlForImg = (img) => {
+        if (!(img instanceof HTMLImageElement)) return '';
+        if (!img.complete || !img.naturalWidth) return img.currentSrc || img.src || '';
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return img.currentSrc || img.src || '';
+          ctx.drawImage(img, 0, 0);
+          return canvas.toDataURL('image/png');
+        } catch {
+          return absoluteUrl(img.currentSrc || img.src || '');
+        }
+      };
+
+      const withEmbeddedImages = (root) => {
+        if (!root) return '';
+        const clone = root.cloneNode(true);
+        clone.querySelectorAll('img').forEach((img) => {
+          const dataUrl = dataUrlForImg(img);
+          if (dataUrl) img.setAttribute('src', dataUrl);
+        });
+        return clone.innerHTML;
+      };
+
+      const mark = withEmbeddedImages(frame);
+      const badge = catalogWrap && !catalogWrap.hidden ? catalogWrap.innerHTML : '';
+      const org = withEmbeddedImages(headBrandEl);
+      const sizeNote = sizeEl && !sizeEl.hidden ? sizeEl.textContent : '';
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)} · QR</title>
+        <style>
+          body{font-family:system-ui,sans-serif;margin:24px;text-align:center;color:#0f172a}
+          .org{display:flex;justify-content:center;margin-bottom:10px}
+          .org img{max-height:42px;width:auto;object-fit:contain}
+          .org .sharepoint-qr-org-fallback{font-size:1.6rem}
+          h1{font-size:16px;margin:0 0 8px}
+          .badge{margin:0 0 12px}
+          .sp-catalog-badge{display:inline-flex;align-items:center;padding:0.12rem 0.5rem;border-radius:999px;font-size:0.72rem;font-weight:700;color:#0f766e;background:rgba(15,118,110,.12);border:1px solid rgba(15,118,110,.28)}
+          p{font-size:12px;color:#64748b;margin:0 0 16px}
+          .size{font-size:11px;color:#94a3b8;margin:8px 0 0}
+          .qr{display:inline-block;padding:16px;border:1px solid #e2e8f0;border-radius:12px}
+          .sharepoint-qr-mark{position:relative;display:inline-grid;place-items:center}
+          .sharepoint-qr-mark svg{width:260px;height:auto;display:block}
+          .sharepoint-qr-brand{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:clamp(2.1rem,22%,3rem);aspect-ratio:1;display:grid;place-items:center;border-radius:6px;background:#fff;box-shadow:0 0 0 3px #fff;overflow:hidden;padding:0.18rem;box-sizing:border-box}
+          .sharepoint-qr-brand img,.sharepoint-qr-favicon{width:100%;height:100%;object-fit:contain;display:block}
+          .sharepoint-qr-brand--fallback{font-size:1rem;line-height:1;padding:0}
+          @media print{body{margin:12px}}
+        </style></head><body>
+        <div class="org">${org}</div>
+        <h1>${escapeHtml(title)}</h1>
+        ${badge ? `<div class="badge">${badge}</div>` : ''}
+        <p>Scan with your phone camera to open this link</p>
+        <div class="qr">${mark}</div>
+        ${sizeNote ? `<p class="size">${escapeHtml(sizeNote)}</p>` : ''}
+        </body></html>`;
+
+      // Hidden iframe avoids popup blockers. Do not use window.open(..., 'noopener') —
+      // that returns null and the old print path never ran.
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.setAttribute('title', 'Print QR code');
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      const win = iframe.contentWindow;
+      if (!doc || !win) {
+        iframe.remove();
+        flashIconBtn(printBtn, false);
+        return;
+      }
+
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      try {
+        // Keep print() inside the click gesture so browsers allow the dialog.
+        win.focus();
+        win.print();
+        flashIconBtn(printBtn, true);
+      } catch {
+        flashIconBtn(printBtn, false);
+      }
+
+      const removeIframe = () => {
+        try {
+          iframe.remove();
+        } catch {
+          /* ignore */
+        }
+      };
+      win.addEventListener?.('afterprint', removeIframe, { once: true });
+      window.setTimeout(removeIframe, 60_000);
+    });
+
+    const renderQrSvg = (url) => {
+      const makeQr = typeof window.qrcode === 'function' ? window.qrcode : null;
+      if (!makeQr) {
+        syncQrSizeFooter('', url);
+        return '<p class="sharepoint-qr-error">QR library failed to load. Use Open or Copy instead.</p>';
+      }
+      try {
+        if (makeQr.stringToBytesFuncs?.['UTF-8']) {
+          makeQr.stringToBytes = makeQr.stringToBytesFuncs['UTF-8'];
+        }
+        // High error correction so a small center favicon still scans reliably.
+        const qr = makeQr(0, 'H');
+        qr.addData(url);
+        qr.make();
+        const svg = qr.createSvgTag({
+          cellSize: 4,
+          margin: 2,
+          scalable: true,
+          alt: currentLabel ? `QR code for ${currentLabel}` : 'QR code for SharePoint link',
+          title: currentLabel ? `QR code for ${currentLabel}` : 'Scan to open SharePoint',
+        });
+        syncQrSizeFooter(svg, url);
+        return `<div class="sharepoint-qr-mark">${svg}${brandCenterHtml()}</div>`;
+      } catch (error) {
+        syncQrSizeFooter('', url);
+        return `<p class="sharepoint-qr-error">Could not build QR code (${escapeHtml(error?.message || 'unknown error')}).</p>`;
+      }
+    };
+
+    const open = (url, meta = {}) => {
+      const href = String(url || '').trim();
+      if (!href || !frame) return;
+      const options = typeof meta === 'string' ? { label: meta } : meta || {};
+      currentUrl = href;
+      currentLabel = String(options.label || '').trim();
+      currentCatalog = String(options.catalog || '').trim();
+      currentSourceKey = String(options.sourceKey || '').trim();
+      if (headBrandEl) headBrandEl.innerHTML = headBrandHtml();
+      if (subEl) {
+        subEl.textContent = currentLabel || 'Scan with your phone camera to open this link.';
+      }
+      syncCatalogBadge();
+      frame.innerHTML = renderQrSvg(href);
+      fitCenterFavicon();
+      if (openLink) openLink.href = href;
+      if (copyBtn) {
+        copyBtn.setAttribute('data-copy-url', href);
+        copyBtn.classList.remove('is-ok', 'is-bad');
+      }
+      shareBtn?.classList.remove('is-ok', 'is-bad');
+      printBtn?.classList.remove('is-ok', 'is-bad');
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    };
+
+    return { open, close };
+  };
+
+  const qrDialog = initQrDialog();
+
+  const bindQrButtons = (root = document) => {
+    root?.querySelectorAll('.sp-qr-btn[data-qr-url]').forEach((btn) => {
+      if (btn.dataset.qrBound === '1') return;
+      btn.dataset.qrBound = '1';
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const url = btn.getAttribute('data-qr-url') || '';
+        const row = btn.closest('[data-project-name], [data-source-key], tr');
+        const label =
+          btn.getAttribute('data-qr-label') ||
+          btn.getAttribute('aria-label')?.replace(/^Show QR code for\s+/i, '') ||
+          row?.querySelector('.sp-file-name')?.textContent ||
+          '';
+        const sourceKey =
+          btn.getAttribute('data-qr-source-key') ||
+          row?.getAttribute('data-source-key') ||
+          '';
+        const catalog =
+          btn.getAttribute('data-qr-catalog') ||
+          row?.querySelector('.sp-catalog-badge')?.textContent ||
+          '';
+        qrDialog?.open(url, { label, sourceKey, catalog });
+      });
+    });
+  };
+
+  const nameCellHtml = (item, depth = 0, treeToggle = '', qrMeta = {}) => {
     const name = String(item.name || '');
     const url = String(item.web_url || '');
     const path = String(item.relative_path || '');
@@ -1590,7 +2048,8 @@
     const copyBtn = url
       ? `<button type="button" class="sp-copy-link-btn" data-copy-url="${escapeHtml(url)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}">📋</button>`
       : '';
-    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${copyBtn}</div>`;
+    const qrBtn = qrButtonHtml(url, name, qrMeta);
+    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${copyBtn}${qrBtn}</div>`;
   };
 
   const typeBadgeHtml = (item) => {
@@ -1633,12 +2092,8 @@
 
   const projectNameCellHtml = (project, sourceKey, sourceTitle, extraHtml = '', openQuery = '') => {
     const name = String(project?.project_name || '');
-    const folderUrl = String(project?.folder_url || '');
     const meta = resolveProjectMeta(project);
     const typeLabel = meta.tone === 'folder' ? '📁 Folder' : meta.label;
-    const copyBtn = folderUrl
-      ? `<button type="button" class="sp-copy-link-btn" data-copy-url="${escapeHtml(folderUrl)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}">📋</button>`
-      : '';
     return `<div class="sp-project-cell">
       <div class="sp-tree-cell">
         <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}">
@@ -1647,7 +2102,6 @@
             <span class="sp-file-name">${escapeHtml(name)}</span>
           </span>
         </button>
-        ${copyBtn}
       </div>
       <div class="sp-project-meta-line">
         <span class="sp-type-badge sp-type-badge--${escapeHtml(meta.tone)}">${escapeHtml(typeLabel)}</span>
@@ -1657,10 +2111,10 @@
     </div>`;
   };
 
-  const dialogItemCellsHtml = (item, depth, toggle) => {
+  const dialogItemCellsHtml = (item, depth, toggle, qrMeta = {}) => {
     const person = String(item?.person || '').trim();
     const modifiedBy = String(item?.modified_by || '').trim();
-    return `<td data-col="name">${nameCellHtml(item, depth, toggle)}</td>
+    return `<td data-col="name">${nameCellHtml(item, depth, toggle, qrMeta)}</td>
       <td data-col="type">${typeBadgeHtml(item)}</td>
       <td data-col="size" class="sp-meta-cell sp-size-cell">${escapeHtml(formatSize(item?.size_bytes))}</td>
       <td data-col="modified" class="sp-meta-cell">${escapeHtml(formatModified(item?.last_modified))}</td>
@@ -1701,6 +2155,7 @@
     let syncSearchModes = () => readSearchPrefs();
     let currentName = '';
     let currentSourceKey = '';
+    let currentCatalogTitle = '';
     let projectBusy = false;
 
     const clearActivityStats = () => {
@@ -1772,7 +2227,13 @@
       return fromSelect ? [fromSelect] : [];
     };
 
+    const projectQrMeta = () => ({
+      sourceKey: currentSourceKey || '',
+      catalog: currentCatalogTitle || '',
+    });
+
     const renderTreeRows = (nodes, depth, acc) => {
+      const qrMeta = projectQrMeta();
       nodes.forEach((node) => {
         const path = node.path;
         const isFolder = isFolderItem(node.item);
@@ -1781,8 +2242,8 @@
         const toggle = hasKids
           ? `<button type="button" class="sp-tree-toggle" data-tree-path="${escapeHtml(path)}" aria-expanded="${isOpen ? 'true' : 'false'}">${isOpen ? '▼' : '▶'}</button>`
           : `<span class="sp-tree-toggle sp-tree-toggle--spacer" aria-hidden="true"></span>`;
-        acc.push(`<tr class="sp-dialog-row${isFolder ? ' sp-dialog-row--folder' : ''}${node.selfMatch === false && hasKids ? ' sp-tree-ancestor' : ''}">
-          ${dialogItemCellsHtml(node.item, depth, toggle)}
+        acc.push(`<tr class="sp-dialog-row${isFolder ? ' sp-dialog-row--folder' : ''}${node.selfMatch === false && hasKids ? ' sp-tree-ancestor' : ''}" data-tree-path="${escapeHtml(path)}" data-tree-depth="${depth}">
+          ${dialogItemCellsHtml(node.item, depth, toggle, qrMeta)}
         </tr>`);
         if (isOpen) renderTreeRows(node.children, depth + 1, acc);
       });
@@ -1810,6 +2271,7 @@
         const rows = [];
         renderTreeRows(tree, 0, rows);
         shown = rows.length;
+        const previousTops = snapshotTreeRowTops(rowsEl);
         rowsEl.innerHTML =
           rows.length > 0
             ? rows.join('')
@@ -1818,6 +2280,7 @@
                   ? '🗂️ No files or folders found for this project.'
                   : 'No matches for this view / filter. Try OR mode or Fuzzy.'
               }</td></tr>`;
+        if (rows.length > 0) settleTreeRows(rowsEl, previousTops);
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
           btn.addEventListener('click', (event) => {
             event.preventDefault();
@@ -1841,7 +2304,7 @@
           rowsEl.innerHTML = filtered
             .map((item) => {
               return `<tr class="sp-dialog-row${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}">
-                ${dialogItemCellsHtml(item, 0, '')}
+                ${dialogItemCellsHtml(item, 0, '', projectQrMeta())}
               </tr>`;
             })
             .join('');
@@ -1861,6 +2324,7 @@
         searchClear.hidden = String(query || '').trim() === '' && selectedExts.size === 0;
       }
       bindCopyLinkButtons(rowsEl);
+      bindQrButtons(rowsEl);
     };
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
@@ -1938,7 +2402,8 @@
       const folders = allItems.filter((item) => isFolderItem(item)).length;
       const files = allItems.length - folders;
       const catalogLabel = String(project.source_title || '').trim();
-      const catalogBadge = catalogBadgeHtml(catalogLabel, project.source_key || currentSourceKey);
+      currentCatalogTitle = catalogLabel || '';
+      const catalogBadge = catalogBadgeHtml(currentCatalogTitle, project.source_key || currentSourceKey);
       subEl.innerHTML = `${
         catalogBadge ? `${catalogBadge} · ` : ''
       }📦 <strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}`;
@@ -1951,8 +2416,10 @@
         actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
             <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open project folder in SharePoint">🔗 Open</a>
             <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
+            ${qrButtonHtml(project.folder_url, project.project_name || name, projectQrMeta())}
           </div>`;
         bindCopyLinkButtons(actionsEl);
+        bindQrButtons(actionsEl);
       } else {
         actionsEl.innerHTML = '';
       }
@@ -1995,6 +2462,7 @@
       dialog.__spPrepareWorkspace?.();
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
+      playWorkspaceDialogEnter(dialog);
 
       projectBusy = true;
       setDialogRefreshBusy(refreshBtn, true);
@@ -2342,6 +2810,11 @@
 
     const renderCompareTree = (nodes, side, depth, acc, filterState) => {
       const expanded = sideEls[side].expanded;
+      const project = projectsBySide[side] || {};
+      const qrMeta = {
+        sourceKey: String(project.source_key || '').trim(),
+        catalog: String(project.source_title || project.source_key || '').trim(),
+      };
       nodes.forEach((node) => {
         const key = itemKey(node.item);
         const diff = classifyDiff(key, side);
@@ -2353,8 +2826,8 @@
           : `<span class="sp-tree-toggle sp-tree-toggle--spacer" aria-hidden="true"></span>`;
         const tone = pillClassFor(diff);
         acc.push({
-          html: `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolder ? ' sp-dialog-row--folder' : ''}">
-            ${dialogItemCellsHtml(node.item, depth, toggle)}
+          html: `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolder ? ' sp-dialog-row--folder' : ''}" data-tree-path="${escapeHtml(node.path)}" data-tree-depth="${depth}">
+            ${dialogItemCellsHtml(node.item, depth, toggle, qrMeta)}
             ${compareRowExtrasHtml(node.item, side, diff, tone)}
           </tr>`,
           shared: diff === 'all' || diff === 'shared' ? 1 : 0,
@@ -2395,6 +2868,7 @@
           shared += row.shared;
           only += row.only;
         });
+        const previousTops = snapshotTreeRowTops(rowsEl);
         rowsEl.innerHTML =
           acc.length > 0
             ? acc.map((row) => row.html).join('')
@@ -2403,6 +2877,7 @@
                   ? 'No files or folders.'
                   : 'No matches for this panel filter. Try OR mode or Fuzzy.'
               );
+        if (acc.length > 0) settleTreeRows(rowsEl, previousTops);
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
           btn.addEventListener('click', (event) => {
             event.preventDefault();
@@ -2431,8 +2906,13 @@
               const tone = pillClassFor(diff);
               if (diff === 'all' || diff === 'shared') shared += 1;
               else only += 1;
+              const project = projectsBySide[side] || {};
+              const qrMeta = {
+                sourceKey: String(project.source_key || '').trim(),
+                catalog: String(project.source_title || project.source_key || '').trim(),
+              };
               return `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}">
-                ${dialogItemCellsHtml(item, 0, '')}
+                ${dialogItemCellsHtml(item, 0, '', qrMeta)}
                 ${compareRowExtrasHtml(item, side, diff, tone)}
               </tr>`;
             })
@@ -2441,6 +2921,7 @@
       }
 
       bindCopyLinkButtons(rowsEl);
+      bindQrButtons(rowsEl);
       return { shared, only, shown, query, ext };
     };
 
@@ -2457,8 +2938,13 @@
         els.actions.innerHTML = `<div class="sp-dialog-folder-actions sp-compare-folder-actions">
           <a class="button button-primary btn-accent-violet-solid sp-compare-open-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer">🔗 Open</a>
           <button type="button" class="button ghost-light sp-copy-link-btn sp-compare-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
+          ${qrButtonHtml(project.folder_url, project.project_name || '', {
+            sourceKey: project.source_key || '',
+            catalog,
+          })}
         </div>`;
         bindCopyLinkButtons(els.actions);
+        bindQrButtons(els.actions);
       } else {
         els.actions.innerHTML = '';
       }
@@ -2908,6 +3394,7 @@
       dialog.__spPrepareWorkspace?.();
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
+      playWorkspaceDialogEnter(dialog);
 
       compareBusy = true;
       setDialogRefreshBusy(refreshBtn, true);
@@ -3012,6 +3499,7 @@
       });
     });
     bindCopyLinkButtons(tbody);
+    bindQrButtons(tbody);
     return;
   }
 
@@ -3020,6 +3508,7 @@
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
     deep: 'riskregister_sp_search_deep',
+    suggest: 'riskregister_sp_search_suggest',
     scopes: publicShare ? 'riskregister_sp_public_search_scopes' : 'riskregister_sp_search_scopes',
     recent: publicShare ? 'riskregister_sp_public_search_recent' : 'riskregister_sp_search_recent',
     saved: publicShare ? 'riskregister_sp_public_search_saved' : 'riskregister_sp_search_saved',
@@ -3032,8 +3521,8 @@
   const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
   const CAD_EXTS = new Set(['dwg', 'dxf']);
   const VISIO_EXTS = new Set(['vsdx', 'vsd']);
-  const TYPE_CHIP_KEYS = new Set(['pdf', 'visio', 'cad', 'drawings', 'images', 'folders']);
-  const HAS_LACK_KEYS = new Set(['pdf', 'visio', 'cad', 'drawings', 'images', 'empty', 'stale']);
+  const TYPE_CHIP_KEYS = new Set(['pdf', 'visio', 'folders']);
+  const HAS_LACK_KEYS = new Set(['pdf', 'visio', 'empty', 'stale']);
   const MATCH_SCOPES = new Set(['all', 'names', 'files', 'people']);
   const DATE_PRESETS = new Set(['', '7d', '30d', 'year', 'custom']);
   const PRESENCE_MODES = new Set(['any', 'all', 'only', 'missing']);
@@ -3067,10 +3556,12 @@
   const advancedRoot = document.getElementById('sharepoint-search-advanced');
   const advancedToggle = document.getElementById('sharepoint-advanced-toggle');
   const wordModeGroup = document.getElementById('sharepoint-word-mode');
+  const matchCluster = document.getElementById('sharepoint-match-cluster');
   const matchScopeGroup = document.getElementById('sharepoint-match-scope');
   const typeChipsRoot = document.getElementById('sharepoint-type-chips');
   const fuzzyToggle = document.getElementById('sharepoint-fuzzy-toggle');
   const deepToggle = document.getElementById('sharepoint-deep-toggle');
+  const suggestToggle = document.getElementById('sharepoint-suggest-toggle');
   const refineInput = document.getElementById('sharepoint-refine-input');
   const refineClear = document.getElementById('sharepoint-refine-clear');
   const suggestEl = document.getElementById('sharepoint-search-suggest');
@@ -3222,6 +3713,13 @@
     wordMode: urlSearchState.wordMode,
     fuzzy: urlSearchState.fuzzy,
     deep: urlSearchState.deep,
+    suggestEnabled: (() => {
+      try {
+        return localStorage.getItem(STORAGE.suggest) === '1';
+      } catch {
+        return false;
+      }
+    })(),
     matchScope: urlSearchState.matchScope,
     types: urlSearchState.types,
     datePreset: urlSearchState.datePreset,
@@ -3312,6 +3810,30 @@
     if (age <= 30 * DAY_MS) return 'fresh';
     if (age > 90 * DAY_MS) return 'stale';
     return 'normal';
+  };
+
+  const formatAgeLabel = (lastModifiedMs) => {
+    if (lastModifiedMs == null) return '';
+    const age = Math.max(0, Date.now() - lastModifiedMs);
+    if (age < 60 * 1000) return 'just now';
+    if (age < 60 * 60 * 1000) {
+      const n = Math.max(1, Math.round(age / 60000));
+      return n === 1 ? '1 min old' : `${n} mins old`;
+    }
+    if (age < DAY_MS) {
+      const n = Math.max(1, Math.round(age / (60 * 60 * 1000)));
+      return n === 1 ? '1 hour old' : `${n} hours old`;
+    }
+    if (age < 45 * DAY_MS) {
+      const n = Math.max(1, Math.round(age / DAY_MS));
+      return n === 1 ? '1 day old' : `${n} days old`;
+    }
+    if (age < 365 * DAY_MS) {
+      const n = Math.max(1, Math.round(age / (30 * DAY_MS)));
+      return n === 1 ? '1 month old' : `${n} months old`;
+    }
+    const n = Math.max(1, Math.round(age / (365 * DAY_MS)));
+    return n === 1 ? '1 year old' : `${n} years old`;
   };
 
   const prepareSearchProject = (project) => {
@@ -3545,11 +4067,18 @@
 
   const scoreBadgeHtml = (match, project = null) => {
     const freshness = project?._freshness;
+    const ageLabel = formatAgeLabel(project?._modifiedMs);
+    const ageTitle =
+      project?._modifiedMs != null
+        ? `Last modified ${formatModified(project.last_modified)}${ageLabel ? ` · ${ageLabel}` : ''}`
+        : 'No last-modified date';
     const freshnessBadge =
       freshness === 'fresh'
         ? '<span class="sp-fresh-badge sp-fresh-badge--fresh" title="Modified within 30 days">Fresh</span>'
         : freshness === 'stale'
-          ? '<span class="sp-fresh-badge sp-fresh-badge--stale" title="Not modified in 90+ days (or undated)">Stale</span>'
+          ? `<span class="sp-fresh-badge sp-fresh-badge--stale sp-fresh-badge--age" title="${escapeHtml(ageTitle)}">${escapeHtml(
+              ageLabel || 'No date'
+            )}</span>`
           : '';
     if (!match?.matched) {
       return `<span class="sp-match-placeholder">—</span>${freshnessBadge}`;
@@ -3781,6 +4310,7 @@
       });
     });
     bindCopyLinkButtons(tbody);
+    bindQrButtons(tbody);
   };
 
   const listFiltersActive = () =>
@@ -4189,6 +4719,7 @@
     const refineWords = Fuzzy.getSearchWords(state.refine);
     const multi = parsed.words.length > 1 || refineWords.length > 1;
     if (wordModeGroup) wordModeGroup.hidden = !multi;
+    if (matchCluster) matchCluster.hidden = !multi;
     clearBtn?.classList.toggle('is-hidden', state.query.trim() === '');
     refineClear?.classList.toggle('is-hidden', state.refine.trim() === '');
     fuzzyToggle?.classList.toggle('is-active', state.fuzzy);
@@ -4196,6 +4727,10 @@
     if (deepToggle) {
       deepToggle.classList.toggle('is-active', state.deep);
       deepToggle.setAttribute('aria-pressed', state.deep ? 'true' : 'false');
+    }
+    if (suggestToggle) {
+      suggestToggle.classList.toggle('is-active', state.suggestEnabled);
+      suggestToggle.setAttribute('aria-pressed', state.suggestEnabled ? 'true' : 'false');
     }
     wordModeGroup?.querySelectorAll('[data-word-mode]').forEach((btn) => {
       const active = btn.getAttribute('data-word-mode') === state.wordMode;
@@ -4572,6 +5107,10 @@
 
   const renderSuggestions = () => {
     if (!suggestEl || !input) return;
+    if (!state.suggestEnabled) {
+      hideSuggestions();
+      return;
+    }
     const items = buildSuggestions(input.value);
     state.suggestItems = items;
     state.suggestIndex = items.length ? 0 : -1;
@@ -4599,6 +5138,10 @@
   };
 
   const scheduleSuggestions = debouncePaint(() => {
+    if (!state.suggestEnabled) {
+      hideSuggestions();
+      return;
+    }
     if (document.activeElement === input) renderSuggestions();
   }, 90);
 
@@ -4755,23 +5298,30 @@
         const openQuery = '';
         const extra = `${hitSet ? deepHitsHtml(hitSet) : ''}${coverageHtml(project, presence)}`;
         return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
-          <td class="sharepoint-select-col" onclick="event.stopPropagation()">
+          <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
             <label class="sharepoint-row-select">
               <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(name)} for compare">
             </label>
           </td>
-          <td>
+          <td data-col="name">
             ${projectNameCellHtml(project, sourceKey, sourceTitle, extra, openQuery)}
           </td>
-          <td class="sp-match-cell">${searching ? scoreBadgeHtml(match, project) : scoreBadgeHtml(null, project)}</td>
-          <td class="sp-meta-cell">${itemCountsHtml(project)}</td>
-          <td class="sp-meta-cell">${escapeHtml(formatModified(project.last_modified))}</td>
-          <td class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
-          <td class="sp-meta-cell">${personCellHtml(person, '🙋')}</td>
-          <td class="sharepoint-project-actions">
+          <td class="sp-match-cell" data-col="match">${searching ? scoreBadgeHtml(match, project) : scoreBadgeHtml(null, project)}</td>
+          <td class="sp-meta-cell" data-col="items">${itemCountsHtml(project)}</td>
+          <td class="sp-meta-cell" data-col="modified">${escapeHtml(formatModified(project.last_modified))}</td>
+          <td class="sp-meta-cell" data-col="modified_by">${personCellHtml(modifiedBy, '👤')}</td>
+          <td class="sp-meta-cell" data-col="created_by">${personCellHtml(person, '🙋')}</td>
+          <td class="sharepoint-project-actions" data-col="actions">
             ${
               folderUrl
-                ? `<a class="button ghost-light sharepoint-open-sp" href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>`
+                ? `<div class="sharepoint-project-action-group">
+                    <a class="button ghost-light sharepoint-open-sp" href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
+                    <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(folderUrl)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}" onclick="event.stopPropagation()">📋</button>
+                    ${qrButtonHtml(folderUrl, name, {
+                      sourceKey,
+                      catalog: sourceTitle,
+                    })}
+                  </div>`
                 : ''
             }
           </td>
@@ -4780,6 +5330,7 @@
       .join('');
 
     bindRowEvents();
+    bindQrButtons(tbody);
     syncCompareBar();
   };
 
@@ -5122,6 +5673,21 @@
     applySearch();
   });
 
+  suggestToggle?.addEventListener('click', () => {
+    state.suggestEnabled = !state.suggestEnabled;
+    try {
+      localStorage.setItem(STORAGE.suggest, state.suggestEnabled ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    updateControlsVisibility();
+    if (state.suggestEnabled && document.activeElement === input && (input.value || '').trim()) {
+      renderSuggestions();
+    } else {
+      hideSuggestions();
+    }
+  });
+
   wordModeGroup?.querySelectorAll('[data-word-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.wordMode = btn.getAttribute('data-word-mode') === 'or' ? 'or' : 'and';
@@ -5266,6 +5832,7 @@
   });
 
   input?.addEventListener('focus', () => {
+    if (!state.suggestEnabled) return;
     if ((input.value || '').trim()) scheduleSuggestions();
   });
   input?.addEventListener('blur', () => {
@@ -5294,6 +5861,10 @@
 
   input?.addEventListener('input', () => {
     if (searchComposing) return;
+    if (!state.suggestEnabled) {
+      hideSuggestions();
+      return;
+    }
     scheduleSuggestions();
   });
 
