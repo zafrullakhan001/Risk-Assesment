@@ -9976,6 +9976,64 @@ html.is-compact .site-footer {
     border-bottom: 1px solid var(--line, #cbd5e1);
     white-space: nowrap;
 }
+.sharepoint-projects-table thead th.is-sortable {
+    padding: 0;
+    white-space: nowrap;
+}
+.sharepoint-projects-table thead th.is-sorted-asc .sp-dialog-sort-btn::after {
+    content: "↑";
+    opacity: 0.95;
+    color: var(--primary, #0e7490);
+}
+.sharepoint-projects-table thead th.is-sorted-desc .sp-dialog-sort-btn::after {
+    content: "↓";
+    opacity: 0.95;
+    color: var(--primary, #0e7490);
+}
+.sharepoint-table-filters th {
+    padding: 0.28rem 0.4rem 0.45rem;
+    vertical-align: middle;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    background: color-mix(in srgb, var(--paper-2, #f1f5f9) 55%, var(--card, #fff));
+    border-bottom: 1px solid var(--line, #cbd5e1);
+}
+.sharepoint-table-filters[hidden] {
+    display: none;
+}
+.sharepoint-col-filter {
+    width: 100%;
+    min-width: 4.25rem;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.28rem 0.45rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.4rem;
+    background: var(--card, #fff);
+    color: inherit;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.sharepoint-col-filter:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent, #0f766e) 45%, var(--border, #e2e8f0));
+}
+.sharepoint-filter-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+.sharepoint-filters-clear {
+    min-height: 1.7rem;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.72rem;
+}
+.sharepoint-filters-clear.is-hidden {
+    display: none !important;
+}
 .sharepoint-project-row {
     cursor: pointer;
 }
@@ -10053,6 +10111,20 @@ html.is-compact .site-footer {
 .sharepoint-table-card.is-compact-rows .sharepoint-projects-table th {
     font-size: 0.7rem;
     padding: 0.32rem 0.5rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-projects-table thead th.is-sortable {
+    padding: 0;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-projects-table .sp-dialog-sort-btn {
+    padding: 0.32rem 0.5rem;
+    gap: 0.2rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-table-filters th {
+    padding: 0.2rem 0.35rem 0.35rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-col-filter {
+    padding: 0.2rem 0.38rem;
+    font-size: 0.7rem;
 }
 .sharepoint-table-card.is-compact-rows .sp-project-cell {
     display: flex;
@@ -10238,10 +10310,21 @@ html.is-compact .site-footer {
     gap: 0.25rem;
     flex: 0 0 auto;
 }
-.sp-dialog-maximize {
+.sp-dialog-maximize,
+.sp-dialog-refresh {
     min-width: 2rem;
     font-size: 0.95rem;
     line-height: 1;
+}
+.sp-dialog-refresh-icon {
+    display: inline-block;
+}
+.sp-dialog-refresh.is-refreshing {
+    pointer-events: none;
+    opacity: 0.75;
+}
+.sp-dialog-refresh.is-refreshing .sp-dialog-refresh-icon {
+    animation: spin-slow 0.7s linear infinite;
 }
 .sp-workspace-dialog .sharepoint-dialog-search,
 .sp-workspace-dialog .sharepoint-compare-legend,
@@ -10322,6 +10405,22 @@ html.is-compact .site-footer {
 }
 .sharepoint-compare-panel[hidden] {
     display: none !important;
+}
+.sharepoint-compare-dialog .sharepoint-compare-panels.is-swapping {
+    overflow: hidden;
+    isolation: isolate;
+}
+.sharepoint-compare-panel.is-swapping {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+    will-change: transform;
+    box-shadow:
+        0 16px 34px color-mix(in srgb, #0f172a 18%, transparent),
+        0 1px 0 color-mix(in srgb, var(--accent, #0f766e) 8%, transparent);
+}
+.sharepoint-compare-panel.is-swapping-front {
+    z-index: 2;
 }
 .sharepoint-compare-panel-head {
     display: grid;
@@ -11018,7 +11117,14 @@ html.is-compact .site-footer {
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-table thead th {
     font-size: 0.7rem;
+    padding: 0;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-sort-btn {
     padding: 0.32rem 0.5rem;
+    gap: 0.2rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-sort-btn::after {
+    font-size: 0.65em;
 }
 .sharepoint-project-dialog.is-compact-chrome .sp-tree-toggle,
 .sharepoint-project-dialog.is-compact-chrome .sp-tree-toggle--spacer {
@@ -11175,6 +11281,50 @@ html.is-compact .site-footer {
     z-index: 1;
     background: #f1f5f9;
     border-bottom: 1px solid #cbd5e1;
+}
+.sharepoint-dialog-table thead th.is-sortable {
+    white-space: nowrap;
+    padding: 0;
+}
+.sp-dialog-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    width: 100%;
+    margin: 0;
+    padding: 0.55rem 0.65rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 0;
+}
+.sp-dialog-sort-btn::after {
+    content: "↕";
+    font-size: 0.7em;
+    opacity: 0.4;
+    font-weight: 700;
+}
+.sharepoint-dialog-table thead th.is-sorted-asc .sp-dialog-sort-btn::after {
+    content: "↑";
+    opacity: 0.95;
+    color: var(--primary, #0e7490);
+}
+.sharepoint-dialog-table thead th.is-sorted-desc .sp-dialog-sort-btn::after {
+    content: "↓";
+    opacity: 0.95;
+    color: var(--primary, #0e7490);
+}
+.sp-dialog-sort-btn:hover,
+.sp-dialog-sort-btn:focus-visible {
+    color: var(--primary, #0e7490);
+    background: color-mix(in srgb, var(--primary, #0e7490) 8%, transparent);
+    outline: none;
 }
 .sharepoint-dialog-table .sharepoint-link-path {
     display: block;
@@ -11450,6 +11600,100 @@ html.is-compact .site-footer {
     gap: 0.5rem;
     margin-top: 0.65rem;
 }
+.sharepoint-recent-searches {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.55rem;
+    margin-top: 0.55rem;
+}
+.sharepoint-recent-searches.is-hidden,
+.sharepoint-recent-searches[hidden] {
+    display: none !important;
+}
+.sharepoint-recent-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #64748b);
+    flex: 0 0 auto;
+}
+.sharepoint-recent-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.sharepoint-recent-chip-wrap {
+    display: inline-flex;
+    align-items: center;
+    max-width: 16rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 999px;
+    background: var(--surface, #fff);
+}
+.sharepoint-recent-chip-wrap:hover,
+.sharepoint-recent-chip-wrap:focus-within {
+    border-color: color-mix(in srgb, var(--accent, #0f766e) 50%, transparent);
+}
+.sharepoint-recent-chip-wrap.is-active {
+    border-color: color-mix(in srgb, var(--accent, #0f766e) 55%, transparent);
+    background: color-mix(in srgb, var(--accent, #0f766e) 12%, var(--surface, #fff));
+}
+.sharepoint-recent-chip {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #334155;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.28rem 0.35rem 0.28rem 0.7rem;
+    cursor: pointer;
+    max-width: 13rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sharepoint-recent-chip-wrap.is-active .sharepoint-recent-chip {
+    color: var(--accent, #0f766e);
+}
+.sharepoint-recent-remove {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0.22rem 0.5rem 0.22rem 0.15rem;
+}
+.sharepoint-recent-remove:hover,
+.sharepoint-recent-remove:focus-visible {
+    color: #b45309;
+}
+.sharepoint-recent-clear {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 650;
+    cursor: pointer;
+    padding: 0.2rem 0.35rem;
+    flex: 0 0 auto;
+}
+.sharepoint-recent-clear:hover,
+.sharepoint-recent-clear:focus-visible {
+    color: #0f766e;
+    text-decoration: underline;
+}
+.sharepoint-recent-clear[hidden] {
+    display: none !important;
+}
 .sp-search-toggle-group {
     display: inline-flex;
     border: 1px solid var(--border, #e2e8f0);
@@ -11510,6 +11754,31 @@ html.is-compact .site-footer {
 }
 .sp-refine-clear:hover {
     color: #475569;
+}
+.sharepoint-search-clear {
+    appearance: none;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    margin: 0 -4px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--risk, #be123c);
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+}
+.sharepoint-search-clear:hover,
+.sharepoint-search-clear:focus-visible {
+    background: var(--risk-soft, #ffe4e6);
+    color: #9f1239;
+    outline: none;
 }
 .sharepoint-search-clear.is-hidden,
 .sp-refine-clear.is-hidden,

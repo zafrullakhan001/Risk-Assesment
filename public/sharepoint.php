@@ -1157,7 +1157,7 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                         <input type="search" name="q" id="sharepoint-search-input" value="<?= e($query) ?>"
                                placeholder="Search projects, nested files, people…" autocomplete="off" autofocus
                                aria-label="Search SharePoint catalog">
-                        <button type="button" class="button ghost sharepoint-search-clear<?= $query === '' ? ' is-hidden' : '' ?>" id="sharepoint-search-clear" title="Clear search" aria-label="Clear search">Clear</button>
+                        <button type="button" class="sharepoint-search-clear<?= $query === '' ? ' is-hidden' : '' ?>" id="sharepoint-search-clear" title="Clear search" aria-label="Clear search">×</button>
                         <noscript>
                             <button type="submit" class="button button-primary">Search</button>
                         </noscript>
@@ -1175,6 +1175,11 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                         </div>
                     </div>
                 </form>
+                <div class="sharepoint-recent-searches is-hidden" id="sharepoint-recent-searches" hidden>
+                    <span class="sharepoint-recent-label">Recent</span>
+                    <div class="sharepoint-recent-chips" id="sharepoint-recent-chips" role="list" aria-label="Recent searches"></div>
+                    <button type="button" class="sharepoint-recent-clear" id="sharepoint-recent-clear" hidden>Clear</button>
+                </div>
                 <div class="sharepoint-search-stats is-hidden" id="sharepoint-search-stats" aria-live="polite"></div>
                 <p class="panel-help sharepoint-catalog-meta" id="sharepoint-catalog-meta">
                     <?= (int) $matchedProjectCount ?> project<?= $matchedProjectCount === 1 ? '' : 's' ?>
@@ -1195,6 +1200,7 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                             <button type="button" class="sp-view-btn" data-list-density="comfort" title="Taller rows with badges under the name" aria-pressed="false">Comfort</button>
                             <button type="button" class="sp-view-btn is-active" data-list-density="compact" title="Shrink rows to a single line" aria-pressed="true">Compact</button>
                         </div>
+                        <button type="button" class="sp-view-btn is-active" id="sharepoint-filters-toggle" title="Show or hide column filters" aria-controls="sharepoint-table-filters" aria-pressed="true">Filters</button>
                         <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
                             <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
                             <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
@@ -1209,13 +1215,49 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                                 <th scope="col" class="sharepoint-select-col">
                                     <span class="visually-hidden">Select</span>
                                 </th>
-                                <th scope="col">📂 Project</th>
-                                <th scope="col">🎯 Match</th>
-                                <th scope="col">📦 Items</th>
-                                <th scope="col">🕒 Modified</th>
-                                <th scope="col">👤 Modified By</th>
-                                <th scope="col">🙋 Created By</th>
+                                <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" aria-sort="ascending">
+                                    <button type="button" class="sp-dialog-sort-btn" data-sort="name" title="Sort by project name">📂 Project</button>
+                                </th>
+                                <th scope="col" class="is-sortable" data-sort="match" aria-sort="none">
+                                    <button type="button" class="sp-dialog-sort-btn" data-sort="match" title="Sort by match, type, or catalog">🎯 Match</button>
+                                </th>
+                                <th scope="col" class="is-sortable" data-sort="items" aria-sort="none">
+                                    <button type="button" class="sp-dialog-sort-btn" data-sort="items" title="Sort by folder and file count">📦 Items</button>
+                                </th>
+                                <th scope="col" class="is-sortable" data-sort="modified" aria-sort="none">
+                                    <button type="button" class="sp-dialog-sort-btn" data-sort="modified" title="Sort by modified date">🕒 Modified</button>
+                                </th>
+                                <th scope="col" class="is-sortable" data-sort="modified_by" aria-sort="none">
+                                    <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by" title="Sort by who last modified">👤 Modified By</button>
+                                </th>
+                                <th scope="col" class="is-sortable" data-sort="created_by" aria-sort="none">
+                                    <button type="button" class="sp-dialog-sort-btn" data-sort="created_by" title="Sort by who created">🙋 Created By</button>
+                                </th>
                                 <th scope="col"><span class="visually-hidden">Open</span></th>
+                            </tr>
+                            <tr class="sharepoint-table-filters" id="sharepoint-table-filters">
+                                <th scope="col" class="sharepoint-select-col"></th>
+                                <th scope="col">
+                                    <input type="search" class="sharepoint-col-filter" data-filter="name" placeholder="Filter project…" autocomplete="off" aria-label="Filter by project name">
+                                </th>
+                                <th scope="col">
+                                    <input type="search" class="sharepoint-col-filter" data-filter="match" placeholder="Type / catalog…" autocomplete="off" aria-label="Filter by match, type, or catalog">
+                                </th>
+                                <th scope="col">
+                                    <input type="search" class="sharepoint-col-filter" data-filter="items" placeholder="Count…" autocomplete="off" aria-label="Filter by item counts">
+                                </th>
+                                <th scope="col">
+                                    <input type="search" class="sharepoint-col-filter" data-filter="modified" placeholder="Date…" autocomplete="off" aria-label="Filter by modified date">
+                                </th>
+                                <th scope="col">
+                                    <input type="search" class="sharepoint-col-filter" data-filter="modified_by" placeholder="Name…" autocomplete="off" aria-label="Filter by modified by">
+                                </th>
+                                <th scope="col">
+                                    <input type="search" class="sharepoint-col-filter" data-filter="created_by" placeholder="Name…" autocomplete="off" aria-label="Filter by created by">
+                                </th>
+                                <th scope="col" class="sharepoint-filter-actions">
+                                    <button type="button" class="button ghost sharepoint-filters-clear is-hidden" id="sharepoint-filters-clear" title="Clear column filters">Clear</button>
+                                </th>
                             </tr>
                         </thead>
                         <tbody id="sharepoint-projects-tbody">
@@ -1357,6 +1399,9 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                             <p class="response-dialog-sub" id="sharepoint-project-dialog-sub"></p>
                         </div>
                         <div class="sp-dialog-window-tools">
+                            <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-project-dialog-refresh" title="Reload this folder from the database" aria-label="Refresh folder from database">
+                                <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
+                            </button>
                             <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-project-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
                             <button type="button" class="button ghost response-dialog-close" id="sharepoint-project-dialog-close" aria-label="Close">✕</button>
                         </div>
@@ -1426,13 +1471,27 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                         <table class="sharepoint-projects-table sharepoint-dialog-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">📄 Name</th>
-                                    <th scope="col">🏷️ Type</th>
-                                    <th scope="col">📦 Size</th>
-                                    <th scope="col">🕒 Modified</th>
-                                    <th scope="col">📅 Created</th>
-                                    <th scope="col">👤 Modified By</th>
-                                    <th scope="col">🙋 Created By</th>
+                                    <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" aria-sort="ascending">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="name">📄 Name</button>
+                                    </th>
+                                    <th scope="col" class="is-sortable" data-sort="type" aria-sort="none">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="type">🏷️ Type</button>
+                                    </th>
+                                    <th scope="col" class="is-sortable" data-sort="size" aria-sort="none">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="size">📦 Size</button>
+                                    </th>
+                                    <th scope="col" class="is-sortable" data-sort="modified" aria-sort="none">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="modified">🕒 Modified</button>
+                                    </th>
+                                    <th scope="col" class="is-sortable" data-sort="created" aria-sort="none">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="created">📅 Created</button>
+                                    </th>
+                                    <th scope="col" class="is-sortable" data-sort="modified_by" aria-sort="none">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by">👤 Modified By</button>
+                                    </th>
+                                    <th scope="col" class="is-sortable" data-sort="created_by" aria-sort="none">
+                                        <button type="button" class="sp-dialog-sort-btn" data-sort="created_by">🙋 Created By</button>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody id="sharepoint-project-dialog-rows">
@@ -1452,6 +1511,9 @@ $ownerDashUrl = 'sharepoint.php?view=owners';
                             <p class="response-dialog-sub" id="sharepoint-compare-dialog-sub">Select 2 or 3 project folders to compare files and folders.</p>
                         </div>
                         <div class="sp-dialog-window-tools">
+                            <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-compare-dialog-refresh" title="Reload compared folders from the database" aria-label="Refresh compared folders from database">
+                                <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
+                            </button>
                             <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-compare-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
                             <button type="button" class="button ghost response-dialog-close" id="sharepoint-compare-dialog-close" aria-label="Close compare">✕</button>
                         </div>

@@ -428,7 +428,7 @@
     return `${type}::${path}`;
   };
 
-  const fetchProjectDetail = async (projectName, sourceKey = '') => {
+  const fetchProjectDetail = async (projectName, sourceKey = '', options = {}) => {
     const name = String(projectName || '').trim();
     if (!name) throw new Error('Missing project name.');
     const resolvedSource =
@@ -436,15 +436,27 @@
       document.getElementById('sharepoint-search')?.getAttribute('data-source-key') ||
       '';
     const sourceQs = resolvedSource ? `&source=${encodeURIComponent(resolvedSource)}` : '';
+    const bust = options.fresh ? `&_ts=${Date.now()}` : '';
     const response = await fetch(
-      `sharepoint.php?action=project_detail&name=${encodeURIComponent(name)}${sourceQs}`,
-      { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+      `sharepoint.php?action=project_detail&name=${encodeURIComponent(name)}${sourceQs}${bust}`,
+      {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+      }
     );
     const payload = await response.json();
     if (!response.ok || !payload.ok || !payload.project) {
       throw new Error(payload.error || 'Unable to load project details.');
     }
     return payload.project;
+  };
+
+  const setDialogRefreshBusy = (btn, busy) => {
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.classList.toggle('is-refreshing', !!busy);
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
   };
 
   const selectionKey = (sourceKey, projectName) => `${sourceKey}::${projectName}`;
@@ -765,6 +777,19 @@
     return paths;
   };
 
+  const collectTreeFolderPaths = (nodes, acc = []) => {
+    (nodes || []).forEach((node) => {
+      if (!node?.children?.length) return;
+      const path = String(node.path || '').toLowerCase();
+      if (path) acc.push(path);
+      collectTreeFolderPaths(node.children, acc);
+    });
+    return acc;
+  };
+
+  const treeRevealKey = (query, kind, ext, prefs) =>
+    `${String(query || '').trim()}|${kind || 'all'}|${(Array.isArray(ext) ? ext : []).slice().sort().join(',')}|${prefs?.wordMode || ''}|${prefs?.fuzzy ? '1' : '0'}`;
+
   const buildTreeNodes = (items) => {
     const byPath = new Map();
     const roots = [];
@@ -823,6 +848,85 @@
 
   const flattenFiltered = (items, kind, ext, query, options = {}) =>
     (items || []).filter((item) => passesKindExt(item, kind, ext) && matchesQuery(item, query, options));
+
+  const SORT_KEYS = new Set(['name', 'type', 'size', 'modified', 'created', 'modified_by', 'created_by']);
+
+  const itemTypeSortKey = (item) => {
+    if (isFolderItem(item)) return 'folder';
+    return String(resolveMeta(item)?.label || fileExtension(item?.name) || 'file').toLowerCase();
+  };
+
+  const itemSortValue = (item, key) => {
+    switch (key) {
+      case 'type':
+        return itemTypeSortKey(item);
+      case 'size':
+        return Number(item?.size_bytes) || 0;
+      case 'modified': {
+        const date = parseItemDate(item?.last_modified) || parseItemDate(item?.date_created);
+        return date ? date.getTime() : 0;
+      }
+      case 'created': {
+        const date = parseItemDate(item?.date_created);
+        return date ? date.getTime() : 0;
+      }
+      case 'modified_by':
+        return String(item?.modified_by || '').trim().toLowerCase();
+      case 'created_by':
+        return String(item?.person || '').trim().toLowerCase();
+      case 'name':
+      default:
+        return String(item?.name || '').trim().toLowerCase();
+    }
+  };
+
+  const compareItemsBySort = (a, b, key, dir) => {
+    const sortKey = SORT_KEYS.has(key) ? key : 'name';
+    const direction = dir === 'desc' ? -1 : 1;
+
+    // Name sort always keeps folders before files; direction only flips A–Z vs Z–A.
+    if (sortKey === 'name') {
+      const af = isFolderItem(a) ? 0 : 1;
+      const bf = isFolderItem(b) ? 0 : 1;
+      if (af !== bf) return af - bf;
+    }
+
+    const av = itemSortValue(a, sortKey);
+    const bv = itemSortValue(b, sortKey);
+    let cmp = 0;
+    if (typeof av === 'number' && typeof bv === 'number') {
+      cmp = av - bv;
+    } else {
+      cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true });
+    }
+    if (cmp === 0) {
+      cmp = String(a?.name || '').localeCompare(String(b?.name || ''), undefined, {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    }
+    if (cmp === 0) {
+      const af = isFolderItem(a) ? 0 : 1;
+      const bf = isFolderItem(b) ? 0 : 1;
+      cmp = af - bf;
+    }
+    return cmp * direction;
+  };
+
+  const sortTreeNodesBy = (nodes, key, dir) => {
+    const list = Array.isArray(nodes) ? [...nodes] : [];
+    list.sort((a, b) => compareItemsBySort(a.item, b.item, key, dir));
+    return list.map((node) => ({
+      ...node,
+      children: isFolderItem(node.item) ? sortTreeNodesBy(node.children || [], key, dir) : [],
+    }));
+  };
+
+  const sortItemsBy = (items, key, dir) => {
+    const list = Array.isArray(items) ? [...items] : [];
+    list.sort((a, b) => compareItemsBySort(a, b, key, dir));
+    return list;
+  };
 
   /**
    * Wire AND/OR + Fuzzy toggles inside a dialog search panel.
@@ -1049,23 +1153,58 @@
     const actionsEl = document.getElementById('sharepoint-project-dialog-actions');
     const rowsEl = document.getElementById('sharepoint-project-dialog-rows');
     const closeBtn = document.getElementById('sharepoint-project-dialog-close');
+    const refreshBtn = document.getElementById('sharepoint-project-dialog-refresh');
     const searchWrap = document.getElementById('sharepoint-project-dialog-search-wrap');
     const searchInput = document.getElementById('sharepoint-project-dialog-search');
     const searchClear = document.getElementById('sharepoint-project-dialog-search-clear');
     const searchMeta = document.getElementById('sharepoint-project-dialog-search-meta');
     const kindSelect = document.getElementById('sharepoint-project-dialog-kind');
     const extSelect = document.getElementById('sharepoint-project-dialog-ext');
+    const tableEl = dialog.querySelector('.sharepoint-dialog-table');
+    const headerRow = tableEl?.querySelector('thead tr');
 
     let allItems = [];
     let layout = 'tree';
+    let sortKey = 'name';
+    let sortDir = 'asc';
     const expanded = new Set();
     const selectedExts = new Set();
+    let lastRevealKey = '';
     let syncSearchModes = () => readSearchPrefs();
+    let currentName = '';
+    let currentSourceKey = '';
+    let projectBusy = false;
 
     const clearActivityStats = () => {
       if (!statsEl) return;
       statsEl.hidden = true;
       statsEl.innerHTML = '';
+    };
+
+    const syncHeaderSort = () => {
+      headerRow?.querySelectorAll('th.is-sortable').forEach((th) => {
+        const key = th.getAttribute('data-sort') || '';
+        const active = key === sortKey;
+        th.classList.toggle('is-sorted-asc', active && sortDir === 'asc');
+        th.classList.toggle('is-sorted-desc', active && sortDir === 'desc');
+        th.setAttribute('aria-sort', active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none');
+        const btn = th.querySelector('.sp-dialog-sort-btn');
+        if (btn) {
+          btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+      });
+    };
+
+    const setSort = (key) => {
+      const next = SORT_KEYS.has(key) ? key : 'name';
+      if (sortKey === next) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortKey = next;
+        sortDir = 'asc';
+      }
+      syncHeaderSort();
+      applyFilter();
     };
 
     const applyProjectDensity = (next) => applyDialogDensity(dialog, searchWrap, next);
@@ -1110,7 +1249,7 @@
         const path = node.path;
         const isFolder = isFolderItem(node.item);
         const hasKids = isFolder && node.children.length > 0;
-        const isOpen = hasKids && (expanded.has(path.toLowerCase()) || String(searchInput?.value || '').trim() !== '' || selectedExts.size > 0);
+        const isOpen = hasKids && expanded.has(path.toLowerCase());
         const toggle = hasKids
           ? `<button type="button" class="sp-tree-toggle" data-tree-path="${escapeHtml(path)}" aria-expanded="${isOpen ? 'true' : 'false'}">${isOpen ? '▼' : '▶'}</button>`
           : `<span class="sp-tree-toggle sp-tree-toggle--spacer" aria-hidden="true"></span>`;
@@ -1128,10 +1267,18 @@
       const prefs = syncSearchModes(query);
       syncLayoutButtons();
       syncExtChips(searchWrap, allItems, selectedExts);
+      syncHeaderSort();
 
       let shown = 0;
       if (layout === 'tree') {
-        const tree = filterTree(buildTreeNodes(allItems), kind, ext, query, prefs);
+        const tree = sortTreeNodesBy(filterTree(buildTreeNodes(allItems), kind, ext, query, prefs), sortKey, sortDir);
+        const key = treeRevealKey(query, kind, ext, prefs);
+        if (key !== lastRevealKey) {
+          lastRevealKey = key;
+          if (String(query || '').trim() !== '' || ext.length > 0) {
+            collectTreeFolderPaths(tree).forEach((path) => expanded.add(path));
+          }
+        }
         const rows = [];
         renderTreeRows(tree, 0, rows);
         shown = rows.length;
@@ -1154,7 +1301,7 @@
           });
         });
       } else {
-        const filtered = flattenFiltered(allItems, kind, ext, query, prefs);
+        const filtered = sortItemsBy(flattenFiltered(allItems, kind, ext, query, prefs), sortKey, sortDir);
         shown = filtered.length;
         if (filtered.length === 0) {
           rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${
@@ -1178,6 +1325,7 @@
         if (kind !== 'all') bits.push(kind === 'files' ? 'files only' : 'folders only');
         if (ext.length) bits.push(ext.map((value) => `.${value}`).join(' + '));
         if (layout === 'tree') bits.push('tree');
+        bits.push(`sort ${sortKey} ${sortDir}`);
         bits.push(...formatSearchModeBits(query, prefs));
         searchMeta.textContent = bits.join(' · ');
       }
@@ -1243,18 +1391,73 @@
       });
     });
 
+    headerRow?.querySelectorAll('.sp-dialog-sort-btn[data-sort]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        setSort(btn.getAttribute('data-sort') || 'name');
+      });
+    });
+    syncHeaderSort();
+
+    const applyLoadedProject = (project, name, { seedExpanded = false } = {}) => {
+      allItems = Array.isArray(project.items) ? project.items : [];
+      if (seedExpanded) {
+        expanded.clear();
+        buildTreeNodes(allItems).forEach((node) => {
+          if (isFolderItem(node.item)) expanded.add(node.path.toLowerCase());
+        });
+      }
+      const folders = allItems.filter((item) => isFolderItem(item)).length;
+      const files = allItems.length - folders;
+      const catalogLabel = String(project.source_title || '').trim();
+      subEl.innerHTML = `${
+        catalogLabel ? `<span class="sp-catalog-badge">${escapeHtml(catalogLabel)}</span> · ` : ''
+      }📦 <strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}`;
+      renderProjectActivityStats(
+        statsEl,
+        computeProjectActivityStats(allItems, project.project_name || name)
+      );
+
+      if (project.folder_url) {
+        actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
+            <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open project folder in SharePoint">🔗 Open</a>
+            <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
+          </div>`;
+        bindCopyLinkButtons(actionsEl);
+      } else {
+        actionsEl.innerHTML = '';
+      }
+
+      if (searchWrap) searchWrap.hidden = false;
+      applyFilter();
+    };
+
+    const loadCurrentProject = async ({ seedExpanded = false, fresh = false } = {}) => {
+      const name = currentName;
+      if (!name) return;
+      const project = await fetchProjectDetail(name, currentSourceKey, { fresh });
+      currentSourceKey = String(project.source_key || currentSourceKey || '');
+      applyLoadedProject(project, name, { seedExpanded });
+    };
+
     const openProject = async (projectName, sourceKey = '', initialQuery = '') => {
       const name = String(projectName || '').trim();
       if (!name) return;
 
+      currentName = name;
+      currentSourceKey = String(sourceKey || '').trim();
       titleEl.textContent = name;
       subEl.innerHTML = '⏳ Loading SharePoint details…';
       clearActivityStats();
       actionsEl.innerHTML = '';
       allItems = [];
       expanded.clear();
+      lastRevealKey = '';
       selectedExts.clear();
       layout = 'tree';
+      sortKey = 'name';
+      sortDir = 'asc';
+      syncHeaderSort();
       if (searchInput) searchInput.value = String(initialQuery || '').trim();
       if (kindSelect) kindSelect.value = 'all';
       if (extSelect) extSelect.value = '';
@@ -1264,42 +1467,42 @@
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
 
+      projectBusy = true;
+      setDialogRefreshBusy(refreshBtn, true);
       try {
-        const project = await fetchProjectDetail(name, sourceKey);
-        allItems = Array.isArray(project.items) ? project.items : [];
-        // Expand top-level folders by default for easier browsing.
-        buildTreeNodes(allItems).forEach((node) => {
-          if (isFolderItem(node.item)) expanded.add(node.path.toLowerCase());
-        });
-        const folders = allItems.filter((item) => isFolderItem(item)).length;
-        const files = allItems.length - folders;
-        const catalogLabel = String(project.source_title || '').trim();
-        subEl.innerHTML = `${
-          catalogLabel ? `<span class="sp-catalog-badge">${escapeHtml(catalogLabel)}</span> · ` : ''
-        }📦 <strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}`;
-        renderProjectActivityStats(
-          statsEl,
-          computeProjectActivityStats(allItems, project.project_name || name)
-        );
-
-        if (project.folder_url) {
-          actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
-            <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open project folder in SharePoint">🔗 Open</a>
-            <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
-          </div>`;
-          bindCopyLinkButtons(actionsEl);
-        }
-
-        if (searchWrap) searchWrap.hidden = false;
-        applyFilter();
+        await loadCurrentProject({ seedExpanded: true, fresh: false });
         window.setTimeout(() => searchInput?.focus(), 50);
       } catch (error) {
         subEl.textContent = '';
         clearActivityStats();
         if (searchWrap) searchWrap.hidden = true;
         rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${escapeHtml(error.message || 'Failed to load project.')}</td></tr>`;
+      } finally {
+        projectBusy = false;
+        setDialogRefreshBusy(refreshBtn, false);
       }
     };
+
+    refreshBtn?.addEventListener('click', async () => {
+      if (!currentName || projectBusy) return;
+      projectBusy = true;
+      setDialogRefreshBusy(refreshBtn, true);
+      try {
+        await loadCurrentProject({ seedExpanded: false, fresh: true });
+      } catch (error) {
+        if (allItems.length === 0) {
+          subEl.textContent = '';
+          clearActivityStats();
+          if (searchWrap) searchWrap.hidden = true;
+          rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${escapeHtml(error.message || 'Failed to load project.')}</td></tr>`;
+        } else if (subEl) {
+          subEl.textContent = error.message || 'Refresh failed.';
+        }
+      } finally {
+        projectBusy = false;
+        setDialogRefreshBusy(refreshBtn, false);
+      }
+    });
 
     closeBtn?.addEventListener('click', () => dialog.close());
 
@@ -1316,6 +1519,7 @@
     const subEl = document.getElementById('sharepoint-compare-dialog-sub');
     const legendEl = document.getElementById('sharepoint-compare-legend');
     const closeBtn = document.getElementById('sharepoint-compare-dialog-close');
+    const refreshBtn = document.getElementById('sharepoint-compare-dialog-refresh');
     const panelsEl = document.getElementById('sharepoint-compare-panels');
     const searchWrap = document.getElementById('sharepoint-compare-search-wrap');
     const kindSelect = document.getElementById('sharepoint-compare-kind');
@@ -1380,6 +1584,46 @@
     let layout = 'tree';
     let density = 'compact';
     let syncSearchModes = () => readSearchPrefs();
+    let compareBusy = false;
+    /** @type {{ projectName: string, sourceKey: string }[]} */
+    let lastComparePicks = [];
+
+    const assignProjectToSide = (side, project, { seedExpanded = false } = {}) => {
+      projectsBySide[side] = project;
+      itemsBySide[side] = Array.isArray(project.items) ? project.items : [];
+      keysBySide[side] = new Set(itemsBySide[side].map(itemKey));
+      if (seedExpanded) {
+        sideEls[side].expanded.clear();
+        buildTreeNodes(itemsBySide[side]).forEach((node) => {
+          if (isFolderItem(node.item)) sideEls[side].expanded.add(node.path.toLowerCase());
+        });
+      }
+    };
+
+    const currentComparePicks = () =>
+      activeSides
+        .map((side) => {
+          const project = projectsBySide[side];
+          const projectName = String(project?.project_name || '').trim();
+          const sourceKey = String(project?.source_key || '').trim();
+          return projectName ? { side, projectName, sourceKey } : null;
+        })
+        .filter(Boolean);
+
+    const fetchAndApplyCompare = async (picks, { seedExpanded = false, fresh = false } = {}) => {
+      const loaded = await Promise.all(
+        picks.map((pick) => fetchProjectDetail(pick.projectName, pick.sourceKey, { fresh }))
+      );
+      picks.forEach((pick, index) => {
+        const side = pick.side || activeSides[index];
+        if (!side) return;
+        assignProjectToSide(side, loaded[index], { seedExpanded });
+      });
+      refreshCompareSummary();
+      legendEl.hidden = false;
+      if (searchWrap) searchWrap.hidden = false;
+      applyCompareFilter();
+    };
 
     const emptySideFilter = () => ({ query: '', exts: new Set() });
 
@@ -1452,14 +1696,12 @@
 
     const renderCompareTree = (nodes, side, depth, acc, filterState) => {
       const expanded = sideEls[side].expanded;
-      const searching =
-        String(filterState.query || '').trim() !== '' || (filterState.exts?.size || 0) > 0;
       nodes.forEach((node) => {
         const key = itemKey(node.item);
         const diff = classifyDiff(key, side);
         const isFolder = isFolderItem(node.item);
         const hasKids = isFolder && node.children.length > 0;
-        const isOpen = hasKids && (expanded.has(node.path.toLowerCase()) || searching);
+        const isOpen = hasKids && expanded.has(node.path.toLowerCase());
         const toggle = hasKids
           ? `<button type="button" class="sp-tree-toggle" data-side="${side}" data-tree-path="${escapeHtml(node.path)}" aria-expanded="${isOpen ? 'true' : 'false'}">${isOpen ? '▼' : '▶'}</button>`
           : `<span class="sp-tree-toggle sp-tree-toggle--spacer" aria-hidden="true"></span>`;
@@ -1494,6 +1736,13 @@
 
       if (layout === 'tree') {
         const tree = filterTree(buildTreeNodes(baseItems), kind, ext, query, prefs);
+        const key = `${treeRevealKey(query, kind, ext, prefs)}|${uniqueOnly ? '1' : '0'}`;
+        if (sideEls[side].lastRevealKey !== key) {
+          sideEls[side].lastRevealKey = key;
+          if (String(query || '').trim() !== '' || ext.length > 0) {
+            collectTreeFolderPaths(tree).forEach((path) => sideEls[side].expanded.add(path));
+          }
+        }
         const acc = [];
         renderCompareTree(tree, side, 0, acc, filterState);
         shown = acc.length;
@@ -1628,6 +1877,7 @@
       itemsBySide[side] = [];
       keysBySide[side] = new Set();
       sideEls[side].expanded.clear();
+      sideEls[side].lastRevealKey = '';
       resetSideFilter(side);
       sideEls[side].actions.innerHTML = '';
       sideEls[side].rows.innerHTML =
@@ -1661,6 +1911,12 @@
       if (sideEls[side].searchInput) {
         sideEls[side].searchInput.value = filtersBySide[side].query;
       }
+      sideEls[side].lastRevealKey = `${treeRevealKey(
+        filtersBySide[side].query,
+        kindSelect?.value || 'all',
+        [...(filtersBySide[side].exts || [])],
+        readSearchPrefs()
+      )}|${uniqueOnlyEl?.checked ? '1' : '0'}`;
     };
 
     const refreshCompareSummary = () => {
@@ -1706,14 +1962,122 @@
       compactActiveSides(remaining);
     };
 
-    const swapCompareSides = (sideA, sideB) => {
-      if (!activeSides.includes(sideA) || !activeSides.includes(sideB) || sideA === sideB) return;
+    let swapAnimating = false;
+
+    const prefersReducedMotion = () =>
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+
+    const commitCompareSwap = (sideA, sideB) => {
       const snapA = snapshotSide(sideA);
       const snapB = snapshotSide(sideB);
       restoreSide(sideA, snapB);
       restoreSide(sideB, snapA);
-      refreshCompareSummary();
       applyCompareFilter();
+    };
+
+    const clearSwapMotion = (panelA, panelB) => {
+      [panelA, panelB].forEach((panel) => {
+        panel.classList.remove('is-swapping', 'is-swapping-front');
+        panel.style.transform = '';
+      });
+      panelsEl?.classList.remove('is-swapping');
+    };
+
+    const playSwapAnimation = (panelA, panelB, firstA, firstB) => {
+      const dxA = firstB.left - firstA.left;
+      const dyA = firstB.top - firstA.top;
+      const dxB = firstA.left - firstB.left;
+      const dyB = firstA.top - firstB.top;
+      if (dxA === 0 && dyA === 0) return Promise.resolve();
+
+      const aMovesForward = dxA < 0 || (dxA === 0 && dyA < 0);
+      panelsEl?.classList.add('is-swapping');
+      panelA.classList.add('is-swapping');
+      panelB.classList.add('is-swapping');
+      (aMovesForward ? panelA : panelB).classList.add('is-swapping-front');
+
+      panelA.style.transform = `translate(${dxA}px, ${dyA}px)`;
+      panelB.style.transform = `translate(${dxB}px, ${dyB}px)`;
+
+      const duration = 520;
+      const easing = 'cubic-bezier(0.22, 1, 0.36, 1)';
+      const hopAt = (dx, dy, isFront) => {
+        const vertical = Math.abs(dy) >= Math.abs(dx);
+        const midX = dx * 0.5;
+        const midY = dy * 0.5;
+        const scale = isFront ? 1.03 : 0.985;
+        if (vertical) {
+          const nudge = isFront ? 14 : -8;
+          return `translate(${midX + nudge}px, ${midY}px) scale(${scale})`;
+        }
+        const nudge = isFront ? -12 : 8;
+        return `translate(${midX}px, ${midY + nudge}px) scale(${scale})`;
+      };
+      const keyframesFor = (dx, dy, isFront) => [
+        { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+        { transform: hopAt(dx, dy, isFront), offset: 0.46 },
+        { transform: 'translate(0px, 0px) scale(1)' },
+      ];
+
+      return new Promise((resolve) => {
+        const play = () => {
+          const frontA = panelA.classList.contains('is-swapping-front');
+          const animA = panelA.animate(keyframesFor(dxA, dyA, frontA), {
+            duration,
+            easing,
+            fill: 'forwards',
+          });
+          const animB = panelB.animate(keyframesFor(dxB, dyB, !frontA), {
+            duration,
+            easing,
+            fill: 'forwards',
+          });
+          panelA.style.transform = '';
+          panelB.style.transform = '';
+          Promise.all([animA.finished.catch(() => {}), animB.finished.catch(() => {})]).then(() => {
+            animA.cancel();
+            animB.cancel();
+            clearSwapMotion(panelA, panelB);
+            resolve();
+          });
+        };
+        window.requestAnimationFrame(play);
+      });
+    };
+
+    const swapCompareSides = (sideA, sideB) => {
+      if (swapAnimating) return;
+      if (!activeSides.includes(sideA) || !activeSides.includes(sideB) || sideA === sideB) return;
+      const panelA = sideEls[sideA].panel;
+      const panelB = sideEls[sideB].panel;
+      const firstA = panelA?.getBoundingClientRect?.();
+      const firstB = panelB?.getBoundingClientRect?.();
+      const canAnimate =
+        panelA &&
+        panelB &&
+        firstA &&
+        firstB &&
+        firstA.width > 1 &&
+        firstB.width > 1 &&
+        typeof panelA.animate === 'function' &&
+        !prefersReducedMotion();
+
+      if (!canAnimate) {
+        commitCompareSwap(sideA, sideB);
+        refreshCompareSummary();
+        return;
+      }
+
+      swapAnimating = true;
+      commitCompareSwap(sideA, sideB);
+      playSwapAnimation(panelA, panelB, firstA, firstB)
+        .catch(() => {
+          clearSwapMotion(panelA, panelB);
+        })
+        .finally(() => {
+          refreshCompareSummary();
+          swapAnimating = false;
+        });
     };
 
     const swapWithNeighbor = (side, direction) => {
@@ -1819,6 +2183,10 @@
       if (list.length < 2 || list.length > 3) return;
 
       activeSides = slotSidesForCount(list.length);
+      lastComparePicks = list.map((pick) => ({
+        projectName: String(pick.projectName || '').trim(),
+        sourceKey: String(pick.sourceKey || '').trim(),
+      }));
       titleEl.textContent = 'Compare folders';
       subEl.textContent = `Loading ${list.length} catalogs…`;
       legendEl.hidden = true;
@@ -1829,6 +2197,7 @@
 
       SIDE_IDS.forEach((side) => {
         sideEls[side].expanded.clear();
+        sideEls[side].lastRevealKey = '';
         resetSideFilter(side);
         projectsBySide[side] = null;
         itemsBySide[side] = [];
@@ -1847,25 +2216,19 @@
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
 
+      compareBusy = true;
+      setDialogRefreshBusy(refreshBtn, true);
       try {
-        const loaded = await Promise.all(
-          list.map((pick) => fetchProjectDetail(pick.projectName, pick.sourceKey))
-        );
-
-        activeSides.forEach((side, index) => {
-          const project = loaded[index];
-          projectsBySide[side] = project;
-          itemsBySide[side] = Array.isArray(project.items) ? project.items : [];
-          keysBySide[side] = new Set(itemsBySide[side].map(itemKey));
-          buildTreeNodes(itemsBySide[side]).forEach((node) => {
-            if (isFolderItem(node.item)) sideEls[side].expanded.add(node.path.toLowerCase());
-          });
-        });
-
-        refreshCompareSummary();
-        legendEl.hidden = false;
-        if (searchWrap) searchWrap.hidden = false;
-        applyCompareFilter();
+        const slotted = activeSides.map((side, index) => ({
+          side,
+          projectName: list[index].projectName,
+          sourceKey: list[index].sourceKey,
+        }));
+        await fetchAndApplyCompare(slotted, { seedExpanded: true, fresh: false });
+        lastComparePicks = currentComparePicks().map((pick) => ({
+          projectName: pick.projectName,
+          sourceKey: pick.sourceKey,
+        }));
         window.setTimeout(() => sideEls[activeSides[0]]?.searchInput?.focus(), 50);
       } catch (error) {
         subEl.textContent = error.message || 'Compare failed.';
@@ -1875,8 +2238,39 @@
             error.message || 'Failed'
           )}</td></tr>`;
         });
+      } finally {
+        compareBusy = false;
+        setDialogRefreshBusy(refreshBtn, false);
       }
     };
+
+    refreshBtn?.addEventListener('click', async () => {
+      let picks = currentComparePicks();
+      if (picks.length < 2 && lastComparePicks.length >= 2) {
+        picks = activeSides
+          .map((side, index) => {
+            const pick = lastComparePicks[index];
+            if (!pick?.projectName) return null;
+            return { side, projectName: pick.projectName, sourceKey: pick.sourceKey || '' };
+          })
+          .filter(Boolean);
+      }
+      if (picks.length < 2 || compareBusy) return;
+      compareBusy = true;
+      setDialogRefreshBusy(refreshBtn, true);
+      try {
+        await fetchAndApplyCompare(picks, { seedExpanded: false, fresh: true });
+        lastComparePicks = currentComparePicks().map((pick) => ({
+          projectName: pick.projectName,
+          sourceKey: pick.sourceKey,
+        }));
+      } catch (error) {
+        subEl.textContent = error.message || 'Refresh failed.';
+      } finally {
+        compareBusy = false;
+        setDialogRefreshBusy(refreshBtn, false);
+      }
+    });
 
     closeBtn?.addEventListener('click', () => dialog.close());
 
@@ -1933,7 +2327,28 @@
     fuzzy: 'riskregister_sp_search_fuzzy',
     deep: 'riskregister_sp_search_deep',
     scopes: 'riskregister_sp_search_scopes',
+    recent: 'riskregister_sp_search_recent',
+    listFilters: 'riskregister_sp_list_filters_open',
   };
+  const RECENT_MAX = 10;
+  const RECENT_MIN_LEN = 2;
+  const LIST_SORT_KEYS = new Set(['name', 'match', 'items', 'modified', 'modified_by', 'created_by']);
+  const LIST_SORT_DEFAULT_DIR = {
+    name: 'asc',
+    match: 'desc',
+    items: 'desc',
+    modified: 'desc',
+    modified_by: 'asc',
+    created_by: 'asc',
+  };
+  const emptyListFilters = () => ({
+    name: '',
+    match: '',
+    items: '',
+    modified: '',
+    modified_by: '',
+    created_by: '',
+  });
 
   const input = document.getElementById('sharepoint-search-input');
   const clearBtn = document.getElementById('sharepoint-search-clear');
@@ -1949,11 +2364,18 @@
   const paginationControls = document.getElementById('sharepoint-pagination-controls');
   const perPageSelect = document.getElementById('sharepoint-per-page');
   const form = document.getElementById('sharepoint-search-form');
+  const recentRoot = document.getElementById('sharepoint-recent-searches');
+  const recentChips = document.getElementById('sharepoint-recent-chips');
+  const recentClearBtn = document.getElementById('sharepoint-recent-clear');
   const headingEl = document.getElementById('sharepoint-search-heading');
   const scopesRoot = document.getElementById('sharepoint-search-scopes');
   const compareOpenBtn = document.getElementById('sharepoint-compare-open');
   const compareClearBtn = document.getElementById('sharepoint-compare-clear');
   const compareHintEl = document.getElementById('sharepoint-compare-hint');
+  const listTable = document.getElementById('sharepoint-projects-table');
+  const listFilterRow = document.getElementById('sharepoint-table-filters');
+  const listFilterToggle = document.getElementById('sharepoint-filters-toggle');
+  const listFilterClear = document.getElementById('sharepoint-filters-clear');
   const MAX_COMPARE = 3;
   const MIN_COMPARE = 2;
 
@@ -2021,6 +2443,17 @@
     perPage: Number(searchRoot.dataset.perPage || perPageSelect?.value || 25) || 25,
     ready: false,
     loadingIndex: false,
+    sortKey: 'name',
+    sortDir: 'asc',
+    userSort: false,
+    filters: emptyListFilters(),
+    filtersOpen: (() => {
+      try {
+        return localStorage.getItem(STORAGE.listFilters) !== '0';
+      } catch {
+        return true;
+      }
+    })(),
   };
 
   const projectEntries = (project) => {
@@ -2413,51 +2846,190 @@
     bindCopyLinkButtons(tbody);
   };
 
+  const listFiltersActive = () =>
+    Object.values(state.filters).some((value) => String(value || '').trim() !== '');
+
+  const projectTypeLabel = (project) => {
+    const meta = resolveProjectMeta(project);
+    return meta.tone === 'folder' ? 'Folder' : String(meta.label || 'File');
+  };
+
+  const rowFilterHaystack = (row, key) => {
+    const project = row.project || {};
+    const folders = Number(project.folder_count || 0);
+    const files = Number(project.file_count || 0);
+    switch (key) {
+      case 'name':
+        return String(project.project_name || '');
+      case 'match': {
+        const match = row.match;
+        return [
+          projectTypeLabel(project),
+          project.source_title,
+          match?.kind,
+          match?.score != null ? `${match.score}%` : '',
+          Fuzzy.matchKindLabel?.(match?.kind) || '',
+          match?.token,
+        ].join(' ');
+      }
+      case 'items':
+        return `${folders} folders ${files} files ${folders + files}`;
+      case 'modified':
+        return `${project.last_modified || ''} ${formatModified(project.last_modified)}`;
+      case 'modified_by':
+        return String(project.modified_by || '');
+      case 'created_by':
+        return String(project.person || '');
+      default:
+        return '';
+    }
+  };
+
+  const rowPassesColumnFilters = (row) =>
+    Object.entries(state.filters).every(([key, value]) => {
+      const needle = String(value || '')
+        .trim()
+        .toLowerCase();
+      if (!needle) return true;
+      return rowFilterHaystack(row, key).toLowerCase().includes(needle);
+    });
+
+  const compareProjectRows = (a, b) => {
+    const key = LIST_SORT_KEYS.has(state.sortKey) ? state.sortKey : 'name';
+    const direction = state.sortDir === 'desc' ? -1 : 1;
+    const pa = a.project || {};
+    const pb = b.project || {};
+    let cmp = 0;
+
+    switch (key) {
+      case 'match': {
+        cmp = (a.match?.score || 0) - (b.match?.score || 0);
+        if (cmp !== 0) break;
+        cmp = projectTypeLabel(pa).localeCompare(projectTypeLabel(pb), undefined, { sensitivity: 'base' });
+        if (cmp !== 0) break;
+        cmp = String(pa.source_title || '').localeCompare(String(pb.source_title || ''), undefined, {
+          sensitivity: 'base',
+        });
+        break;
+      }
+      case 'items': {
+        cmp = Number(pa.folder_count || 0) + Number(pa.file_count || 0) - (Number(pb.folder_count || 0) + Number(pb.file_count || 0));
+        if (cmp !== 0) break;
+        cmp = Number(pa.file_count || 0) - Number(pb.file_count || 0);
+        break;
+      }
+      case 'modified': {
+        cmp = (parseItemDate(pa.last_modified)?.getTime() || 0) - (parseItemDate(pb.last_modified)?.getTime() || 0);
+        break;
+      }
+      case 'modified_by':
+        cmp = String(pa.modified_by || '').localeCompare(String(pb.modified_by || ''), undefined, {
+          sensitivity: 'base',
+        });
+        break;
+      case 'created_by':
+        cmp = String(pa.person || '').localeCompare(String(pb.person || ''), undefined, { sensitivity: 'base' });
+        break;
+      case 'name':
+      default:
+        cmp = String(pa.project_name || '').localeCompare(String(pb.project_name || ''), undefined, {
+          sensitivity: 'base',
+          numeric: true,
+        });
+        break;
+    }
+
+    if (cmp === 0) {
+      cmp = String(pa.project_name || '').localeCompare(String(pb.project_name || ''), undefined, {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    }
+    if (cmp === 0) {
+      cmp = String(pa.source_title || '').localeCompare(String(pb.source_title || ''), undefined, {
+        sensitivity: 'base',
+      });
+    }
+    return cmp * direction;
+  };
+
+  const syncListSortHeaders = () => {
+    listTable?.querySelectorAll('thead tr:first-child th.is-sortable').forEach((th) => {
+      const key = th.getAttribute('data-sort') || '';
+      const active = key === state.sortKey;
+      th.classList.toggle('is-sorted-asc', active && state.sortDir === 'asc');
+      th.classList.toggle('is-sorted-desc', active && state.sortDir === 'desc');
+      th.setAttribute('aria-sort', active ? (state.sortDir === 'desc' ? 'descending' : 'ascending') : 'none');
+    });
+  };
+
+  const syncListFilterUi = () => {
+    const open = state.filtersOpen;
+    if (listFilterRow) listFilterRow.hidden = !open;
+    if (listFilterToggle) {
+      listFilterToggle.classList.toggle('is-active', open);
+      listFilterToggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+      listFilterToggle.textContent = open ? 'Hide filters' : 'Filters';
+    }
+    listFilterClear?.classList.toggle('is-hidden', !listFiltersActive());
+    listFilterRow?.querySelectorAll('.sharepoint-col-filter[data-filter]').forEach((input) => {
+      const key = input.getAttribute('data-filter') || '';
+      const next = state.filters[key] || '';
+      if (input.value !== next) input.value = next;
+    });
+  };
+
+  const rememberDefaultSort = (searching) => {
+    if (state.userSort) return;
+    if (searching) {
+      state.sortKey = 'match';
+      state.sortDir = 'desc';
+    } else {
+      state.sortKey = 'name';
+      state.sortDir = 'asc';
+    }
+  };
+
   const filteredProjects = () => {
     const words = Fuzzy.getSearchWords(state.query);
     const refineWords = Fuzzy.getSearchWords(state.refine);
+    rememberDefaultSort(words.length > 0);
 
+    let results;
     if (!words.length) {
-      return state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
-    }
-
-    let results = state.projects
-      .map((project) => {
-        const match = state.fuzzy
-          ? scoreProject(project, words, state.wordMode, true, state.deep)
-          : cheapProjectMatch(project, words, state.wordMode, state.deep);
-        return { project, match, deepHits: { hits: [], total: 0 } };
-      })
-      .filter((row) => row.match?.matched);
-
-    if (refineWords.length) {
-      results = results
-        .map((row) => {
-          const refineMatch = state.fuzzy
-            ? scoreProject(row.project, refineWords, state.wordMode, true, state.deep)
-            : cheapProjectMatch(row.project, refineWords, state.wordMode, state.deep);
-          if (!refineMatch.matched) return null;
-          return {
-            project: row.project,
-            match: Fuzzy.combineSearchScores(row.match, refineMatch),
-            deepHits: row.deepHits,
-          };
+      results = state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
+    } else {
+      results = state.projects
+        .map((project) => {
+          const match = state.fuzzy
+            ? scoreProject(project, words, state.wordMode, true, state.deep)
+            : cheapProjectMatch(project, words, state.wordMode, state.deep);
+          return { project, match, deepHits: { hits: [], total: 0 } };
         })
-        .filter(Boolean);
+        .filter((row) => row.match?.matched);
+
+      if (refineWords.length) {
+        results = results
+          .map((row) => {
+            const refineMatch = state.fuzzy
+              ? scoreProject(row.project, refineWords, state.wordMode, true, state.deep)
+              : cheapProjectMatch(row.project, refineWords, state.wordMode, state.deep);
+            if (!refineMatch.matched) return null;
+            return {
+              project: row.project,
+              match: Fuzzy.combineSearchScores(row.match, refineMatch),
+              deepHits: row.deepHits,
+            };
+          })
+          .filter(Boolean);
+      }
     }
 
-    results.sort((a, b) => {
-      const scoreDiff = (b.match?.score || 0) - (a.match?.score || 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      const nameCmp = String(a.project.project_name || '').localeCompare(String(b.project.project_name || ''), undefined, {
-        sensitivity: 'base',
-      });
-      if (nameCmp !== 0) return nameCmp;
-      return String(a.project.source_title || '').localeCompare(String(b.project.source_title || ''), undefined, {
-        sensitivity: 'base',
-      });
-    });
+    if (listFiltersActive()) {
+      results = results.filter(rowPassesColumnFilters);
+    }
 
+    results.sort(compareProjectRows);
     return results;
   };
 
@@ -2612,10 +3184,13 @@
       });
     }
 
-    resultCountEl.textContent = `Showing ${from}–${to} of ${total}`;
+    resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() ? ' · filtered' : ''}`;
     renderMeta(total);
     renderStats(rows);
     renderPagination(total);
+    syncListSortHeaders();
+    syncListFilterUi();
+    renderRecentSearches();
 
     if (pageRows.length === 0) {
       tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="8">${
@@ -2623,7 +3198,9 @@
           ? '⏳ Loading live search index…'
           : state.projects.length === 0
             ? '📁 No catalog items yet.'
-            : searching
+            : listFiltersActive()
+              ? 'No projects match these column filters. Clear filters or try another search.'
+              : searching
               ? `No projects matched <strong>${escapeHtml(state.query.trim())}</strong> in the selected catalog${state.scopeKeys.length === 1 ? '' : 's'}. ${state.deep ? 'Try Fuzzy, OR mode, or another file or folder name.' : 'Turn on Deep files to search nested files, or try Fuzzy / OR mode.'}`
               : 'No projects to show.'
       }</td></tr>`;
@@ -2642,7 +3219,7 @@
         const selectId = selectionKey(sourceKey, name);
         const isSelected = state.selected.has(selectId);
         const hitSet = searching && state.deep ? deepHits : null;
-        const openQuery = hitSet?.total ? state.query.trim() : '';
+        const openQuery = '';
         const extra = `${hitSet ? deepHitsHtml(hitSet) : ''}${coverageHtml(project, presence)}`;
         return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
           <td class="sharepoint-select-col" onclick="event.stopPropagation()">
@@ -2671,6 +3248,92 @@
 
     bindRowEvents();
     syncCompareBar();
+  };
+
+  const readRecentSearches = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE.recent) || '[]');
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .map((item) => String(item || '').trim())
+        .filter((item) => item.length >= RECENT_MIN_LEN)
+        .slice(0, RECENT_MAX);
+    } catch {
+      return [];
+    }
+  };
+
+  const writeRecentSearches = (items) => {
+    try {
+      localStorage.setItem(STORAGE.recent, JSON.stringify(items.slice(0, RECENT_MAX)));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  };
+
+  let recentPaintedKey = '';
+
+  const renderRecentSearches = () => {
+    if (!recentRoot || !recentChips) return;
+    const items = readRecentSearches();
+    const active = state.query.trim();
+    const paintKey = `${items.join('\u0001')}::${active.toLowerCase()}`;
+    if (paintKey === recentPaintedKey) return;
+    recentPaintedKey = paintKey;
+
+    if (!items.length) {
+      recentRoot.hidden = true;
+      recentRoot.classList.add('is-hidden');
+      recentChips.innerHTML = '';
+      if (recentClearBtn) recentClearBtn.hidden = true;
+      return;
+    }
+
+    recentRoot.hidden = false;
+    recentRoot.classList.remove('is-hidden');
+    if (recentClearBtn) recentClearBtn.hidden = false;
+    const activeLower = active.toLowerCase();
+    recentChips.innerHTML = items
+      .map((query) => {
+        const isActive = query.toLowerCase() === activeLower;
+        return `<span class="sharepoint-recent-chip-wrap${isActive ? ' is-active' : ''}" role="listitem">
+          <button type="button" class="sharepoint-recent-chip" data-recent-query="${escapeHtml(query)}" title="${escapeHtml(query)}" aria-pressed="${isActive ? 'true' : 'false'}">${escapeHtml(query)}</button>
+          <button type="button" class="sharepoint-recent-remove" data-recent-remove="${escapeHtml(query)}" title="Remove “${escapeHtml(query)}”" aria-label="Remove recent search ${escapeHtml(query)}">×</button>
+        </span>`;
+      })
+      .join('');
+  };
+
+  const rememberRecentSearch = (query) => {
+    const nextQuery = String(query || '').trim();
+    if (nextQuery.length < RECENT_MIN_LEN) return;
+    const items = readRecentSearches();
+    const next = [nextQuery, ...items.filter((item) => item.toLowerCase() !== nextQuery.toLowerCase())].slice(
+      0,
+      RECENT_MAX
+    );
+    writeRecentSearches(next);
+    recentPaintedKey = '';
+    renderRecentSearches();
+  };
+
+  const scheduleRememberRecent = debouncePaint(() => rememberRecentSearch(state.query), 900);
+
+  const applyRecentSearch = (query) => {
+    state.query = String(query || '').trim();
+    state.refine = '';
+    scheduleTypedSearch.cancel();
+    scheduleRememberRecent.cancel();
+    rememberRecentSearch(state.query);
+    applySearch({ resetPage: true, syncInputs: true });
+    input?.focus();
+  };
+
+  const removeRecentSearch = (query) => {
+    const needle = String(query || '').trim().toLowerCase();
+    writeRecentSearches(readRecentSearches().filter((item) => item.toLowerCase() !== needle));
+    recentPaintedKey = '';
+    renderRecentSearches();
   };
 
   const syncUrl = () => {
@@ -2704,6 +3367,11 @@
     if (input) state.query = input.value;
     if (refineInput) state.refine = refineInput.value;
     applySearch({ resetPage: true, syncInputs: false });
+    if (state.query.trim().length >= RECENT_MIN_LEN) {
+      scheduleRememberRecent();
+    } else {
+      scheduleRememberRecent.cancel();
+    }
   };
 
   const scheduleTypedSearch = debouncePaint(runTypedSearch, 70);
@@ -2780,6 +3448,76 @@
     event.preventDefault();
     state.query = input?.value || '';
     scheduleTypedSearch.flush();
+    scheduleRememberRecent.flush();
+  });
+
+  const setListSort = (key) => {
+    const next = LIST_SORT_KEYS.has(key) ? key : 'name';
+    state.userSort = true;
+    if (state.sortKey === next) {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.sortKey = next;
+      state.sortDir = LIST_SORT_DEFAULT_DIR[next] || 'asc';
+    }
+    applySearch({ resetPage: true });
+  };
+
+  listTable?.querySelector('thead')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('.sp-dialog-sort-btn[data-sort]');
+    if (!btn || !listTable.contains(btn)) return;
+    event.preventDefault();
+    setListSort(btn.getAttribute('data-sort') || 'name');
+  });
+
+  const scheduleColumnFilter = debouncePaint(() => {
+    applySearch({ resetPage: true, syncInputs: false });
+  }, 70);
+
+  listFilterRow?.addEventListener('input', (event) => {
+    const filterInput = event.target.closest('[data-filter]');
+    if (!filterInput) return;
+    const key = filterInput.getAttribute('data-filter') || '';
+    if (!Object.prototype.hasOwnProperty.call(state.filters, key)) return;
+    state.filters[key] = filterInput.value;
+    scheduleColumnFilter();
+  });
+
+  listFilterToggle?.addEventListener('click', () => {
+    state.filtersOpen = !state.filtersOpen;
+    try {
+      localStorage.setItem(STORAGE.listFilters, state.filtersOpen ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    syncListFilterUi();
+  });
+
+  listFilterClear?.addEventListener('click', () => {
+    state.filters = emptyListFilters();
+    applySearch({ resetPage: true });
+  });
+
+  syncListFilterUi();
+  syncListSortHeaders();
+
+  recentRoot?.addEventListener('click', (event) => {
+    const removeBtn = event.target.closest('[data-recent-remove]');
+    if (removeBtn) {
+      event.preventDefault();
+      removeRecentSearch(removeBtn.getAttribute('data-recent-remove') || '');
+      return;
+    }
+    const chip = event.target.closest('[data-recent-query]');
+    if (!chip) return;
+    event.preventDefault();
+    applyRecentSearch(chip.getAttribute('data-recent-query') || '');
+  });
+
+  recentClearBtn?.addEventListener('click', () => {
+    writeRecentSearches([]);
+    recentPaintedKey = '';
+    renderRecentSearches();
   });
 
   let searchComposing = false;
@@ -2799,6 +3537,7 @@
     state.query = '';
     state.refine = '';
     scheduleTypedSearch.cancel();
+    scheduleRememberRecent.cancel();
     applySearch({ resetPage: true, syncInputs: true });
     input?.focus();
   });
@@ -2893,6 +3632,11 @@
   syncScopeChips();
   syncCompareBar();
   syncActiveCatalogChrome();
+  if (state.query.trim().length >= RECENT_MIN_LEN) {
+    rememberRecentSearch(state.query);
+  } else {
+    renderRecentSearches();
+  }
   loadIndex();
 })();
 
