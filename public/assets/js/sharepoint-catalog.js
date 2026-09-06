@@ -1038,6 +1038,27 @@
     return parts.slice(0, -1).join('/');
   };
 
+  /** Path inside a project folder, so compare can match the same file across two projects. */
+  const projectRelativePath = (item, projectName = '') => {
+    const path = normalizeRelPath(item?.relative_path || item?.name || '');
+    const project = normalizeRelPath(projectName || item?.project_name || '');
+    if (!path) return '';
+    if (!project) return path;
+    const pathLower = path.toLowerCase();
+    const projectLower = project.toLowerCase();
+    if (pathLower === projectLower) return '';
+    if (pathLower.startsWith(`${projectLower}/`)) {
+      return path.slice(project.length + 1);
+    }
+    return path;
+  };
+
+  const compareItemKey = (item, projectName = '') => {
+    const path = projectRelativePath(item, projectName).toLowerCase();
+    const type = String(item?.item_type || 'file').toLowerCase();
+    return `${type}::${path}`;
+  };
+
   const SEARCH_PREF = {
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
@@ -3209,10 +3230,13 @@
       applyCompareFilter();
     };
 
+    const keyFor = (item, side) =>
+      compareItemKey(item, projectsBySide[side]?.project_name || item?.project_name || '');
+
     const assignProjectToSide = (side, project, { seedExpanded = false } = {}) => {
       projectsBySide[side] = project;
       itemsBySide[side] = Array.isArray(project.items) ? project.items : [];
-      keysBySide[side] = new Set(itemsBySide[side].map(itemKey));
+      keysBySide[side] = new Set(itemsBySide[side].map((item) => compareItemKey(item, project?.project_name || '')));
       if (seedExpanded) {
         sideEls[side].expanded.clear();
         buildTreeNodes(itemsBySide[side]).forEach((node) => {
@@ -3326,7 +3350,7 @@
         catalog: String(project.source_title || project.source_key || '').trim(),
       };
       nodes.forEach((node) => {
-        const key = itemKey(node.item);
+        const key = keyFor(node.item, side);
         const diff = classifyDiff(key, side);
         const isFolder = isFolderItem(node.item);
         const hasKids = isFolder && node.children.length > 0;
@@ -3359,7 +3383,7 @@
       let shown = 0;
 
       const baseItems = filterOutHiddenItems(
-        uniqueOnly ? items.filter((item) => !others.has(itemKey(item))) : items
+        uniqueOnly ? items.filter((item) => !others.has(keyFor(item, side))) : items
       );
 
       if (layout === 'tree') {
@@ -3367,7 +3391,7 @@
         const key = `${treeRevealKey(query, kind, ext, prefs)}|${uniqueOnly ? '1' : '0'}|${sortKey}:${sortDir}`;
         if (sideEls[side].lastRevealKey !== key) {
           sideEls[side].lastRevealKey = key;
-          if (String(query || '').trim() !== '' || ext.length > 0) {
+          if (String(query || '').trim() !== '' || ext.length > 0 || uniqueOnly) {
             collectTreeFolderPaths(tree).forEach((path) => sideEls[side].expanded.add(path));
           }
         }
@@ -3385,7 +3409,9 @@
             : emptyRowHtml(
                 items.length === 0
                   ? 'No files or folders.'
-                  : 'No matches for this panel filter. Try OR mode or Fuzzy.'
+                  : uniqueOnly
+                    ? 'No unique files or folders on this side.'
+                    : 'No matches for this panel filter. Try OR mode or Fuzzy.'
               );
         if (acc.length > 0) settleTreeRows(rowsEl, previousTops);
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
@@ -3406,12 +3432,14 @@
           rowsEl.innerHTML = emptyRowHtml(
             items.length === 0
               ? 'No files or folders.'
-              : 'No matches for this panel filter. Try OR mode or Fuzzy.'
+              : uniqueOnly
+                ? 'No unique files or folders on this side.'
+                : 'No matches for this panel filter. Try OR mode or Fuzzy.'
           );
         } else {
           rowsEl.innerHTML = filtered
             .map((item) => {
-              const key = itemKey(item);
+              const key = keyFor(item, side);
               const diff = classifyDiff(key, side);
               const tone = pillClassFor(diff);
               if (diff === 'all' || diff === 'shared') shared += 1;
@@ -3539,7 +3567,9 @@
     const restoreSide = (side, snap) => {
       projectsBySide[side] = snap.project;
       itemsBySide[side] = snap.items || [];
-      keysBySide[side] = snap.keys instanceof Set ? new Set(snap.keys) : new Set();
+      keysBySide[side] = new Set(
+        itemsBySide[side].map((item) => compareItemKey(item, snap.project?.project_name || ''))
+      );
       sideEls[side].expanded.clear();
       const expanded = snap.expanded instanceof Set ? snap.expanded : new Set(snap.expanded || []);
       expanded.forEach((path) => sideEls[side].expanded.add(path));
@@ -3567,12 +3597,12 @@
         uniqueNames.length === 1 ? uniqueNames[0] : uniqueNames.join(' · ') || 'Compare';
 
       const allIn = itemsBySide[activeSides[0]].filter((item) => {
-        const key = itemKey(item);
+        const key = keyFor(item, activeSides[0]);
         return activeSides.every((side) => keysBySide[side].has(key));
       }).length;
       const onlyCounts = activeSides.map((side) => {
         const others = otherKeysUnion(side);
-        return itemsBySide[side].filter((item) => !others.has(itemKey(item))).length;
+        return itemsBySide[side].filter((item) => !others.has(keyFor(item, side))).length;
       });
       subEl.innerHTML = `<strong>${allIn}</strong> in ${
         activeSides.length === 2 ? 'both' : 'all'

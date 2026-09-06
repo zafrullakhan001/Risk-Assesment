@@ -174,7 +174,7 @@ declare(strict_types=1);
                                     <option value="folders">Folders only</option>
                                 </select>
                             </label>
-                            <label class="sp-view-check">
+                            <label class="sp-view-check" title="Hide files and folders that exist on another compared project">
                                 <input type="checkbox" id="sharepoint-compare-unique-only">
                                 <span>Unique only</span>
                             </label>
