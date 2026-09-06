@@ -121,7 +121,18 @@ final class GitHubUpdater
             ? $this->checkFromReleases($releases)
             : ['aheadBy' => 0, 'headSha' => '', 'mode' => 'releases', 'commits' => [], 'branch' => ''];
 
-        $commitCheck = $this->checkFromCommits($releases);
+        $latestReleaseTag = '';
+        foreach ($releases as $release) {
+            if (!is_array($release) || !empty($release['draft']) || !empty($release['prerelease'])) {
+                continue;
+            }
+            $latestReleaseTag = trim((string) ($release['tag_name'] ?? ''));
+            if ($latestReleaseTag !== '') {
+                break;
+            }
+        }
+
+        $commitCheck = $this->checkFromCommits($releases, $latestReleaseTag !== '' ? $latestReleaseTag : null);
         $items = [];
         $seen = [];
         foreach (array_merge($releaseCheck['commits'], $commitCheck['commits']) as $item) {
@@ -157,21 +168,26 @@ final class GitHubUpdater
     public function apply(string $ref = ''): array
     {
         $this->assertCanApply();
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
 
-        $check = $this->check(false);
         $target = trim($ref);
         if ($target === '') {
-            $target = $check['headSha'] !== '' ? $check['headSha'] : $this->trackBranch();
+            throw new RuntimeException('No update target was selected.');
         }
         if (!preg_match('#^[A-Za-z0-9._/-]+$#', $target)) {
             throw new RuntimeException('Invalid update target.');
         }
 
-        $selected = $this->findUpdate($check['commits'], $target);
+        $isCommit = preg_match('/^[a-f0-9]{7,40}$/i', $target) === 1;
+        $release = $isCommit ? null : $this->githubReleaseByTag($target);
+        $selected = $release !== null ? ($this->mapRelease($release) ?? []) : ['kind' => 'commit'];
         $download = $this->resolveDownload($target, $selected);
 
         $lock = $this->acquireLock();
         $staging = $this->stagingPath();
+        $bufferLevel = ob_get_level();
+        ob_start();
         try {
             $this->resetDirectory($staging);
             $zipFile = $staging . DIRECTORY_SEPARATOR . 'package.zip';
@@ -181,8 +197,6 @@ final class GitHubUpdater
             $this->overlayFiles($payloadRoot);
             $this->maybeComposerInstall();
 
-            $kind = (string) ($selected['kind'] ?? '');
-            $isCommit = $kind === 'commit' || preg_match('/^[a-f0-9]{7,40}$/i', $target) === 1;
             if ($isCommit) {
                 $sha = strtolower($target);
                 $tag = $this->installedTagOrVersion();
@@ -190,8 +204,8 @@ final class GitHubUpdater
                     $tag = '';
                 }
             } else {
-                $sha = (string) ($selected['commitSha'] ?? '');
                 $tag = $target;
+                $sha = $this->githubRefSha($target);
             }
             $this->recordApplied($tag, $sha);
 
@@ -204,6 +218,9 @@ final class GitHubUpdater
                 'message' => 'Updated to ' . $label . '. Reload the page (Ctrl+F5). Database and uploads were kept in place.',
             ];
         } finally {
+            while (ob_get_level() > $bufferLevel) {
+                ob_end_clean();
+            }
             $this->deleteDirectory($staging);
             $this->releaseLock($lock);
         }
@@ -307,7 +324,7 @@ final class GitHubUpdater
      * @param list<array<string, mixed>> $releases
      * @return array{aheadBy: int, headSha: string, mode: string, commits: list<array<string, string>>, branch: string}
      */
-    private function checkFromCommits(array $releases = []): array
+    private function checkFromCommits(array $releases = [], ?string $baseOverride = null): array
     {
         $empty = [
             'aheadBy' => 0,
@@ -317,7 +334,9 @@ final class GitHubUpdater
             'branch' => $this->trackBranch(),
         ];
 
-        $base = $this->installedCompareBase($releases);
+        $base = $baseOverride !== null && $baseOverride !== ''
+            ? $baseOverride
+            : $this->installedCompareBase($releases);
         $branches = [];
         $current = $this->capabilities()['gitAvailable'] ? $this->currentBranch() : '';
         if ($current !== '' && $current !== 'HEAD') {
@@ -536,6 +555,9 @@ final class GitHubUpdater
             if (!@copy($absolute, $destination)) {
                 usleep(120000);
                 if (!@copy($absolute, $destination)) {
+                    if ($this->isRunningScript($destination)) {
+                        continue;
+                    }
                     throw new RuntimeException('Unable to replace ' . $relativeUnix . '. Close programs using that file and try again.');
                 }
             }
@@ -572,6 +594,17 @@ final class GitHubUpdater
         }
 
         return false;
+    }
+
+    private function isRunningScript(string $destination): bool
+    {
+        $running = (string) ($_SERVER['SCRIPT_FILENAME'] ?? '');
+        if ($running === '') {
+            return false;
+        }
+        $left = str_replace('\\', '/', $destination);
+        $right = str_replace('\\', '/', $running);
+        return strcasecmp($left, $right) === 0;
     }
 
     private function recordApplied(string $tag, string $sha): void
@@ -771,6 +804,44 @@ final class GitHubUpdater
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    private function githubReleaseByTag(string $tag): ?array
+    {
+        $url = 'https://api.github.com/repos/' . $this->repoSlug() . '/releases/tags/' . rawurlencode($tag);
+        try {
+            $payload = $this->httpJson($url);
+        } catch (RuntimeException $exception) {
+            if (str_contains($exception->getMessage(), 'HTTP 404') || str_contains($exception->getMessage(), 'returned 404')) {
+                return null;
+            }
+            throw $exception;
+        }
+        if (!isset($payload['tag_name'])) {
+            return null;
+        }
+
+        return $payload;
+    }
+
+    private function githubRefSha(string $ref): string
+    {
+        try {
+            $payload = $this->httpJson(
+                'https://api.github.com/repos/' . $this->repoSlug() . '/commits/' . rawurlencode($ref)
+            );
+        } catch (RuntimeException) {
+            return '';
+        }
+        $sha = strtolower((string) ($payload['sha'] ?? ''));
+        if (preg_match('/^[a-f0-9]{7,40}$/', $sha) !== 1) {
+            return '';
+        }
+
+        return $sha;
+    }
+
+    /**
      * @param array<string, mixed> $release
      * @return array<string, string>|null
      */
@@ -939,24 +1010,20 @@ final class GitHubUpdater
         if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
             throw new RuntimeException('Unable to create the update download folder.');
         }
-
-        $handle = fopen($destination, 'wb');
-        if ($handle === false) {
-            throw new RuntimeException('Unable to write the update zip.');
+        if (is_file($destination) && !@unlink($destination)) {
+            throw new RuntimeException('Unable to replace a leftover update zip.');
         }
 
-        try {
-            $this->httpRequest($url, $extraHeaders, $handle, 300);
-        } finally {
-            fclose($handle);
+        $this->httpRequest($url, $extraHeaders, $destination, 600);
+        if (!is_file($destination) || filesize($destination) < 64) {
+            throw new RuntimeException('The downloaded update file is empty or incomplete.');
         }
     }
 
     /**
      * @param list<string> $extraHeaders
-     * @param resource|null $fileHandle
      */
-    private function httpRequest(string $url, array $extraHeaders = [], $fileHandle = null, int $timeout = 30): string
+    private function httpRequest(string $url, array $extraHeaders = [], ?string $downloadPath = null, int $timeout = 30): string
     {
         if (!function_exists('curl_init')) {
             throw new RuntimeException('PHP cURL is required to talk to GitHub.');
@@ -982,16 +1049,46 @@ final class GitHubUpdater
         $options = [
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 8,
+            CURLOPT_CONNECTTIMEOUT => 30,
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_ENCODING => '',
+            CURLOPT_BUFFERSIZE => 262144,
         ];
-        if (is_resource($fileHandle)) {
-            $options[CURLOPT_FILE] = $fileHandle;
+        if (defined('CURLOPT_UNRESTRICTED_AUTH')) {
+            $options[CURLOPT_UNRESTRICTED_AUTH] = false;
+        }
+
+        $fileHandle = null;
+        $writeError = '';
+        if ($downloadPath !== null) {
+            $fileHandle = fopen($downloadPath, 'wb');
+            if ($fileHandle === false) {
+                curl_close($handle);
+                throw new RuntimeException('Unable to write the update zip.');
+            }
+            // Stream to disk. Never use CURLOPT_FILE on Windows — after GitHub
+            // redirects, libcurl can dump the zip onto the HTTP response instead.
             $options[CURLOPT_RETURNTRANSFER] = false;
+            $options[CURLOPT_HEADER] = false;
+            $options[CURLOPT_WRITEFUNCTION] = static function ($curl, string $chunk) use ($fileHandle, &$writeError): int {
+                unset($curl);
+                if ($writeError !== '') {
+                    return 0;
+                }
+                $written = fwrite($fileHandle, $chunk);
+                if ($written === false) {
+                    $writeError = 'Unable to write downloaded bytes to disk.';
+                    return 0;
+                }
+
+                return $written;
+            };
         } else {
             $options[CURLOPT_RETURNTRANSFER] = true;
+            $options[CURLOPT_HEADER] = false;
         }
         curl_setopt_array($handle, $options);
 
@@ -999,15 +1096,22 @@ final class GitHubUpdater
         $status = (int) curl_getinfo($handle, CURLINFO_HTTP_CODE);
         $error = curl_error($handle);
         curl_close($handle);
+        if (is_resource($fileHandle)) {
+            fclose($fileHandle);
+        }
 
+        if ($writeError !== '') {
+            throw new RuntimeException($writeError);
+        }
         if ($body === false) {
             throw new RuntimeException('GitHub request failed: ' . ($error !== '' ? $error : 'unknown error'));
         }
 
         if ($status < 200 || $status >= 300) {
             $text = is_string($body) ? $body : '';
-            if ($text === '' && is_resource($fileHandle)) {
-                fflush($fileHandle);
+            if ($text === '' && $downloadPath !== null && is_file($downloadPath)) {
+                $text = (string) file_get_contents($downloadPath, false, null, 0, 2000);
+                @unlink($downloadPath);
             }
             throw new RuntimeException($this->formatGithubHttpError($status, $text));
         }

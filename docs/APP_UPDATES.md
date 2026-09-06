@@ -80,5 +80,6 @@ Installed version is stored in `VERSION.json` and in updater settings.
 | `GitHub returned 404` | Create a `repo`-scoped [classic PAT](https://github.com/settings/tokens/new?scopes=repo&description=Risk%20Assessment%20Updater) and save it |
 | GitHub 401 | Token expired or revoked — generate a new one and save it again |
 | PHP zip / curl missing | Enable `extension=zip` and `extension=curl` in `php.ini`, restart Apache |
+| Browser shows garbled characters during apply | The download was leaking into the page; keep this updater build and retry. Keep the tab open until it redirects. |
 | Update already in progress | Wait a few seconds and retry; delete `database/updater.lock` only if Apache was killed mid-update |
 | Forgot admin password | `php bin/reset_admin_password.php admin YourNewPassword!1` |
