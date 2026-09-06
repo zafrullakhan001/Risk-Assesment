@@ -1594,7 +1594,10 @@ $soloPageClass = $ownerSolo
             <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact">
                 <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
                     <summary class="sharepoint-table-toolbar sharepoint-catalog-table-summary">
-                    <span class="result-count" id="sharepoint-result-count">Showing <?= (int) $from ?>–<?= (int) $to ?> of <?= (int) $matchedProjectCount ?></span>
+                    <div class="sharepoint-table-summary-lead">
+                        <h2 class="sharepoint-table-collapsed-title">📋 Project list</h2>
+                        <span class="result-count" id="sharepoint-result-count">Showing <?= (int) $from ?>–<?= (int) $to ?> of <?= (int) $matchedProjectCount ?></span>
+                    </div>
                     <div class="sharepoint-table-toolbar-tools" data-no-toggle onclick="event.stopPropagation()">
                         <div class="sp-view-toggle" role="group" aria-label="Row density">
                             <button type="button" class="sp-view-btn" data-list-density="comfort" title="Taller rows with badges under the name" aria-pressed="false">Comfort</button>

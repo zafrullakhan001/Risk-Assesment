@@ -9167,14 +9167,11 @@ body.is-public-catalog-share .topbar-actions {
     margin-bottom: 0;
     font-size: 0.78rem;
 }
-.sharepoint-catalog-solo-page #sharepoint-search.is-compact-chrome {
-    margin: 0 0 0.85rem;
-}
-.sharepoint-catalog-solo-page .search-card {
-    margin: 0 0 1.5rem;
-}
+.sharepoint-catalog-solo-page #sharepoint-search.is-compact-chrome,
+.sharepoint-catalog-solo-page .search-card,
 .sharepoint-catalog-solo-page .sharepoint-table-card {
     margin-top: 0;
+    margin-bottom: 0;
 }
 .sharepoint-folders-solo-page .sharepoint-sources-panel {
     margin: 0;
@@ -9205,6 +9202,118 @@ body.is-public-catalog-share .topbar-actions {
 /* ---- SharePoint catalog ---- */
 .sharepoint-catalog-page .sharepoint-catalog-meta {
     margin-top: 0.75rem;
+}
+
+/* Even card stack: same gap open or collapsed, compact bars when closed */
+.sharepoint-catalog-page main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+.sharepoint-catalog-page main > .hero,
+.sharepoint-catalog-page main > .hero-compact {
+    margin-bottom: 0;
+}
+.sharepoint-catalog-page main > .home-section-tabs {
+    margin: 0;
+}
+.sharepoint-catalog-page main > .upload-card,
+.sharepoint-catalog-page main > #sharepoint-sources,
+.sharepoint-catalog-page main > #sharepoint-owner-dash,
+.sharepoint-catalog-page main > #sharepoint-search,
+.sharepoint-catalog-page main > #sharepoint-table-card,
+.sharepoint-catalog-page main > #sharepoint-admin,
+.sharepoint-catalog-page main > #catalog-share-panel,
+.sharepoint-catalog-page main > #owners-share-panel {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+.sharepoint-catalog-page main > .upload-card:has(> details:not([open])),
+.sharepoint-catalog-page main > #sharepoint-sources:has(> details:not([open])),
+.sharepoint-catalog-page main > #sharepoint-owner-dash:has(> details:not([open])),
+.sharepoint-catalog-page main > #sharepoint-search:has(> details:not([open])),
+.sharepoint-catalog-page main > #sharepoint-table-card:has(> details:not([open])),
+.sharepoint-catalog-page main > #sharepoint-admin:has(> details:not([open])),
+.sharepoint-catalog-page main > #catalog-share-panel:has(> details:not([open])),
+.sharepoint-catalog-page main > #owners-share-panel:has(> details:not([open])) {
+    padding: 0.62rem 0.95rem;
+    background: var(--card, #fff);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sharepoint-catalog-page main > .upload-card:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #sharepoint-sources:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #sharepoint-owner-dash:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #sharepoint-search:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #sharepoint-table-card:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #sharepoint-admin:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #catalog-share-panel:has(> details:not([open])):hover,
+.sharepoint-catalog-page main > #owners-share-panel:has(> details:not([open])):hover {
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 28%, var(--line));
+}
+.sharepoint-catalog-page main > .upload-card:has(> details:not([open])) > details > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem 1rem;
+    padding: 0;
+    margin: 0;
+    min-height: 2.35rem;
+}
+.sharepoint-catalog-page .sp-owner-dash-shell:not([open]) .sp-owner-dash-intro p,
+.sharepoint-catalog-page .sp-owner-dash-shell:not([open]) .eyebrow,
+.sharepoint-catalog-page .sharepoint-share-shell:not([open]) .eyebrow,
+.sharepoint-catalog-page .sharepoint-admin-shell:not([open]) .eyebrow {
+    display: none;
+}
+.sharepoint-catalog-page .sp-owner-dash-shell:not([open]) .sp-owner-dash-intro h2,
+.sharepoint-catalog-page .sharepoint-share-shell:not([open]) h2,
+.sharepoint-catalog-page .sharepoint-admin-shell:not([open]) h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.25;
+}
+.sharepoint-catalog-page .sharepoint-share-shell:not([open]) .card-icon {
+    width: 1.85rem;
+    height: 1.85rem;
+    font-size: 0.95rem;
+    border-radius: 8px;
+}
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-compare-bar {
+    display: none;
+}
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-table-toolbar {
+    margin-bottom: 0;
+    min-height: 2.35rem;
+}
+.sharepoint-catalog-page .sharepoint-sources-shell:not([open]) .sharepoint-folders-view-toggle,
+.sharepoint-catalog-page .sharepoint-catalog-shell:not([open]) .sharepoint-catalog-view-toggle,
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sp-view-toggle,
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) #sharepoint-filters-toggle {
+    display: none;
+}
+.sharepoint-catalog-page .sharepoint-admin-shell[open] .sharepoint-admin-shell-hint::before {
+    content: "Collapse";
+}
+.sharepoint-catalog-page .sharepoint-admin-shell:not([open]) .sharepoint-admin-shell-hint::before {
+    content: "Expand";
+}
+.sharepoint-table-summary-lead {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+.sharepoint-table-collapsed-title {
+    display: none;
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.25;
+}
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-table-collapsed-title {
+    display: block;
 }
 .sharepoint-sources-panel {
     margin: 1rem 0 1.25rem;
