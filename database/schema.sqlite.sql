@@ -208,6 +208,22 @@ CREATE TABLE IF NOT EXISTS assessment_share_links (
 CREATE INDEX IF NOT EXISTS idx_assessment_share_links_assessment_id ON assessment_share_links (assessment_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_share_links_token_hash ON assessment_share_links (token_hash);
 
+CREATE TABLE IF NOT EXISTS catalog_share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    source_keys TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'catalog',
+    created_by_user_id INTEGER,
+    created_by_username TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT,
+    revoked_at TEXT,
+    last_accessed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_share_links_token_hash ON catalog_share_links (token_hash);
+CREATE INDEX IF NOT EXISTS idx_catalog_share_links_revoked ON catalog_share_links (revoked_at);
+
 CREATE TABLE IF NOT EXISTS template_workbooks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL DEFAULT '',

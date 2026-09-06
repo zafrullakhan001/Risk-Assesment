@@ -5,8 +5,35 @@
   const scopesRoot = document.getElementById('sp-owner-scopes');
   if (!root || !body) return;
 
-  const STORAGE_KEY = 'riskregister_sp_owner_scopes';
+  const publicShare = root.getAttribute('data-public') === '1';
+  const STORAGE_KEY = publicShare ? 'riskregister_sp_public_owner_scopes' : 'riskregister_sp_owner_scopes';
   const SHELL_KEY = 'riskregister_sp_owner_dash_open';
+
+  const ownerApiUrl = (action, extra = {}) => {
+    const base = (root.getAttribute('data-api-base') || 'sharepoint.php').trim() || 'sharepoint.php';
+    const token = (root.getAttribute('data-share-token') || '').trim();
+    const params = new URLSearchParams();
+    params.set('action', String(action || ''));
+    if (token) params.set('t', token);
+    Object.entries(extra || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || String(value) === '') return;
+      params.set(key, String(value));
+    });
+    return `${base}?${params.toString()}`;
+  };
+
+  const openOwnerProject = (btn) => {
+    const name = btn.getAttribute('data-project-name') || '';
+    const source = btn.getAttribute('data-source-key') || '';
+    const folderUrl = btn.getAttribute('data-folder-url') || '';
+    if (typeof window.RiskRegisterSharePoint?.openProject === 'function') {
+      window.RiskRegisterSharePoint.openProject(name, source);
+      return;
+    }
+    if (folderUrl) {
+      window.open(folderUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
   const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const TOP_SERIES = 8;
   const HEATMAP_OWNERS = 12;
@@ -117,7 +144,7 @@
           .filter(Boolean)
           .join(' · ');
         return `<li>
-          <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}">
+          <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}" data-folder-url="${escapeHtml(project.folder_url || '')}">
             <strong>${highlightQuery(project.project_name)}</strong>
             <span>${escapeHtml(meta)}</span>
           </button>
@@ -148,11 +175,7 @@
       ? renderProjectListItems(projects, { showOwner })
       : `<li class="sp-od-cell-empty">No project folders in this period.</li>`;
     cellDialogList.querySelectorAll('.sp-od-project').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const name = btn.getAttribute('data-project-name') || '';
-        const source = btn.getAttribute('data-source-key') || '';
-        window.RiskRegisterSharePoint?.openProject?.(name, source);
-      });
+      btn.addEventListener('click', () => openOwnerProject(btn));
     });
     if (!cellDialog.open) cellDialog.showModal();
   };
@@ -833,11 +856,7 @@
       render();
     });
     body.querySelectorAll('.sp-od-project').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const name = btn.getAttribute('data-project-name') || '';
-        const source = btn.getAttribute('data-source-key') || '';
-        window.RiskRegisterSharePoint?.openProject?.(name, source);
-      });
+      btn.addEventListener('click', () => openOwnerProject(btn));
     });
   };
 
@@ -846,8 +865,7 @@
     state.loading = true;
     state.error = '';
     render();
-    const qs = keys.length ? `sources=${encodeURIComponent(keys.join(','))}` : 'sources=all';
-    fetch(`sharepoint.php?action=owner_stats&${qs}`, {
+    fetch(ownerApiUrl('owner_stats', { sources: keys.length ? keys.join(',') : 'all' }), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     })
@@ -909,6 +927,9 @@
   const shell = document.getElementById('sharepoint-owner-dash-shell');
   const solo = root.getAttribute('data-solo') === '1';
   const ownerPageUrl = () => {
+    if (publicShare) {
+      return window.location.href.split('#')[0];
+    }
     const url = new URL('sharepoint.php', window.location.href);
     url.search = '';
     url.hash = '';
@@ -942,7 +963,7 @@
 
   const shouldLoad = () => solo || !shell || shell.open;
 
-  if (shell && !solo) {
+  if (shell && !solo && !publicShare) {
     try {
       const saved = localStorage.getItem(SHELL_KEY);
       if (window.location.hash === '#sharepoint-owner-dash' || saved === '1') {
@@ -963,7 +984,7 @@
     });
   }
 
-  if (solo && shell) {
+  if ((solo || publicShare) && shell) {
     shell.open = true;
     shell.addEventListener('toggle', () => {
       if (!shell.open) shell.open = true;

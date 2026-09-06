@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\PaginationPreference;
+use RiskAssessment\Repositories\CatalogShareRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\SharePoint\SharePointBrowserSync;
@@ -14,6 +15,7 @@ use RiskAssessment\SharePoint\SharePointOwnerDashboard;
 
 $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
+$catalogShareRepository = new CatalogShareRepository($pdo);
 $graph = new SharePointGraphClient($settings, $crypto, $catalog);
 $importer = new SharePointListingImporter($catalog, $settings);
 $browserSync = new SharePointBrowserSync($sourcesRepo);
@@ -138,6 +140,8 @@ $isAdmin = !empty($currentUser['is_admin']);
 $error = '';
 $flash = '';
 $testResult = null;
+$freshCatalogShareUrl = null;
+$freshOwnersShareUrl = null;
 
 $allSources = $sourcesRepo->listAll();
 $requestedSourceKey = trim((string) ($_GET['source'] ?? $_POST['source'] ?? $_POST['source_key'] ?? ''));
@@ -530,6 +534,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'source_key' => $activeSourceKey,
                 ]
             );
+        } elseif (
+            $action === 'create_catalog_share_link'
+            || $action === 'create_owners_share_link'
+            || $action === 'revoke_catalog_share_link'
+            || $action === 'revoke_owners_share_link'
+            || $action === 'purge_catalog_share_history'
+            || $action === 'purge_owners_share_history'
+        ) {
+            $shareKind = str_contains($action, 'owners')
+                ? CatalogShareRepository::KIND_OWNERS
+                : CatalogShareRepository::KIND_CATALOG;
+            $shareHash = $shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners-share-panel' : 'catalog-share-panel';
+            $shareFlag = $shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners_shared' : 'catalog_shared';
+            $postedView = trim((string) ($_POST['view'] ?? $_GET['view'] ?? ''));
+            $redirectParams = [
+                'source' => $activeSourceKey,
+                $shareFlag => '1',
+            ];
+            if (in_array($postedView, ['owners', 'catalog', 'folders'], true)) {
+                $redirectParams['view'] = $postedView;
+            }
+            $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams) . '#' . $shareHash;
+
+            if (str_starts_with($action, 'create_')) {
+                $postedKeys = $_POST['share_source_keys'] ?? [];
+                if (!is_array($postedKeys)) {
+                    $postedKeys = [];
+                }
+                $registeredKeys = [];
+                foreach ($allSources as $src) {
+                    $key = trim((string) ($src['source_key'] ?? ''));
+                    if ($key !== '') {
+                        $registeredKeys[] = $key;
+                    }
+                }
+                $selected = [];
+                foreach ($postedKeys as $key) {
+                    $value = trim((string) $key);
+                    if ($value !== '' && in_array($value, $registeredKeys, true)) {
+                        $selected[] = $value;
+                    }
+                }
+                if (count($registeredKeys) > 1 && $selected === []) {
+                    throw new RuntimeException('Select at least one catalog card to share.');
+                }
+                if (count($selected) === count($registeredKeys)) {
+                    $selected = [];
+                }
+                $created = $catalogShareRepository->create($selected, $currentUser, $shareKind);
+                $sessionKey = $shareKind === CatalogShareRepository::KIND_OWNERS
+                    ? 'fresh_owners_share_url'
+                    : 'fresh_catalog_share_url';
+                $_SESSION[$sessionKey] = CatalogShareRepository::absoluteUrl($created['token'], $shareKind);
+                $auth->users()->logAudit(
+                    $shareKind === CatalogShareRepository::KIND_OWNERS
+                        ? 'sharepoint.owners_share_created'
+                        : 'sharepoint.catalog_share_created',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    null,
+                    ['source_keys' => $created['source_keys'], 'kind' => $shareKind]
+                );
+            } elseif (str_starts_with($action, 'revoke_')) {
+                $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+                if ($shareId > 0) {
+                    $catalogShareRepository->revokeById($shareId);
+                } else {
+                    $catalogShareRepository->revokeAll($shareKind);
+                }
+                unset($_SESSION['fresh_catalog_share_url'], $_SESSION['fresh_owners_share_url']);
+                $auth->users()->logAudit(
+                    $shareKind === CatalogShareRepository::KIND_OWNERS
+                        ? 'sharepoint.owners_share_revoked'
+                        : 'sharepoint.catalog_share_revoked',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    null,
+                    ['kind' => $shareKind]
+                );
+            } else {
+                $purged = $catalogShareRepository->purgeHistory($shareKind);
+                $auth->users()->logAudit(
+                    $shareKind === CatalogShareRepository::KIND_OWNERS
+                        ? 'sharepoint.owners_share_purged'
+                        : 'sharepoint.catalog_share_purged',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    null,
+                    ['kind' => $shareKind, 'deleted' => $purged]
+                );
+            }
+            header('Location: ' . $shareRedirect);
+            exit;
         } elseif ($action === 'reindex') {
             @set_time_limit(120);
             $result = $catalog->reindex();
@@ -577,6 +677,49 @@ $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' :
 $hostHeader = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
 $scriptPath = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/sharepoint.php'));
 $msalRedirectUri = $scheme . '://' . $hostHeader . $scriptPath;
+
+if (isset($_GET['catalog_shared']) && $flash === '') {
+    $flash = 'Catalog share settings updated.';
+}
+if (isset($_GET['owners_shared']) && $flash === '') {
+    $flash = 'Project owners share settings updated.';
+}
+if (isset($_SESSION['fresh_catalog_share_url'])) {
+    $freshCatalogShareUrl = (string) $_SESSION['fresh_catalog_share_url'];
+    unset($_SESSION['fresh_catalog_share_url']);
+}
+if (isset($_SESSION['fresh_owners_share_url'])) {
+    $freshOwnersShareUrl = (string) $_SESSION['fresh_owners_share_url'];
+    unset($_SESSION['fresh_owners_share_url']);
+}
+
+$shareHistoryPerPage = CatalogShareRepository::HISTORY_PER_PAGE;
+$catalogShareHistPage = max(1, (int) ($_GET['cshare_page'] ?? 1));
+$ownersShareHistPage = max(1, (int) ($_GET['oshare_page'] ?? 1));
+$catalogShareTotal = $catalogShareRepository->countHistory(CatalogShareRepository::KIND_CATALOG);
+$ownersShareTotal = $catalogShareRepository->countHistory(CatalogShareRepository::KIND_OWNERS);
+$catalogSharePages = $catalogShareTotal > 0 ? max(1, (int) ceil($catalogShareTotal / $shareHistoryPerPage)) : 1;
+$ownersSharePages = $ownersShareTotal > 0 ? max(1, (int) ceil($ownersShareTotal / $shareHistoryPerPage)) : 1;
+if ($catalogShareHistPage > $catalogSharePages) {
+    $catalogShareHistPage = $catalogSharePages;
+}
+if ($ownersShareHistPage > $ownersSharePages) {
+    $ownersShareHistPage = $ownersSharePages;
+}
+$catalogShareLinks = $catalogShareRepository->listPage(
+    CatalogShareRepository::KIND_CATALOG,
+    $catalogShareHistPage,
+    $shareHistoryPerPage
+);
+$ownersShareLinks = $catalogShareRepository->listPage(
+    CatalogShareRepository::KIND_OWNERS,
+    $ownersShareHistPage,
+    $shareHistoryPerPage
+);
+$catalogShareActiveRow = $catalogShareRepository->findActive(CatalogShareRepository::KIND_CATALOG);
+$ownersShareActiveRow = $catalogShareRepository->findActive(CatalogShareRepository::KIND_OWNERS);
+$catalogShareActive = $catalogShareActiveRow !== null ? [$catalogShareActiveRow] : [];
+$ownersShareActive = $ownersShareActiveRow !== null ? [$ownersShareActiveRow] : [];
 
 $itemCount = $catalog->count($activeSourceKey);
 $projectCount = $catalog->countProjects($activeSourceKey);
@@ -675,6 +818,39 @@ $sharepointListUrl = static function (array $overrides = []) use ($query, $perPa
 
     return 'sharepoint.php' . ($qs !== '' ? '?' . $qs : '') . '#sharepoint-search';
 };
+
+$shareListUrl = static function (array $overrides = []) use ($activeSourceKey, $viewMode, $catalogShareHistPage, $ownersShareHistPage): string {
+    $params = array_merge([
+        'source' => $activeSourceKey,
+        'cshare_page' => $catalogShareHistPage,
+        'oshare_page' => $ownersShareHistPage,
+    ], $overrides);
+    $hash = trim((string) ($params['_hash'] ?? 'catalog-share-panel'));
+    unset($params['_hash']);
+    if (in_array($viewMode, ['owners', 'catalog', 'folders'], true) && ($params['view'] ?? '') === '') {
+        $params['view'] = $viewMode;
+    }
+    if ((int) ($params['cshare_page'] ?? 1) <= 1) {
+        unset($params['cshare_page']);
+    }
+    if ((int) ($params['oshare_page'] ?? 1) <= 1) {
+        unset($params['oshare_page']);
+    }
+    if (($params['source'] ?? '') === '') {
+        unset($params['source']);
+    }
+    if (($params['view'] ?? '') === '') {
+        unset($params['view']);
+    }
+    $qs = http_build_query($params);
+
+    return 'sharepoint.php' . ($qs !== '' ? '?' . $qs : '') . '#' . ltrim($hash, '#');
+};
+
+$sourceTitleByKey = [];
+foreach ($allSources as $src) {
+    $sourceTitleByKey[(string) ($src['source_key'] ?? '')] = (string) ($src['title'] ?? $src['source_key'] ?? '');
+}
 
 $formatModified = static function (string $modified): string {
     $modified = trim($modified);
@@ -1106,6 +1282,32 @@ $soloPageClass = $ownerSolo
                 </details>
             </section>
             <?php endif; ?>
+
+            <?php if ($isAdmin && !$panelSolo): ?>
+            <?php
+            $shareKind = CatalogShareRepository::KIND_CATALOG;
+            $sharePanelId = 'catalog-share-panel';
+            $shareHeading = 'Share catalog cards';
+            $shareHelp = 'Create a public link so people can browse <strong>only the catalog cards</strong> and search project folders without signing in. Recipients cannot sync, edit folders, or open assessments. Creating a new link revokes the previous catalog link. Copy the URL when it appears — it is shown only once.';
+            $shareFreshLabel = 'Copy this public catalog link now';
+            $shareHasActive = $catalogShareActive !== [];
+            $shareFreshUrl = $freshCatalogShareUrl;
+            $shareLinks = $catalogShareLinks;
+            $shareHistoryPage = $catalogShareHistPage;
+            $shareHistoryPages = $catalogSharePages;
+            $shareHistoryTotal = $catalogShareTotal;
+            $sharePageParam = 'cshare_page';
+            $shareCreateAction = 'create_catalog_share_link';
+            $shareRevokeAction = 'revoke_catalog_share_link';
+            $sharePurgeAction = 'purge_catalog_share_history';
+            $shareActiveId = (int) ($catalogShareActive[0]['id'] ?? 0);
+            $shareForceOpen = ($freshCatalogShareUrl !== null && $freshCatalogShareUrl !== '')
+                || isset($_GET['catalog_shared'])
+                || (int) ($_GET['cshare_page'] ?? 0) > 0;
+            $shareView = '';
+            require __DIR__ . '/includes/sharepoint-public-share-card.php';
+            ?>
+            <?php endif; ?>
             <?php if ($foldersSolo && $isAdmin): ?>
                 <?php if ($enableOneClickSync): ?>
                     <section class="visually-hidden" id="sharepoint-msal-sync"
@@ -1241,6 +1443,31 @@ $soloPageClass = $ownerSolo
                     <ul class="sp-od-cell-dialog-list" id="sp-od-cell-dialog-list"></ul>
                 </div>
             </dialog>
+            <?php if ($isAdmin): ?>
+            <?php
+            $shareKind = CatalogShareRepository::KIND_OWNERS;
+            $sharePanelId = 'owners-share-panel';
+            $shareHeading = 'Share project owner cards';
+            $shareHelp = 'Create a public link so people can browse <strong>only the project owner cards</strong> without signing in. Recipients cannot sync, edit folders, or open assessments. Creating a new link revokes the previous owners link. Copy the URL when it appears — it is shown only once.';
+            $shareFreshLabel = 'Copy this public owners link now';
+            $shareHasActive = $ownersShareActive !== [];
+            $shareFreshUrl = $freshOwnersShareUrl;
+            $shareLinks = $ownersShareLinks;
+            $shareHistoryPage = $ownersShareHistPage;
+            $shareHistoryPages = $ownersSharePages;
+            $shareHistoryTotal = $ownersShareTotal;
+            $sharePageParam = 'oshare_page';
+            $shareCreateAction = 'create_owners_share_link';
+            $shareRevokeAction = 'revoke_owners_share_link';
+            $sharePurgeAction = 'purge_owners_share_history';
+            $shareActiveId = (int) ($ownersShareActive[0]['id'] ?? 0);
+            $shareForceOpen = ($freshOwnersShareUrl !== null && $freshOwnersShareUrl !== '')
+                || isset($_GET['owners_shared'])
+                || (int) ($_GET['oshare_page'] ?? 0) > 0;
+            $shareView = $ownerSolo ? 'owners' : '';
+            require __DIR__ . '/includes/sharepoint-public-share-card.php';
+            ?>
+            <?php endif; ?>
             <?php endif; ?>
 
             <?php if (!$ownerSolo && !$foldersSolo): ?>
@@ -1571,325 +1798,7 @@ $soloPageClass = $ownerSolo
                 </details>
             </section>
 
-            <dialog class="response-dialog sharepoint-project-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-project-dialog" aria-labelledby="sharepoint-project-dialog-title" data-density="compact">
-                <div class="response-dialog-form sharepoint-project-dialog-body">
-                    <div class="response-dialog-head sp-dialog-drag-handle">
-                        <div>
-                            <div class="eyebrow">📂 SharePoint project</div>
-                            <h3 id="sharepoint-project-dialog-title">Project</h3>
-                            <p class="response-dialog-sub" id="sharepoint-project-dialog-sub"></p>
-                        </div>
-                        <div class="sp-dialog-window-tools">
-                            <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-project-dialog-refresh" title="Reload this folder from the database" aria-label="Refresh folder from database">
-                                <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
-                            </button>
-                            <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-project-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
-                            <button type="button" class="button ghost response-dialog-close" id="sharepoint-project-dialog-close" aria-label="Close">✕</button>
-                        </div>
-                    </div>
-                    <div class="sharepoint-project-dialog-stats" id="sharepoint-project-dialog-stats" hidden></div>
-                    <div class="sharepoint-project-dialog-actions" id="sharepoint-project-dialog-actions"></div>
-                    <div class="sharepoint-dialog-search" id="sharepoint-project-dialog-search-wrap" hidden>
-                        <div class="sharepoint-dialog-toolbar">
-                            <div class="sp-view-toggle" role="group" aria-label="Layout">
-                                <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
-                                <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
-                            </div>
-                            <div class="sp-view-toggle" role="group" aria-label="Chrome density">
-                                <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
-                                <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
-                            </div>
-                            <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders">⬇ Expand all</button>
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders">⬆ Collapse all</button>
-                            </div>
-                            <label class="sp-view-select">
-                                <span>Show</span>
-                                <select id="sharepoint-project-dialog-kind" aria-label="Show files and/or folders">
-                                    <option value="all" selected>Files &amp; folders</option>
-                                    <option value="files">Files only</option>
-                                    <option value="folders">Folders only</option>
-                                </select>
-                            </label>
-                            <label class="sp-view-select">
-                                <span>Type</span>
-                                <select id="sharepoint-project-dialog-ext" aria-label="File extension filter">
-                                    <option value="" selected>Any extension</option>
-                                    <option value="vsdx">Visio (.vsdx)</option>
-                                    <option value="vsd">Visio (.vsd)</option>
-                                    <option value="pdf">PDF</option>
-                                    <option value="xlsx">Excel (.xlsx)</option>
-                                    <option value="xls">Excel (.xls)</option>
-                                    <option value="docx">Word (.docx)</option>
-                                    <option value="doc">Word (.doc)</option>
-                                    <option value="pptx">PowerPoint (.pptx)</option>
-                                    <option value="msg">Email (.msg)</option>
-                                    <option value="zip">Archive (.zip)</option>
-                                </select>
-                            </label>
-                        </div>
-                        <label class="sharepoint-dialog-search-label" for="sharepoint-project-dialog-search">
-                            <span aria-hidden="true">🔎</span>
-                            <input type="search" id="sharepoint-project-dialog-search" placeholder="Search name or path… (AND / OR · Fuzzy)" autocomplete="off">
-                        </label>
-                        <div class="sharepoint-dialog-search-controls" id="sharepoint-project-dialog-search-controls">
-                            <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
-                                <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
-                                <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
-                            </div>
-                            <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
-                        </div>
-                        <div class="sharepoint-dialog-search-chips" role="group" aria-label="Quick extensions">
-                            <button type="button" class="sp-dialog-chip" data-ext="vsdx">.vsdx</button>
-                            <button type="button" class="sp-dialog-chip" data-ext="pdf">.pdf</button>
-                            <button type="button" class="sp-dialog-chip" data-ext="xlsx">.xlsx</button>
-                            <button type="button" class="sp-dialog-chip" data-ext="docx">.docx</button>
-                            <button type="button" class="button ghost sp-dialog-search-clear" id="sharepoint-project-dialog-search-clear" hidden>Clear filters</button>
-                        </div>
-                        <p class="sharepoint-dialog-search-meta" id="sharepoint-project-dialog-search-meta" aria-live="polite"></p>
-                    </div>
-                    <div class="table-wrap sharepoint-dialog-table-wrap">
-                        <table class="sharepoint-projects-table sharepoint-dialog-table">
-                            <thead>
-                                <tr>
-                                    <th scope="col" class="is-sortable is-sorted-asc" data-sort="name" aria-sort="ascending">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="name">📄 Name</button>
-                                    </th>
-                                    <th scope="col" class="is-sortable" data-sort="type" aria-sort="none">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="type">🏷️ Type</button>
-                                    </th>
-                                    <th scope="col" class="is-sortable" data-sort="size" aria-sort="none">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="size">📦 Size</button>
-                                    </th>
-                                    <th scope="col" class="is-sortable" data-sort="modified" aria-sort="none">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="modified">🕒 Modified</button>
-                                    </th>
-                                    <th scope="col" class="is-sortable" data-sort="created" aria-sort="none">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="created">📅 Created</button>
-                                    </th>
-                                    <th scope="col" class="is-sortable" data-sort="modified_by" aria-sort="none">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by">👤 Modified By</button>
-                                    </th>
-                                    <th scope="col" class="is-sortable" data-sort="created_by" aria-sort="none">
-                                        <button type="button" class="sp-dialog-sort-btn" data-sort="created_by">🙋 Created By</button>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody id="sharepoint-project-dialog-rows">
-                                <tr><td colspan="7" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </dialog>
-
-            <dialog class="response-dialog sharepoint-compare-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-compare-dialog" aria-labelledby="sharepoint-compare-dialog-title" data-density="compact">
-                <div class="response-dialog-form sharepoint-compare-dialog-body">
-                    <div class="response-dialog-head sp-dialog-drag-handle">
-                        <div>
-                            <div class="eyebrow">⚖️ Side-by-side compare</div>
-                            <h3 id="sharepoint-compare-dialog-title">Compare folders</h3>
-                            <p class="response-dialog-sub" id="sharepoint-compare-dialog-sub">Select 2 or 3 project folders to compare files and folders.</p>
-                        </div>
-                        <div class="sp-dialog-window-tools">
-                            <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-compare-dialog-refresh" title="Reload compared folders from the database" aria-label="Refresh compared folders from database">
-                                <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
-                            </button>
-                            <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-compare-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
-                            <button type="button" class="button ghost response-dialog-close" id="sharepoint-compare-dialog-close" aria-label="Close compare">✕</button>
-                        </div>
-                    </div>
-                    <div class="sharepoint-compare-legend" id="sharepoint-compare-legend" hidden>
-                        <span class="sp-diff-pill sp-diff-pill--all">In all</span>
-                        <span class="sp-diff-pill sp-diff-pill--shared">Shared</span>
-                        <span class="sp-diff-pill sp-diff-pill--left">Only left</span>
-                        <span class="sp-diff-pill sp-diff-pill--mid">Only middle</span>
-                        <span class="sp-diff-pill sp-diff-pill--right">Only right</span>
-                    </div>
-                    <div class="sharepoint-dialog-search sharepoint-compare-search" id="sharepoint-compare-search-wrap" hidden>
-                        <div class="sharepoint-dialog-toolbar">
-                            <div class="sp-view-toggle" role="group" aria-label="Layout">
-                                <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
-                                <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
-                            </div>
-                            <div class="sp-view-toggle" role="group" aria-label="Chrome density">
-                                <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
-                                <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
-                            </div>
-                            <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders on all sides">⬇ Expand all</button>
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders on all sides">⬆ Collapse all</button>
-                            </div>
-                            <label class="sp-view-select">
-                                <span>Show</span>
-                                <select id="sharepoint-compare-kind" aria-label="Show files and/or folders">
-                                    <option value="all" selected>Files &amp; folders</option>
-                                    <option value="files">Files only</option>
-                                    <option value="folders">Folders only</option>
-                                </select>
-                            </label>
-                            <label class="sp-view-check">
-                                <input type="checkbox" id="sharepoint-compare-unique-only">
-                                <span>Unique only</span>
-                            </label>
-                        </div>
-                        <div class="sharepoint-dialog-search-controls" id="sharepoint-compare-search-controls">
-                            <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
-                                <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
-                                <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
-                            </div>
-                            <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
-                        </div>
-                        <p class="panel-help sharepoint-compare-filter-hint">Each panel has its own search and extension filters.</p>
-                    </div>
-                    <div class="sharepoint-compare-panels" id="sharepoint-compare-panels" data-panel-count="2">
-                        <section class="sharepoint-compare-panel" data-side="left">
-                            <header class="sharepoint-compare-panel-head">
-                                <div class="sharepoint-compare-panel-top">
-                                    <div class="sharepoint-compare-panel-identity">
-                                        <h4 id="sharepoint-compare-left-title">Left</h4>
-                                        <p id="sharepoint-compare-left-sub"></p>
-                                    </div>
-                                    <div class="sharepoint-compare-panel-tools" data-side="left">
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-swap-btn" data-side="left" data-swap="prev" title="Swap with previous panel" aria-label="Swap left with previous">⇄←</button>
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-swap-btn" data-side="left" data-swap="next" title="Swap with next panel" aria-label="Swap left with next">⇄→</button>
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-close-btn" data-side="left" title="Remove this panel" aria-label="Remove left panel">✕</button>
-                                    </div>
-                                </div>
-                                <div class="sharepoint-compare-panel-chrome">
-                                    <div class="sharepoint-compare-panel-actions" id="sharepoint-compare-left-actions"></div>
-                                    <div class="sharepoint-compare-panel-filters" data-side="left">
-                                        <label class="sharepoint-compare-search-field">
-                                            <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
-                                            <input type="search" class="sp-compare-panel-search" data-side="left" placeholder="Search this panel…" autocomplete="off" aria-label="Search left panel">
-                                        </label>
-                                        <div class="sharepoint-compare-filter-row">
-                                            <div class="sharepoint-dialog-search-chips" role="group" aria-label="Left panel extensions">
-                                                <button type="button" class="sp-dialog-chip" data-ext="vsdx" data-side="left">.vsdx</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="pdf" data-side="left">.pdf</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="xlsx" data-side="left">.xlsx</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="docx" data-side="left">.docx</button>
-                                            </div>
-                                            <button type="button" class="button ghost sp-dialog-search-clear sp-compare-panel-clear" data-side="left" hidden>Clear</button>
-                                        </div>
-                                        <p class="sharepoint-dialog-search-meta sp-compare-panel-meta" data-side="left" aria-live="polite"></p>
-                                    </div>
-                                </div>
-                            </header>
-                            <div class="table-wrap sharepoint-compare-table-wrap">
-                                <table class="sharepoint-projects-table sharepoint-dialog-table">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">Name</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Diff</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="sharepoint-compare-left-rows">
-                                        <tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-                        <section class="sharepoint-compare-panel" data-side="mid" hidden>
-                            <header class="sharepoint-compare-panel-head">
-                                <div class="sharepoint-compare-panel-top">
-                                    <div class="sharepoint-compare-panel-identity">
-                                        <h4 id="sharepoint-compare-mid-title">Middle</h4>
-                                        <p id="sharepoint-compare-mid-sub"></p>
-                                    </div>
-                                    <div class="sharepoint-compare-panel-tools" data-side="mid">
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-swap-btn" data-side="mid" data-swap="prev" title="Swap with previous panel" aria-label="Swap middle with previous">⇄←</button>
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-swap-btn" data-side="mid" data-swap="next" title="Swap with next panel" aria-label="Swap middle with next">⇄→</button>
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-close-btn" data-side="mid" title="Remove this panel" aria-label="Remove middle panel">✕</button>
-                                    </div>
-                                </div>
-                                <div class="sharepoint-compare-panel-chrome">
-                                    <div class="sharepoint-compare-panel-actions" id="sharepoint-compare-mid-actions"></div>
-                                    <div class="sharepoint-compare-panel-filters" data-side="mid">
-                                        <label class="sharepoint-compare-search-field">
-                                            <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
-                                            <input type="search" class="sp-compare-panel-search" data-side="mid" placeholder="Search this panel…" autocomplete="off" aria-label="Search middle panel">
-                                        </label>
-                                        <div class="sharepoint-compare-filter-row">
-                                            <div class="sharepoint-dialog-search-chips" role="group" aria-label="Middle panel extensions">
-                                                <button type="button" class="sp-dialog-chip" data-ext="vsdx" data-side="mid">.vsdx</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="pdf" data-side="mid">.pdf</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="xlsx" data-side="mid">.xlsx</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="docx" data-side="mid">.docx</button>
-                                            </div>
-                                            <button type="button" class="button ghost sp-dialog-search-clear sp-compare-panel-clear" data-side="mid" hidden>Clear</button>
-                                        </div>
-                                        <p class="sharepoint-dialog-search-meta sp-compare-panel-meta" data-side="mid" aria-live="polite"></p>
-                                    </div>
-                                </div>
-                            </header>
-                            <div class="table-wrap sharepoint-compare-table-wrap">
-                                <table class="sharepoint-projects-table sharepoint-dialog-table">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">Name</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Diff</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="sharepoint-compare-mid-rows">
-                                        <tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-                        <section class="sharepoint-compare-panel" data-side="right">
-                            <header class="sharepoint-compare-panel-head">
-                                <div class="sharepoint-compare-panel-top">
-                                    <div class="sharepoint-compare-panel-identity">
-                                        <h4 id="sharepoint-compare-right-title">Right</h4>
-                                        <p id="sharepoint-compare-right-sub"></p>
-                                    </div>
-                                    <div class="sharepoint-compare-panel-tools" data-side="right">
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-swap-btn" data-side="right" data-swap="prev" title="Swap with previous panel" aria-label="Swap right with previous">⇄←</button>
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-swap-btn" data-side="right" data-swap="next" title="Swap with next panel" aria-label="Swap right with next">⇄→</button>
-                                        <button type="button" class="sp-compare-tool-btn sp-compare-close-btn" data-side="right" title="Remove this panel" aria-label="Remove right panel">✕</button>
-                                    </div>
-                                </div>
-                                <div class="sharepoint-compare-panel-chrome">
-                                    <div class="sharepoint-compare-panel-actions" id="sharepoint-compare-right-actions"></div>
-                                    <div class="sharepoint-compare-panel-filters" data-side="right">
-                                        <label class="sharepoint-compare-search-field">
-                                            <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
-                                            <input type="search" class="sp-compare-panel-search" data-side="right" placeholder="Search this panel…" autocomplete="off" aria-label="Search right panel">
-                                        </label>
-                                        <div class="sharepoint-compare-filter-row">
-                                            <div class="sharepoint-dialog-search-chips" role="group" aria-label="Right panel extensions">
-                                                <button type="button" class="sp-dialog-chip" data-ext="vsdx" data-side="right">.vsdx</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="pdf" data-side="right">.pdf</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="xlsx" data-side="right">.xlsx</button>
-                                                <button type="button" class="sp-dialog-chip" data-ext="docx" data-side="right">.docx</button>
-                                            </div>
-                                            <button type="button" class="button ghost sp-dialog-search-clear sp-compare-panel-clear" data-side="right" hidden>Clear</button>
-                                        </div>
-                                        <p class="sharepoint-dialog-search-meta sp-compare-panel-meta" data-side="right" aria-live="polite"></p>
-                                    </div>
-                                </div>
-                            </header>
-                            <div class="table-wrap sharepoint-compare-table-wrap">
-                                <table class="sharepoint-projects-table sharepoint-dialog-table">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">Name</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Diff</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="sharepoint-compare-right-rows">
-                                        <tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-                    </div>
-                </div>
-            </dialog>
+            <?php require __DIR__ . '/includes/sharepoint-catalog-dialogs.php'; ?>
             <?php endif; ?>
 
             <?php if ($isAdmin && !$panelSolo): ?>
@@ -2174,6 +2083,9 @@ $soloPageClass = $ownerSolo
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <?php if ($isAdmin && !$foldersSolo): ?>
+    <script src="assets/js/sharepoint-public-share.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-public-share.js') ?>"></script>
+    <?php endif; ?>
     <?php if (!$catalogSolo && !$foldersSolo): ?>
     <script src="assets/js/sharepoint-owner-stats.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-stats.js') ?>"></script>
     <?php endif; ?>

@@ -877,6 +877,20 @@
     return `${type}::${path}`;
   };
 
+  const catalogApiUrl = (action, extra = {}) => {
+    const root = document.getElementById('sharepoint-search');
+    const base = (root?.getAttribute('data-api-base') || 'sharepoint.php').trim() || 'sharepoint.php';
+    const token = (root?.getAttribute('data-share-token') || '').trim();
+    const params = new URLSearchParams();
+    params.set('action', String(action || ''));
+    if (token) params.set('t', token);
+    Object.entries(extra || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || String(value) === '') return;
+      params.set(key, String(value));
+    });
+    return `${base}?${params.toString()}`;
+  };
+
   const fetchProjectDetail = async (projectName, sourceKey = '', options = {}) => {
     const name = String(projectName || '').trim();
     if (!name) throw new Error('Missing project name.');
@@ -884,16 +898,14 @@
       String(sourceKey || '').trim() ||
       document.getElementById('sharepoint-search')?.getAttribute('data-source-key') ||
       '';
-    const sourceQs = resolvedSource ? `&source=${encodeURIComponent(resolvedSource)}` : '';
-    const bust = options.fresh ? `&_ts=${Date.now()}` : '';
-    const response = await fetch(
-      `sharepoint.php?action=project_detail&name=${encodeURIComponent(name)}${sourceQs}${bust}`,
-      {
-        credentials: 'same-origin',
-        cache: 'no-store',
-        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-      }
-    );
+    const extra = { name };
+    if (resolvedSource) extra.source = resolvedSource;
+    if (options.fresh) extra._ts = String(Date.now());
+    const response = await fetch(catalogApiUrl('project_detail', extra), {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+    });
     const payload = await response.json();
     if (!response.ok || !payload.ok || !payload.project) {
       throw new Error(payload.error || 'Unable to load project details.');
@@ -2818,12 +2830,13 @@
     return;
   }
 
+  const publicShare = searchRoot.getAttribute('data-public') === '1';
   const STORAGE = {
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
     deep: 'riskregister_sp_search_deep',
-    scopes: 'riskregister_sp_search_scopes',
-    recent: 'riskregister_sp_search_recent',
+    scopes: publicShare ? 'riskregister_sp_public_search_scopes' : 'riskregister_sp_search_scopes',
+    recent: publicShare ? 'riskregister_sp_public_search_recent' : 'riskregister_sp_search_recent',
     listFilters: 'riskregister_sp_list_filters_open',
   };
   const RECENT_MAX = 10;
@@ -3835,6 +3848,10 @@
   const syncUrl = () => {
     const params = new URLSearchParams();
     const catalogSolo = searchRoot.getAttribute('data-solo') === '1';
+    if (publicShare) {
+      const token = (searchRoot.getAttribute('data-share-token') || '').trim();
+      if (token) params.set('t', token);
+    }
     if (catalogSolo) params.set('view', 'catalog');
     if (state.sourceKey) params.set('source', state.sourceKey);
     if (state.scopeKeys.length > 1) {
@@ -3900,12 +3917,12 @@
     tbody.innerHTML = '<tr class="sharepoint-empty-row"><td colspan="8">⏳ Loading live search index…</td></tr>';
     syncActiveCatalogChrome();
 
-    const qs =
+    const extra =
       keys.length > 1 || (availableSources.length > 1 && keys.length === availableSources.length)
-        ? `sources=${encodeURIComponent(keys.join(','))}`
-        : `source=${encodeURIComponent(keys[0])}`;
+        ? { sources: keys.join(',') }
+        : { source: keys[0] };
 
-    fetch(`sharepoint.php?action=search_index&${qs}`, {
+    fetch(catalogApiUrl('search_index', extra), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     })
@@ -4109,6 +4126,7 @@
   perPageSelect?.addEventListener('change', () => {
     state.perPage = Number(perPageSelect.value) || 25;
     applySearch();
+    if (publicShare) return;
     const sourceQs = state.sourceKey ? `&source=${encodeURIComponent(state.sourceKey)}` : '';
     const viewQs = searchRoot.getAttribute('data-solo') === '1' ? '&view=catalog' : '';
     const saveUrl = `sharepoint.php?per=${encodeURIComponent(String(state.perPage))}${sourceQs}${viewQs}#sharepoint-search`;
@@ -4142,10 +4160,15 @@
   }
 
   const catalogPageUrl = () => {
-    const url = new URL('sharepoint.php', window.location.href);
+    const url = new URL(publicShare ? 'catalog-share.php' : 'sharepoint.php', window.location.href);
     url.search = '';
     url.hash = '';
-    url.searchParams.set('view', 'catalog');
+    if (publicShare) {
+      const token = (searchRoot.getAttribute('data-share-token') || '').trim();
+      if (token) url.searchParams.set('t', token);
+    } else {
+      url.searchParams.set('view', 'catalog');
+    }
     if (state.sourceKey) url.searchParams.set('source', state.sourceKey);
     if (state.scopeKeys.length > 1) {
       url.searchParams.set('sources', state.scopeKeys.join(','));
@@ -4157,6 +4180,17 @@
     }
     return url.toString();
   };
+
+  document.querySelectorAll('.sharepoint-open-catalog[data-source-key]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const key = (btn.getAttribute('data-source-key') || '').trim();
+      if (!key) return;
+      setScopes([key]);
+      document.getElementById('sharepoint-search')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 
   document.getElementById('sp-catalog-open-tab')?.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -4419,4 +4453,32 @@
   const hash = window.location.hash;
   bindCatalogShell(searchShell, SEARCH_KEY, hash === '#sharepoint-search');
   bindCatalogShell(tableShell, TABLE_KEY, hash === '#sharepoint-table-card');
+})();
+
+(() => {
+  const copyBtn = document.getElementById('btn-copy-catalog-share-link');
+  const urlInput = document.getElementById('catalog-share-link-url');
+  const statusEl = document.getElementById('catalog-share-link-copy-status');
+  if (!copyBtn || !urlInput) return;
+  copyBtn.addEventListener('click', async () => {
+    const value = urlInput.value;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        urlInput.select();
+        document.execCommand('copy');
+      }
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = 'Link copied to clipboard.';
+      }
+    } catch {
+      urlInput.select();
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = 'Select the link and press Ctrl+C to copy.';
+      }
+    }
+  });
 })();
