@@ -78,6 +78,9 @@ $status = $updater->status();
 $patUrl = GitHubUpdater::PAT_CREATE_URL;
 $patManageUrl = GitHubUpdater::PAT_MANAGE_URL;
 $checkMode = is_array($checkResult) ? (string) ($checkResult['mode'] ?? 'releases') : 'releases';
+$checkBranch = is_array($checkResult) && ($checkResult['branch'] ?? '') !== ''
+    ? (string) $checkResult['branch']
+    : $status['branch'];
 $installedLabel = $status['installedTag'] !== ''
     ? $status['installedTag']
     : ($status['installedVersion'] !== '' ? $status['installedVersion'] : ($status['installedShort'] !== '' ? $status['installedShort'] : 'unknown'));
@@ -85,8 +88,8 @@ $installedLabel = $status['installedTag'] !== ''
 $adminTitle = 'App updates';
 $adminTab = 'updates';
 $adminEyebrow = 'GitHub updater';
-$adminHeading = 'Update this install from <em>GitHub Releases</em>';
-$adminIntro = 'Check ' . $status['repo'] . ' and apply a packaged release zip. Git is not required on this server.';
+$adminHeading = 'Update this install from <em>GitHub</em>';
+$adminIntro = 'Check ' . $status['repo'] . ' for newer Releases and commits. Git is not required on this server.';
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
             <section class="upload-card pat-help" id="enable-pat">
@@ -116,6 +119,9 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <div class="updater-status">
                     <div><span>Repository</span><strong><?= e($status['repo']) ?></strong></div>
                     <div><span>Track branch</span><strong><?= e($status['branch']) ?></strong></div>
+                    <?php if ($status['currentBranch'] !== ''): ?>
+                        <div><span>Local branch</span><strong><?= e($status['currentBranch']) ?></strong></div>
+                    <?php endif; ?>
                     <div><span>Installed version</span><strong><?= e($installedLabel) ?></strong></div>
                     <div>
                         <span>GitHub token</span>
@@ -140,6 +146,9 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <?php if ($status['dirty']): ?>
                     <p class="updater-warning">This working tree has local git changes. Applying a release zip overwrites application files (database and uploads stay).</p>
                 <?php endif; ?>
+                <?php if ($status['currentBranch'] !== '' && $status['currentBranch'] !== $status['branch']): ?>
+                    <p class="empty-results">This folder is on <code><?= e($status['currentBranch']) ?></code>. Check for updates looks at that branch first, then <code><?= e($status['branch']) ?></code>. Save settings to track <code><?= e($status['currentBranch']) ?></code> if that should be the default.</p>
+                <?php endif; ?>
                 <?php if ($status['lastAppliedAt'] !== ''): ?>
                     <p class="empty-results">Last applied <?= e($status['lastAppliedAt']) ?>.</p>
                 <?php endif; ?>
@@ -156,16 +165,14 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <section class="upload-card">
                     <h2>Available updates</h2>
                     <?php if ((int) $checkResult['aheadBy'] <= 0): ?>
-                        <?php if ($checkMode === 'releases'): ?>
-                            <p>This install matches the latest GitHub Release.</p>
-                        <?php else: ?>
-                            <p>This install matches <code>origin/<?= e($status['branch']) ?></code>.</p>
-                        <?php endif; ?>
+                        <p>This install matches the latest GitHub Release<?= $installedLabel !== 'unknown' ? ' (' . e($installedLabel) . ')' : '' ?> and has no new commits on <code><?= e($checkBranch) ?></code>.</p>
                     <?php else: ?>
                         <?php if ($checkMode === 'releases'): ?>
                             <p><?= (int) $checkResult['aheadBy'] ?> newer GitHub Release<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> available. The packaged <code>RiskRegister-*.zip</code> asset is used when present.</p>
+                        <?php elseif ($checkMode === 'mixed'): ?>
+                            <p><?= (int) $checkResult['aheadBy'] ?> update<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> available (newer Releases and commits on <code><?= e($checkBranch) ?></code>).</p>
                         <?php else: ?>
-                            <p>No GitHub Releases yet. Showing <?= (int) $checkResult['aheadBy'] ?> commit<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> on <code><?= e($status['branch']) ?></code> (source zipball).</p>
+                            <p><?= (int) $checkResult['aheadBy'] ?> commit<?= (int) $checkResult['aheadBy'] === 1 ? '' : 's' ?> ahead on <code><?= e($checkBranch) ?></code> since <?= e($installedLabel) ?>. Applying downloads the GitHub source zip for that commit.</p>
                         <?php endif; ?>
                         <form method="post" class="updater-apply" onsubmit="return confirm('Apply this GitHub update now? Application files will be replaced. The database, uploads, and branding stay in place.');">
                             <?= csrf_field() ?>
@@ -181,7 +188,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                         >
                                         <span class="commit-sha"><?= e((string) $commit['short']) ?></span>
                                         <span class="commit-msg"><?= e((string) $commit['message']) ?></span>
-                                        <span class="commit-meta"><?= e((string) $commit['author']) ?></span>
+                                        <span class="commit-meta"><?= e((string) (($commit['kind'] ?? '') === 'release' ? 'Release' : $commit['author'])) ?></span>
                                     </label>
                                 <?php endforeach; ?>
                             </div>
@@ -209,7 +216,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <input type="text" name="updater_repo" value="<?= e($status['repo']) ?>" placeholder="zafrullakhan001/Risk-Assesment" required>
                     </label>
                     <label class="file-input">
-                        <span>Track branch (used if there are no Releases yet)</span>
+                        <span>Track branch (commits after the latest Release)</span>
                         <input type="text" name="updater_track_branch" value="<?= e($status['branch']) ?>" placeholder="main" required>
                     </label>
                     <label class="file-input">

@@ -117,11 +117,41 @@ final class GitHubUpdater
         $this->assertCanTalkToGithub();
 
         $releases = $this->githubReleases();
-        if ($releases !== []) {
-            return $this->checkFromReleases($releases);
+        $releaseCheck = $releases !== []
+            ? $this->checkFromReleases($releases)
+            : ['aheadBy' => 0, 'headSha' => '', 'mode' => 'releases', 'commits' => [], 'branch' => ''];
+
+        $commitCheck = $this->checkFromCommits($releases);
+        $items = [];
+        $seen = [];
+        foreach (array_merge($releaseCheck['commits'], $commitCheck['commits']) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $key = strtolower((string) ($item['sha'] ?? ''));
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $items[] = $item;
         }
 
-        return $this->checkFromCommits();
+        $mode = 'commits';
+        if ($releaseCheck['commits'] !== [] && $commitCheck['commits'] !== []) {
+            $mode = 'mixed';
+        } elseif ($releaseCheck['commits'] !== []) {
+            $mode = 'releases';
+        } elseif ($releases !== [] && $items === []) {
+            $mode = 'releases';
+        }
+
+        return [
+            'aheadBy' => count($items),
+            'headSha' => $items[0]['sha'] ?? '',
+            'mode' => $mode,
+            'commits' => $items,
+            'branch' => (string) ($commitCheck['branch'] ?? $this->trackBranch()),
+        ];
     }
 
     public function apply(string $ref = ''): array
@@ -151,11 +181,17 @@ final class GitHubUpdater
             $this->overlayFiles($payloadRoot);
             $this->maybeComposerInstall();
 
-            $sha = (string) ($selected['commitSha'] ?? '');
-            $tag = $check['mode'] === 'releases' ? $target : (string) ($selected['short'] ?? '');
-            if ($check['mode'] === 'commits') {
-                $sha = $target;
-                $tag = '';
+            $kind = (string) ($selected['kind'] ?? '');
+            $isCommit = $kind === 'commit' || preg_match('/^[a-f0-9]{7,40}$/i', $target) === 1;
+            if ($isCommit) {
+                $sha = strtolower($target);
+                $tag = $this->installedTagOrVersion();
+                if (preg_match('/^[a-f0-9]{7,40}$/i', $tag) === 1) {
+                    $tag = '';
+                }
+            } else {
+                $sha = (string) ($selected['commitSha'] ?? '');
+                $tag = $target;
             }
             $this->recordApplied($tag, $sha);
 
@@ -263,39 +299,110 @@ final class GitHubUpdater
             'headSha' => $updates[0]['sha'] ?? '',
             'mode' => 'releases',
             'commits' => $updates,
+            'branch' => '',
         ];
     }
 
     /**
-     * @return array{aheadBy: int, headSha: string, mode: string, commits: list<array<string, string>>}
+     * @param list<array<string, mixed>> $releases
+     * @return array{aheadBy: int, headSha: string, mode: string, commits: list<array<string, string>>, branch: string}
      */
-    private function checkFromCommits(): array
+    private function checkFromCommits(array $releases = []): array
     {
-        $branch = $this->trackBranch();
-        $base = $this->installedManifest()['sha'] ?? '';
-        if ($base === '' && $this->capabilities()['gitAvailable']) {
-            $base = $this->installedCommitFromGit();
+        $empty = [
+            'aheadBy' => 0,
+            'headSha' => '',
+            'mode' => 'commits',
+            'commits' => [],
+            'branch' => $this->trackBranch(),
+        ];
+
+        $base = $this->installedCompareBase($releases);
+        $branches = [];
+        $current = $this->capabilities()['gitAvailable'] ? $this->currentBranch() : '';
+        if ($current !== '' && $current !== 'HEAD') {
+            $branches[] = $current;
+        }
+        $track = $this->trackBranch();
+        if (!in_array($track, $branches, true)) {
+            $branches[] = $track;
+        }
+        if ($branches !== []) {
+            $empty['branch'] = $branches[0];
         }
 
-        if ($base === '') {
-            $commits = $this->githubBranchCommits($branch);
+        foreach ($branches as $branch) {
+            if ($base === '') {
+                $commits = $this->githubBranchCommits($branch);
+                if ($commits !== []) {
+                    return [
+                        'aheadBy' => count($commits),
+                        'headSha' => $commits[0]['sha'] ?? '',
+                        'mode' => 'commits',
+                        'commits' => $commits,
+                        'branch' => $branch,
+                    ];
+                }
+                continue;
+            }
+
+            $ahead = $this->commitsAheadOfBase($base, $branch);
+            if ($ahead['commits'] !== []) {
+                return [
+                    'aheadBy' => $ahead['aheadBy'],
+                    'headSha' => $ahead['commits'][0]['sha'] ?? '',
+                    'mode' => 'commits',
+                    'commits' => $ahead['commits'],
+                    'branch' => $branch,
+                ];
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $releases
+     */
+    private function installedCompareBase(array $releases): string
+    {
+        $manifest = $this->installedManifest();
+        if ($manifest['sha'] !== '') {
+            return $manifest['sha'];
+        }
+        $tag = $this->installedTagOrVersion();
+        if ($tag !== '') {
+            return $tag;
+        }
+        foreach ($releases as $release) {
+            if (!is_array($release) || !empty($release['draft']) || !empty($release['prerelease'])) {
+                continue;
+            }
+            $name = trim((string) ($release['tag_name'] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{aheadBy: int, commits: list<array<string, string>>}
+     */
+    private function commitsAheadOfBase(string $base, string $head): array
+    {
+        try {
+            $payload = $this->githubCompare($base, $head);
+            $commits = $this->mapCompareCommits($payload, $base);
             return [
-                'aheadBy' => count($commits),
-                'headSha' => $commits[0]['sha'] ?? '',
-                'mode' => 'commits',
+                'aheadBy' => (int) ($payload['ahead_by'] ?? count($commits)),
                 'commits' => $commits,
             ];
+        } catch (RuntimeException $exception) {
+            error_log('updater: compare ' . $base . '...' . $head . ' failed: ' . $exception->getMessage());
+            return ['aheadBy' => 0, 'commits' => []];
         }
-
-        $payload = $this->githubCompare($base, $branch);
-        $commits = $this->mapCompareCommits($payload, $base);
-
-        return [
-            'aheadBy' => (int) ($payload['ahead_by'] ?? count($commits)),
-            'headSha' => $commits[0]['sha'] ?? '',
-            'mode' => 'commits',
-            'commits' => $commits,
-        ];
     }
 
     /**
@@ -691,6 +798,7 @@ final class GitHubUpdater
             'assetId' => $asset !== null ? (string) $asset['id'] : '',
             'assetName' => $asset !== null ? (string) $asset['name'] : '',
             'commitSha' => '',
+            'kind' => 'release',
         ];
     }
 
@@ -804,6 +912,7 @@ final class GitHubUpdater
             'assetId' => '',
             'assetName' => '',
             'commitSha' => $sha,
+            'kind' => 'commit',
         ];
     }
 

@@ -464,7 +464,7 @@ final class LdapAuth
     }
 
     /**
-     * Resolve an LDAP group DN and return member user profiles (direct members; nested groups expanded once).
+     * Resolve an LDAP group DN, CN, or sAMAccountName and return member user profiles.
      *
      * @return array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>}
      */
@@ -475,7 +475,7 @@ final class LdapAuth
         }
         $groupDn = trim($groupDn);
         if ($groupDn === '') {
-            throw new RuntimeException('LDAP group DN is required.');
+            throw new RuntimeException('LDAP group DN, CN, or sAMAccountName is required.');
         }
 
         $server = $this->serverAt($serverIndex);
@@ -765,8 +765,9 @@ final class LdapAuth
         $connection = $this->connect($server);
         try {
             $this->serviceBind($connection, $server);
-            $attributes = $this->attributeList($server);
+            $attributes = $this->searchAttributeList($server);
             $scope = strtolower((string) ($server['search_scope'] ?? 'sub'));
+            $timeLimit = $this->searchTimeLimit($server);
             $profiles = [];
             $seen = [];
             $exactUsernameHit = false;
@@ -801,7 +802,14 @@ final class LdapAuth
 
             $hardError = null;
             $timedOutWithNoHits = false;
-            foreach ($exactUsernameHit ? [] : $this->userDirectorySearchFilters($query) as $filter) {
+            $filters = $exactUsernameHit ? [] : $this->userDirectorySearchFilters($query);
+            if ($filters !== []) {
+                $configured = $this->userFilterFor($server, $query);
+                if ($configured !== '' && !in_array($configured, $filters, true)) {
+                    $filters[] = $configured;
+                }
+            }
+            foreach ($filters as $filter) {
                 if (count($profiles) >= $limit) {
                     break;
                 }
@@ -812,7 +820,7 @@ final class LdapAuth
                     $attributes,
                     $scope,
                     $limit,
-                    12
+                    $timeLimit
                 );
                 if ($outcome['error'] !== null) {
                     $hardError = $outcome['error'];
@@ -871,8 +879,8 @@ final class LdapAuth
     }
 
     /**
-     * Cheap, index-friendly filters first. Leading-wildcard substring searches against a
-     * domain root are skipped because Active Directory typically exceeds its time limit.
+     * Cheap, index-friendly filters first (same strategy as LinkNest).
+     * Leading-wildcard substring searches against a domain root time out on Active Directory.
      *
      * @return list<string>
      */
@@ -885,26 +893,42 @@ final class LdapAuth
         }
         $escapedLocal = $this->escapeFilter($local !== '' ? $local : $query);
 
-        $adUser = '(&(objectCategory=person)(objectClass=user)(!(objectClass=computer))';
-        $genericUser = '(&(|(objectClass=user)(objectClass=inetOrgPerson)(objectClass=person))(!(objectClass=computer))';
-        $exact = '(|(sAMAccountName=' . $escapedLocal . ')(uid=' . $escapedLocal . ')'
-            . '(userPrincipalName=' . $escaped . ')(mail=' . $escaped . ')(cn=' . $escaped . '))';
-        $prefix = '(|(sAMAccountName=' . $escapedLocal . '*)(uid=' . $escapedLocal . '*)'
-            . '(cn=' . $escaped . '*)(mail=' . $escaped . '*)(displayName=' . $escaped . '*)'
-            . '(givenName=' . $escaped . '*)(sn=' . $escaped . '*)(userPrincipalName=' . $escaped . '*))';
-
         $filters = [
-            $adUser . $exact . ')',
-            $genericUser . $exact . ')',
-            $adUser . '(anr=' . $escaped . '))',
-            $adUser . $prefix . ')',
-            $genericUser . $prefix . ')',
+            '(&(objectCategory=person)(objectClass=user)(|(anr=' . $escaped . ')(sAMAccountName=' . $escapedLocal . '*)(mail=' . $escaped . '*)(userPrincipalName=' . $escaped . '*)))',
+            '(sAMAccountName=' . $escapedLocal . '*)',
+            '(sAMAccountName=' . $escapedLocal . ')',
+            '(uid=' . $escapedLocal . '*)',
+            '(|(mail=' . $escaped . '*)(userPrincipalName=' . $escaped . '*)(cn=' . $escaped . '*)(displayName=' . $escaped . '*))',
         ];
-        if ($escapedLocal !== $escaped) {
-            $filters[] = $adUser . '(anr=' . $escapedLocal . '))';
-        }
 
         return $filters;
+    }
+
+    /**
+     * Lightweight attributes for directory search (avoid memberOf and other heavy attrs).
+     *
+     * @param array<string, mixed> $server
+     * @return list<string>
+     */
+    private function searchAttributeList(array $server): array
+    {
+        $attributes = ['sAMAccountName', 'mail', 'displayName', 'userPrincipalName', 'cn', 'uid', 'objectClass'];
+        $emailAttr = trim((string) ($server['email_attribute'] ?? ''));
+        $nameAttr = trim((string) ($server['display_name_attribute'] ?? ''));
+        if ($emailAttr !== '' && !in_array($emailAttr, $attributes, true)) {
+            $attributes[] = $emailAttr;
+        }
+        if ($nameAttr !== '' && !in_array($nameAttr, $attributes, true)) {
+            $attributes[] = $nameAttr;
+        }
+
+        return $attributes;
+    }
+
+    /** @param array<string, mixed> $server */
+    private function searchTimeLimit(array $server): int
+    {
+        return max(8, min(20, (int) ($server['timeout'] ?? 30)));
     }
 
     /**
@@ -921,6 +945,7 @@ final class LdapAuth
         int $sizeLimit,
         int $timeLimit
     ): array {
+        @ldap_set_option($connection, LDAP_OPT_SIZELIMIT, $sizeLimit);
         $result = match ($scope) {
             'base' => @ldap_read($connection, $base, $filter, $attributes, 0, $sizeLimit, $timeLimit),
             'one' => @ldap_list($connection, $base, $filter, $attributes, 0, $sizeLimit, $timeLimit),
@@ -1009,7 +1034,7 @@ final class LdapAuth
             throw new RuntimeException('LDAP server host is not configured.');
         }
         if ($groupDn === '') {
-            throw new RuntimeException('LDAP group DN is required.');
+            throw new RuntimeException('LDAP group DN, CN, or sAMAccountName is required.');
         }
 
         if (!$this->nativeLdapUsable()) {
@@ -1031,120 +1056,133 @@ final class LdapAuth
         try {
             $this->serviceBind($connection, $server);
 
-            $groupEntry = $this->readEntry($connection, $server, $groupDn, ['cn', 'name', 'member', 'objectClass', 'distinguishedName']);
-            if ($groupEntry === null) {
-                throw new RuntimeException('LDAP group DN was not found: ' . $groupDn);
-            }
-            if (!$this->entryHasObjectClass($groupEntry['entry'], ['group', 'groupOfNames', 'groupOfUniqueNames', 'posixGroup'])) {
-                // Still allow if it has member attributes (some directories omit objectClass in returned attrs).
-                $members = $this->attributeValues($groupEntry['entry'], 'member');
-                $uniqueMembers = $this->attributeValues($groupEntry['entry'], 'uniqueMember');
-                $memberUid = $this->attributeValues($groupEntry['entry'], 'memberUid');
-                if ($members === [] && $uniqueMembers === [] && $memberUid === []) {
-                    throw new RuntimeException('The DN does not look like a group and has no members: ' . $groupDn);
-                }
-            }
-
+            $groupEntry = $this->resolveGroupEntry($connection, $server, $groupDn);
             $groupName = $this->firstAttribute($groupEntry['entry'], 'cn')
                 ?: $this->firstAttribute($groupEntry['entry'], 'name')
-                ?: $groupDn;
+                ?: $this->firstAttribute($groupEntry['entry'], 'sAMAccountName')
+                ?: $groupEntry['dn'];
 
-            $memberDns = array_values(array_unique(array_merge(
-                $this->attributeValues($groupEntry['entry'], 'member'),
-                $this->attributeValues($groupEntry['entry'], 'uniqueMember')
-            )));
-            $memberUids = $this->attributeValues($groupEntry['entry'], 'memberUid');
-
-            // Nested groups: expand one level of group members into user DNs.
-            $resolvedDns = [];
-            foreach ($memberDns as $memberDn) {
-                $nested = $this->readEntry($connection, $server, $memberDn, ['objectClass', 'member', 'uniqueMember', 'sAMAccountName', 'uid', 'cn', 'mail', 'displayName', 'memberOf', 'userPrincipalName']);
-                if ($nested === null) {
-                    continue;
-                }
-                if ($this->entryHasObjectClass($nested['entry'], ['group', 'groupOfNames', 'groupOfUniqueNames', 'posixGroup'])
-                    && !$this->isLikelyUserEntry($nested['entry'])) {
-                    foreach (array_merge(
-                        $this->attributeValues($nested['entry'], 'member'),
-                        $this->attributeValues($nested['entry'], 'uniqueMember')
-                    ) as $nestedDn) {
-                        $resolvedDns[] = $nestedDn;
-                    }
-                    continue;
-                }
-                $resolvedDns[] = $memberDn;
-            }
-
-            // Also find users that list this group in memberOf (AD / some directories).
+            $maxMembers = 500;
+            $timeLimit = $this->searchTimeLimit($server);
+            $searchAttrs = $this->searchAttributeList($server);
             $searchBase = trim((string) ($server['user_search_base'] ?? ''));
-            if ($searchBase !== '') {
-                $escapedGroupDn = $this->escapeFilter($groupEntry['dn']);
-                $attributes = $this->attributeList($server);
-                foreach ([
-                    '(memberOf=' . $escapedGroupDn . ')',
-                    // Active Directory nested-group matching rule (ignored on non-AD directories).
-                    '(memberOf:1.2.840.113556.1.4.1941:=' . $escapedGroupDn . ')',
-                ] as $filter) {
-                    $result = @ldap_search($connection, $searchBase, $filter, $attributes);
-                    if ($result === false) {
-                        continue;
-                    }
-                    $entries = @ldap_get_entries($connection, $result);
-                    if (!is_array($entries)) {
-                        continue;
-                    }
-                    $count = (int) ($entries['count'] ?? 0);
-                    for ($i = 0; $i < $count; $i++) {
-                        $dn = (string) ($entries[$i]['dn'] ?? '');
-                        if ($dn !== '') {
-                            $resolvedDns[] = $dn;
-                        }
-                    }
-                }
+            if ($searchBase === '') {
+                $searchBase = $this->domainBaseDn($server, $groupEntry['dn']);
             }
 
             $profiles = [];
-            $seenUsernames = [];
-
-            foreach (array_values(array_unique($resolvedDns)) as $dn) {
-                $entry = $this->readEntry($connection, $server, $dn);
-                if ($entry === null || !$this->isLikelyUserEntry($entry['entry'])) {
-                    continue;
+            $seen = [];
+            $escapedGroupDn = $this->escapeFilter($groupEntry['dn']);
+            foreach ([
+                '(&(objectCategory=person)(objectClass=user)(memberOf:1.2.840.113556.1.4.1941:=' . $escapedGroupDn . '))',
+                '(&(objectCategory=person)(objectClass=user)(memberOf=' . $escapedGroupDn . '))',
+            ] as $filter) {
+                $outcome = $this->directorySearch(
+                    $connection,
+                    $searchBase,
+                    $filter,
+                    $searchAttrs,
+                    'sub',
+                    $maxMembers,
+                    $timeLimit
+                );
+                $this->appendProfilesFromEntries($server, $outcome['entries'], $profiles, $seen, $maxMembers);
+                if ($profiles !== []) {
+                    break;
                 }
-                $loginName = $this->usernameFromEntry($entry['entry'], '');
-                if ($loginName === '') {
-                    continue;
-                }
-                $key = strtolower($loginName);
-                if (isset($seenUsernames[$key])) {
-                    continue;
-                }
-                $seenUsernames[$key] = true;
-                $profiles[] = $this->extractProfile($server, $loginName, $entry['entry'], $entry['dn']);
             }
 
-            foreach ($memberUids as $uid) {
-                $uid = trim($uid);
-                if ($uid === '') {
-                    continue;
+            if ($profiles === []) {
+                $memberDns = $this->groupMemberDns($connection, $groupEntry);
+                $memberUids = $this->attributeValues($groupEntry['entry'], 'memberUid');
+                $toResolve = $memberDns;
+                $visitedGroups = [strtolower($groupEntry['dn']) => true];
+                $depth = 0;
+                $maxDepth = 5;
+
+                while ($toResolve !== [] && count($profiles) < $maxMembers && $depth <= $maxDepth) {
+                    $nextRound = [];
+                    foreach ($toResolve as $memberDn) {
+                        if (count($profiles) >= $maxMembers) {
+                            break;
+                        }
+                        $nested = $this->readEntry(
+                            $connection,
+                            $server,
+                            $memberDn,
+                            array_merge($searchAttrs, ['member', 'uniqueMember', 'memberUid', 'objectClass'])
+                        );
+                        if ($nested === null) {
+                            continue;
+                        }
+                        $isGroup = $this->entryHasObjectClass($nested['entry'], ['group', 'groupOfNames', 'groupOfUniqueNames', 'posixGroup'])
+                            && !$this->isLikelyUserEntry($nested['entry']);
+                        if ($isGroup && $depth < $maxDepth) {
+                            $gKey = strtolower($nested['dn']);
+                            if (!isset($visitedGroups[$gKey])) {
+                                $visitedGroups[$gKey] = true;
+                                $nextRound = array_merge(
+                                    $nextRound,
+                                    $this->attributeValues($nested['entry'], 'member'),
+                                    $this->attributeValues($nested['entry'], 'uniqueMember')
+                                );
+                            }
+                            continue;
+                        }
+                        if (!$this->isLikelyUserEntry($nested['entry'])) {
+                            continue;
+                        }
+                        $this->appendProfilesFromEntries(
+                            $server,
+                            ['count' => 1, 0 => $nested['entry'] + ['dn' => $nested['dn']]],
+                            $profiles,
+                            $seen,
+                            $maxMembers
+                        );
+                    }
+                    $toResolve = $nextRound;
+                    $depth++;
                 }
-                $key = strtolower($uid);
-                if (isset($seenUsernames[$key])) {
-                    continue;
-                }
-                try {
-                    $found = $this->findUserByUsername($connection, $server, $uid);
-                    $loginName = $this->usernameFromEntry($found['entry'], $uid);
-                    $seenUsernames[strtolower($loginName)] = true;
-                    $profiles[] = $this->extractProfile($server, $loginName, $found['entry'], $found['dn']);
-                } catch (Throwable) {
-                    // Skip unresolved posix memberUid values.
+
+                foreach ($memberUids as $uid) {
+                    $uid = trim($uid);
+                    if ($uid === '' || isset($seen[strtolower($uid)])) {
+                        continue;
+                    }
+                    try {
+                        $found = $this->findUserByUsername($connection, $server, $uid);
+                        $entry = $found['entry'];
+                        if (($entry['dn'] ?? '') === '') {
+                            $entry['dn'] = $found['dn'];
+                        }
+                        $this->appendProfilesFromEntries(
+                            $server,
+                            ['count' => 1, 0 => $entry],
+                            $profiles,
+                            $seen,
+                            $maxMembers
+                        );
+                    } catch (Throwable) {
+                        // Skip unresolved posix memberUid values.
+                    }
                 }
             }
 
             if ($profiles === []) {
                 throw new RuntimeException('No user members were found for that LDAP group.');
             }
+
+            usort(
+                $profiles,
+                static function (array $a, array $b): int {
+                    $nameCmp = strcasecmp((string) $a['display_name'], (string) $b['display_name']);
+                    if ($nameCmp !== 0) {
+                        return $nameCmp;
+                    }
+
+                    return strcasecmp((string) $a['username'], (string) $b['username']);
+                }
+            );
 
             return [
                 'dn' => $groupEntry['dn'],
@@ -1156,6 +1194,144 @@ final class LdapAuth
                 @ldap_unbind($connection);
             }
         }
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param array<string, mixed> $server
+     * @return array{entry: array<string, mixed>, dn: string}
+     */
+    private function resolveGroupEntry($connection, array $server, string $groupRef): array
+    {
+        $attrs = ['cn', 'name', 'sAMAccountName', 'member', 'uniqueMember', 'memberUid', 'objectClass', 'distinguishedName'];
+        if ($this->looksLikeDn($groupRef)) {
+            $found = $this->readEntry($connection, $server, $groupRef, $attrs);
+            if ($found === null) {
+                throw new RuntimeException('LDAP group DN was not found: ' . $groupRef);
+            }
+
+            return $found;
+        }
+
+        $escaped = $this->escapeFilter($groupRef);
+        $filter = '(&'
+            . '(|(objectClass=group)(objectClass=groupOfNames)(objectClass=groupOfUniqueNames)(objectClass=posixGroup))'
+            . '(|(cn=' . $escaped . ')(sAMAccountName=' . $escaped . ')(name=' . $escaped . '))'
+            . ')';
+        $base = $this->domainBaseDn($server, trim((string) ($server['user_search_base'] ?? '')));
+        if ($base === '') {
+            throw new RuntimeException('LDAP user search base is not configured, so the group name cannot be resolved. Paste the full group DN instead.');
+        }
+        $outcome = $this->directorySearch(
+            $connection,
+            $base,
+            $filter,
+            $attrs,
+            'sub',
+            8,
+            $this->searchTimeLimit($server)
+        );
+        $count = (int) ($outcome['entries']['count'] ?? 0);
+        if ($count < 1) {
+            throw new RuntimeException('LDAP group was not found: ' . $groupRef . '. Try the full distinguished name.');
+        }
+
+        $exact = null;
+        for ($i = 0; $i < $count; $i++) {
+            $entry = $outcome['entries'][$i] ?? null;
+            if (!is_array($entry)) {
+                continue;
+            }
+            $cn = $this->firstAttribute($entry, 'cn');
+            $sam = $this->firstAttribute($entry, 'sAMAccountName');
+            if (strcasecmp($cn, $groupRef) === 0 || strcasecmp($sam, $groupRef) === 0) {
+                $exact = $entry;
+                break;
+            }
+        }
+        $entry = is_array($exact) ? $exact : (is_array($outcome['entries'][0] ?? null) ? $outcome['entries'][0] : null);
+        if (!is_array($entry)) {
+            throw new RuntimeException('LDAP group was not found: ' . $groupRef);
+        }
+        $dn = (string) ($entry['dn'] ?? '');
+        if ($dn === '') {
+            throw new RuntimeException('LDAP group was not found: ' . $groupRef);
+        }
+
+        return ['entry' => $entry, 'dn' => $dn];
+    }
+
+    /**
+     * @param \LDAP\Connection|resource $connection
+     * @param array{entry: array<string, mixed>, dn: string} $groupEntry
+     * @return list<string>
+     */
+    private function groupMemberDns($connection, array $groupEntry): array
+    {
+        $dns = array_merge(
+            $this->attributeValues($groupEntry['entry'], 'member'),
+            $this->attributeValues($groupEntry['entry'], 'uniqueMember')
+        );
+        if ($dns !== []) {
+            return array_values(array_unique($dns));
+        }
+
+        for ($rangeStart = 0; $rangeStart < 3000; $rangeStart += 1500) {
+            $rangeEnd = $rangeStart + 1499;
+            $rangeAttr = 'member;range=' . $rangeStart . '-' . $rangeEnd;
+            $result = @ldap_read($connection, $groupEntry['dn'], '(objectClass=*)', [$rangeAttr]);
+            if ($result === false) {
+                break;
+            }
+            $entries = @ldap_get_entries($connection, $result);
+            if ($result instanceof \LDAP\Result || is_resource($result)) {
+                @ldap_free_result($result);
+            }
+            if (!is_array($entries) || !isset($entries[0]) || !is_array($entries[0])) {
+                break;
+            }
+            $batch = [];
+            foreach ($entries[0] as $key => $value) {
+                if (!is_string($key) || !is_array($value)) {
+                    continue;
+                }
+                if (stripos($key, 'member;range=') !== 0 && strtolower($key) !== 'member') {
+                    continue;
+                }
+                foreach ($value as $index => $item) {
+                    if ($index === 'count' || !is_string($item) || $item === '') {
+                        continue;
+                    }
+                    $batch[] = $item;
+                }
+            }
+            if ($batch === []) {
+                break;
+            }
+            $dns = array_merge($dns, $batch);
+            if (count($batch) < 1500) {
+                break;
+            }
+        }
+
+        return array_values(array_unique($dns));
+    }
+
+    private function looksLikeDn(string $value): bool
+    {
+        return str_contains($value, ',') && preg_match('/^[a-z][a-z0-9-]*\s*=.+/i', $value) === 1;
+    }
+
+    /** @param array<string, mixed> $server */
+    private function domainBaseDn(array $server, string $fallbackDn = ''): string
+    {
+        foreach ([$fallbackDn, trim((string) ($server['user_search_base'] ?? ''))] as $dn) {
+            if (preg_match_all('/DC=[^,]+/i', $dn, $matches) !== false && $matches[0] !== []) {
+                return implode(',', $matches[0]);
+            }
+        }
+
+        return trim((string) ($server['user_search_base'] ?? ''));
     }
 
     /** @return array<string, mixed> */

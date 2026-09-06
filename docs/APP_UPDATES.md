@@ -46,7 +46,7 @@ Fine-grained tokens need **Contents: Read** and **Metadata: Read** on this repos
 
 The apply step downloads `RiskRegister-*.zip` from the Release when that asset exists. Otherwise it uses GitHub’s source zipball. PHP `curl` and `zip` must be enabled. Composer is only needed when `vendor/` is missing after extract.
 
-If the repository has no Releases yet, the page lists recent commits on the track branch and applies the source zipball for the selected commit.
+If the repository has no newer Release, the page also lists commits on the track branch (and the current git branch, when this folder is a git checkout) that are after the installed version. Those apply via GitHub’s source zipball.
 
 ---
 
@@ -55,7 +55,7 @@ If the repository has no Releases yet, the page lists recent commits on the trac
 | Setting | Default | Notes |
 |---------|---------|--------|
 | GitHub repo | auto from `git remote origin` when Git exists, else `zafrullakhan001/Risk-Assesment` | `owner/name` |
-| Track branch | `main` | Used only when there are no GitHub Releases |
+| Track branch | `main` | Commits on this branch after the installed Release are offered as updates. On a git checkout, the current branch is also checked. |
 | GitHub token | _(empty)_ | Encrypted in `app_settings`. Leave blank on save to keep the current token. |
 
 Optional server environment fallback (used only when no token is saved): `GITHUB_TOKEN` or `GH_TOKEN`.
