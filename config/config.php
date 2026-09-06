@@ -8,7 +8,7 @@ return [
     'template_upload_dir' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'templates',
     'max_upload_bytes' => 5 * 1024 * 1024,
     'max_upload_files' => 10,
-    'max_template_workbooks' => 10,
+    'max_template_workbooks' => 15,
     'max_template_prompt_bytes' => 512 * 1024,
     'allowed_extensions' => ['xlsx'],
     'allowed_mime_types' => [

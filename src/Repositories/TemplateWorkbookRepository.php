@@ -8,7 +8,7 @@ use PDO;
 
 final class TemplateWorkbookRepository
 {
-    public const MAX_TEMPLATES = 10;
+    public const MAX_TEMPLATES = 15;
     public const MAX_MERMAID_TITLE_LENGTH = 200;
     public const MAX_MERMAID_SOURCE_LENGTH = 50000;
 

@@ -221,7 +221,7 @@ HTML,
                     'id' => 'template-library',
                     'title' => 'Template library',
                     'html' => <<<'HTML'
-<p>The <a href="templates.php">Template library</a> holds blank workbooks anyone signed in can download. Capacity is limited (default 10 slots).</p>
+<p>The <a href="templates.php">Template library</a> holds blank workbooks anyone signed in can download. Capacity is limited (default 15 slots).</p>
 <p>Each template can include:</p>
 <ul>
 <li>An Excel workbook (<code>.xlsx</code>).</li>
