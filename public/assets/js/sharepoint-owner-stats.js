@@ -21,6 +21,17 @@
 
   const escapeAttr = (value) => escapeHtml(value).replace(/\r?\n/g, '&#10;');
 
+  const highlightQuery = (text) => {
+    const raw = String(text ?? '');
+    const query = state.ownerQuery.trim();
+    if (!query) return escapeHtml(raw);
+    const lower = raw.toLowerCase();
+    const needle = query.toLowerCase();
+    const idx = lower.indexOf(needle);
+    if (idx < 0) return escapeHtml(raw);
+    return `${escapeHtml(raw.slice(0, idx))}<mark class="sp-od-mark">${escapeHtml(raw.slice(idx, idx + query.length))}</mark>${escapeHtml(raw.slice(idx + query.length))}`;
+  };
+
   const ownerColor = (hue, alpha = 1) =>
     `hsla(${Number(hue) || 200}, 62%, 46%, ${alpha})`;
 
@@ -107,7 +118,7 @@
           .join(' · ');
         return `<li>
           <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}">
-            <strong>${escapeHtml(project.project_name)}</strong>
+            <strong>${highlightQuery(project.project_name)}</strong>
             <span>${escapeHtml(meta)}</span>
           </button>
           ${
@@ -231,12 +242,21 @@
     return map;
   };
 
+  const queryHaystack = (...parts) =>
+    parts
+      .map((part) => String(part || '').toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+
   const filteredProjects = () => {
     const owners = state.data?.owners || [];
+    const query = state.ownerQuery.trim().toLowerCase();
     const rows = [];
     owners.forEach((owner) => {
+      const ownerMatches = !query || queryHaystack(owner.name, owner.initials).includes(query);
       (owner.projects || []).forEach((project) => {
         if (state.year !== 'all' && project.year !== state.year) return;
+        if (query && !ownerMatches && !queryHaystack(project.project_name).includes(query)) return;
         rows.push({ ...project, owner_key: owner.key, owner_name: owner.name, hue: owner.hue });
       });
     });
@@ -284,10 +304,7 @@
     });
 
     const owners = Object.values(ownerMap).sort((a, b) => b.project_count - a.project_count || a.name.localeCompare(b.name));
-    const query = state.ownerQuery.trim().toLowerCase();
-    const visibleOwners = query
-      ? owners.filter((owner) => owner.name.toLowerCase().includes(query) || owner.initials.toLowerCase().includes(query))
-      : owners;
+    const visibleOwners = owners;
 
     const grainKeys =
       state.grain === 'year'
@@ -382,7 +399,7 @@
           <span class="sp-od-avatar" style="--hue:${owner.hue}; --share:${share}">
             <span>${escapeHtml(owner.initials)}</span>
           </span>
-          <span class="sp-od-portrait-name">${escapeHtml(owner.name)}</span>
+          <span class="sp-od-portrait-name">${highlightQuery(owner.name)}</span>
           <span class="sp-od-portrait-count">${owner.project_count} project${owner.project_count === 1 ? '' : 's'}</span>
         </button>`;
       })
@@ -411,7 +428,7 @@
     const padR = 12;
     const width = padL + padR + view.periods.length * (barW + gap);
     const height = chartH + labelH + 8;
-    const selected = state.ownerKey;
+    const selected = view.selected?.key || '';
     const focusMax = selected
       ? Math.max(1, ...view.periods.map((key) => view.byPeriod[key]?.owners?.[selected] || 0))
       : maxTotal;
@@ -509,7 +526,7 @@
   const renderLeaderboard = (view) => {
     const max = view.visibleOwners[0]?.project_count || 1;
     if (!view.visibleOwners.length) {
-      return `<div class="sp-od-empty">No owners match this filter.</div>`;
+      return `<div class="sp-od-empty">No people or projects match this filter.</div>`;
     }
     return `<div class="sp-od-board">
       <div class="sp-od-board-head">
@@ -525,7 +542,7 @@
                 <span class="sp-od-rank-n">${index + 1}</span>
                 <span class="sp-od-avatar sp-od-avatar-sm" style="--hue:${owner.hue}; --share:1"><span>${escapeHtml(owner.initials)}</span></span>
                 <span class="sp-od-rank-copy">
-                  <strong>${escapeHtml(owner.name)}</strong>
+                  <strong>${highlightQuery(owner.name)}</strong>
                   <span>${owner.project_count} project${owner.project_count === 1 ? '' : 's'}${owner.last_created ? ` · last ${escapeHtml(formatDay(owner.last_created))}` : ''}</span>
                 </span>
                 <span class="sp-od-rank-bar"><i style="width:${pct}%; background:${ownerColor(owner.hue)}"></i></span>
@@ -539,7 +556,7 @@
   };
 
   const renderHeatmap = (view) => {
-    const rows = view.owners.slice(0, HEATMAP_OWNERS);
+    const rows = view.visibleOwners.slice(0, HEATMAP_OWNERS);
     if (!rows.length || !view.periods.length) return '';
     const maxCell = Math.max(
       1,
@@ -606,7 +623,7 @@
                   <th scope="row">
                     <button type="button" class="sp-od-heat-owner" data-owner-key="${escapeHtml(owner.key)}">
                       <span class="sp-od-swatch" style="background:${ownerColor(owner.hue)}"></span>
-                      ${escapeHtml(owner.name)}
+                      ${highlightQuery(owner.name)}
                     </button>
                   </th>
                   ${view.periods
@@ -679,7 +696,7 @@
       <div class="sp-od-detail-head">
         <span class="sp-od-avatar" style="--hue:${owner.hue}; --share:1"><span>${escapeHtml(owner.initials)}</span></span>
         <div>
-          <h3>${escapeHtml(owner.name)}</h3>
+          <h3>${highlightQuery(owner.name)}</h3>
           <p>${owner.project_count} project folder${owner.project_count === 1 ? '' : 's'} · ${escapeHtml(sourceBits.join(', ') || 'Selected catalogs')}</p>
         </div>
         <button type="button" class="button ghost" id="sp-owner-clear" title="Clear owner filter">Clear</button>
@@ -704,7 +721,7 @@
                         .map(
                           (project) => `<li>
                             <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}">
-                              <strong>${escapeHtml(project.project_name)}</strong>
+                              <strong>${highlightQuery(project.project_name)}</strong>
                               <span>${escapeHtml(project.source_title || '')}${project.date_created ? ` · ${escapeHtml(formatDay(project.date_created))}` : ''}</span>
                             </button>
                             ${
@@ -752,6 +769,8 @@
       <p class="sp-od-context">${view.total} project${view.total === 1 ? '' : 's'} across ${escapeHtml(folderNote)}${
         view.unknownDate ? ` · ${view.unknownDate} without a created date` : ''
       }${view.clippedMonths ? ' · chart shows the last 36 months' : ''}${
+        state.ownerQuery.trim() ? ` · matching “${escapeHtml(state.ownerQuery.trim())}”` : ''
+      }${
         state.ownerKey && view.selected ? ` · focused on ${escapeHtml(view.selected.name)}` : ''
       }</p>
       ${renderKpis(view)}

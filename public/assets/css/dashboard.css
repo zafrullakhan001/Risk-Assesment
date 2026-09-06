@@ -8892,6 +8892,49 @@ html.is-compact .site-footer {
     flex-shrink: 0;
 }
 
+/* Collapsible catalog search + results cards */
+.sharepoint-catalog-shell,
+.sharepoint-catalog-table-shell {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+}
+.sharepoint-catalog-shell > summary,
+.sharepoint-catalog-table-shell > summary {
+    list-style: none;
+    cursor: pointer;
+}
+.sharepoint-catalog-shell > summary::-webkit-details-marker,
+.sharepoint-catalog-table-shell > summary::-webkit-details-marker {
+    display: none;
+}
+.sharepoint-catalog-summary {
+    display: flex;
+}
+.sharepoint-catalog-body {
+    padding-top: 0.15rem;
+}
+.sharepoint-catalog-shell[open] .sharepoint-sources-collapse-hint::before,
+.sharepoint-catalog-table-shell[open] .sharepoint-sources-collapse-hint::before {
+    content: "Collapse";
+}
+.sharepoint-catalog-shell:not([open]) .sharepoint-sources-collapse-hint::before,
+.sharepoint-catalog-table-shell:not([open]) .sharepoint-sources-collapse-hint::before {
+    content: "Expand";
+}
+.sharepoint-catalog-table-shell:not([open]) .sharepoint-table-toolbar {
+    margin-bottom: 0;
+}
+.sharepoint-catalog-solo-page .sharepoint-catalog-summary,
+.sharepoint-catalog-solo-page .sharepoint-catalog-table-summary {
+    cursor: default;
+}
+.sharepoint-catalog-solo-page .sharepoint-catalog-shell:not([open]) .sharepoint-catalog-body,
+.sharepoint-catalog-solo-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-catalog-table-body {
+    display: block;
+}
+
 /* Compact catalog search card: hide help copy and tighten spacing */
 #sharepoint-search.is-compact-chrome,
 #sharepoint-search[data-catalog-density="compact"] {
@@ -8901,6 +8944,9 @@ html.is-compact .site-footer {
 #sharepoint-search.is-compact-chrome .sharepoint-search-head {
     align-items: center;
     gap: 0.35rem 0.85rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-catalog-body {
+    padding-top: 0;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-intro h2,
 #sharepoint-search.is-compact-chrome #sharepoint-search-heading {
@@ -12537,8 +12583,8 @@ html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"
 }
 .sp-od-search-toolbar {
     position: relative;
-    flex: 0 1 16rem;
-    min-width: 12rem;
+    flex: 0 1 18rem;
+    min-width: 14rem;
     margin-left: auto;
 }
 .sp-od-search-ico {
@@ -12553,6 +12599,13 @@ html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"
     width: 100%;
     min-width: 0;
     padding-left: 2.1rem;
+}
+.sp-od-mark {
+    background: color-mix(in srgb, var(--primary, #0e7490) 18%, #fde68a);
+    color: inherit;
+    padding: 0 0.12em;
+    border-radius: 0.2em;
+    font: inherit;
 }
 .sp-od-scopes {
     margin: 0 0 0.9rem;

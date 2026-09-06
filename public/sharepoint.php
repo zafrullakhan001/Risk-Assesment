@@ -1186,9 +1186,9 @@ $soloPageClass = $ownerSolo
                                 </select>
                             </label>
                             <label class="sp-od-search sp-od-search-toolbar">
-                                <span class="visually-hidden">Filter owners</span>
+                                <span class="visually-hidden">Filter people or project names</span>
                                 <span class="sp-od-search-ico" aria-hidden="true">🔍</span>
-                                <input type="search" id="sp-owner-query" placeholder="Filter people…" autocomplete="off">
+                                <input type="search" id="sp-owner-query" placeholder="Filter people or projects…" autocomplete="off">
                             </label>
                         </div>
                         <?php if (count($allSources) > 0): ?>
@@ -1266,12 +1266,13 @@ $soloPageClass = $ownerSolo
                      data-project-count="<?= (int) $projectCount ?>"
                      data-last-synced="<?= e($activeLastSynced) ?>"
                      data-last-status="<?= e($activeLastStatus) ?>">
-                <div class="sharepoint-search-head">
+                <details class="sharepoint-catalog-shell" id="sharepoint-catalog-shell" open>
+                    <summary class="sharepoint-search-head sharepoint-catalog-summary">
                     <div class="sharepoint-search-intro">
                         <h2 id="sharepoint-search-heading">🔎 <?= e($activeTitle) ?></h2>
                         <p>Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on.</p>
                     </div>
-                    <div class="sharepoint-search-head-tools">
+                    <div class="sharepoint-search-head-tools" data-no-toggle onclick="event.stopPropagation()">
                         <div class="sp-view-toggle sharepoint-catalog-view-toggle" role="group" aria-label="Catalog layout">
                             <button type="button" class="sp-view-btn" data-catalog-density="comfort" title="Show the full search card" aria-pressed="false">Comfort</button>
                             <button type="button" class="sp-view-btn is-active" data-catalog-density="compact" title="Shrink the search card so the project list has more room" aria-pressed="true">Compact</button>
@@ -1281,9 +1282,11 @@ $soloPageClass = $ownerSolo
                         <?php else: ?>
                             <a class="button ghost-light" id="sp-catalog-open-tab" href="<?= e($catalogDashUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open this catalog in a new browser tab">↗ New tab</a>
                             <button type="button" class="button ghost" id="sp-catalog-open-window" title="Open this catalog in a separate window">🗗 Window</button>
+                            <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
                         <?php endif; ?>
                     </div>
-                </div>
+                    </summary>
+                    <div class="sharepoint-catalog-body">
                 <?php if (count($allSources) > 1): ?>
                     <div class="sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
                         <div class="sharepoint-search-scopes-head">
@@ -1357,12 +1360,15 @@ $soloPageClass = $ownerSolo
                         (<?= e($activeLastStatus !== '' ? $activeLastStatus : 'unknown') ?>)
                     <?php endif; ?>
                 </p>
+                    </div>
+                </details>
             </section>
 
             <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact">
-                <div class="sharepoint-table-toolbar">
+                <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
+                    <summary class="sharepoint-table-toolbar sharepoint-catalog-table-summary">
                     <span class="result-count" id="sharepoint-result-count">Showing <?= (int) $from ?>–<?= (int) $to ?> of <?= (int) $matchedProjectCount ?></span>
-                    <div class="sharepoint-table-toolbar-tools">
+                    <div class="sharepoint-table-toolbar-tools" data-no-toggle onclick="event.stopPropagation()">
                         <div class="sp-view-toggle" role="group" aria-label="Row density">
                             <button type="button" class="sp-view-btn" data-list-density="comfort" title="Taller rows with badges under the name" aria-pressed="false">Comfort</button>
                             <button type="button" class="sp-view-btn is-active" data-list-density="compact" title="Shrink rows to a single line" aria-pressed="true">Compact</button>
@@ -1373,8 +1379,12 @@ $soloPageClass = $ownerSolo
                             <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
                             <button type="button" class="button ghost" id="sharepoint-compare-clear" hidden>Clear selection</button>
                         </div>
+                        <?php if (!$catalogSolo): ?>
+                            <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
+                        <?php endif; ?>
                     </div>
-                </div>
+                    </summary>
+                    <div class="sharepoint-catalog-table-body">
                 <div class="table-wrap sharepoint-projects-wrap">
                     <table class="sharepoint-projects-table" id="sharepoint-projects-table">
                         <thead>
@@ -1557,6 +1567,8 @@ $soloPageClass = $ownerSolo
                         </label>
                     </form>
                 </nav>
+                    </div>
+                </details>
             </section>
 
             <dialog class="response-dialog sharepoint-project-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-project-dialog" aria-labelledby="sharepoint-project-dialog-title" data-density="compact">

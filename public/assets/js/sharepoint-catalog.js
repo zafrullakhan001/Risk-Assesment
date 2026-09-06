@@ -992,7 +992,8 @@
     if (!card || card.dataset.densityBound === '1') return;
     card.dataset.densityBound = '1';
     card.querySelectorAll('.sp-view-btn[data-list-density]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
         applyListDensity(btn.getAttribute('data-list-density') || 'compact');
       });
     });
@@ -1032,7 +1033,8 @@
     if (!card || card.dataset.catalogDensityBound === '1') return;
     card.dataset.catalogDensityBound = '1';
     card.querySelectorAll('.sp-view-btn[data-catalog-density]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
         applyCatalogDensity(btn.getAttribute('data-catalog-density') || 'compact');
       });
     });
@@ -4157,6 +4159,7 @@
   };
 
   document.getElementById('sp-catalog-open-tab')?.addEventListener('click', (event) => {
+    event.stopPropagation();
     const link = event.currentTarget;
     if (link instanceof HTMLAnchorElement) {
       link.href = catalogPageUrl();
@@ -4165,6 +4168,7 @@
 
   document.getElementById('sp-catalog-open-window')?.addEventListener('click', (event) => {
     event.preventDefault();
+    event.stopPropagation();
     const features =
       'popup=yes,width=1480,height=920,left=40,top=40,menubar=no,toolbar=no,location=yes,status=yes,resizable=yes,scrollbars=yes';
     const win = window.open(catalogPageUrl(), 'riskregister-sp-catalog', features);
@@ -4364,4 +4368,55 @@
     input.addEventListener('change', syncToggle);
     syncToggle();
   });
+})();
+
+(() => {
+  const SEARCH_KEY = 'ra-sp-catalog-search-open';
+  const TABLE_KEY = 'ra-sp-catalog-table-open';
+  const searchRoot = document.getElementById('sharepoint-search');
+  const searchShell = document.getElementById('sharepoint-catalog-shell');
+  const tableShell = document.getElementById('sharepoint-catalog-table-shell');
+  const catalogSolo = searchRoot?.getAttribute('data-solo') === '1';
+
+  const bindCatalogShell = (shell, storageKey, forceOpen) => {
+    if (!shell) return;
+    const summary = shell.querySelector(':scope > summary');
+    shell.querySelectorAll('[data-no-toggle]').forEach((el) => {
+      el.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      el.addEventListener('pointerdown', (event) => event.stopPropagation());
+    });
+    summary?.addEventListener('click', (event) => {
+      if (event.target.closest('[data-no-toggle], a, button, input, select, label')) {
+        event.preventDefault();
+      }
+    });
+    if (catalogSolo) {
+      shell.open = true;
+      shell.addEventListener('toggle', () => {
+        if (!shell.open) shell.open = true;
+      });
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (forceOpen || saved === '1') shell.open = true;
+      else if (saved === '0') shell.open = false;
+    } catch {
+      /* ignore */
+    }
+    shell.addEventListener('toggle', () => {
+      try {
+        localStorage.setItem(storageKey, shell.open ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+    });
+  };
+
+  const hash = window.location.hash;
+  bindCatalogShell(searchShell, SEARCH_KEY, hash === '#sharepoint-search');
+  bindCatalogShell(tableShell, TABLE_KEY, hash === '#sharepoint-table-card');
 })();
