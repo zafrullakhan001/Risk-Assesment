@@ -404,7 +404,8 @@ final class Auth
         if ($next[0] === '/') {
             return 'index.php';
         }
-        if (preg_match('#^(?:admin/)?[A-Za-z0-9._-]+\.php(?:[?#][A-Za-z0-9._/?&=%-]*)?$#', $next) !== 1) {
+        // Use ~ delimiter: the pattern allows "#" in the query/hash part.
+        if (preg_match('~^(?:admin/)?[A-Za-z0-9._-]+\.php(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) !== 1) {
             return 'index.php';
         }
 
