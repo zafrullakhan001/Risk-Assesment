@@ -360,7 +360,7 @@ HTML,
                     'html' => <<<'HTML'
 <p>The <strong>Admin</strong> link appears in the top bar for administrators. Open <a href="admin/index.php">Admin overview</a>.</p>
 <ul>
-<li><strong>Users</strong> — create, approve, disable, promote, reset local passwords, search LDAP, inspect directory details, review the audit log. LDAP details never include passwords.</li>
+<li><strong>Users</strong> — create, approve, disable, promote, reset local passwords, bulk-select and delete, search LDAP, import a directory group, inspect directory details, review the audit log. LDAP details never include passwords.</li>
 <li><strong>Authentication</strong> — turn local and LDAP on or off, configure directory servers, test the bind.</li>
 <li><strong>Branding</strong> — title, subtitle, hero text, logo, favicon, footer.</li>
 <li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore. Treat backup files as secrets if encryption is on.</li>

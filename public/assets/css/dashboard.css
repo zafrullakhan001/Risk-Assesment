@@ -5637,6 +5637,20 @@ body.is-presentation .print-only-block { display: block; }
     align-items: center;
 }
 
+.admin-page .user-bulk-bar {
+    margin: 0 0 12px;
+}
+
+.button.ghost.is-danger {
+    color: var(--risk);
+    border-color: color-mix(in srgb, var(--risk) 35%, var(--line));
+}
+
+.button.ghost.is-danger:hover,
+.button.ghost.is-danger:focus-visible {
+    background: var(--risk-soft);
+}
+
 .user-actions > form {
     margin: 0;
 }

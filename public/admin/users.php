@@ -32,6 +32,97 @@ $ldapSearchResults = null;
  *   attributes: array<string, string|list<string>>
  * }|null $ldapUserDetails */
 $ldapUserDetails = null;
+/** @var array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>}|null $ldapGroupPreview */
+$ldapGroupPreview = null;
+$ldapGroupQuery = '';
+
+/**
+ * @param list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}> $members
+ * @param list<string> $onlyUsernames
+ * @return array{created: int, updated: int, skipped: int, failures: list<string>}
+ */
+function admin_provision_ldap_members(
+    \RiskAssessment\Repositories\UserRepository $usersRepo,
+    array $currentUser,
+    array $group,
+    array $members,
+    array $onlyUsernames,
+    bool $makeAdmin
+): array {
+    $allow = [];
+    foreach ($onlyUsernames as $name) {
+        $name = strtolower(trim((string) $name));
+        if ($name !== '') {
+            $allow[$name] = true;
+        }
+    }
+
+    $created = 0;
+    $updated = 0;
+    $skipped = 0;
+    $failures = [];
+    foreach ($members as $profile) {
+        $username = (string) ($profile['username'] ?? '');
+        if ($username === '') {
+            $skipped++;
+            continue;
+        }
+        if ($allow !== [] && !isset($allow[strtolower($username)])) {
+            continue;
+        }
+        try {
+            $existing = $usersRepo->findByUsernameOrEmail($username);
+            if ($existing === null && ($profile['email'] ?? '') !== '') {
+                $existing = $usersRepo->findByUsernameOrEmail((string) $profile['email']);
+            }
+            if ($existing !== null && ($existing['auth_source'] ?? '') === 'local') {
+                $skipped++;
+                $failures[] = $username . ' (local account exists)';
+                continue;
+            }
+            $wasExisting = $existing !== null;
+            $user = $usersRepo->upsertLdapUser(
+                $profile,
+                true,
+                true,
+                true,
+                (int) $currentUser['id'],
+                (string) $currentUser['username']
+            );
+            if ($makeAdmin) {
+                $usersRepo->setAdmin((int) $user['id'], true);
+                $usersRepo->setApproved((int) $user['id'], true);
+            }
+            if ($wasExisting) {
+                $updated++;
+            } else {
+                $created++;
+            }
+            $usersRepo->logAudit(
+                $wasExisting ? 'user.ldap_refreshed' : 'user.ldap_provisioned',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                (int) $user['id'],
+                (string) $user['username'],
+                [
+                    'admin' => $makeAdmin,
+                    'group_dn' => $group['dn'] ?? '',
+                    'group_name' => $group['name'] ?? '',
+                ]
+            );
+        } catch (Throwable $memberException) {
+            $skipped++;
+            $failures[] = $username . ' (' . $memberException->getMessage() . ')';
+        }
+    }
+
+    return [
+        'created' => $created,
+        'updated' => $updated,
+        'skipped' => $skipped,
+        'failures' => $failures,
+    ];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -178,94 +269,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ldapSearchResults = null;
                 }
             }
-        } elseif ($action === 'create_ldap_group') {
+        } elseif ($action === 'preview_ldap_group' || $action === 'create_ldap_group' || $action === 'import_ldap_group_selected') {
             if (!$ldapEnabled) {
                 throw new RuntimeException('Enable LDAP under Authentication before importing directory groups.');
             }
-            $groupDn = trim((string) ($_POST['ldap_group_dn'] ?? ''));
+            $groupRef = trim((string) ($_POST['ldap_group_dn'] ?? ''));
+            $ldapGroupQuery = $groupRef;
             $makeAdmin = !empty($_POST['is_admin']);
-            if ($groupDn === '') {
-                throw new RuntimeException('Enter the full LDAP group DN.');
+            if ($groupRef === '') {
+                throw new RuntimeException('Enter an LDAP group DN, CN, or sAMAccountName.');
             }
-            if (!preg_match('/[=,]/', $groupDn)) {
-                throw new RuntimeException('Enter the complete group DN, for example CN=RiskUsers,OU=Groups,DC=example,DC=com.');
+            $group = $ldap->lookupGroupMembers($groupRef);
+            $ldapGroupPreview = $group;
+
+            if ($action === 'preview_ldap_group') {
+                $flash = count($group['members']) . ' member'
+                    . (count($group['members']) === 1 ? '' : 's')
+                    . ' found in “' . $group['name'] . '”. Select people to add, or import all.';
+            } else {
+                $only = [];
+                if ($action === 'import_ldap_group_selected') {
+                    $rawSelected = $_POST['ldap_usernames'] ?? [];
+                    if (!is_array($rawSelected)) {
+                        $rawSelected = [];
+                    }
+                    foreach ($rawSelected as $name) {
+                        $name = trim((string) $name);
+                        if ($name !== '') {
+                            $only[] = $name;
+                        }
+                    }
+                    if ($only === []) {
+                        throw new RuntimeException('Select at least one group member to import.');
+                    }
+                }
+                $result = admin_provision_ldap_members(
+                    $usersRepo,
+                    $currentUser,
+                    $group,
+                    $group['members'],
+                    $only,
+                    $makeAdmin
+                );
+                $usersRepo->logAudit(
+                    'user.ldap_group_imported',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    $group['name'],
+                    [
+                        'group_dn' => $group['dn'],
+                        'created' => $result['created'],
+                        'updated' => $result['updated'],
+                        'skipped' => $result['skipped'],
+                        'admin' => $makeAdmin,
+                        'selected' => $only,
+                    ]
+                );
+                $flash = 'Imported LDAP group “' . $group['name'] . '”: '
+                    . $result['created'] . ' added, '
+                    . $result['updated'] . ' updated'
+                    . ($result['skipped'] > 0 ? ', ' . $result['skipped'] . ' skipped' : '')
+                    . '.';
+                if ($result['failures'] !== [] && count($result['failures']) <= 8) {
+                    $flash .= ' Notes: ' . implode('; ', $result['failures']) . '.';
+                } elseif ($result['failures'] !== []) {
+                    $flash .= ' Some members were skipped (see audit log details).';
+                }
             }
-            $group = $ldap->lookupGroupMembers($groupDn);
-            $created = 0;
-            $updated = 0;
-            $skipped = 0;
-            $failures = [];
-            foreach ($group['members'] as $profile) {
-                $username = (string) ($profile['username'] ?? '');
-                if ($username === '') {
-                    $skipped++;
+        } elseif ($action === 'bulk_delete_users') {
+            $rawIds = $_POST['user_ids'] ?? [];
+            if (!is_array($rawIds)) {
+                $rawIds = [];
+            }
+            $ids = [];
+            foreach ($rawIds as $rawId) {
+                $id = (int) $rawId;
+                if ($id > 0) {
+                    $ids[$id] = $id;
+                }
+            }
+            $ids = array_values($ids);
+            if ($ids === []) {
+                throw new RuntimeException('Select at least one user to delete.');
+            }
+            $deleted = 0;
+            $skipped = [];
+            foreach ($ids as $id) {
+                $row = $usersRepo->findById($id);
+                if ($row === null) {
                     continue;
                 }
-                try {
-                    $existing = $usersRepo->findByUsernameOrEmail($username);
-                    if ($existing !== null && ($existing['auth_source'] ?? '') === 'local') {
-                        $skipped++;
-                        $failures[] = $username . ' (local account exists)';
-                        continue;
-                    }
-                    $wasExisting = $existing !== null;
-                    $user = $usersRepo->upsertLdapUser(
-                        $profile,
-                        true,
-                        true,
-                        true,
-                        (int) $currentUser['id'],
-                        (string) $currentUser['username']
-                    );
-                    if ($makeAdmin) {
-                        $usersRepo->setAdmin((int) $user['id'], true);
-                        $usersRepo->setApproved((int) $user['id'], true);
-                    }
-                    if ($wasExisting) {
-                        $updated++;
-                    } else {
-                        $created++;
-                    }
-                    $usersRepo->logAudit(
-                        $wasExisting ? 'user.ldap_refreshed' : 'user.ldap_provisioned',
-                        (int) $currentUser['id'],
-                        (string) $currentUser['username'],
-                        (int) $user['id'],
-                        (string) $user['username'],
-                        [
-                            'admin' => $makeAdmin,
-                            'group_dn' => $group['dn'],
-                            'group_name' => $group['name'],
-                        ]
-                    );
-                } catch (Throwable $memberException) {
-                    $skipped++;
-                    $failures[] = $username . ' (' . $memberException->getMessage() . ')';
+                if ((int) $row['id'] === (int) $currentUser['id']) {
+                    $skipped[] = (string) $row['username'] . ' (your account)';
+                    continue;
                 }
+                if (!empty($row['is_admin']) && $usersRepo->countAdmins() <= 1) {
+                    $skipped[] = (string) $row['username'] . ' (last administrator)';
+                    continue;
+                }
+                $usersRepo->delete($id);
+                $usersRepo->logAudit(
+                    'user.deleted',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    $id,
+                    (string) $row['username'],
+                    ['bulk' => true]
+                );
+                $deleted++;
             }
-            $usersRepo->logAudit(
-                'user.ldap_group_imported',
-                (int) $currentUser['id'],
-                (string) $currentUser['username'],
-                null,
-                $group['name'],
-                [
-                    'group_dn' => $group['dn'],
-                    'created' => $created,
-                    'updated' => $updated,
-                    'skipped' => $skipped,
-                    'admin' => $makeAdmin,
-                ]
-            );
-            $flash = 'Imported LDAP group “' . $group['name'] . '”: '
-                . $created . ' added, '
-                . $updated . ' updated'
-                . ($skipped > 0 ? ', ' . $skipped . ' skipped' : '')
-                . '.';
-            if ($failures !== [] && count($failures) <= 8) {
-                $flash .= ' Notes: ' . implode('; ', $failures) . '.';
-            } elseif ($failures !== []) {
-                $flash .= ' Some members were skipped (see audit log details).';
+            $flash = $deleted . ' user' . ($deleted === 1 ? '' : 's') . ' deleted.';
+            if ($skipped !== []) {
+                $flash .= ' Skipped: ' . implode(', ', $skipped) . '.';
             }
         } elseif ($target === null) {
             throw new RuntimeException('Select a valid user.');
@@ -829,33 +945,108 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <?php endif; ?>
             </section>
 
-            <section class="upload-card settings-card">
+            <section class="upload-card settings-card" id="add-ldap-group">
                 <h2><span class="settings-emoji" aria-hidden="true">👥</span> Add LDAP group</h2>
                 <?php if (!$ldapEnabled): ?>
                     <p class="settings-hint">LDAP is disabled. Configure and enable it under <a href="authentication.php">Authentication</a> first.</p>
                 <?php else: ?>
-                    <p>Paste the group’s full distinguished name. Every user member (and one level of nested group members) is provisioned as an approved LDAP account.</p>
-                    <form method="post" class="settings-form user-create-form">
+                    <p>Look up a directory group by full DN, CN, or sAMAccountName. Preview the members, then import selected people or the whole group as approved LDAP accounts.</p>
+                    <form method="post" class="settings-form user-create-form" action="#add-ldap-group">
                         <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="create_ldap_group">
                         <fieldset class="settings-fieldset settings-tone-violet">
-                            <legend><span class="settings-emoji" aria-hidden="true">🧾</span> Group DN</legend>
-                            <p class="settings-hint">Example: <code>CN=Risk Register Users,OU=Security Groups,DC=contoso,DC=com</code></p>
+                            <legend><span class="settings-emoji" aria-hidden="true">🧾</span> Directory group</legend>
+                            <p class="settings-hint">Examples: <code>Risk Register Users</code> or <code>CN=Risk Register Users,OU=Groups,DC=multihosp,DC=net</code></p>
                             <div class="settings-grid">
                                 <label class="settings-field settings-span-all">
-                                    <span><span class="settings-emoji" aria-hidden="true">🏷️</span> Complete group DN</span>
-                                    <input type="text" name="ldap_group_dn" required maxlength="512" autocomplete="off" placeholder="CN=Group Name,OU=Groups,DC=example,DC=com">
+                                    <span><span class="settings-emoji" aria-hidden="true">🏷️</span> Group DN, CN, or sAMAccountName</span>
+                                    <input type="text" name="ldap_group_dn" required maxlength="512" autocomplete="off" placeholder="CN=Group Name,OU=Groups,DC=example,DC=com" value="<?= e($ldapGroupQuery !== '' ? $ldapGroupQuery : (string) ($_POST['ldap_group_dn'] ?? '')) ?>">
                                 </label>
                                 <label class="remember-row settings-span-all">
-                                    <input type="checkbox" name="is_admin" value="1">
-                                    <span><span class="settings-emoji" aria-hidden="true">🛡️</span> Make all imported members administrators</span>
+                                    <input type="checkbox" name="is_admin" value="1" <?= !empty($_POST['is_admin']) ? 'checked' : '' ?>>
+                                    <span><span class="settings-emoji" aria-hidden="true">🛡️</span> Make imported members administrators</span>
                                 </label>
                             </div>
                         </fieldset>
                         <div class="settings-actions">
-                            <button type="submit" class="button button-primary">➕ Import group members</button>
+                            <button type="submit" class="button ghost" name="action" value="preview_ldap_group">🔎 Preview members</button>
+                            <button type="submit" class="button button-primary" name="action" value="create_ldap_group">➕ Import all members</button>
                         </div>
                     </form>
+                    <?php if (is_array($ldapGroupPreview)): ?>
+                        <?php $groupMembers = $ldapGroupPreview['members']; ?>
+                        <form method="post" class="settings-form" action="#add-ldap-group" id="ldap-group-import-form" style="margin-top: 1rem;">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="import_ldap_group_selected">
+                            <input type="hidden" name="ldap_group_dn" value="<?= e((string) $ldapGroupPreview['dn']) ?>">
+                            <?php if (!empty($_POST['is_admin'])): ?>
+                                <input type="hidden" name="is_admin" value="1">
+                            <?php endif; ?>
+                            <div class="bulk-response-bar user-bulk-bar">
+                                <label class="bulk-select-all">
+                                    <input type="checkbox" class="js-bulk-select-all" data-bulk-form="ldap-group-import-form" title="Select all listed members">
+                                    <span>Select all</span>
+                                </label>
+                                <span class="bulk-selected-count" data-bulk-count="ldap-group-import-form">0 selected</span>
+                                <button type="submit" class="button button-primary">➕ Add selected</button>
+                            </div>
+                            <p class="settings-hint">
+                                Group <strong><?= e((string) $ldapGroupPreview['name']) ?></strong>
+                                · <?= e((string) count($groupMembers)) ?> member<?= count($groupMembers) === 1 ? '' : 's' ?>
+                                · <span class="table-sub"><?= e((string) $ldapGroupPreview['dn']) ?></span>
+                            </p>
+                            <div class="admin-table-wrap">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-select">Select</th>
+                                            <th>Name</th>
+                                            <th>Username</th>
+                                            <th>Email</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($groupMembers as $member): ?>
+                                            <?php
+                                            $hitUser = $usersRepo->findByUsernameOrEmail($member['username']);
+                                            if ($hitUser === null && $member['email'] !== '') {
+                                                $hitUser = $usersRepo->findByUsernameOrEmail($member['email']);
+                                            }
+                                            $alreadyLdap = $hitUser !== null && ($hitUser['auth_source'] ?? '') === 'ldap';
+                                            $alreadyLocal = $hitUser !== null && ($hitUser['auth_source'] ?? '') === 'local';
+                                            ?>
+                                            <tr>
+                                                <td class="col-select">
+                                                    <?php if ($alreadyLocal): ?>
+                                                        <span class="settings-hint">—</span>
+                                                    <?php else: ?>
+                                                        <input type="checkbox" name="ldap_usernames[]" value="<?= e($member['username']) ?>" <?= $alreadyLdap ? '' : 'checked' ?>>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <strong><?= e($member['display_name'] !== '' ? $member['display_name'] : $member['username']) ?></strong>
+                                                    <?php if ($member['dn'] !== ''): ?>
+                                                        <span class="table-sub"><?= e($member['dn']) ?></span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><?= e($member['username']) ?></td>
+                                                <td><?= e($member['email'] !== '' ? $member['email'] : '—') ?></td>
+                                                <td>
+                                                    <?php if ($alreadyLdap): ?>
+                                                        <span class="token-ok">Already added</span>
+                                                    <?php elseif ($alreadyLocal): ?>
+                                                        <span class="token-needed">Local account exists</span>
+                                                    <?php else: ?>
+                                                        <span class="token-needed">Not in app</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </form>
+                    <?php endif; ?>
                 <?php endif; ?>
             </section>
 
@@ -895,10 +1086,23 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         of <?= e((string) $userTotal) ?>
                         <?= $userQuery !== '' ? ' matching' : '' ?> user<?= $userTotal === 1 ? '' : 's' ?>.
                     </p>
+                    <form method="post" id="bulk-users-form" action="<?= e($usersPageUrl([], '#all-users')) ?>">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="bulk_delete_users">
+                    </form>
+                    <div class="bulk-response-bar user-bulk-bar">
+                        <label class="bulk-select-all">
+                            <input type="checkbox" class="js-bulk-select-all" data-bulk-form="bulk-users-form" title="Select all listed users">
+                            <span>Select all</span>
+                        </label>
+                        <span class="bulk-selected-count" data-bulk-count="bulk-users-form">0 selected</span>
+                        <button type="submit" form="bulk-users-form" class="button ghost is-danger" onclick="return confirm('Delete the selected users permanently? This cannot be undone.');">🗑️ Delete selected</button>
+                    </div>
                     <div class="admin-table-wrap">
                         <table class="admin-table">
                             <thead>
                                 <tr>
+                                    <th class="col-select">Select</th>
                                     <th>User</th>
                                     <th>Source</th>
                                     <th>Role</th>
@@ -912,6 +1116,13 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             <tbody>
                                 <?php foreach ($allUsers as $user): ?>
                                     <tr>
+                                        <td class="col-select">
+                                            <?php if ((int) $user['id'] === (int) $currentUser['id']): ?>
+                                                <span class="settings-hint" title="You cannot delete your own account">—</span>
+                                            <?php else: ?>
+                                                <input type="checkbox" form="bulk-users-form" name="user_ids[]" value="<?= (int) $user['id'] ?>">
+                                            <?php endif; ?>
+                                        </td>
                                         <td>
                                             <strong><?= e((string) $user['username']) ?></strong>
                                             <span class="table-sub"><?= e((string) $user['email']) ?></span>
@@ -1229,5 +1440,59 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     </nav>
                 <?php endif; ?>
             </section>
+<script>
+(() => {
+    const syncForm = (formId) => {
+        const form = document.getElementById(formId);
+        if (!form) {
+            return;
+        }
+        const boxes = [...document.querySelectorAll('input[type="checkbox"][name]')]
+            .filter((input) => (input.getAttribute('form') === formId || input.form === form) && input.name.endsWith('[]'));
+        const selected = boxes.filter((input) => input.checked).length;
+        document.querySelectorAll('[data-bulk-count="' + formId + '"]').forEach((label) => {
+            label.textContent = selected + ' selected';
+        });
+        document.querySelectorAll('.js-bulk-select-all[data-bulk-form="' + formId + '"]').forEach((toggle) => {
+            toggle.checked = boxes.length > 0 && selected === boxes.length;
+            toggle.indeterminate = selected > 0 && selected < boxes.length;
+        });
+    };
+
+    document.querySelectorAll('.js-bulk-select-all').forEach((toggle) => {
+        toggle.addEventListener('change', () => {
+            const formId = toggle.getAttribute('data-bulk-form') || '';
+            const form = document.getElementById(formId);
+            if (!form) {
+                return;
+            }
+            document.querySelectorAll('input[type="checkbox"][name]').forEach((input) => {
+                if ((input.getAttribute('form') === formId || input.form === form) && input.name.endsWith('[]') && !input.disabled) {
+                    input.checked = toggle.checked;
+                }
+            });
+            syncForm(formId);
+        });
+    });
+
+    document.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox' || !target.name.endsWith('[]')) {
+            return;
+        }
+        const form = target.form;
+        if (form && form.id) {
+            syncForm(form.id);
+        }
+    });
+
+    document.querySelectorAll('.js-bulk-select-all').forEach((toggle) => {
+        const formId = toggle.getAttribute('data-bulk-form');
+        if (formId) {
+            syncForm(formId);
+        }
+    });
+})();
+</script>
 <?php
 require dirname(__DIR__) . '/includes/admin-footer.php';
