@@ -38,6 +38,78 @@
     return schedule;
   };
 
+  const openWorkspaceDialogs = new Set();
+  let workspaceSavedScrollY = 0;
+
+  const isScrollableBox = (el) => {
+    if (!(el instanceof Element)) return false;
+    const style = window.getComputedStyle(el);
+    const y = style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay';
+    const x = style.overflowX === 'auto' || style.overflowX === 'scroll' || style.overflowX === 'overlay';
+    if (y && el.scrollHeight > el.clientHeight + 1) return true;
+    if (x && el.scrollWidth > el.clientWidth + 1) return true;
+    return false;
+  };
+
+  const canScrollInDirection = (el, deltaX, deltaY) => {
+    if (!(el instanceof Element)) return false;
+    const style = window.getComputedStyle(el);
+    const y = style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay';
+    const x = style.overflowX === 'auto' || style.overflowX === 'scroll' || style.overflowX === 'overlay';
+    const absY = Math.abs(deltaY);
+    const absX = Math.abs(deltaX);
+    if (absY >= absX) {
+      if (!y || el.scrollHeight <= el.clientHeight + 1) return false;
+      if (deltaY < 0) return el.scrollTop > 0;
+      return el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    }
+    if (!x || el.scrollWidth <= el.clientWidth + 1) return false;
+    if (deltaX < 0) return el.scrollLeft > 0;
+    return el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+  };
+
+  const scrollerFromEvent = (event, root) => {
+    const path =
+      typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : (() => {
+            const list = [];
+            let node = event.target;
+            while (node) {
+              list.push(node);
+              node = node.parentNode || node.host;
+            }
+            return list;
+          })();
+    for (const node of path) {
+      if (!(node instanceof Element)) continue;
+      if (node === root || root.contains(node)) {
+        if (isScrollableBox(node)) return node;
+      }
+      if (node === root) break;
+    }
+    return null;
+  };
+
+  const syncWorkspacePageScroll = () => {
+    const anyOpen = openWorkspaceDialogs.size > 0;
+    const html = document.documentElement;
+    const locked = html.classList.contains('sp-workspace-scroll-lock');
+    if (anyOpen && !locked) {
+      workspaceSavedScrollY = window.scrollY;
+      html.classList.add('sp-workspace-scroll-lock');
+      document.body.classList.add('sp-workspace-scroll-lock');
+      document.body.style.top = `-${workspaceSavedScrollY}px`;
+      return;
+    }
+    if (!anyOpen && locked) {
+      html.classList.remove('sp-workspace-scroll-lock');
+      document.body.classList.remove('sp-workspace-scroll-lock');
+      document.body.style.top = '';
+      window.scrollTo(0, workspaceSavedScrollY);
+    }
+  };
+
   const bindWorkspaceDialog = (dialog) => {
     if (!dialog || dialog.dataset.workspaceBound === '1') return;
     dialog.dataset.workspaceBound = '1';
@@ -269,11 +341,35 @@
       resizeObserver.observe(dialog);
     }
 
+    const syncPageScrollLock = () => {
+      if (dialog.open) openWorkspaceDialogs.add(dialog);
+      else openWorkspaceDialogs.delete(dialog);
+      syncWorkspacePageScroll();
+    };
+
+    const trapBackgroundScroll = (event) => {
+      if (!dialog.open) return;
+      const scroller = scrollerFromEvent(event, dialog);
+      if (event.type === 'wheel') {
+        if (scroller && canScrollInDirection(scroller, event.deltaX || 0, event.deltaY || 0)) {
+          return;
+        }
+      } else if (scroller) {
+        return;
+      }
+      event.preventDefault();
+    };
+
+    document.addEventListener('wheel', trapBackgroundScroll, { passive: false, capture: true });
+    document.addEventListener('touchmove', trapBackgroundScroll, { passive: false, capture: true });
+
+    dialog.addEventListener('toggle', syncPageScrollLock);
     dialog.addEventListener('close', () => {
       drag = null;
       dialog.classList.remove('is-dragging');
       persistLayout();
       if (maximized) dialog.classList.remove('is-maximized');
+      syncPageScrollLock();
     });
 
     dialog.addEventListener(
@@ -289,6 +385,7 @@
 
     dialog.__spPrepareWorkspace = () => {
       restoreLayout();
+      syncPageScrollLock();
     };
   };
 

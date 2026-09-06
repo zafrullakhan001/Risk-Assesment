@@ -10256,8 +10256,20 @@ html.is-compact .site-footer {
     width: min(960px, 96vw);
     height: min(88vh, 900px);
     overflow: hidden;
+    overscroll-behavior: contain;
     resize: both;
     box-sizing: border-box;
+}
+html.sp-workspace-scroll-lock,
+html.sp-workspace-scroll-lock body {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+}
+html.sp-workspace-scroll-lock body {
+    position: fixed;
+    left: 0;
+    right: 0;
+    width: 100%;
 }
 .sp-workspace-dialog[open] {
     display: flex;
@@ -10337,14 +10349,15 @@ html.is-compact .site-footer {
     flex: 1 1 auto;
     min-height: 180px;
     max-height: none;
-}
-.sp-workspace-dialog .sharepoint-compare-panels {
     overflow: auto;
+    overscroll-behavior: contain;
 }
 .sp-workspace-dialog .sharepoint-compare-table-wrap {
     max-height: none;
     height: 100%;
     min-height: 160px;
+    overflow: auto;
+    overscroll-behavior: contain;
 }
 .sp-workspace-dialog .sharepoint-compare-panel {
     min-height: 0;
