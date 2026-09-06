@@ -88,6 +88,31 @@
     return `${month} ${Number(match[3])}, ${match[1]}`;
   };
 
+  const formatBytes = (value) => {
+    const n = Number(value) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  };
+
+  const formatPct = (value) => `${Math.round((Number(value) || 0) * 100)}%`;
+
+  const formatSignedPct = (value) => {
+    const n = Math.round((Number(value) || 0) * 100);
+    if (n > 0) return `+${n}%`;
+    return `${n}%`;
+  };
+
+  const currentYear = String(new Date().getFullYear());
+  const dormantCutoff = (() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 12);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const payloadOwner = (key) => (state.data?.owners || []).find((owner) => owner.key === key) || null;
+
   const periodOf = (project, grain) => {
     if (grain === 'year') return project.year || '';
     if (grain === 'quarter') return project.quarter || '';
@@ -140,6 +165,8 @@
           showOwner ? project.owner_name || '' : '',
           project.source_title || '',
           project.date_created ? formatDay(project.date_created) : '',
+          project.last_modified && project.last_modified !== project.date_created ? `active ${formatDay(project.last_modified)}` : '',
+          project.item_count ? `${project.item_count} items` : '',
         ]
           .filter(Boolean)
           .join(' · ');
@@ -148,6 +175,7 @@
             <strong>${highlightQuery(project.project_name)}</strong>
             <span>${escapeHtml(meta)}</span>
           </button>
+          ${assessmentBadge(project)}
           ${
             project.folder_url
               ? `<a class="sp-od-open-sp" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint">🔗</a>`
@@ -220,7 +248,77 @@
     ownerKey: '',
     ownerQuery: '',
     sourceKeys: readSavedScopes(),
+    sort: 'projects',
+    chip: '',
+    heatAll: false,
+    compareKeys: [],
   };
+
+  const urlSyncEnabled = () =>
+    root.getAttribute('data-solo') === '1' ||
+    publicShare ||
+    new URL(window.location.href).searchParams.get('view') === 'owners';
+
+  const applyUrlState = () => {
+    if (!urlSyncEnabled()) return;
+    const params = new URLSearchParams(window.location.search);
+    const grain = params.get('grain');
+    if (grain === 'month' || grain === 'quarter' || grain === 'year') state.grain = grain;
+    const year = params.get('oyear');
+    if (year) state.year = year;
+    const owner = params.get('owner');
+    if (owner) state.ownerKey = owner;
+    const query = params.get('oq');
+    if (query) {
+      state.ownerQuery = query;
+      const input = document.getElementById('sp-owner-query');
+      if (input) input.value = query;
+    }
+    const sort = params.get('osort');
+    if (sort) state.sort = sort;
+    const chip = params.get('ochip');
+    if (chip) state.chip = chip;
+    if (params.get('oheat') === '1') state.heatAll = true;
+    const sources = params.get('osources');
+    if (sources) {
+      const keys = sources.split(',').map((key) => key.trim()).filter((key) => titleByKey[key]);
+      if (keys.length) state.sourceKeys = keys;
+    }
+    const compare = params.get('ocompare');
+    if (compare) {
+      state.compareKeys = compare.split(',').map((key) => key.trim()).filter(Boolean).slice(0, 3);
+    }
+  };
+
+  const writeUrlState = () => {
+    if (!urlSyncEnabled()) return;
+    const url = new URL(window.location.href);
+    const setOrDel = (key, value, fallback = '') => {
+      if (!value || value === fallback) url.searchParams.delete(key);
+      else url.searchParams.set(key, value);
+    };
+    setOrDel('grain', state.grain, 'month');
+    setOrDel('oyear', state.year, 'all');
+    setOrDel('owner', state.ownerKey);
+    setOrDel('oq', state.ownerQuery.trim());
+    setOrDel('osort', state.sort, 'projects');
+    setOrDel('ochip', state.chip);
+    setOrDel('oheat', state.heatAll ? '1' : '');
+    const allKeys = availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
+    const sameSources =
+      state.sourceKeys.length === allKeys.length && allKeys.every((key) => state.sourceKeys.includes(key));
+    setOrDel('osources', sameSources ? '' : state.sourceKeys.join(','));
+    setOrDel('ocompare', state.compareKeys.length >= 2 ? state.compareKeys.join(',') : '');
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) {
+      history.replaceState(null, '', next);
+    }
+  };
+
+  applyUrlState();
+  const sortSelect = document.getElementById('sp-owner-sort');
+  if (sortSelect && state.sort) sortSelect.value = state.sort;
 
   const syncScopeChips = () => {
     scopesRoot?.querySelectorAll('.sp-owner-scope-check').forEach((input) => {
@@ -286,32 +384,72 @@
     return rows;
   };
 
+  const nowQuarterSuffix = () => `-Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
+
   const buildView = () => {
     const projects = filteredProjects();
     const hues = hueByOwner();
     const ownerMap = {};
     const byPeriod = {};
     let unknownDate = 0;
+    const nowYear = currentYear;
 
     projects.forEach((project) => {
       const key = project.owner_key;
       if (!ownerMap[key]) {
+        const source = payloadOwner(key) || {};
         ownerMap[key] = {
           key,
           name: project.owner_name,
-          initials: (state.data.owners.find((o) => o.key === key) || {}).initials || '?',
-          hue: hues[key] ?? 200,
+          aliases: source.aliases || [],
+          initials: source.initials || '?',
+          hue: hues[key] ?? source.hue ?? 200,
           project_count: 0,
           unknown_date_count: 0,
           first_created: '',
           last_created: '',
+          last_activity: '',
           months: {},
+          sources: {},
+          collaborators: {},
+          item_count: 0,
+          file_count: 0,
+          size_bytes: 0,
+          assessment_count: 0,
+          created_this_quarter: 0,
+          touched_this_quarter: 0,
+          this_year: 0,
+          last_12_months: Number(source.last_12_months) || 0,
+          prev_12_months: Number(source.prev_12_months) || 0,
+          streak_months: Number(source.streak_months) || 0,
+          share: Number(source.share) || 0,
+          dormant: !!source.dormant,
           projects: [],
         };
       }
       const owner = ownerMap[key];
       owner.project_count += 1;
       owner.projects.push(project);
+      owner.item_count += Number(project.item_count) || 0;
+      owner.file_count += Number(project.file_count) || 0;
+      owner.size_bytes += Number(project.size_bytes) || 0;
+      if (project.assessment?.id) owner.assessment_count += 1;
+      if (project.source_key) {
+        owner.sources[project.source_key] = (owner.sources[project.source_key] || 0) + 1;
+      }
+      (project.collaborators || []).forEach((collab) => {
+        const collabKey = collab.key || '';
+        if (!collabKey || collabKey === key) return;
+        if (!owner.collaborators[collabKey]) {
+          owner.collaborators[collabKey] = { key: collabKey, name: collab.name || collabKey, item_count: 0 };
+        }
+        owner.collaborators[collabKey].item_count += Number(collab.item_count) || 1;
+      });
+      const activity = project.last_modified || project.date_created || '';
+      if (activity && (!owner.last_activity || activity > owner.last_activity)) owner.last_activity = activity;
+      if (project.activity_quarter === `${nowYear}${nowQuarterSuffix()}`) {
+        owner.touched_this_quarter += 1;
+      }
       const period = periodOf(project, state.grain);
       if (!period) {
         unknownDate += 1;
@@ -324,10 +462,86 @@
       byPeriod[period].owners[key] = (byPeriod[period].owners[key] || 0) + 1;
       if (!owner.first_created || project.date_created < owner.first_created) owner.first_created = project.date_created;
       if (!owner.last_created || project.date_created > owner.last_created) owner.last_created = project.date_created;
+      if (project.year === nowYear) owner.this_year += 1;
+      if (project.quarter === `${nowYear}${nowQuarterSuffix()}`) owner.created_this_quarter += 1;
     });
 
-    const owners = Object.values(ownerMap).sort((a, b) => b.project_count - a.project_count || a.name.localeCompare(b.name));
+    Object.values(ownerMap).forEach((owner) => {
+      if (!owner.last_activity) owner.last_activity = owner.last_created;
+      const day = String(owner.last_activity || '').slice(0, 10);
+      owner.dormant = !!day && day < dormantCutoff && owner.key !== '_unassigned';
+      owner.collaborators = Object.values(owner.collaborators).sort((a, b) => b.item_count - a.item_count).slice(0, 8);
+    });
+
+    const sortOwners = (list) => {
+      const dirDate = (value, empty) => (value ? value : empty);
+      list.sort((a, b) => {
+        let cmp = 0;
+        switch (state.sort) {
+          case 'this_year':
+            cmp = b.this_year - a.this_year;
+            break;
+          case 'last_12':
+            cmp = b.last_12_months - a.last_12_months;
+            break;
+          case 'activity':
+            cmp = dirDate(b.last_activity, '').localeCompare(dirDate(a.last_activity, ''));
+            break;
+          case 'first':
+            cmp = dirDate(b.first_created, '').localeCompare(dirDate(a.first_created, ''));
+            break;
+          case 'streak':
+            cmp = b.streak_months - a.streak_months;
+            break;
+          case 'items':
+            cmp = b.item_count - a.item_count;
+            break;
+          default:
+            cmp = b.project_count - a.project_count;
+        }
+        return cmp || a.name.localeCompare(b.name);
+      });
+      return list;
+    };
+
+    const chipMatch = (owner) => {
+      switch (state.chip) {
+        case 'this_year':
+          return owner.this_year > 0;
+        case 'active':
+          return owner.touched_this_quarter > 0;
+        case 'quiet':
+          return owner.dormant;
+        case 'unassigned':
+          return owner.key === '_unassigned';
+        case 'undated':
+          return owner.unknown_date_count > 0;
+        case 'assessments':
+          return owner.assessment_count > 0;
+        default:
+          return true;
+      }
+    };
+
+    const owners = sortOwners(Object.values(ownerMap).filter(chipMatch));
     const visibleOwners = owners;
+    const visibleKeys = new Set(owners.map((owner) => owner.key));
+    const visibleProjects = projects.filter((project) => visibleKeys.has(project.owner_key));
+    unknownDate = 0;
+    Object.keys(byPeriod).forEach((key) => delete byPeriod[key]);
+    owners.forEach((owner) => {
+      owner.share = visibleProjects.length > 0 ? owner.project_count / visibleProjects.length : 0;
+      owner.projects.forEach((project) => {
+        const period = periodOf(project, state.grain);
+        if (!period) {
+          unknownDate += 1;
+          return;
+        }
+        if (!byPeriod[period]) byPeriod[period] = { total: 0, owners: {} };
+        byPeriod[period].total += 1;
+        byPeriod[period].owners[owner.key] = (byPeriod[period].owners[owner.key] || 0) + 1;
+      });
+    });
 
     const grainKeys =
       state.grain === 'year'
@@ -354,8 +568,13 @@
       { key: '', count: 0 }
     );
 
+    const assigned = owners.filter((o) => o.key !== '_unassigned').reduce((sum, o) => sum + o.project_count, 0);
+    const dormantCount = owners.filter((o) => o.dormant).length;
+    const top = owners[0];
+    const concentration = visibleProjects.length ? (top ? top.project_count / visibleProjects.length : 0) : 0;
+
     return {
-      projects,
+      projects: visibleProjects,
       owners,
       visibleOwners,
       selected,
@@ -363,7 +582,10 @@
       byPeriod,
       unknownDate,
       busiestPeriod,
-      total: projects.length,
+      total: visibleProjects.length,
+      assigned,
+      dormantCount,
+      concentration,
       clippedMonths: visiblePeriods.length !== periods.length,
     };
   };
@@ -383,31 +605,153 @@
 
   const renderKpis = (view) => {
     const top = view.owners[0];
-    const assigned = view.owners.filter((o) => o.key !== '_unassigned').reduce((sum, o) => sum + o.project_count, 0);
+    const kpis = state.data?.kpis || {};
+    const yoy = state.year === 'all' ? kpis.yoy_pct : null;
     const cards = [
-      { label: 'Projects', value: view.total, hint: state.year === 'all' ? 'in selected folders' : `created in ${state.year}` },
-      { label: 'Owners', value: view.owners.length, hint: `${assigned} assigned` },
       {
-        label: 'Top owner',
-        value: top ? top.project_count : 0,
-        hint: top ? top.name : 'No owners yet',
-        accent: top ? ownerColor(top.hue) : '',
+        key: 'projects',
+        label: 'Projects',
+        value: view.total,
+        hint: state.year === 'all' ? 'in selected folders' : `created in ${state.year}`,
       },
       {
+        key: 'owners',
+        label: 'Owners',
+        value: view.owners.length,
+        hint: `${view.assigned} assigned`,
+      },
+      {
+        key: 'top',
+        label: 'Top owner',
+        value: top ? top.project_count : 0,
+        hint: top ? `${top.name} · ${formatPct(top.share)}` : 'No owners yet',
+        accent: top ? ownerColor(top.hue) : '',
+        owner: top?.key || '',
+      },
+      {
+        key: 'busy',
         label: `Busiest ${state.grain}`,
         value: view.busiestPeriod.count,
         hint: view.busiestPeriod.key ? formatPeriod(view.busiestPeriod.key, state.grain) : '—',
+        period: view.busiestPeriod.key || '',
+      },
+      {
+        key: 'year',
+        label: state.year === 'all' ? 'This year' : state.year,
+        value: state.year === 'all' ? view.owners.reduce((n, o) => n + o.this_year, 0) : view.total,
+        hint:
+          state.chip || state.ownerKey
+            ? 'created this calendar year in this filter'
+            : yoy == null
+              ? `${kpis.last_12_months || 0} in last 12 months`
+              : `${formatSignedPct(yoy)} vs last year`,
+      },
+      {
+        key: 'active',
+        label: 'Touched this Q',
+        value: view.owners.reduce((n, o) => n + (o.touched_this_quarter ? 1 : 0), 0),
+        hint: `${view.owners.reduce((n, o) => n + o.created_this_quarter, 0)} created this quarter`,
+        chip: 'active',
+      },
+      {
+        key: 'quiet',
+        label: 'Quiet owners',
+        value: view.dormantCount,
+        hint: 'no folder activity in 12 months',
+        chip: 'quiet',
+      },
+      {
+        key: 'items',
+        label: 'Items',
+        value: view.owners.reduce((n, o) => n + o.item_count, 0),
+        hint: 'files and folders in these projects',
       },
     ];
-    return `<div class="sp-od-kpis">${cards
+    return `<div class="sp-od-kpis sp-od-kpis-wide">${cards
       .map(
-        (card) => `<article class="sp-od-kpi"${card.accent ? ` style="--od-accent:${card.accent}"` : ''}>
+        (card) => `<button type="button" class="sp-od-kpi" data-kpi="${escapeHtml(card.key)}"${
+          card.owner ? ` data-owner-key="${escapeHtml(card.owner)}"` : ''
+        }${card.chip ? ` data-chip="${escapeHtml(card.chip)}"` : ''}${
+          card.period ? ` data-period="${escapeHtml(card.period)}"` : ''
+        }${card.accent ? ` style="--od-accent:${card.accent}"` : ''}>
           <span class="sp-od-kpi-label">${escapeHtml(card.label)}</span>
           <strong class="sp-od-kpi-value">${escapeHtml(String(card.value))}</strong>
           <span class="sp-od-kpi-hint">${escapeHtml(card.hint)}</span>
-        </article>`
+        </button>`
       )
       .join('')}</div>`;
+  };
+
+  const renderQualityStrip = (view) => {
+    const kpis = state.data?.kpis || {};
+    const unassigned = view.owners.find((o) => o.key === '_unassigned')?.project_count || 0;
+    const undated = view.unknownDate || 0;
+    const concentration = view.concentration || 0;
+    const topName = view.owners[0]?.name || kpis.busiest_owner || '';
+    const items = [];
+    if (unassigned) {
+      items.push({
+        chip: 'unassigned',
+        label: `${unassigned} unassigned folder${unassigned === 1 ? '' : 's'}`,
+        tone: 'warn',
+      });
+    }
+    if (undated) {
+      items.push({
+        chip: 'undated',
+        label: `${undated} missing a created date`,
+        tone: 'warn',
+      });
+    }
+    if (concentration >= 0.35 && topName) {
+      items.push({
+        owner: view.owners[0]?.key || kpis.busiest_owner_key || '',
+        label: `${topName} owns ${formatPct(concentration)} of folders`,
+        tone: 'alert',
+      });
+    }
+    if (!items.length) return '';
+    return `<div class="sp-od-quality" role="status">${items
+      .map(
+        (item) =>
+          `<button type="button" class="sp-od-quality-chip is-${item.tone}"${
+            item.chip ? ` data-chip="${escapeHtml(item.chip)}"` : ''
+          }${item.owner ? ` data-owner-key="${escapeHtml(item.owner)}"` : ''}>${escapeHtml(item.label)}</button>`
+      )
+      .join('')}</div>`;
+  };
+
+  const catalogMixHtml = (owner) => {
+    const entries = Object.entries(owner.sources || {});
+    if (entries.length < 2) {
+      const only = entries[0];
+      return only ? `<span class="sp-od-catalog-one">${escapeHtml(titleByKey[only[0]] || only[0])}</span>` : '';
+    }
+    const total = owner.project_count || 1;
+    return `<span class="sp-od-mix" title="Catalog mix">${entries
+      .map(([key, count]) => {
+        const pct = Math.max(10, (count / total) * 100);
+        const label = titleByKey[key] || key;
+        const hue = Math.abs(hashHue(key));
+        return `<i style="width:${pct}%;background:hsla(${hue},55%,45%,0.9)" title="${escapeHtml(label)}: ${count}"></i>`;
+      })
+      .join('')}</span>`;
+  };
+
+  const hashHue = (value) => {
+    let hash = 0;
+    const text = String(value || '');
+    for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    return hash % 360;
+  };
+
+  const assessmentBadge = (project) => {
+    const id = Number(project?.assessment?.id) || 0;
+    if (!id) return '';
+    if (publicShare) {
+      return `<span class="sp-od-assess-pill" title="An assessment workbook is on file. Sign in to open it.">📋 Assessment</span>`;
+    }
+    return `<a class="sp-od-assess-link" href="index.php?id=${id}&amp;view=1">📋 Assessment</a>`;
   };
 
   const renderPortraitRow = (view) => {
@@ -435,6 +779,30 @@
     const keys = new Set(top.map((o) => o.key));
     const hasOthers = view.owners.some((o) => !keys.has(o.key) && o.project_count > 0);
     return { top, keys, hasOthers };
+  };
+
+  const yoyChartNote = (view) => {
+    const kpis = state.data?.kpis || {};
+    if (state.year !== 'all') {
+      const prevYear = String(Number(state.year) - 1);
+      const prev = Number(state.data?.timeline?.by_year?.[prevYear]?.total) || 0;
+      if (!prev && !view.total) return '';
+      const pct = prev ? (view.total - prev) / prev : 1;
+      return ` ${state.year} vs ${prevYear}: ${formatSignedPct(pct)} (${view.total} vs ${prev}).`;
+    }
+    if (view.busiestPeriod.key && state.grain === 'month') {
+      const [year, month] = String(view.busiestPeriod.key).split('-');
+      const prevKey = `${Number(year) - 1}-${month}`;
+      const prev = Number(state.data?.timeline?.by_month?.[prevKey]?.total) || 0;
+      if (prev) {
+        const pct = (view.busiestPeriod.count - prev) / prev;
+        return ` Busiest month ${formatSignedPct(pct)} vs ${formatPeriod(prevKey, 'month')}.`;
+      }
+    }
+    if (kpis.prev_year_count || kpis.this_year_count) {
+      return ` This year ${formatSignedPct(kpis.yoy_pct || 0)} vs last year (${kpis.this_year_count || 0} vs ${kpis.prev_year_count || 0}). Last 12 months ${formatSignedPct(kpis.last_12_pct || 0)}.`;
+    }
+    return '';
   };
 
   const renderChart = (view) => {
@@ -534,7 +902,7 @@
     return `<div class="sp-od-chart-wrap">
       <div class="sp-od-chart-head">
         <h3>Projects created over time</h3>
-        <p>${selected ? 'Showing this owner’s folders by period. Click a bar segment to list those projects, or click the person again to return to the stacked view.' : 'Stacked by owner. Click a person to focus them, or click a bar segment to list those project folders.'}</p>
+        <p>${selected ? 'Showing this owner’s folders by period. Click a bar segment to list those projects, or click the person again to return to the stacked view.' : 'Stacked by owner. Click a person to focus them, or click a bar segment to list those project folders.'}${yoyChartNote(view)}</p>
       </div>
       <div class="sp-od-chart-scroll">
         <svg class="sp-od-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Projects created by ${state.grain}">
@@ -547,30 +915,67 @@
   };
 
   const renderLeaderboard = (view) => {
-    const max = view.visibleOwners[0]?.project_count || 1;
+    const max = Math.max(
+      1,
+      ...view.visibleOwners.map((owner) => {
+        if (state.sort === 'items') return owner.item_count || 0;
+        if (state.sort === 'this_year') return owner.this_year || 0;
+        if (state.sort === 'last_12') return owner.last_12_months || 0;
+        if (state.sort === 'streak') return owner.streak_months || 0;
+        return owner.project_count || 0;
+      })
+    );
     if (!view.visibleOwners.length) {
       return `<div class="sp-od-empty">No people or projects match this filter.</div>`;
     }
     return `<div class="sp-od-board">
       <div class="sp-od-board-head">
         <h3>Owner leaderboard</h3>
+        <p>Tick 2–3 people to compare. Bars follow the current sort.</p>
       </div>
       <ol class="sp-od-ranks">
         ${view.visibleOwners
           .map((owner, index) => {
-            const pct = Math.max(4, (owner.project_count / max) * 100);
+            const barValue =
+              state.sort === 'items'
+                ? owner.item_count
+                : state.sort === 'this_year'
+                  ? owner.this_year
+                  : state.sort === 'last_12'
+                    ? owner.last_12_months
+                    : state.sort === 'streak'
+                      ? owner.streak_months
+                      : owner.project_count;
+            const pct = Math.max(4, (barValue / max) * 100);
             const active = owner.key === state.ownerKey ? ' is-active' : '';
+            const checked = state.compareKeys.includes(owner.key) ? ' checked' : '';
+            const meta = [
+              `${owner.project_count} folder${owner.project_count === 1 ? '' : 's'}`,
+              `${formatPct(owner.share)}`,
+              owner.this_year ? `${owner.this_year} this year` : '',
+              owner.streak_months > 1 ? `${owner.streak_months}-mo streak` : '',
+              owner.last_activity ? `active ${formatDay(owner.last_activity)}` : owner.last_created ? `last ${formatDay(owner.last_created)}` : '',
+              owner.dormant ? 'quiet' : '',
+            ]
+              .filter(Boolean)
+              .join(' · ');
             return `<li>
-              <button type="button" class="sp-od-rank${active}" data-owner-key="${escapeHtml(owner.key)}">
-                <span class="sp-od-rank-n">${index + 1}</span>
-                <span class="sp-od-avatar sp-od-avatar-sm" style="--hue:${owner.hue}; --share:1"><span>${escapeHtml(owner.initials)}</span></span>
-                <span class="sp-od-rank-copy">
-                  <strong>${highlightQuery(owner.name)}</strong>
-                  <span>${owner.project_count} project${owner.project_count === 1 ? '' : 's'}${owner.last_created ? ` · last ${escapeHtml(formatDay(owner.last_created))}` : ''}</span>
-                </span>
-                <span class="sp-od-rank-bar"><i style="width:${pct}%; background:${ownerColor(owner.hue)}"></i></span>
-                <b>${owner.project_count}</b>
-              </button>
+              <div class="sp-od-rank-row">
+                <label class="sp-od-compare-pick-wrap" title="Select to compare">
+                  <input type="checkbox" class="sp-od-compare-pick" data-owner-key="${escapeHtml(owner.key)}"${checked}>
+                </label>
+                <button type="button" class="sp-od-rank${active}" data-owner-key="${escapeHtml(owner.key)}">
+                  <span class="sp-od-rank-n">${index + 1}</span>
+                  <span class="sp-od-avatar sp-od-avatar-sm" style="--hue:${owner.hue}; --share:1"><span>${escapeHtml(owner.initials)}</span></span>
+                  <span class="sp-od-rank-copy">
+                    <strong>${highlightQuery(owner.name)}</strong>
+                    <span>${escapeHtml(meta)}</span>
+                    ${catalogMixHtml(owner)}
+                  </span>
+                  <span class="sp-od-rank-bar"><i style="width:${pct}%; background:${ownerColor(owner.hue)}"></i></span>
+                  <b>${state.sort === 'items' ? owner.item_count : owner.project_count}</b>
+                </button>
+              </div>
             </li>`;
           })
           .join('')}
@@ -579,7 +984,7 @@
   };
 
   const renderHeatmap = (view) => {
-    const rows = view.visibleOwners.slice(0, HEATMAP_OWNERS);
+    const rows = state.heatAll ? view.visibleOwners : view.visibleOwners.slice(0, HEATMAP_OWNERS);
     if (!rows.length || !view.periods.length) return '';
     const maxCell = Math.max(
       1,
@@ -630,7 +1035,18 @@
     return `<div class="sp-od-heat">
       <div class="sp-od-chart-head">
         <h3>Owner × ${state.grain} heatmap</h3>
-        <p>Darker cells mean more project folders created in that period. Click a cell to list those project folders.${wide ? ' Scroll sideways to see every year.' : ''}</p>
+        <p>Darker cells mean more project folders created in that period. Click a cell to list those project folders.${wide ? ' Scroll sideways to see every year.' : ''} ${
+          view.visibleOwners.length > HEATMAP_OWNERS
+            ? state.heatAll
+              ? 'Showing every owner in this filter.'
+              : `Showing the top ${HEATMAP_OWNERS} of ${view.visibleOwners.length}.`
+            : ''
+        }</p>
+        ${
+          view.visibleOwners.length > HEATMAP_OWNERS
+            ? `<button type="button" class="button ghost sp-od-heat-all" id="sp-od-heat-all">${state.heatAll ? 'Show top 12' : 'Show all owners'}</button>`
+            : ''
+        }
       </div>
       <div class="sp-od-heat-scroll${wide ? ' is-wide' : ''}" tabindex="0" role="region" aria-label="Owner heatmap by ${state.grain}">
         <table class="sp-od-heat-table">
@@ -720,15 +1136,37 @@
         <span class="sp-od-avatar" style="--hue:${owner.hue}; --share:1"><span>${escapeHtml(owner.initials)}</span></span>
         <div>
           <h3>${highlightQuery(owner.name)}</h3>
-          <p>${owner.project_count} project folder${owner.project_count === 1 ? '' : 's'} · ${escapeHtml(sourceBits.join(', ') || 'Selected catalogs')}</p>
+          <p>${owner.project_count} project folder${owner.project_count === 1 ? '' : 's'} · ${formatPct(owner.share)} · ${escapeHtml(sourceBits.join(', ') || 'Selected catalogs')}</p>
+          ${
+            owner.aliases?.length
+              ? `<p class="sp-od-alias">Also seen as ${escapeHtml(owner.aliases.join(', '))}</p>`
+              : ''
+          }
         </div>
         <button type="button" class="button ghost" id="sp-owner-clear" title="Clear owner filter">Clear</button>
       </div>
       <div class="sp-od-detail-meta">
         <span><b>${owner.first_created ? formatDay(owner.first_created) : '—'}</b> first</span>
-        <span><b>${owner.last_created ? formatDay(owner.last_created) : '—'}</b> latest</span>
+        <span><b>${owner.last_created ? formatDay(owner.last_created) : '—'}</b> latest created</span>
+        <span><b>${owner.last_activity ? formatDay(owner.last_activity) : '—'}</b> last activity</span>
+        <span><b>${owner.this_year}</b> this year</span>
+        <span><b>${owner.last_12_months}</b> last 12 mo</span>
+        <span><b>${owner.streak_months}</b> mo streak</span>
+        <span><b>${owner.item_count}</b> items${owner.size_bytes ? ` · ${formatBytes(owner.size_bytes)}` : ''}</span>
         <span><b>${owner.unknown_date_count}</b> undated</span>
+        ${owner.dormant ? '<span class="sp-od-quiet-pill">Quiet 12+ months</span>' : ''}
       </div>
+      ${catalogMixHtml(owner)}
+      ${
+        owner.collaborators?.length
+          ? `<div class="sp-od-collabs"><span>Collaborators</span>${owner.collaborators
+              .map(
+                (collab) =>
+                  `<button type="button" class="sp-od-collab" data-owner-key="${escapeHtml(collab.key)}">${escapeHtml(collab.name)} <small>${collab.item_count}</small></button>`
+              )
+              .join('')}</div>`
+          : ''
+      }
       ${sparkline(owner, view.periods)}
       <div class="sp-od-timeline">
         ${groups
@@ -743,10 +1181,11 @@
                       ${month.projects
                         .map(
                           (project) => `<li>
-                            <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}">
+                            <button type="button" class="sp-od-project" data-project-name="${escapeHtml(project.project_name)}" data-source-key="${escapeHtml(project.source_key)}" data-folder-url="${escapeHtml(project.folder_url || '')}">
                               <strong>${highlightQuery(project.project_name)}</strong>
-                              <span>${escapeHtml(project.source_title || '')}${project.date_created ? ` · ${escapeHtml(formatDay(project.date_created))}` : ''}</span>
+                              <span>${escapeHtml(project.source_title || '')}${project.date_created ? ` · ${escapeHtml(formatDay(project.date_created))}` : ''}${project.item_count ? ` · ${project.item_count} items` : ''}</span>
                             </button>
+                            ${assessmentBadge(project)}
                             ${
                               project.folder_url
                                 ? `<a class="sp-od-open-sp" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint">🔗</a>`
@@ -797,6 +1236,7 @@
         state.ownerKey && view.selected ? ` · focused on ${escapeHtml(view.selected.name)}` : ''
       }</p>
       ${renderKpis(view)}
+      ${renderQualityStrip(view)}
       ${renderPortraitRow(view)}
       <div class="sp-od-grid">
         ${renderLeaderboard(view)}
@@ -806,6 +1246,8 @@
       ${renderHeatmap(view)}
     `;
     bindBody();
+    writeUrlState();
+    syncCompareButton();
   };
 
   const toggleOwner = (key) => {
@@ -813,8 +1255,169 @@
     render();
   };
 
+  const setChip = (chip) => {
+    state.chip = state.chip === chip ? '' : chip || '';
+    syncChips();
+    render();
+  };
+
+  const syncChips = () => {
+    document.querySelectorAll('#sp-od-chips [data-chip]').forEach((btn) => {
+      const on = (btn.getAttribute('data-chip') || '') === state.chip;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  };
+
+  const syncCompareButton = () => {
+    const btn = document.getElementById('sp-owner-compare');
+    if (!btn) return;
+    const n = state.compareKeys.length;
+    btn.disabled = n < 2 || n > 3;
+    btn.textContent = n ? `⚖️ Compare (${n})` : '⚖️ Compare';
+  };
+
+  const csvEscape = (value) => {
+    const text = String(value ?? '');
+    if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+  };
+
+  const exportCsv = () => {
+    if (!state.data) return;
+    const view = buildView();
+    const headers = [
+      'Owner',
+      'Projects',
+      'Share',
+      'This year',
+      'Last 12 months',
+      'Streak months',
+      'First created',
+      'Last created',
+      'Last activity',
+      'Dormant',
+      'Items',
+      'Files',
+      'Size bytes',
+      'Catalogs',
+      'Collaborators',
+      'Assessments',
+    ];
+    const rows = view.visibleOwners.map((owner) => [
+      owner.name,
+      owner.project_count,
+      formatPct(owner.share),
+      owner.this_year,
+      owner.last_12_months,
+      owner.streak_months,
+      owner.first_created,
+      owner.last_created,
+      owner.last_activity,
+      owner.dormant ? 'yes' : 'no',
+      owner.item_count,
+      owner.file_count,
+      owner.size_bytes,
+      Object.keys(owner.sources || {})
+        .map((key) => `${titleByKey[key] || key}:${owner.sources[key]}`)
+        .join('; '),
+      (owner.collaborators || []).map((collab) => collab.name).join('; '),
+      owner.assessment_count,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `project-owners-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const printSnapshot = () => {
+    document.documentElement.classList.add('sp-od-printing');
+    const done = () => document.documentElement.classList.remove('sp-od-printing');
+    window.addEventListener('afterprint', done, { once: true });
+    window.print();
+    setTimeout(done, 1000);
+  };
+
+  const compareDialog = document.getElementById('sp-od-compare-dialog');
+  const compareBody = document.getElementById('sp-od-compare-body');
+  const compareSub = document.getElementById('sp-od-compare-sub');
+
+  const closeCompareDialog = () => {
+    if (compareDialog?.open) compareDialog.close();
+  };
+
+  const openCompareDialog = () => {
+    if (!compareDialog || !compareBody || state.compareKeys.length < 2) return;
+    const view = buildView();
+    const picked = state.compareKeys
+      .map((key) => view.owners.find((owner) => owner.key === key) || payloadOwner(key))
+      .filter(Boolean);
+    if (picked.length < 2) return;
+    if (compareSub) compareSub.textContent = picked.map((owner) => owner.name).join(' · ');
+    const rows = [
+      ['Folders', (o) => o.project_count],
+      ['Share', (o) => formatPct(o.share)],
+      ['This year', (o) => o.this_year],
+      ['Last 12 months', (o) => o.last_12_months],
+      ['Streak', (o) => `${o.streak_months || 0} mo`],
+      ['First created', (o) => (o.first_created ? formatDay(o.first_created) : '—')],
+      ['Latest created', (o) => (o.last_created ? formatDay(o.last_created) : '—')],
+      ['Last activity', (o) => (o.last_activity ? formatDay(o.last_activity) : '—')],
+      ['Quiet', (o) => (o.dormant ? 'Yes' : 'No')],
+      ['Touched this quarter', (o) => o.touched_this_quarter],
+      ['Created this quarter', (o) => o.created_this_quarter],
+      ['Items', (o) => o.item_count],
+      ['Files', (o) => o.file_count],
+      ['Size', (o) => formatBytes(o.size_bytes)],
+      ['Assessments', (o) => o.assessment_count],
+      [
+        'Catalogs',
+        (o) =>
+          Object.entries(o.sources || {})
+            .map(([key, count]) => `${titleByKey[key] || key} (${count})`)
+            .join(', ') || '—',
+      ],
+      [
+        'Collaborators',
+        (o) => (o.collaborators || []).map((collab) => collab.name).join(', ') || '—',
+      ],
+    ];
+    compareBody.innerHTML = `<table class="sp-od-compare-table">
+      <thead>
+        <tr>
+          <th scope="col">Metric</th>
+          ${picked
+            .map(
+              (owner) =>
+                `<th scope="col"><span class="sp-od-avatar sp-od-avatar-sm" style="--hue:${owner.hue || 200}; --share:1"><span>${escapeHtml(owner.initials || '?')}</span></span> ${escapeHtml(owner.name)}</th>`
+            )
+            .join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            ([label, getter]) => `<tr>
+              <th scope="row">${escapeHtml(label)}</th>
+              ${picked.map((owner) => `<td>${escapeHtml(String(getter(owner) ?? '—'))}</td>`).join('')}
+            </tr>`
+          )
+          .join('')}
+      </tbody>
+    </table>`;
+    if (!compareDialog.open) compareDialog.showModal();
+  };
+
   const bindBody = () => {
     body.querySelectorAll('[data-owner-key]').forEach((el) => {
+      if (el.tagName === 'INPUT' || el.classList.contains('sp-od-compare-pick')) return;
+      if (el.classList.contains('sp-od-kpi') || el.classList.contains('sp-od-quality-chip')) return;
       if (el.tagName === 'BUTTON' && el.classList.contains('sp-od-heat-cell')) {
         el.addEventListener('click', () => {
           const ownerKey = el.getAttribute('data-owner-key') || '';
@@ -857,6 +1460,69 @@
     });
     body.querySelectorAll('.sp-od-project').forEach((btn) => {
       btn.addEventListener('click', () => openOwnerProject(btn));
+    });
+    body.querySelectorAll('.sp-od-compare-pick').forEach((input) => {
+      input.addEventListener('click', (event) => event.stopPropagation());
+      input.addEventListener('change', (event) => {
+        event.stopPropagation();
+        const key = input.getAttribute('data-owner-key') || '';
+        if (!key) return;
+        if (input.checked) {
+          if (!state.compareKeys.includes(key) && state.compareKeys.length < 3) {
+            state.compareKeys = [...state.compareKeys, key];
+          } else if (state.compareKeys.length >= 3) {
+            input.checked = false;
+          }
+        } else {
+          state.compareKeys = state.compareKeys.filter((item) => item !== key);
+        }
+        syncCompareButton();
+        writeUrlState();
+      });
+    });
+    body.querySelectorAll('.sp-od-kpi, .sp-od-quality-chip').forEach((el) => {
+      el.addEventListener('click', () => {
+        const owner = el.getAttribute('data-owner-key') || '';
+        const chip = el.getAttribute('data-chip');
+        const period = el.getAttribute('data-period') || '';
+        const kpi = el.getAttribute('data-kpi') || '';
+        if (period) {
+          const view = buildView();
+          const projects = view.projects.filter((project) => periodOf(project, state.grain) === period);
+          openCellDialog({ label: 'All owners', period, projects, showOwner: true });
+          return;
+        }
+        if (chip != null && chip !== '') {
+          setChip(chip);
+          return;
+        }
+        if (owner) {
+          toggleOwner(owner);
+          return;
+        }
+        if (kpi === 'projects' || kpi === 'owners') {
+          state.ownerKey = '';
+          state.chip = '';
+          syncChips();
+          render();
+          return;
+        }
+        if (kpi === 'year' && state.year === 'all' && yearSelect) {
+          yearSelect.value = currentYear;
+          state.year = currentYear;
+          render();
+          return;
+        }
+        if (kpi === 'items') {
+          state.sort = 'items';
+          if (sortSelect) sortSelect.value = 'items';
+          render();
+        }
+      });
+    });
+    document.getElementById('sp-od-heat-all')?.addEventListener('click', () => {
+      state.heatAll = !state.heatAll;
+      render();
     });
   };
 
@@ -907,6 +1573,30 @@
   document.getElementById('sp-owner-query')?.addEventListener('input', (event) => {
     state.ownerQuery = event.target.value || '';
     render();
+  });
+
+  sortSelect?.addEventListener('change', () => {
+    state.sort = sortSelect.value || 'projects';
+    render();
+  });
+
+  document.querySelectorAll('#sp-od-chips [data-chip]').forEach((btn) => {
+    btn.addEventListener('click', () => setChip(btn.getAttribute('data-chip') || ''));
+  });
+  syncChips();
+
+  document.getElementById('sp-owner-export')?.addEventListener('click', () => exportCsv());
+  document.getElementById('sp-owner-print')?.addEventListener('click', () => printSnapshot());
+  document.getElementById('sp-owner-compare')?.addEventListener('click', () => openCompareDialog());
+  document.getElementById('sp-od-compare-close')?.addEventListener('click', () => closeCompareDialog());
+  compareDialog?.addEventListener('click', (event) => {
+    if (event.target === compareDialog) closeCompareDialog();
+  });
+
+  root.querySelectorAll('[data-grain]').forEach((btn) => {
+    const on = (btn.getAttribute('data-grain') || 'month') === state.grain;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 
   scopesRoot?.querySelectorAll('.sp-owner-scope-check').forEach((input) => {

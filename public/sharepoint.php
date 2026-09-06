@@ -1419,6 +1419,34 @@ $soloPageClass = $ownerSolo
                                 <input type="search" id="sp-owner-query" placeholder="Filter people or projects…" autocomplete="off">
                             </label>
                         </div>
+                        <div class="sp-owner-dash-toolbar sp-owner-dash-toolbar-extra">
+                            <label class="sp-od-year-label">
+                                <span>Sort</span>
+                                <select id="sp-owner-sort" aria-label="Sort owners">
+                                    <option value="projects">Most folders</option>
+                                    <option value="this_year">This year</option>
+                                    <option value="last_12">Last 12 months</option>
+                                    <option value="activity">Last activity</option>
+                                    <option value="first">Newest owners</option>
+                                    <option value="streak">Longest streak</option>
+                                    <option value="items">Most items</option>
+                                </select>
+                            </label>
+                            <div class="sp-od-chips" id="sp-od-chips" role="group" aria-label="Owner filters">
+                                <button type="button" class="sp-od-filter is-active" data-chip="" aria-pressed="true">All</button>
+                                <button type="button" class="sp-od-filter" data-chip="this_year" aria-pressed="false">This year</button>
+                                <button type="button" class="sp-od-filter" data-chip="active" aria-pressed="false">Touched this quarter</button>
+                                <button type="button" class="sp-od-filter" data-chip="quiet" aria-pressed="false">Quiet 12+ months</button>
+                                <button type="button" class="sp-od-filter" data-chip="unassigned" aria-pressed="false">Unassigned</button>
+                                <button type="button" class="sp-od-filter" data-chip="undated" aria-pressed="false">Undated</button>
+                                <button type="button" class="sp-od-filter" data-chip="assessments" aria-pressed="false">Has assessment</button>
+                            </div>
+                            <div class="sp-od-actions">
+                                <button type="button" class="button ghost" id="sp-owner-export" title="Download the current owner view as CSV">⬇ CSV</button>
+                                <button type="button" class="button ghost" id="sp-owner-print" title="Print or save a snapshot">🖨 Print</button>
+                                <button type="button" class="button ghost" id="sp-owner-compare" disabled title="Select 2–3 owners in the leaderboard">⚖️ Compare</button>
+                            </div>
+                        </div>
                         <?php if (count($allSources) > 0): ?>
                             <div class="sp-od-scopes" id="sp-owner-scopes" role="group" aria-label="Catalogs for owner stats">
                                 <div class="sp-od-scopes-head">
@@ -1467,6 +1495,19 @@ $soloPageClass = $ownerSolo
                         <button type="button" class="button ghost response-dialog-close" id="sp-od-cell-dialog-close" aria-label="Close">✕</button>
                     </div>
                     <ul class="sp-od-cell-dialog-list" id="sp-od-cell-dialog-list"></ul>
+                </div>
+            </dialog>
+            <dialog class="response-dialog sp-od-cell-dialog sp-od-compare-dialog" id="sp-od-compare-dialog" aria-labelledby="sp-od-compare-title">
+                <div class="sp-od-cell-dialog-body">
+                    <div class="sp-od-cell-dialog-head">
+                        <div>
+                            <div class="eyebrow">Owner compare</div>
+                            <h3 id="sp-od-compare-title">Side by side</h3>
+                            <p class="response-dialog-sub" id="sp-od-compare-sub"></p>
+                        </div>
+                        <button type="button" class="button ghost response-dialog-close" id="sp-od-compare-close" aria-label="Close">✕</button>
+                    </div>
+                    <div class="sp-od-compare-table-wrap" id="sp-od-compare-body"></div>
                 </div>
             </dialog>
             <?php if ($isAdmin): ?>

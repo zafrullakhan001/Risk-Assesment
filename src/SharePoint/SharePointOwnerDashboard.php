@@ -46,6 +46,11 @@ final class SharePointOwnerDashboard
         $unknownDate = 0;
         $datedIsos = [];
         $sourceCounts = [];
+        $nowYear = date('Y');
+        $nowQuarter = sprintf('%s-Q%d', $nowYear, (int) ceil(((int) date('n')) / 3));
+        $since12 = (new DateTimeImmutable('first day of this month'))->modify('-11 months')->format('Y-m');
+        $dormantBefore = (new DateTimeImmutable('today'))->modify('-12 months')->format('Y-m-d');
+        $prev12Start = (new DateTimeImmutable($since12 . '-01'))->modify('-12 months')->format('Y-m');
 
         foreach ($projects as $project) {
             $ownerKey = (string) $project['owner_key'];
@@ -53,16 +58,27 @@ final class SharePointOwnerDashboard
                 $owners[$ownerKey] = [
                     'key' => $ownerKey,
                     'name' => (string) $project['owner_name'],
+                    'aliases' => [],
                     'initials' => $this->initials((string) $project['owner_name']),
                     'hue' => $this->hue($ownerKey),
                     'project_count' => 0,
                     'unknown_date_count' => 0,
                     'first_created' => '',
                     'last_created' => '',
+                    'last_activity' => '',
                     'streak_months' => 0,
                     'last_12_months' => 0,
+                    'prev_12_months' => 0,
                     'this_year' => 0,
+                    'created_this_quarter' => 0,
+                    'touched_this_quarter' => 0,
+                    'item_count' => 0,
+                    'file_count' => 0,
+                    'size_bytes' => 0,
+                    'assessment_count' => 0,
+                    'dormant' => false,
                     'sources' => [],
+                    'collaborators' => [],
                     'years' => [],
                     'months' => [],
                     'quarters' => [],
@@ -70,12 +86,52 @@ final class SharePointOwnerDashboard
                 ];
             }
 
+            $displayName = (string) $project['owner_name'];
+            if ($displayName !== '' && strcasecmp($displayName, (string) $owners[$ownerKey]['name']) !== 0) {
+                $owners[$ownerKey]['aliases'][$displayName] = true;
+            }
+            $owners[$ownerKey]['name'] = $this->preferredDisplayName(
+                (string) $owners[$ownerKey]['name'],
+                $displayName
+            );
+            $owners[$ownerKey]['initials'] = $this->initials((string) $owners[$ownerKey]['name']);
+
             $owners[$ownerKey]['project_count']++;
             $owners[$ownerKey]['projects'][] = $project;
+            $owners[$ownerKey]['item_count'] += (int) ($project['item_count'] ?? 0);
+            $owners[$ownerKey]['file_count'] += (int) ($project['file_count'] ?? 0);
+            $owners[$ownerKey]['size_bytes'] += (int) ($project['size_bytes'] ?? 0);
+            if (!empty($project['assessment']['id'])) {
+                $owners[$ownerKey]['assessment_count']++;
+            }
+            foreach ((array) ($project['collaborators'] ?? []) as $collab) {
+                $collabKey = (string) ($collab['key'] ?? '');
+                $collabName = (string) ($collab['name'] ?? '');
+                if ($collabKey === '' || $collabKey === $ownerKey) {
+                    continue;
+                }
+                if (!isset($owners[$ownerKey]['collaborators'][$collabKey])) {
+                    $owners[$ownerKey]['collaborators'][$collabKey] = [
+                        'key' => $collabKey,
+                        'name' => $collabName,
+                        'item_count' => 0,
+                    ];
+                }
+                $owners[$ownerKey]['collaborators'][$collabKey]['item_count'] += (int) ($collab['item_count'] ?? 1);
+            }
 
             $srcKey = (string) $project['source_key'];
             $owners[$ownerKey]['sources'][$srcKey] = ($owners[$ownerKey]['sources'][$srcKey] ?? 0) + 1;
             $sourceCounts[$srcKey] = ($sourceCounts[$srcKey] ?? 0) + 1;
+
+            $activity = (string) ($project['last_modified'] ?? '');
+            if ($activity !== '' && ($owners[$ownerKey]['last_activity'] === '' || strcmp($activity, $owners[$ownerKey]['last_activity']) > 0)) {
+                $owners[$ownerKey]['last_activity'] = $activity;
+            }
+            $activityQuarter = (string) ($project['activity_quarter'] ?? '');
+            if ($activityQuarter === $nowQuarter) {
+                $owners[$ownerKey]['touched_this_quarter']++;
+            }
 
             $monthKey = (string) ($project['month'] ?? '');
             $quarterKey = (string) ($project['quarter'] ?? '');
@@ -92,6 +148,9 @@ final class SharePointOwnerDashboard
             $owners[$ownerKey]['months'][$monthKey] = ($owners[$ownerKey]['months'][$monthKey] ?? 0) + 1;
             $owners[$ownerKey]['quarters'][$quarterKey] = ($owners[$ownerKey]['quarters'][$quarterKey] ?? 0) + 1;
             $owners[$ownerKey]['years'][$yearKey] = ($owners[$ownerKey]['years'][$yearKey] ?? 0) + 1;
+            if ($quarterKey === $nowQuarter) {
+                $owners[$ownerKey]['created_this_quarter']++;
+            }
 
             if ($owners[$ownerKey]['first_created'] === '' || strcmp($iso, $owners[$ownerKey]['first_created']) < 0) {
                 $owners[$ownerKey]['first_created'] = $iso;
@@ -105,8 +164,6 @@ final class SharePointOwnerDashboard
             $this->bumpPeriod($byYear, $yearKey, $ownerKey);
         }
 
-        $nowYear = date('Y');
-        $since12 = (new DateTimeImmutable('first day of this month'))->modify('-11 months')->format('Y-m');
         $ownerList = [];
         $totalProjects = count($projects);
 
@@ -122,13 +179,31 @@ final class SharePointOwnerDashboard
                 ? round($owner['project_count'] / $totalProjects, 4)
                 : 0.0;
             $owner['last_12_months'] = 0;
+            $owner['prev_12_months'] = 0;
             $owner['this_year'] = (int) ($owner['years'][$nowYear] ?? 0);
             foreach ($owner['months'] as $monthKey => $count) {
-                if (strcmp((string) $monthKey, $since12) >= 0) {
-                    $owner['last_12_months'] += (int) $count;
+                $monthKey = (string) $monthKey;
+                $count = (int) $count;
+                if (strcmp($monthKey, $since12) >= 0) {
+                    $owner['last_12_months'] += $count;
+                } elseif (strcmp($monthKey, $prev12Start) >= 0) {
+                    $owner['prev_12_months'] += $count;
                 }
             }
             $owner['streak_months'] = $this->trailingStreak(array_keys($owner['months']));
+            if ($owner['last_activity'] === '') {
+                $owner['last_activity'] = (string) $owner['last_created'];
+            }
+            $activityDay = substr((string) $owner['last_activity'], 0, 10);
+            $owner['dormant'] = $activityDay !== '' && strcmp($activityDay, $dormantBefore) < 0
+                && (string) $owner['key'] !== self::UNASSIGNED_KEY;
+            $collabList = array_values($owner['collaborators']);
+            usort(
+                $collabList,
+                static fn (array $a, array $b): int => ((int) $b['item_count']) <=> ((int) $a['item_count'])
+            );
+            $owner['collaborators'] = array_slice($collabList, 0, 8);
+            $owner['aliases'] = array_values(array_keys($owner['aliases']));
             $ownerList[] = $owner;
         }
 
@@ -159,20 +234,47 @@ final class SharePointOwnerDashboard
             }
         }
 
+        $prevYear = (string) ((int) $nowYear - 1);
         $thisYearCount = (int) (($byYear[$nowYear]['total'] ?? 0));
+        $prevYearCount = (int) (($byYear[$prevYear]['total'] ?? 0));
         $last12Count = 0;
+        $prev12Count = 0;
         foreach ($byMonth as $key => $bucket) {
-            if (strcmp((string) $key, $since12) >= 0) {
-                $last12Count += (int) ($bucket['total'] ?? 0);
+            $monthKey = (string) $key;
+            $total = (int) ($bucket['total'] ?? 0);
+            if (strcmp($monthKey, $since12) >= 0) {
+                $last12Count += $total;
+            } elseif (strcmp($monthKey, $prev12Start) >= 0) {
+                $prev12Count += $total;
             }
         }
 
         $assignedCount = 0;
+        $dormantCount = 0;
+        $createdThisQuarter = 0;
+        $touchedThisQuarter = 0;
+        $assessmentMatches = 0;
+        $itemTotal = 0;
         foreach ($ownerList as $owner) {
             if ((string) $owner['key'] !== self::UNASSIGNED_KEY) {
                 $assignedCount += (int) $owner['project_count'];
             }
+            if (!empty($owner['dormant'])) {
+                $dormantCount++;
+            }
+            $createdThisQuarter += (int) ($owner['created_this_quarter'] ?? 0);
+            $touchedThisQuarter += (int) ($owner['touched_this_quarter'] ?? 0);
+            $assessmentMatches += (int) ($owner['assessment_count'] ?? 0);
+            $itemTotal += (int) ($owner['item_count'] ?? 0);
         }
+
+        $topShare = $totalProjects > 0 ? round(((int) ($busiestOwner['project_count'] ?? 0)) / $totalProjects, 4) : 0.0;
+        $yoyPct = $prevYearCount > 0
+            ? round(($thisYearCount - $prevYearCount) / $prevYearCount, 4)
+            : ($thisYearCount > 0 ? 1.0 : 0.0);
+        $last12Pct = $prev12Count > 0
+            ? round(($last12Count - $prev12Count) / $prev12Count, 4)
+            : ($last12Count > 0 ? 1.0 : 0.0);
 
         sort($datedIsos);
         $yearMin = $yearKeys[0] ?? null;
@@ -189,7 +291,18 @@ final class SharePointOwnerDashboard
                 'year_min' => $yearMin,
                 'year_max' => $yearMax,
                 'this_year_count' => $thisYearCount,
+                'prev_year_count' => $prevYearCount,
+                'yoy_pct' => $yoyPct,
                 'last_12_months' => $last12Count,
+                'prev_12_months' => $prev12Count,
+                'last_12_pct' => $last12Pct,
+                'created_this_quarter' => $createdThisQuarter,
+                'touched_this_quarter' => $touchedThisQuarter,
+                'dormant_count' => $dormantCount,
+                'assessment_count' => $assessmentMatches,
+                'item_count' => $itemTotal,
+                'concentration_pct' => $topShare,
+                'concentration_warn' => $topShare >= 0.35,
                 'busiest_owner' => $busiestOwner['name'] ?? '',
                 'busiest_owner_key' => $busiestOwner['key'] ?? '',
                 'busiest_owner_count' => (int) ($busiestOwner['project_count'] ?? 0),
@@ -232,17 +345,54 @@ final class SharePointOwnerDashboard
         $statement->execute($sourceKeys);
         $rows = $statement->fetchAll() ?: [];
 
-        $countStmt = $this->pdo->prepare(
-            "SELECT source_key, project_name, COUNT(*) AS item_count
+        $statsStmt = $this->pdo->prepare(
+            "SELECT source_key, project_name,
+                    COUNT(*) AS item_count,
+                    SUM(CASE WHEN lower(item_type) = 'file' THEN 1 ELSE 0 END) AS file_count,
+                    SUM(CASE WHEN lower(item_type) = 'folder' THEN 1 ELSE 0 END) AS folder_count,
+                    SUM(COALESCE(size_bytes, 0)) AS size_bytes,
+                    MAX(last_modified) AS last_modified
              FROM sharepoint_items
              WHERE source_key IN ($placeholders)
              GROUP BY source_key, project_name"
         );
-        $countStmt->execute($sourceKeys);
-        $itemCounts = [];
-        foreach ($countStmt->fetchAll() ?: [] as $countRow) {
-            $itemCounts[(string) $countRow['source_key'] . "\n" . (string) $countRow['project_name']] = (int) $countRow['item_count'];
+        $statsStmt->execute($sourceKeys);
+        $stats = [];
+        foreach ($statsStmt->fetchAll() ?: [] as $statRow) {
+            $stats[(string) $statRow['source_key'] . "\n" . (string) $statRow['project_name']] = [
+                'item_count' => (int) ($statRow['item_count'] ?? 0),
+                'file_count' => (int) ($statRow['file_count'] ?? 0),
+                'folder_count' => (int) ($statRow['folder_count'] ?? 0),
+                'size_bytes' => (int) ($statRow['size_bytes'] ?? 0),
+                'last_modified' => trim((string) ($statRow['last_modified'] ?? '')),
+            ];
         }
+
+        $peopleStmt = $this->pdo->prepare(
+            "SELECT source_key, project_name, person, modified_by, COUNT(*) AS n
+             FROM sharepoint_items
+             WHERE source_key IN ($placeholders)
+               AND (person <> '' OR modified_by <> '')
+             GROUP BY source_key, project_name, person, modified_by"
+        );
+        $peopleStmt->execute($sourceKeys);
+        $peopleByGroup = [];
+        foreach ($peopleStmt->fetchAll() ?: [] as $peopleRow) {
+            $groupKey = (string) $peopleRow['source_key'] . "\n" . (string) $peopleRow['project_name'];
+            if (!isset($peopleByGroup[$groupKey])) {
+                $peopleByGroup[$groupKey] = [];
+            }
+            $n = max(1, (int) ($peopleRow['n'] ?? 1));
+            foreach ([(string) ($peopleRow['person'] ?? ''), (string) ($peopleRow['modified_by'] ?? '')] as $name) {
+                $name = trim($name);
+                if ($name === '') {
+                    continue;
+                }
+                $peopleByGroup[$groupKey][$name] = ($peopleByGroup[$groupKey][$name] ?? 0) + $n;
+            }
+        }
+
+        $assessments = $this->assessmentIndex();
 
         /** @var array<string, array<string, mixed>> $groups */
         $groups = [];
@@ -253,20 +403,31 @@ final class SharePointOwnerDashboard
                 continue;
             }
             $groupKey = $sourceKey . "\n" . $projectName;
+            $stat = $stats[$groupKey] ?? [
+                'item_count' => 0,
+                'file_count' => 0,
+                'folder_count' => 0,
+                'size_bytes' => 0,
+                'last_modified' => '',
+            ];
             if (!isset($groups[$groupKey])) {
                 $groups[$groupKey] = [
                     'project_name' => $projectName,
                     'source_key' => $sourceKey,
                     'folder_url' => '',
-                    'item_count' => $itemCounts[$groupKey] ?? 0,
+                    'item_count' => (int) $stat['item_count'],
+                    'file_count' => (int) $stat['file_count'],
+                    'folder_count' => (int) $stat['folder_count'],
+                    'size_bytes' => (int) $stat['size_bytes'],
+                    'last_modified_raw' => (string) $stat['last_modified'],
                     'root_person' => '',
                     'root_created' => '',
-                    'people' => [],
+                    'people' => $peopleByGroup[$groupKey] ?? [],
                     'created_candidates' => [],
                 ];
             }
 
-            $groups[$groupKey]['item_count'] = $itemCounts[$groupKey] ?? max(1, (int) $groups[$groupKey]['item_count']);
+            $groups[$groupKey]['item_count'] = (int) $stat['item_count'] ?: max(1, (int) $groups[$groupKey]['item_count']);
             $name = trim((string) ($row['name'] ?? ''));
             $path = trim((string) ($row['relative_path'] ?? ''));
             $itemType = strtolower((string) ($row['item_type'] ?? 'file')) === 'folder' ? 'folder' : 'file';
@@ -305,8 +466,8 @@ final class SharePointOwnerDashboard
             }
         }
 
-        foreach ($itemCounts as $groupKey => $count) {
-            if (isset($groups[$groupKey]) || $count < 1) {
+        foreach ($stats as $groupKey => $stat) {
+            if (isset($groups[$groupKey]) || (int) $stat['item_count'] < 1) {
                 continue;
             }
             [$sourceKey, $projectName] = explode("\n", (string) $groupKey, 2);
@@ -314,10 +475,14 @@ final class SharePointOwnerDashboard
                 'project_name' => $projectName,
                 'source_key' => $sourceKey,
                 'folder_url' => '',
-                'item_count' => $count,
+                'item_count' => (int) $stat['item_count'],
+                'file_count' => (int) $stat['file_count'],
+                'folder_count' => (int) $stat['folder_count'],
+                'size_bytes' => (int) $stat['size_bytes'],
+                'last_modified_raw' => (string) $stat['last_modified'],
                 'root_person' => '',
                 'root_created' => '',
-                'people' => [],
+                'people' => $peopleByGroup[$groupKey] ?? [],
                 'created_candidates' => [],
             ];
         }
@@ -330,7 +495,7 @@ final class SharePointOwnerDashboard
                 $ownerName = (string) array_key_first($group['people']);
             }
             $ownerKey = $this->ownerKey($ownerName);
-            $displayName = $ownerName !== '' ? $ownerName : self::UNASSIGNED_NAME;
+            $displayName = $ownerName !== '' ? $this->preferredDisplayName($ownerName, $ownerName) : self::UNASSIGNED_NAME;
 
             $createdRaw = trim((string) $group['root_created']);
             if ($createdRaw === '' && $group['created_candidates'] !== []) {
@@ -338,19 +503,85 @@ final class SharePointOwnerDashboard
                 $createdRaw = (string) $group['created_candidates'][0];
             }
             $parsed = $this->parseDate($createdRaw);
+            $activityParsed = $this->parseDate(trim((string) $group['last_modified_raw']));
+            $activityIso = (string) ($activityParsed['iso'] ?? '');
+            if ($activityIso === '') {
+                $activityIso = (string) ($parsed['iso'] ?? '');
+            }
+
+            $collaborators = [];
+            foreach ((array) $group['people'] as $personName => $count) {
+                $personName = trim((string) $personName);
+                $personKey = $this->ownerKey($personName);
+                if ($personName === '' || $personKey === '' || $personKey === $ownerKey) {
+                    continue;
+                }
+                $collaborators[] = [
+                    'key' => $personKey,
+                    'name' => $this->preferredDisplayName($personName, $personName),
+                    'item_count' => (int) $count,
+                ];
+            }
+            usort(
+                $collaborators,
+                static fn (array $a, array $b): int => ((int) $b['item_count']) <=> ((int) $a['item_count'])
+            );
+            $collaborators = array_slice($collaborators, 0, 6);
+
+            $projectName = (string) $group['project_name'];
+            $assessment = $assessments[mb_strtolower(trim($projectName))] ?? null;
 
             $out[] = [
-                'project_name' => (string) $group['project_name'],
+                'project_name' => $projectName,
                 'source_key' => (string) $group['source_key'],
                 'source_title' => (string) ($sourceTitles[$group['source_key']] ?? $group['source_key']),
                 'folder_url' => (string) $group['folder_url'],
                 'item_count' => (int) $group['item_count'],
+                'file_count' => (int) $group['file_count'],
+                'folder_count' => (int) $group['folder_count'],
+                'size_bytes' => (int) $group['size_bytes'],
                 'owner_key' => $ownerKey,
                 'owner_name' => $displayName,
                 'date_created' => $parsed['iso'] ?? '',
+                'last_modified' => $activityIso,
                 'year' => $parsed['year'] ?? '',
                 'month' => $parsed['month'] ?? '',
                 'quarter' => $parsed['quarter'] ?? '',
+                'activity_year' => $activityParsed['year'] ?? '',
+                'activity_month' => $activityParsed['month'] ?? '',
+                'activity_quarter' => $activityParsed['quarter'] ?? '',
+                'collaborators' => $collaborators,
+                'assessment' => $assessment,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, array{id: int, solution_name: string}>
+     */
+    private function assessmentIndex(): array
+    {
+        try {
+            $rows = $this->pdo->query(
+                'SELECT id, solution_name FROM assessments WHERE TRIM(solution_name) <> \'\' ORDER BY id DESC'
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+        if ($rows === false) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows->fetchAll() ?: [] as $row) {
+            $name = mb_strtolower(trim((string) ($row['solution_name'] ?? '')));
+            if ($name === '' || isset($out[$name])) {
+                continue;
+            }
+            $out[$name] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'solution_name' => trim((string) ($row['solution_name'] ?? '')),
             ];
         }
 
@@ -594,12 +825,63 @@ final class SharePointOwnerDashboard
 
     private function ownerKey(string $name): string
     {
-        $normalized = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $name) ?? $name));
+        $normalized = $this->canonicalName($name);
         if ($normalized === '') {
             return self::UNASSIGNED_KEY;
         }
 
         return $normalized;
+    }
+
+    private function canonicalName(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '' || strcasecmp($name, self::UNASSIGNED_NAME) === 0) {
+            return '';
+        }
+        $name = preg_replace('/<[^>]+>/u', ' ', $name) ?? $name;
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
+        $name = mb_strtolower(trim($name));
+        if (preg_match('/^([^,]+),\s*(.+)$/u', $name, $match) === 1) {
+            $name = trim($match[2] . ' ' . $match[1]);
+        }
+
+        return $name;
+    }
+
+    private function preferredDisplayName(string $current, string $candidate): string
+    {
+        $candidate = trim($candidate);
+        $current = trim($current);
+        if ($candidate === '') {
+            return $current;
+        }
+        if ($current === '' || strcasecmp($current, self::UNASSIGNED_NAME) === 0) {
+            return $this->prettyName($candidate);
+        }
+        $prettyCurrent = $this->prettyName($current);
+        $prettyCandidate = $this->prettyName($candidate);
+        $currentHasComma = str_contains($prettyCurrent, ',');
+        $candidateHasComma = str_contains($prettyCandidate, ',');
+        if ($currentHasComma && !$candidateHasComma) {
+            return $prettyCandidate;
+        }
+        if (mb_strlen($prettyCandidate) > mb_strlen($prettyCurrent) + 2 && !$candidateHasComma) {
+            return $prettyCandidate;
+        }
+
+        return $prettyCurrent;
+    }
+
+    private function prettyName(string $name): string
+    {
+        $name = trim(preg_replace('/<[^>]+>/u', ' ', $name) ?? $name);
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
+        if (preg_match('/^([^,]+),\s*(.+)$/u', $name, $match) === 1) {
+            return trim($match[2] . ' ' . $match[1]);
+        }
+
+        return trim($name);
     }
 
     private function initials(string $name): string
@@ -693,7 +975,18 @@ final class SharePointOwnerDashboard
                 'year_min' => null,
                 'year_max' => null,
                 'this_year_count' => 0,
+                'prev_year_count' => 0,
+                'yoy_pct' => 0.0,
                 'last_12_months' => 0,
+                'prev_12_months' => 0,
+                'last_12_pct' => 0.0,
+                'created_this_quarter' => 0,
+                'touched_this_quarter' => 0,
+                'dormant_count' => 0,
+                'assessment_count' => 0,
+                'item_count' => 0,
+                'concentration_pct' => 0.0,
+                'concentration_warn' => false,
                 'busiest_owner' => '',
                 'busiest_owner_key' => '',
                 'busiest_owner_count' => 0,
