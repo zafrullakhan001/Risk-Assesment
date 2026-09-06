@@ -937,8 +937,32 @@
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
     compareDensity: 'riskregister_sp_compare_density',
+    compareColumns: 'riskregister_sp_compare_columns',
     listDensity: 'riskregister_sp_list_density',
     catalogDensity: 'riskregister_sp_catalog_density',
+  };
+
+  const COMPARE_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'diff'];
+  const COMPARE_DEFAULT_HIDDEN_COLS = ['size', 'modified_by'];
+
+  const readCompareHiddenCols = () => {
+    try {
+      const raw = localStorage.getItem(SEARCH_PREF.compareColumns);
+      if (!raw) return new Set(COMPARE_DEFAULT_HIDDEN_COLS);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set(COMPARE_DEFAULT_HIDDEN_COLS);
+      return new Set(parsed.filter((col) => COMPARE_TOGGLE_COLS.includes(col)));
+    } catch {
+      return new Set(COMPARE_DEFAULT_HIDDEN_COLS);
+    }
+  };
+
+  const writeCompareHiddenCols = (hidden) => {
+    try {
+      localStorage.setItem(SEARCH_PREF.compareColumns, JSON.stringify([...hidden]));
+    } catch {
+      /* ignore */
+    }
   };
 
   const readDialogDensity = () => {
@@ -1636,13 +1660,13 @@
   const dialogItemCellsHtml = (item, depth, toggle) => {
     const person = String(item?.person || '').trim();
     const modifiedBy = String(item?.modified_by || '').trim();
-    return `<td>${nameCellHtml(item, depth, toggle)}</td>
-      <td>${typeBadgeHtml(item)}</td>
-      <td class="sp-meta-cell sp-size-cell">${escapeHtml(formatSize(item?.size_bytes))}</td>
-      <td class="sp-meta-cell">${escapeHtml(formatModified(item?.last_modified))}</td>
-      <td class="sp-meta-cell">${escapeHtml(formatModified(item?.date_created))}</td>
-      <td class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
-      <td class="sp-meta-cell">${personCellHtml(person, '🙋')}</td>`;
+    return `<td data-col="name">${nameCellHtml(item, depth, toggle)}</td>
+      <td data-col="type">${typeBadgeHtml(item)}</td>
+      <td data-col="size" class="sp-meta-cell sp-size-cell">${escapeHtml(formatSize(item?.size_bytes))}</td>
+      <td data-col="modified" class="sp-meta-cell">${escapeHtml(formatModified(item?.last_modified))}</td>
+      <td data-col="created" class="sp-meta-cell">${escapeHtml(formatModified(item?.date_created))}</td>
+      <td data-col="modified_by" class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
+      <td data-col="created_by" class="sp-meta-cell">${personCellHtml(person, '🙋')}</td>`;
   };
 
   /* ---- Project detail dialog ---- */
@@ -2088,10 +2112,127 @@
     };
     let layout = 'tree';
     let density = 'compact';
+    let sortKey = 'name';
+    let sortDir = 'asc';
     let syncSearchModes = () => readSearchPrefs();
     let compareBusy = false;
     /** @type {{ projectName: string, sourceKey: string }[]} */
     let lastComparePicks = [];
+    /** @type {Set<string>} */
+    let hiddenItemKeys = new Set();
+    /** @type {Map<string, string>} */
+    let hiddenItemLabels = new Map();
+    /** @type {Set<string>} */
+    let hiddenCols = readCompareHiddenCols();
+
+    const columnsPicker = document.getElementById('sharepoint-compare-columns-picker');
+    const hiddenBar = document.getElementById('sharepoint-compare-hidden-bar');
+    const hiddenLabel = document.getElementById('sharepoint-compare-hidden-label');
+    const hiddenChips = document.getElementById('sharepoint-compare-hidden-chips');
+    const showAllHiddenBtn = document.getElementById('sharepoint-compare-show-all-hidden');
+
+    const visibleColspan = () => {
+      let count = 2; // name + hide action always shown
+      COMPARE_TOGGLE_COLS.forEach((col) => {
+        if (!hiddenCols.has(col)) count += 1;
+      });
+      return Math.max(count, 2);
+    };
+
+    const emptyRowHtml = (message) =>
+      `<tr><td colspan="${visibleColspan()}" class="sharepoint-dialog-empty">${message}</td></tr>`;
+
+    const applyHiddenColsToDialog = () => {
+      dialog.setAttribute('data-hidden-cols', [...hiddenCols].join(' '));
+      columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+        const col = input.getAttribute('data-col-toggle') || '';
+        input.checked = !hiddenCols.has(col);
+      });
+    };
+
+    const setColumnHidden = (col, hide) => {
+      if (!COMPARE_TOGGLE_COLS.includes(col)) return;
+      if (hide) hiddenCols.add(col);
+      else hiddenCols.delete(col);
+      writeCompareHiddenCols(hiddenCols);
+      applyHiddenColsToDialog();
+      if (activeSides.every((side) => projectsBySide[side])) {
+        applyCompareFilter();
+      }
+    };
+
+    const hideItemByKey = (key, label) => {
+      if (!key) return;
+      hiddenItemKeys.add(key);
+      hiddenItemLabels.set(key, label || key);
+      refreshHiddenBar();
+      applyCompareFilter();
+    };
+
+    const unhideItemByKey = (key) => {
+      hiddenItemKeys.delete(key);
+      hiddenItemLabels.delete(key);
+      refreshHiddenBar();
+      applyCompareFilter();
+    };
+
+    const clearHiddenItems = () => {
+      hiddenItemKeys.clear();
+      hiddenItemLabels.clear();
+      refreshHiddenBar();
+      applyCompareFilter();
+    };
+
+    const refreshHiddenBar = () => {
+      if (!hiddenBar) return;
+      const count = hiddenItemKeys.size;
+      hiddenBar.hidden = count === 0;
+      if (hiddenLabel) {
+        hiddenLabel.textContent = `${count} hidden`;
+      }
+      if (hiddenChips) {
+        hiddenChips.innerHTML = [...hiddenItemKeys]
+          .map((key) => {
+            const label = hiddenItemLabels.get(key) || key;
+            return `<button type="button" class="sp-compare-hidden-chip" data-unhide-key="${escapeHtml(key)}" role="listitem" title="Show again">${escapeHtml(label)} ✕</button>`;
+          })
+          .join('');
+      }
+    };
+
+    const filterOutHiddenItems = (items) =>
+      (items || []).filter((item) => !hiddenItemKeys.has(itemKey(item)));
+
+    const compareRowExtrasHtml = (item, side, diff, tone) => {
+      const key = itemKey(item);
+      const name = String(item?.name || '').trim() || key;
+      return `<td data-col="diff"><span class="sp-diff-pill sp-diff-pill--${tone}">${diffLabelFor(diff, side)}</span></td>
+        <td data-col="hide" class="sp-compare-hide-cell">
+          <button type="button" class="sp-compare-hide-btn" data-hide-key="${escapeHtml(key)}" data-hide-label="${escapeHtml(name)}" title="Hide from compare" aria-label="Hide ${escapeHtml(name)} from compare">👁‍🗨</button>
+        </td>`;
+    };
+
+    const syncCompareHeaderSort = () => {
+      dialog.querySelectorAll('.sharepoint-compare-panel thead th[data-sort]').forEach((th) => {
+        const key = th.getAttribute('data-sort') || '';
+        const active = key === sortKey;
+        th.classList.toggle('is-sorted-asc', active && sortDir === 'asc');
+        th.classList.toggle('is-sorted-desc', active && sortDir === 'desc');
+        th.setAttribute('aria-sort', active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none');
+      });
+    };
+
+    const setCompareSort = (next) => {
+      if (!SORT_KEYS.has(next)) return;
+      if (sortKey === next) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortKey = next;
+        sortDir = 'asc';
+      }
+      syncCompareHeaderSort();
+      applyCompareFilter();
+    };
 
     const assignProjectToSide = (side, project, { seedExpanded = false } = {}) => {
       projectsBySide[side] = project;
@@ -2213,9 +2354,8 @@
         const tone = pillClassFor(diff);
         acc.push({
           html: `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolder ? ' sp-dialog-row--folder' : ''}">
-            <td>${nameCellHtml(node.item, depth, toggle)}</td>
-            <td>${typeBadgeHtml(node.item)}</td>
-            <td><span class="sp-diff-pill sp-diff-pill--${tone}">${diffLabelFor(diff, side)}</span></td>
+            ${dialogItemCellsHtml(node.item, depth, toggle)}
+            ${compareRowExtrasHtml(node.item, side, diff, tone)}
           </tr>`,
           shared: diff === 'all' || diff === 'shared' ? 1 : 0,
           only: diff.startsWith('only-') ? 1 : 0,
@@ -2235,13 +2375,13 @@
       let only = 0;
       let shown = 0;
 
-      const baseItems = uniqueOnly
-        ? items.filter((item) => !others.has(itemKey(item)))
-        : items;
+      const baseItems = filterOutHiddenItems(
+        uniqueOnly ? items.filter((item) => !others.has(itemKey(item))) : items
+      );
 
       if (layout === 'tree') {
-        const tree = filterTree(buildTreeNodes(baseItems), kind, ext, query, prefs);
-        const key = `${treeRevealKey(query, kind, ext, prefs)}|${uniqueOnly ? '1' : '0'}`;
+        const tree = sortTreeNodesBy(filterTree(buildTreeNodes(baseItems), kind, ext, query, prefs), sortKey, sortDir);
+        const key = `${treeRevealKey(query, kind, ext, prefs)}|${uniqueOnly ? '1' : '0'}|${sortKey}:${sortDir}`;
         if (sideEls[side].lastRevealKey !== key) {
           sideEls[side].lastRevealKey = key;
           if (String(query || '').trim() !== '' || ext.length > 0) {
@@ -2258,11 +2398,11 @@
         rowsEl.innerHTML =
           acc.length > 0
             ? acc.map((row) => row.html).join('')
-            : `<tr><td colspan="3" class="sharepoint-dialog-empty">${
+            : emptyRowHtml(
                 items.length === 0
                   ? 'No files or folders.'
                   : 'No matches for this panel filter. Try OR mode or Fuzzy.'
-              }</td></tr>`;
+              );
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
           btn.addEventListener('click', (event) => {
             event.preventDefault();
@@ -2275,14 +2415,14 @@
           });
         });
       } else {
-        const filtered = flattenFiltered(baseItems, kind, ext, query, prefs);
+        const filtered = sortItemsBy(flattenFiltered(baseItems, kind, ext, query, prefs), sortKey, sortDir);
         shown = filtered.length;
         if (filtered.length === 0) {
-          rowsEl.innerHTML = `<tr><td colspan="3" class="sharepoint-dialog-empty">${
+          rowsEl.innerHTML = emptyRowHtml(
             items.length === 0
               ? 'No files or folders.'
               : 'No matches for this panel filter. Try OR mode or Fuzzy.'
-          }</td></tr>`;
+          );
         } else {
           rowsEl.innerHTML = filtered
             .map((item) => {
@@ -2292,9 +2432,8 @@
               if (diff === 'all' || diff === 'shared') shared += 1;
               else only += 1;
               return `<tr class="sp-dialog-row sp-compare-row sp-compare-row--${tone}${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}">
-                <td>${nameCellHtml(item, 0, '')}</td>
-                <td>${typeBadgeHtml(item)}</td>
-                <td><span class="sp-diff-pill sp-diff-pill--${tone}">${diffLabelFor(diff, side)}</span></td>
+                ${dialogItemCellsHtml(item, 0, '')}
+                ${compareRowExtrasHtml(item, side, diff, tone)}
               </tr>`;
             })
             .join('');
@@ -2386,8 +2525,7 @@
       sideEls[side].lastRevealKey = '';
       resetSideFilter(side);
       sideEls[side].actions.innerHTML = '';
-      sideEls[side].rows.innerHTML =
-        '<tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>';
+      sideEls[side].rows.innerHTML = emptyRowHtml('Select folders to compare.');
       sideEls[side].sub.textContent = '';
     };
 
@@ -2603,6 +2741,7 @@
       const prefs = syncSearchModes(sampleQuery);
       syncLayoutButtons();
       syncPanelVisibility();
+      syncCompareHeaderSort();
 
       const statsBySide = {};
       activeSides.forEach((side) => {
@@ -2664,6 +2803,13 @@
     });
 
     panelsEl?.addEventListener('click', (event) => {
+      const hideBtn = event.target.closest('.sp-compare-hide-btn');
+      if (hideBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        hideItemByKey(hideBtn.getAttribute('data-hide-key') || '', hideBtn.getAttribute('data-hide-label') || '');
+        return;
+      }
       const closeBtn = event.target.closest('.sp-compare-close-btn');
       if (closeBtn) {
         event.preventDefault();
@@ -2678,6 +2824,41 @@
         swapWithNeighbor(side, direction);
       }
     });
+
+    dialog.querySelectorAll('.sharepoint-compare-panel thead .sp-dialog-sort-btn[data-sort]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        setCompareSort(btn.getAttribute('data-sort') || 'name');
+      });
+    });
+
+    columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const col = input.getAttribute('data-col-toggle') || '';
+        setColumnHidden(col, !input.checked);
+      });
+    });
+
+    // Keep the columns menu open when clicking checkboxes inside details.
+    columnsPicker?.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+
+    hiddenChips?.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-unhide-key]');
+      if (!chip) return;
+      event.preventDefault();
+      unhideItemByKey(chip.getAttribute('data-unhide-key') || '');
+    });
+
+    showAllHiddenBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      clearHiddenItems();
+    });
+
+    applyHiddenColsToDialog();
+    syncCompareHeaderSort();
+    refreshHiddenBar();
 
     const slotSidesForCount = (count) => {
       if (count >= 3) return ['left', 'mid', 'right'];
@@ -2700,6 +2881,13 @@
       if (kindSelect) kindSelect.value = 'all';
       if (uniqueOnlyEl) uniqueOnlyEl.checked = false;
       layout = 'tree';
+      sortKey = 'name';
+      sortDir = 'asc';
+      hiddenItemKeys.clear();
+      hiddenItemLabels.clear();
+      refreshHiddenBar();
+      syncCompareHeaderSort();
+      applyHiddenColsToDialog();
 
       SIDE_IDS.forEach((side) => {
         sideEls[side].expanded.clear();
@@ -2709,8 +2897,7 @@
         itemsBySide[side] = [];
         keysBySide[side] = new Set();
         sideEls[side].actions.innerHTML = '';
-        sideEls[side].rows.innerHTML =
-          '<tr><td colspan="3" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>';
+        sideEls[side].rows.innerHTML = emptyRowHtml('⏳ Loading…');
       });
 
       activeSides.forEach((side, index) => {
@@ -2740,9 +2927,7 @@
         subEl.textContent = error.message || 'Compare failed.';
         if (searchWrap) searchWrap.hidden = true;
         activeSides.forEach((side) => {
-          sideEls[side].rows.innerHTML = `<tr><td colspan="3" class="sharepoint-dialog-empty">${escapeHtml(
-            error.message || 'Failed'
-          )}</td></tr>`;
+          sideEls[side].rows.innerHTML = emptyRowHtml(escapeHtml(error.message || 'Failed'));
         });
       } finally {
         compareBusy = false;

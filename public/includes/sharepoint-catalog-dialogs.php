@@ -164,6 +164,18 @@ declare(strict_types=1);
                                 <input type="checkbox" id="sharepoint-compare-unique-only">
                                 <span>Unique only</span>
                             </label>
+                            <details class="sp-compare-columns-picker" id="sharepoint-compare-columns-picker">
+                                <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
+                                <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size"> Size</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created" checked> Created</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by"> Modified By</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
+                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="diff" checked> Diff</label>
+                                </div>
+                            </details>
                         </div>
                         <div class="sharepoint-dialog-search-controls" id="sharepoint-compare-search-controls">
                             <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
@@ -173,6 +185,11 @@ declare(strict_types=1);
                             <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
                         </div>
                         <p class="panel-help sharepoint-compare-filter-hint">Each panel has its own search and extension filters.</p>
+                        <div class="sharepoint-compare-hidden-bar" id="sharepoint-compare-hidden-bar" hidden>
+                            <span class="sharepoint-compare-hidden-label" id="sharepoint-compare-hidden-label">0 hidden</span>
+                            <div class="sharepoint-compare-hidden-chips" id="sharepoint-compare-hidden-chips" role="list"></div>
+                            <button type="button" class="button ghost" id="sharepoint-compare-show-all-hidden">Show all</button>
+                        </div>
                     </div>
                     <div class="sharepoint-compare-panels" id="sharepoint-compare-panels" data-panel-count="2">
                         <section class="sharepoint-compare-panel" data-side="left">
@@ -212,13 +229,33 @@ declare(strict_types=1);
                                 <table class="sharepoint-projects-table sharepoint-dialog-table">
                                     <thead>
                                         <tr>
-                                            <th scope="col">Name</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Diff</th>
+                                            <th scope="col" class="is-sortable is-sorted-asc" data-col="name" data-sort="name" aria-sort="ascending">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="name">📄 Name</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="type" data-sort="type" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="type">🏷️ Type</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="size" data-sort="size" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="size">📦 Size</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="modified" data-sort="modified" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="modified">🕒 Modified</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="created" data-sort="created" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="created">📅 Created</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="modified_by" data-sort="modified_by" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by">👤 Modified By</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="created_by" data-sort="created_by" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="created_by">🙋 Created By</button>
+                                            </th>
+                                            <th scope="col" data-col="diff">Diff</th>
+                                            <th scope="col" data-col="hide" class="sp-compare-hide-col"><span class="visually-hidden">Hide</span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="sharepoint-compare-left-rows">
-                                        <tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
+                                        <tr><td colspan="9" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -260,13 +297,33 @@ declare(strict_types=1);
                                 <table class="sharepoint-projects-table sharepoint-dialog-table">
                                     <thead>
                                         <tr>
-                                            <th scope="col">Name</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Diff</th>
+                                            <th scope="col" class="is-sortable is-sorted-asc" data-col="name" data-sort="name" aria-sort="ascending">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="name">📄 Name</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="type" data-sort="type" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="type">🏷️ Type</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="size" data-sort="size" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="size">📦 Size</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="modified" data-sort="modified" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="modified">🕒 Modified</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="created" data-sort="created" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="created">📅 Created</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="modified_by" data-sort="modified_by" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by">👤 Modified By</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="created_by" data-sort="created_by" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="created_by">🙋 Created By</button>
+                                            </th>
+                                            <th scope="col" data-col="diff">Diff</th>
+                                            <th scope="col" data-col="hide" class="sp-compare-hide-col"><span class="visually-hidden">Hide</span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="sharepoint-compare-mid-rows">
-                                        <tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
+                                        <tr><td colspan="9" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -308,13 +365,33 @@ declare(strict_types=1);
                                 <table class="sharepoint-projects-table sharepoint-dialog-table">
                                     <thead>
                                         <tr>
-                                            <th scope="col">Name</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Diff</th>
+                                            <th scope="col" class="is-sortable is-sorted-asc" data-col="name" data-sort="name" aria-sort="ascending">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="name">📄 Name</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="type" data-sort="type" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="type">🏷️ Type</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="size" data-sort="size" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="size">📦 Size</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="modified" data-sort="modified" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="modified">🕒 Modified</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="created" data-sort="created" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="created">📅 Created</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="modified_by" data-sort="modified_by" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="modified_by">👤 Modified By</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-col="created_by" data-sort="created_by" aria-sort="none">
+                                                <button type="button" class="sp-dialog-sort-btn" data-sort="created_by">🙋 Created By</button>
+                                            </th>
+                                            <th scope="col" data-col="diff">Diff</th>
+                                            <th scope="col" data-col="hide" class="sp-compare-hide-col"><span class="visually-hidden">Hide</span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="sharepoint-compare-right-rows">
-                                        <tr><td colspan="3" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
+                                        <tr><td colspan="9" class="sharepoint-dialog-empty">Select folders to compare.</td></tr>
                                     </tbody>
                                 </table>
                             </div>

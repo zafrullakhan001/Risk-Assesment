@@ -11473,6 +11473,159 @@ html.sp-workspace-scroll-lock body {
     font-size: 0.7rem;
     padding: 0.32rem 0.5rem;
 }
+.sharepoint-compare-dialog .sp-meta-cell {
+    font-size: 0.78rem;
+    max-width: 9.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sharepoint-compare-dialog .sp-size-cell {
+    max-width: 4.5rem;
+}
+.sharepoint-compare-dialog .sp-person-cell {
+    display: inline-block;
+    max-width: 8.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+.sharepoint-compare-dialog[data-hidden-cols~="type"] [data-col="type"],
+.sharepoint-compare-dialog[data-hidden-cols~="size"] [data-col="size"],
+.sharepoint-compare-dialog[data-hidden-cols~="modified"] [data-col="modified"],
+.sharepoint-compare-dialog[data-hidden-cols~="created"] [data-col="created"],
+.sharepoint-compare-dialog[data-hidden-cols~="modified_by"] [data-col="modified_by"],
+.sharepoint-compare-dialog[data-hidden-cols~="created_by"] [data-col="created_by"],
+.sharepoint-compare-dialog[data-hidden-cols~="diff"] [data-col="diff"] {
+    display: none;
+}
+.sp-compare-columns-picker {
+    position: relative;
+    display: inline-block;
+}
+.sp-compare-columns-picker > summary {
+    list-style: none;
+    cursor: pointer;
+}
+.sp-compare-columns-picker > summary::-webkit-details-marker {
+    display: none;
+}
+.sp-compare-columns-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 30;
+    display: grid;
+    gap: 0.35rem;
+    min-width: 11rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.65rem;
+    border: 1px solid var(--border, #e2e8f0);
+    background: var(--surface, #fff);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+}
+[data-theme="indigo"] .sp-compare-columns-menu {
+    background: var(--card, #0f172a);
+    border-color: color-mix(in srgb, #818cf8 28%, var(--border, #334155));
+}
+.sp-compare-col-option {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text, #0f172a);
+    cursor: pointer;
+    user-select: none;
+}
+.sharepoint-compare-hidden-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.65rem;
+    margin-top: 0.55rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 0.65rem;
+    border: 1px dashed color-mix(in srgb, #64748b 35%, transparent);
+    background: color-mix(in srgb, #94a3b8 8%, transparent);
+}
+.sharepoint-compare-hidden-bar[hidden] {
+    display: none !important;
+}
+.sharepoint-compare-hidden-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted, #64748b);
+}
+.sharepoint-compare-hidden-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sp-compare-hidden-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 14rem;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 999px;
+    background: var(--surface, #fff);
+    color: inherit;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 650;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sp-compare-hidden-chip:hover,
+.sp-compare-hidden-chip:focus-visible {
+    border-color: var(--primary, #0e7490);
+    color: var(--primary, #0e7490);
+    outline: none;
+}
+.sp-compare-hide-col,
+.sp-compare-hide-cell {
+    width: 2.1rem;
+    min-width: 2.1rem;
+    padding-left: 0.2rem !important;
+    padding-right: 0.2rem !important;
+    text-align: center;
+}
+.sp-compare-hide-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--muted, #64748b);
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.sp-compare-hide-btn:hover,
+.sp-compare-hide-btn:focus-visible {
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 28%, transparent);
+    outline: none;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-hidden-bar {
+    margin-top: 0.35rem;
+    padding: 0.3rem 0.5rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-compare-hide-btn {
+    width: 1.35rem;
+    height: 1.35rem;
+    font-size: 0.75rem;
+}
 .sharepoint-compare-dialog.is-compact-chrome .sp-tree-toggle,
 .sharepoint-compare-dialog.is-compact-chrome .sp-tree-toggle--spacer {
     width: 1.2rem;
