@@ -3238,7 +3238,10 @@
       picks.forEach((pick, index) => {
         const side = pick.side || activeSides[index];
         if (!side) return;
-        assignProjectToSide(side, loaded[index], { seedExpanded });
+        const payload = loaded[index];
+        const project = payload?.project && typeof payload.project === 'object' ? payload.project : payload;
+        if (!project) return;
+        assignProjectToSide(side, project, { seedExpanded });
       });
       refreshCompareSummary();
       legendEl.hidden = false;
