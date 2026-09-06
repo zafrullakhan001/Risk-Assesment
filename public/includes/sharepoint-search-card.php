@@ -28,8 +28,8 @@ $metaProjectCount = (int) ($metaProjectCount ?? $matchedProjectCount ?? $project
 $searchIntroHtml = (string) ($searchIntroHtml ?? '');
 if ($searchIntroHtml === '') {
     $searchIntroHtml = $searchCardPublic
-        ? 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By. Use operators like <code>ext:pdf</code>, <code>person:name</code>, <code>"exact phrase"</code>, or <code>-exclude</code>.'
-        : 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on. Operators: <code>ext:pdf</code>, <code>person:name</code>, <code>"exact"</code>, <code>-exclude</code>.';
+        ? 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, Created By, or search tags. Use operators like <code>tag:name</code>, <code>ext:pdf</code>, <code>person:name</code>, <code>"exact phrase"</code>, or <code>-exclude</code>.'
+        : 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, Created By, or search tags. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on. Operators: <code>tag:name</code>, <code>ext:pdf</code>, <code>person:name</code>, <code>"exact"</code>, <code>-exclude</code>.';
 }
 
 if (!isset($sourcesJson) || $sourcesJson === null || $sourcesJson === '') {
@@ -73,6 +73,10 @@ foreach ($allSources as $src) {
          data-source-key="<?= e($activeSourceKey) ?>"
          data-source-title="<?= e($activeTitle) ?>"
          data-solo="<?= $catalogSolo ? '1' : '0' ?>"
+         data-can-edit-tags="<?= !empty($isAdmin) && empty($searchCardPublic) ? '1' : '0' ?>"
+         <?php if (!empty($isAdmin) && empty($searchCardPublic)): ?>
+         data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
+         <?php endif; ?>
          <?php if ($searchCardPublic): ?>
          data-public="1"
          data-api-base="catalog-share.php"
@@ -160,11 +164,11 @@ foreach ($allSources as $src) {
                         <div class="search-wrap search-wrap-wide sharepoint-search-main">
                             <span aria-hidden="true">🔎 Find</span>
                             <input type="search" name="q" id="sharepoint-search-input" value="<?= e($query) ?>"
-                                   placeholder='Try: encore · ext:pdf · person:"Last, First" · "exact phrase" · -exclude'
+                                   placeholder='Try: encore · tag:priority · ext:pdf · person:"Last, First" · -exclude'
                                    autocomplete="off"
                                    <?= $searchCardPublic ? '' : 'autofocus ' ?>
                                    aria-label="Search SharePoint catalog"
-                                   title="Live search. Tips: ext:pdf · type:visio · person:name · path:drawings · has:pdf · &quot;exact phrase&quot; · -exclude · Press / to focus"
+                                   title="Live search. Tips: tag:name · ext:pdf · type:visio · person:name · path:drawings · has:pdf · &quot;exact phrase&quot; · -exclude · Press / to focus"
                                    aria-autocomplete="list"
                                    aria-controls="sharepoint-search-suggest"
                                    aria-expanded="false">

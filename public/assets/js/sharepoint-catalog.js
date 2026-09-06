@@ -910,7 +910,77 @@
     if (!response.ok || !payload.ok || !payload.project) {
       throw new Error(payload.error || 'Unable to load project details.');
     }
-    return payload.project;
+    return payload;
+  };
+
+  const catalogCsrfToken = () =>
+    document.getElementById('sharepoint-search')?.getAttribute('data-csrf') ||
+    document.getElementById('sharepoint-msal-sync')?.getAttribute('data-csrf') ||
+    '';
+
+  const catalogCanEditTags = () =>
+    document.getElementById('sharepoint-search')?.getAttribute('data-can-edit-tags') === '1';
+
+  const postCatalogAction = async (action, fields = {}) => {
+    const body = new URLSearchParams();
+    body.set('csrf_token', catalogCsrfToken());
+    body.set('action', action);
+    body.set('ajax', '1');
+    Object.entries(fields || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        value.forEach((item) => body.append(`${key}[]`, String(item)));
+        return;
+      }
+      body.set(key, String(value));
+    });
+    const response = await fetch('sharepoint.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
+      body: body.toString(),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || 'Request failed.');
+    }
+    return payload;
+  };
+
+  const normalizeTagList = (tags) =>
+    (Array.isArray(tags) ? tags : [])
+      .map((tag) => ({
+        id: Number(tag?.id || 0),
+        label: String(tag?.label || '').trim(),
+        slug: String(tag?.slug || '').trim().toLowerCase(),
+      }))
+      .filter((tag) => tag.id > 0 && tag.label);
+
+  const tagChipsHtml = (tags, { editable = false, scope = 'project', path = '' } = {}) => {
+    const list = normalizeTagList(tags);
+    if (!list.length && !editable) return '';
+    const chips = list
+      .map((tag) => {
+        const remove = editable
+          ? `<button type="button" class="sp-tag-remove" data-tag-id="${tag.id}" data-tag-scope="${escapeHtml(scope)}" data-tag-path="${escapeHtml(path)}" title="Remove tag" aria-label="Remove ${escapeHtml(tag.label)}">×</button>`
+          : '';
+        return `<span class="sp-tag-chip" data-tag-id="${tag.id}" data-tag-slug="${escapeHtml(tag.slug)}">${escapeHtml(tag.label)}${remove}</span>`;
+      })
+      .join('');
+    return `<div class="sp-tag-chips" data-tag-scope="${escapeHtml(scope)}" data-tag-path="${escapeHtml(path)}">${chips}</div>`;
+  };
+
+  const projectHasTagNeedle = (project, needle) => {
+    const want = String(needle || '')
+      .trim()
+      .toLowerCase();
+    if (!want) return true;
+    const hay = String(project?._hayTags || '');
+    if (!hay) return false;
+    return hay.split('\n').some((line) => line === want || line.includes(want));
   };
 
   const setDialogRefreshBusy = (btn, busy) => {
@@ -2049,7 +2119,12 @@
       ? `<button type="button" class="sp-copy-link-btn" data-copy-url="${escapeHtml(url)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}">📋</button>`
       : '';
     const qrBtn = qrButtonHtml(url, name, qrMeta);
-    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${copyBtn}${qrBtn}</div>`;
+    const tagsHtml = tagChipsHtml(item?.tags || [], {
+      editable: catalogCanEditTags(),
+      scope: 'item',
+      path: path || name,
+    });
+    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${copyBtn}${qrBtn}${tagsHtml}</div>`;
   };
 
   const typeBadgeHtml = (item) => {
@@ -2094,6 +2169,7 @@
     const name = String(project?.project_name || '');
     const meta = resolveProjectMeta(project);
     const typeLabel = meta.tone === 'folder' ? '📁 Folder' : meta.label;
+    const tagsHtml = tagChipsHtml(project?.tags || [], { editable: false, scope: 'project' });
     return `<div class="sp-project-cell">
       <div class="sp-tree-cell">
         <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}">
@@ -2107,6 +2183,7 @@
         <span class="sp-type-badge sp-type-badge--${escapeHtml(meta.tone)}">${escapeHtml(typeLabel)}</span>
         ${catalogBadgeHtml(sourceTitle, sourceKey)}
       </div>
+      ${tagsHtml}
       ${extraHtml}
     </div>`;
   };
@@ -2132,6 +2209,7 @@
     const titleEl = document.getElementById('sharepoint-project-dialog-title');
     const subEl = document.getElementById('sharepoint-project-dialog-sub');
     const statsEl = document.getElementById('sharepoint-project-dialog-stats');
+    const tagsEl = document.getElementById('sharepoint-project-dialog-tags');
     const actionsEl = document.getElementById('sharepoint-project-dialog-actions');
     const rowsEl = document.getElementById('sharepoint-project-dialog-rows');
     const closeBtn = document.getElementById('sharepoint-project-dialog-close');
@@ -2156,7 +2234,14 @@
     let currentName = '';
     let currentSourceKey = '';
     let currentCatalogTitle = '';
+    let currentProjectTags = [];
+    let dialogAllTags = [];
+    let dialogCanEditTags = false;
     let projectBusy = false;
+    let bindItemTagEditors = () => {};
+    let renderProjectTagsPanel = () => {};
+    let saveTagsForTarget = async () => [];
+    let bindTagEditor = () => {};
 
     const clearActivityStats = () => {
       if (!statsEl) return;
@@ -2325,6 +2410,7 @@
       }
       bindCopyLinkButtons(rowsEl);
       bindQrButtons(rowsEl);
+      bindItemTagEditors();
     };
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
@@ -2391,6 +2477,121 @@
     });
     syncHeaderSort();
 
+    renderProjectTagsPanel = () => {
+      if (!tagsEl) return;
+      const tags = normalizeTagList(currentProjectTags);
+      const canEdit = dialogCanEditTags && catalogCanEditTags();
+      if (!tags.length && !canEdit) {
+        tagsEl.hidden = true;
+        tagsEl.innerHTML = '';
+        return;
+      }
+      tagsEl.hidden = false;
+      const chips = tagChipsHtml(tags, { editable: canEdit, scope: 'project' });
+      let editor = '';
+      if (canEdit) {
+        const options = normalizeTagList(dialogAllTags)
+          .filter((tag) => !tags.some((assigned) => assigned.id === tag.id))
+          .map((tag) => `<option value="${tag.id}">${escapeHtml(tag.label)}</option>`)
+          .join('');
+        editor = `<div class="sp-tag-editor">
+          <label class="sp-tag-editor-add">
+            <span class="sp-tag-editor-label">Tags</span>
+            <select class="sp-tag-select" aria-label="Add project tag">
+              <option value="">Add tag…</option>
+              ${options}
+            </select>
+          </label>
+          <label class="sp-tag-editor-create">
+            <input type="text" class="sp-tag-create-input" maxlength="40" placeholder="New tag name" aria-label="Create new search tag">
+            <button type="button" class="button ghost-light sp-tag-create-btn">Create</button>
+          </label>
+        </div>`;
+      } else {
+        editor = `<div class="sp-tag-editor"><span class="sp-tag-editor-label">Tags</span></div>`;
+      }
+      tagsEl.innerHTML = `${editor}${chips || '<div class="sp-tag-chips sp-tag-chips--empty"><span class="sp-tag-empty">No tags yet</span></div>'}`;
+      bindTagEditor(tagsEl, {
+        scope: 'project',
+        path: '',
+        currentTags: () => currentProjectTags,
+        setTags: (next) => {
+          currentProjectTags = next;
+          renderProjectTagsPanel();
+        },
+      });
+    };
+
+    saveTagsForTarget = async ({ scope, path, tagIds }) => {
+      const action = scope === 'item' ? 'save_item_tags' : 'save_project_tags';
+      const fields = {
+        source_key: currentSourceKey,
+        project_name: currentName,
+        tag_ids: tagIds,
+      };
+      if (scope === 'item') fields.relative_path = path;
+      const payload = await postCatalogAction(action, fields);
+      return normalizeTagList(payload.tags);
+    };
+
+    bindTagEditor = (root, { scope, path, currentTags, setTags }) => {
+      if (!root || !dialogCanEditTags) return;
+      root.querySelectorAll('.sp-tag-remove').forEach((btn) => {
+        btn.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const removeId = Number(btn.getAttribute('data-tag-id') || 0);
+          const nextIds = currentTags()
+            .map((tag) => tag.id)
+            .filter((id) => id !== removeId);
+          try {
+            const saved = await saveTagsForTarget({ scope, path, tagIds: nextIds });
+            setTags(saved);
+            if (typeof loadIndex === 'function') loadIndex();
+          } catch (error) {
+            window.alert(error.message || 'Unable to update tags.');
+          }
+        });
+      });
+      const select = root.querySelector('.sp-tag-select');
+      select?.addEventListener('change', async () => {
+        const addId = Number(select.value || 0);
+        select.value = '';
+        if (!addId) return;
+        const nextIds = [...new Set([...currentTags().map((tag) => tag.id), addId])];
+        try {
+          const saved = await saveTagsForTarget({ scope, path, tagIds: nextIds });
+          setTags(saved);
+          if (typeof loadIndex === 'function') loadIndex();
+        } catch (error) {
+          window.alert(error.message || 'Unable to update tags.');
+        }
+      });
+      const createBtn = root.querySelector('.sp-tag-create-btn');
+      const createInput = root.querySelector('.sp-tag-create-input');
+      createBtn?.addEventListener('click', async () => {
+        const label = String(createInput?.value || '').trim();
+        if (!label) return;
+        try {
+          const created = await postCatalogAction('create_search_tag', { label });
+          dialogAllTags = normalizeTagList(created.tags || [...dialogAllTags, created.tag]);
+          state.allTags = dialogAllTags;
+          const addId = Number(created.tag?.id || 0);
+          if (addId) {
+            const nextIds = [...new Set([...currentTags().map((tag) => tag.id), addId])];
+            const saved = await saveTagsForTarget({ scope, path, tagIds: nextIds });
+            setTags(saved);
+          } else {
+            renderProjectTagsPanel();
+          }
+          if (createInput) createInput.value = '';
+          if (typeof loadIndex === 'function') loadIndex();
+        } catch (error) {
+          window.alert(error.message || 'Unable to create tag.');
+        }
+      });
+    };
+
     const applyLoadedProject = (project, name, { seedExpanded = false } = {}) => {
       allItems = Array.isArray(project.items) ? project.items : [];
       if (seedExpanded) {
@@ -2403,6 +2604,7 @@
       const files = allItems.length - folders;
       const catalogLabel = String(project.source_title || '').trim();
       currentCatalogTitle = catalogLabel || '';
+      currentProjectTags = normalizeTagList(project.tags);
       const catalogBadge = catalogBadgeHtml(currentCatalogTitle, project.source_key || currentSourceKey);
       subEl.innerHTML = `${
         catalogBadge ? `${catalogBadge} · ` : ''
@@ -2411,6 +2613,7 @@
         statsEl,
         computeProjectActivityStats(allItems, project.project_name || name)
       );
+      renderProjectTagsPanel();
 
       if (project.folder_url) {
         actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
@@ -2426,13 +2629,87 @@
 
       if (searchWrap) searchWrap.hidden = false;
       applyFilter();
+      bindItemTagEditors();
+    };
+
+    bindItemTagEditors = () => {
+      if (!dialogCanEditTags || !rowsEl) return;
+      rowsEl.querySelectorAll('.sp-tag-chips[data-tag-scope="item"]').forEach((chipRoot) => {
+        const path = chipRoot.getAttribute('data-tag-path') || '';
+        const item = allItems.find((entry) => {
+          const rel = String(entry.relative_path || entry.name || '').trim();
+          return rel === path;
+        });
+        if (!item) return;
+        chipRoot.querySelectorAll('.sp-tag-remove').forEach((btn) => {
+          btn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const removeId = Number(btn.getAttribute('data-tag-id') || 0);
+            const nextIds = normalizeTagList(item.tags)
+              .map((tag) => tag.id)
+              .filter((id) => id !== removeId);
+            try {
+              item.tags = await saveTagsForTarget({ scope: 'item', path, tagIds: nextIds });
+              applyFilter();
+              if (typeof loadIndex === 'function') loadIndex();
+            } catch (error) {
+              window.alert(error.message || 'Unable to update tags.');
+            }
+          });
+        });
+      });
+      rowsEl.querySelectorAll('.sp-dialog-row').forEach((row) => {
+        if (row.querySelector('.sp-item-tag-add')) return;
+        const nameCell = row.querySelector('[data-col="name"] .sp-tree-cell');
+        if (!nameCell) return;
+        const path =
+          row.querySelector('.sp-tag-chips')?.getAttribute('data-tag-path') ||
+          row.querySelector('.sharepoint-link-path')?.textContent ||
+          row.querySelector('.sp-file-name')?.textContent ||
+          '';
+        const item = allItems.find((entry) => String(entry.relative_path || entry.name || '').trim() === String(path).trim());
+        if (!item) return;
+        const assigned = new Set(normalizeTagList(item.tags).map((tag) => tag.id));
+        const options = normalizeTagList(dialogAllTags)
+          .filter((tag) => !assigned.has(tag.id))
+          .map((tag) => `<option value="${tag.id}">${escapeHtml(tag.label)}</option>`)
+          .join('');
+        if (!options) return;
+        const wrap = document.createElement('label');
+        wrap.className = 'sp-item-tag-add';
+        wrap.innerHTML = `<select class="sp-tag-select sp-tag-select--compact" aria-label="Add tag to item"><option value="">+ Tag</option>${options}</select>`;
+        nameCell.appendChild(wrap);
+        wrap.querySelector('select')?.addEventListener('change', async (event) => {
+          const select = event.target;
+          const addId = Number(select.value || 0);
+          select.value = '';
+          if (!addId) return;
+          const nextIds = [...new Set([...normalizeTagList(item.tags).map((tag) => tag.id), addId])];
+          try {
+            item.tags = await saveTagsForTarget({
+              scope: 'item',
+              path: String(item.relative_path || item.name || path).trim(),
+              tagIds: nextIds,
+            });
+            applyFilter();
+            if (typeof loadIndex === 'function') loadIndex();
+          } catch (error) {
+            window.alert(error.message || 'Unable to update tags.');
+          }
+        });
+      });
     };
 
     const loadCurrentProject = async ({ seedExpanded = false, fresh = false } = {}) => {
       const name = currentName;
       if (!name) return;
-      const project = await fetchProjectDetail(name, currentSourceKey, { fresh });
+      const payload = await fetchProjectDetail(name, currentSourceKey, { fresh });
+      const project = payload.project;
       currentSourceKey = String(project.source_key || currentSourceKey || '');
+      dialogCanEditTags = !!payload.can_edit_tags && catalogCanEditTags();
+      dialogAllTags = normalizeTagList(payload.all_tags || state.allTags);
+      if (dialogAllTags.length) state.allTags = dialogAllTags;
       applyLoadedProject(project, name, { seedExpanded });
     };
 
@@ -2445,7 +2722,12 @@
       titleEl.textContent = name;
       subEl.innerHTML = '⏳ Loading SharePoint details…';
       clearActivityStats();
+      if (tagsEl) {
+        tagsEl.hidden = true;
+        tagsEl.innerHTML = '';
+      }
       actionsEl.innerHTML = '';
+      currentProjectTags = [];
       allItems = [];
       expanded.clear();
       lastRevealKey = '';
@@ -3730,6 +4012,9 @@
     missingSource: urlSearchState.missingSource || (missingSourceEl?.value || ''),
     has: urlSearchState.has,
     lacks: urlSearchState.lacks,
+    tagFilter: '',
+    allTags: [],
+    canEditTags: catalogCanEditTags(),
     page: 1,
     perPage: Number(searchRoot.dataset.perPage || perPageSelect?.value || 25) || 25,
     ready: false,
@@ -3885,6 +4170,21 @@
       .filter(Boolean)
       .join('\n');
     project._hayFiles = entries.map((entry) => `${entry.name}\n${entry.path}`.toLowerCase()).join('\n');
+    const tagBits = [];
+    normalizeTagList(project.tags).forEach((tag) => {
+      tagBits.push(tag.label.toLowerCase(), tag.slug);
+    });
+    (Array.isArray(project.files) ? project.files : []).forEach((file) => {
+      normalizeTagList(file?.tags).forEach((tag) => {
+        tagBits.push(tag.label.toLowerCase(), tag.slug);
+      });
+    });
+    (Array.isArray(project.folders) ? project.folders : []).forEach((folder) => {
+      normalizeTagList(folder?.tags).forEach((tag) => {
+        tagBits.push(tag.label.toLowerCase(), tag.slug);
+      });
+    });
+    project._hayTags = [...new Set(tagBits.filter(Boolean))].join('\n');
     return project;
   };
 
@@ -4545,10 +4845,13 @@
     !!state.who ||
     (state.presence !== 'any' && state.scopeKeys.length > 1) ||
     !!state.has ||
-    !!state.lacks;
+    !!state.lacks ||
+    !!state.tagFilter;
 
   const parseActiveQuery = () =>
-    Fuzzy.parseCatalogQuery ? Fuzzy.parseCatalogQuery(state.query) : { words: Fuzzy.getSearchWords(state.query), phrases: [], excludes: [], extensions: [], types: [], person: '', modifiedBy: '', createdBy: '', paths: [], has: [], lacks: [] };
+    Fuzzy.parseCatalogQuery
+      ? Fuzzy.parseCatalogQuery(state.query)
+      : { words: Fuzzy.getSearchWords(state.query), phrases: [], excludes: [], extensions: [], types: [], person: '', modifiedBy: '', createdBy: '', paths: [], has: [], lacks: [], tags: [] };
 
   const scoreParsedProject = (project, parsed, refineParsed = null) => {
     const useDeep = effectiveDeep(state.matchScope, state.deep);
@@ -4573,13 +4876,13 @@
       // Phrases already required; still boost via word scoring when leftover words exist.
     }
     let match;
-    if (!scoreWords.length && (parsed.phrases.length || parsed.paths.length || parsed.extensions.length || parsed.types.length || parsed.has.length || parsed.lacks.length || parsed.person || parsed.modifiedBy || parsed.createdBy)) {
+    if (!scoreWords.length && (parsed.phrases.length || parsed.paths.length || parsed.extensions.length || parsed.types.length || parsed.has.length || parsed.lacks.length || (parsed.tags && parsed.tags.length) || parsed.person || parsed.modifiedBy || parsed.createdBy)) {
       match = {
         matched: true,
         score: parsed.phrases.length ? 96 : 88,
         kind: parsed.phrases.length ? 'exact' : 'contains',
-        source: parsed.paths.length ? 'Path' : 'Filter',
-        snippet: parsed.phrases[0] || parsed.paths[0] || '',
+        source: parsed.tags?.length ? 'Tag' : parsed.paths.length ? 'Path' : 'Filter',
+        snippet: parsed.phrases[0] || parsed.tags?.[0] || parsed.paths[0] || '',
       };
     } else if (!scoreWords.length) {
       match = { matched: true, score: 100, kind: 'exact' };
@@ -4629,6 +4932,8 @@
       const needle = resolveMeAlias(parsed.createdBy);
       if (!String(project.person || '').toLowerCase().includes(needle)) return false;
     }
+    const tagNeedles = [...(state.tagFilter ? [state.tagFilter] : []), ...(parsed.tags || [])];
+    if (tagNeedles.length && !tagNeedles.every((tag) => projectHasTagNeedle(project, tag))) return false;
     if (!projectPassesDate(project)) return false;
     return true;
   };
@@ -4643,9 +4948,11 @@
       parsed.paths.length ||
       parsed.has.length ||
       parsed.lacks.length ||
+      (parsed.tags && parsed.tags.length) ||
       parsed.person ||
       parsed.modifiedBy ||
       parsed.createdBy ||
+      state.tagFilter ||
       state.refine.trim() ||
       advancedFiltersActive()
     );
@@ -5089,6 +5396,7 @@
     });
 
     const operators = [
+      { label: 'tag:priority', value: 'tag:priority' },
       { label: 'ext:pdf', value: 'ext:pdf' },
       { label: 'ext:vsdx', value: 'ext:vsdx' },
       { label: 'type:visio', value: 'type:visio' },
@@ -5101,6 +5409,15 @@
       { label: 'path:drawings', value: 'path:drawings' },
     ].filter((op) => op.label.includes(q) || q.endsWith(':') || q.length <= 2);
     operators.slice(0, 8).forEach((op) => push('Operators', op.label, op.value, 'insert-operator'));
+
+    (state.allTags || []).forEach((tag) => {
+      const label = String(tag.label || '').trim();
+      if (!label) return;
+      const lower = label.toLowerCase();
+      if (q && !lower.includes(q) && !String(tag.slug || '').includes(q) && !q.startsWith('tag')) return;
+      const value = label.includes(' ') ? `tag:"${label}"` : `tag:${label}`;
+      push('Tags', label, value, 'insert-operator');
+    });
 
     return items;
   };
@@ -5525,6 +5842,11 @@
         state.projectCount = Number(payload.project_count || state.projects.length);
         state.lastSynced = payload.last_synced_at || state.lastSynced;
         state.lastStatus = payload.last_sync_status || state.lastStatus;
+        state.allTags = normalizeTagList(payload.tags);
+        if (typeof payload.can_edit_tags === 'boolean') {
+          state.canEditTags = payload.can_edit_tags;
+          searchRoot.dataset.canEditTags = payload.can_edit_tags ? '1' : '0';
+        }
         state.loadingIndex = false;
         state.ready = true;
         populatePersonFilter();

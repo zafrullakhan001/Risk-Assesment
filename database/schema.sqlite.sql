@@ -302,3 +302,34 @@ CREATE TABLE IF NOT EXISTS sharepoint_sources (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS sharepoint_search_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL DEFAULT '',
+    slug TEXT NOT NULL UNIQUE,
+    created_by_user_id INTEGER,
+    created_by_username TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sharepoint_search_tags_label ON sharepoint_search_tags (label);
+
+CREATE TABLE IF NOT EXISTS sharepoint_search_tag_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag_id INTEGER NOT NULL,
+    source_key TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT 'project',
+    project_name TEXT NOT NULL DEFAULT '',
+    relative_path TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (tag_id, source_key, scope, project_name, relative_path),
+    FOREIGN KEY (tag_id) REFERENCES sharepoint_search_tags (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sp_tag_assign_source_project
+    ON sharepoint_search_tag_assignments (source_key, project_name);
+CREATE INDEX IF NOT EXISTS idx_sp_tag_assign_source_scope
+    ON sharepoint_search_tag_assignments (source_key, scope);
+CREATE INDEX IF NOT EXISTS idx_sp_tag_assign_tag
+    ON sharepoint_search_tag_assignments (tag_id);

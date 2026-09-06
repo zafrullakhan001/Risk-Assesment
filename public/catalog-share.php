@@ -7,6 +7,7 @@ require __DIR__ . '/bootstrap.php';
 use RiskAssessment\PaginationPreference;
 use RiskAssessment\Repositories\CatalogShareRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
+use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
@@ -26,6 +27,7 @@ if ($share === null || ($share['kind'] ?? CatalogShareRepository::KIND_CATALOG) 
 
 $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
+$searchTags = new SharePointSearchTagRepository($pdo);
 $allRegistered = $sourcesRepo->listAll();
 $allSources = $shareRepository->filterSources($allRegistered, $share['source_keys']);
 if ($allSources === []) {
@@ -113,7 +115,18 @@ if ($actionParam === 'project_detail') {
     $detailSource = $sourcesRepo->findByKey($detailSourceKey);
     $detail['source_key'] = (string) ($detailSource['source_key'] ?? $detailSourceKey);
     $detail['source_title'] = (string) ($detailSource['title'] ?? $detail['source_key']);
-    echo json_encode(['ok' => true, 'project' => $detail], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $detail = $searchTags->attachTagsToProjectDetail(
+        $detail,
+        $detail['source_key'],
+        $searchTags->listProjectTags($detail['source_key'], (string) ($detail['project_name'] ?? '')),
+        $searchTags->mapItemTagsForSources([$detail['source_key']])
+    );
+    echo json_encode([
+        'ok' => true,
+        'project' => $detail,
+        'can_edit_tags' => false,
+        'all_tags' => [],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -132,6 +145,15 @@ if ($actionParam === 'search_index') {
     }
 
     $index = $catalog->listSearchIndexForSources($indexSources);
+    $indexSourceKeys = array_values(array_filter(array_map(
+        static fn (array $src): string => (string) ($src['source_key'] ?? ''),
+        $indexSources
+    )));
+    $index = $searchTags->attachTagsToSearchIndex(
+        $index,
+        $searchTags->mapProjectTagsForSources($indexSourceKeys),
+        $searchTags->mapItemTagsForSources($indexSourceKeys)
+    );
     $itemCountTotal = 0;
     $metaSources = [];
     foreach ($indexSources as $srcMeta) {
@@ -155,6 +177,8 @@ if ($actionParam === 'search_index') {
         'item_count' => $itemCountTotal,
         'project_count' => count($index),
         'projects' => $index,
+        'tags' => $searchTags->listAll(),
+        'can_edit_tags' => false,
         'last_synced_at' => (string) ($primary['last_synced_at'] ?? ''),
         'last_sync_status' => (string) ($primary['last_sync_status'] ?? ''),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

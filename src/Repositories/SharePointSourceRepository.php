@@ -164,6 +164,38 @@ final class SharePointSourceRepository
     }
 
     /**
+     * Clear sync status so the source is ready for a fresh sync after catalog purge.
+     *
+     * @param list<string> $sourceKeys
+     */
+    public function resetSyncStatusForSources(array $sourceKeys): int
+    {
+        $keys = array_values(array_filter(array_map(
+            fn ($key) => $this->normalizeKey((string) $key),
+            $sourceKeys
+        )));
+        if ($keys === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($keys), '?'));
+        $statement = $this->pdo->prepare(
+            "UPDATE sharepoint_sources
+             SET last_synced_at = '',
+                 last_sync_status = '',
+                 last_sync_error = '',
+                 last_item_count = 0,
+                 sync_token_hash = '',
+                 sync_token_expires = '0',
+                 updated_at = datetime('now')
+             WHERE source_key IN ($placeholders)"
+        );
+        $statement->execute($keys);
+
+        return $statement->rowCount();
+    }
+
+    /**
      * @return array{token: string, expires_at: int}
      */
     public function issueSyncToken(string $sourceKey, int $ttlSeconds = 1800): array

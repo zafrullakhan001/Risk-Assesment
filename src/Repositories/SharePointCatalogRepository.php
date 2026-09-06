@@ -109,6 +109,92 @@ final class SharePointCatalogRepository
     }
 
     /**
+     * Delete all catalog items for the given sources and refresh FTS.
+     *
+     * @param list<string> $sourceKeys
+     * @return array{items_deleted: int, sources: list<string>}
+     */
+    public function purgeItemsForSources(array $sourceKeys): array
+    {
+        $keys = [];
+        foreach ($sourceKeys as $raw) {
+            $key = trim((string) $raw);
+            if ($key !== '' && !in_array($key, $keys, true)) {
+                $keys[] = $key;
+            }
+        }
+        if ($keys === []) {
+            return ['items_deleted' => 0, 'sources' => []];
+        }
+
+        $this->pdo->beginTransaction();
+        try {
+            $placeholders = implode(',', array_fill(0, count($keys), '?'));
+            $delete = $this->pdo->prepare(
+                "DELETE FROM sharepoint_items WHERE source_key IN ($placeholders)"
+            );
+            $delete->execute($keys);
+            $deleted = $delete->rowCount();
+            $this->pdo->commit();
+        } catch (\Throwable $exception) {
+            $this->pdo->rollBack();
+            throw $exception;
+        }
+
+        foreach ($keys as $key) {
+            $this->refreshSearchIndexForSource($key);
+        }
+
+        return ['items_deleted' => $deleted, 'sources' => $keys];
+    }
+
+    public function countAll(): int
+    {
+        $value = $this->pdo->query('SELECT COUNT(*) FROM sharepoint_items');
+
+        return $value === false ? 0 : (int) $value->fetchColumn();
+    }
+
+    public function countFts(): int
+    {
+        if (!$this->ensureFtsTable()) {
+            return 0;
+        }
+        try {
+            $value = $this->pdo->query('SELECT COUNT(*) FROM sharepoint_items_fts');
+
+            return $value === false ? 0 : (int) $value->fetchColumn();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Approximate on-disk bytes for a table via dbstat when available.
+     */
+    public function approximateTableBytes(string $table): ?int
+    {
+        $table = preg_replace('/[^a-z0-9_]/i', '', $table) ?? '';
+        if ($table === '') {
+            return null;
+        }
+        try {
+            $statement = $this->pdo->prepare(
+                'SELECT SUM(pgsize) FROM dbstat WHERE name = :name'
+            );
+            $statement->execute([':name' => $table]);
+            $value = $statement->fetchColumn();
+            if ($value === false || $value === null) {
+                return null;
+            }
+
+            return (int) $value;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Rebuild B-tree + FTS search indexes for SharePoint catalog tables.
      *
      * @return array{

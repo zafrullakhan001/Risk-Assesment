@@ -7,15 +7,18 @@ require __DIR__ . '/bootstrap.php';
 use RiskAssessment\PaginationPreference;
 use RiskAssessment\Repositories\CatalogShareRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
+use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\SharePoint\SharePointBrowserSync;
 use RiskAssessment\SharePoint\SharePointGraphClient;
 use RiskAssessment\SharePoint\SharePointListingImporter;
 use RiskAssessment\SharePoint\SharePointOwnerDashboard;
+use RiskAssessment\SqliteMaintenance;
 
 $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
 $catalogShareRepository = new CatalogShareRepository($pdo);
+$searchTags = new SharePointSearchTagRepository($pdo);
 $graph = new SharePointGraphClient($settings, $crypto, $catalog);
 $importer = new SharePointListingImporter($catalog, $settings);
 $browserSync = new SharePointBrowserSync($sourcesRepo);
@@ -195,10 +198,22 @@ if ($actionParam === 'project_detail') {
         echo json_encode(['ok' => false, 'error' => 'Project not found.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
-    $detailSource = $sourcesRepo->findByKey($detailSourceKey !== '' ? $detailSourceKey : $activeSourceKey);
-    $detail['source_key'] = (string) ($detailSource['source_key'] ?? $detailSourceKey);
+    $resolvedSourceKey = $detailSourceKey !== '' ? $detailSourceKey : $activeSourceKey;
+    $detailSource = $sourcesRepo->findByKey($resolvedSourceKey);
+    $detail['source_key'] = (string) ($detailSource['source_key'] ?? $resolvedSourceKey);
     $detail['source_title'] = (string) ($detailSource['title'] ?? $detail['source_key']);
-    echo json_encode(['ok' => true, 'project' => $detail], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $detail = $searchTags->attachTagsToProjectDetail(
+        $detail,
+        $detail['source_key'],
+        $searchTags->listProjectTags($detail['source_key'], (string) ($detail['project_name'] ?? '')),
+        $searchTags->mapItemTagsForSources([$detail['source_key']])
+    );
+    echo json_encode([
+        'ok' => true,
+        'project' => $detail,
+        'can_edit_tags' => $isAdmin,
+        'all_tags' => $isAdmin ? $searchTags->listAll() : [],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -248,6 +263,15 @@ if ($actionParam === 'search_index') {
     }
 
     $index = $catalog->listSearchIndexForSources($indexSources);
+    $indexSourceKeys = array_values(array_filter(array_map(
+        static fn (array $src): string => (string) ($src['source_key'] ?? ''),
+        $indexSources
+    )));
+    $index = $searchTags->attachTagsToSearchIndex(
+        $index,
+        $searchTags->mapProjectTagsForSources($indexSourceKeys),
+        $searchTags->mapItemTagsForSources($indexSourceKeys)
+    );
     $itemCountTotal = 0;
     $metaSources = [];
     foreach ($indexSources as $srcMeta) {
@@ -272,6 +296,8 @@ if ($actionParam === 'search_index') {
         'item_count' => $itemCountTotal,
         'project_count' => count($index),
         'projects' => $index,
+        'tags' => $searchTags->listAll(),
+        'can_edit_tags' => $isAdmin,
         'last_synced_at' => (string) ($primary['last_synced_at'] ?? ''),
         'last_sync_status' => (string) ($primary['last_sync_status'] ?? ''),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -665,16 +691,224 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'duration_ms' => $result['duration_ms'] ?? 0,
                 ]
             );
+        } elseif ($action === 'create_search_tag') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $tag = $searchTags->create((string) ($_POST['label'] ?? ''), $currentUser);
+            $auth->users()->logAudit(
+                'sharepoint.tag_created',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                ['tag_id' => $tag['id'], 'label' => $tag['label']]
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'tag' => $tag, 'tags' => $searchTags->listAll()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = 'Search tag “' . $tag['label'] . '” created.';
+        } elseif ($action === 'delete_search_tag') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $tagId = (int) ($_POST['tag_id'] ?? 0);
+            $existing = $searchTags->findById($tagId);
+            $searchTags->delete($tagId);
+            $auth->users()->logAudit(
+                'sharepoint.tag_deleted',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                ['tag_id' => $tagId, 'label' => (string) ($existing['label'] ?? '')]
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'tags' => $searchTags->listAll()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = 'Search tag deleted.';
+        } elseif ($action === 'save_project_tags') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $tagSource = trim((string) ($_POST['source_key'] ?? $activeSourceKey));
+            $projectName = trim((string) ($_POST['project_name'] ?? ''));
+            $rawIds = $_POST['tag_ids'] ?? [];
+            if (!is_array($rawIds)) {
+                $rawIds = $rawIds === '' || $rawIds === null ? [] : explode(',', (string) $rawIds);
+            }
+            $assigned = $searchTags->setProjectTags($tagSource, $projectName, $rawIds);
+            $auth->users()->logAudit(
+                'sharepoint.tag_assigned',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'scope' => 'project',
+                    'source_key' => $tagSource,
+                    'project_name' => $projectName,
+                    'tag_ids' => array_column($assigned, 'id'),
+                ]
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'tags' => $assigned,
+                    'scope' => 'project',
+                    'source_key' => $tagSource,
+                    'project_name' => $projectName,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = 'Project tags updated.';
+        } elseif ($action === 'save_item_tags') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $tagSource = trim((string) ($_POST['source_key'] ?? $activeSourceKey));
+            $projectName = trim((string) ($_POST['project_name'] ?? ''));
+            $relativePath = trim((string) ($_POST['relative_path'] ?? ''));
+            $rawIds = $_POST['tag_ids'] ?? [];
+            if (!is_array($rawIds)) {
+                $rawIds = $rawIds === '' || $rawIds === null ? [] : explode(',', (string) $rawIds);
+            }
+            $assigned = $searchTags->setItemTags($tagSource, $projectName, $relativePath, $rawIds);
+            $auth->users()->logAudit(
+                'sharepoint.tag_assigned',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'scope' => 'item',
+                    'source_key' => $tagSource,
+                    'project_name' => $projectName,
+                    'relative_path' => $relativePath,
+                    'tag_ids' => array_column($assigned, 'id'),
+                ]
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'tags' => $assigned,
+                    'scope' => 'item',
+                    'source_key' => $tagSource,
+                    'project_name' => $projectName,
+                    'relative_path' => $relativePath,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = 'File/folder tags updated.';
+        } elseif ($action === 'purge_catalog') {
+            $confirm = trim((string) ($_POST['confirm_purge'] ?? ''));
+            if (strcasecmp($confirm, 'PURGE') !== 0) {
+                throw new RuntimeException('Type PURGE to confirm catalog purge.');
+            }
+            $rawSources = $_POST['purge_sources'] ?? [];
+            if (!is_array($rawSources)) {
+                $rawSources = [];
+            }
+            $purgeKeys = [];
+            $known = [];
+            foreach ($allSources as $src) {
+                $key = (string) ($src['source_key'] ?? '');
+                if ($key !== '') {
+                    $known[$key] = true;
+                }
+            }
+            foreach ($rawSources as $raw) {
+                $key = trim((string) $raw);
+                if ($key !== '' && isset($known[$key]) && !in_array($key, $purgeKeys, true)) {
+                    $purgeKeys[] = $key;
+                }
+            }
+            if ($purgeKeys === []) {
+                throw new RuntimeException('Select at least one SharePoint folder catalog to purge.');
+            }
+
+            $takeSnapshot = !empty($_POST['take_snapshot']);
+            $clearTags = !empty($_POST['clear_tags']);
+            $deleteUnusedTags = !empty($_POST['delete_unused_tags']);
+            $runVacuum = !empty($_POST['run_vacuum']);
+
+            @set_time_limit(180);
+            $snapshotFilename = null;
+            if ($takeSnapshot) {
+                $dbConfig = require dirname(__DIR__) . '/config/database.php';
+                $maintenance = SqliteMaintenance::fromConfig($pdo, $dbConfig);
+                $created = $maintenance->createSnapshot('sharepoint-purge');
+                $snapshotFilename = (string) ($created['filename'] ?? '');
+            }
+
+            $purgeResult = $catalog->purgeItemsForSources($purgeKeys);
+            $sourcesRepo->resetSyncStatusForSources($purgeKeys);
+            $tagPurge = ['assignments_deleted' => 0, 'tags_deleted' => 0];
+            if ($clearTags) {
+                $tagPurge = $searchTags->purgeForSources($purgeKeys, $deleteUnusedTags);
+            }
+
+            $vacuumNote = '';
+            if ($runVacuum) {
+                $dbConfig = $dbConfig ?? require dirname(__DIR__) . '/config/database.php';
+                $maintenance = $maintenance ?? SqliteMaintenance::fromConfig($pdo, $dbConfig);
+                $before = is_file($maintenance->databasePath()) ? (int) filesize($maintenance->databasePath()) : 0;
+                $maintenance->vacuum();
+                clearstatcache(true, $maintenance->databasePath());
+                $after = is_file($maintenance->databasePath()) ? (int) filesize($maintenance->databasePath()) : 0;
+                $vacuumNote = ' VACUUM ' . SqliteMaintenance::formatBytes($before)
+                    . ' → ' . SqliteMaintenance::formatBytes($after) . '.';
+            }
+
+            $auth->users()->logAudit(
+                'sharepoint.catalog_purged',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'sources' => $purgeKeys,
+                    'items_deleted' => $purgeResult['items_deleted'] ?? 0,
+                    'clear_tags' => $clearTags,
+                    'assignments_deleted' => $tagPurge['assignments_deleted'],
+                    'tags_deleted' => $tagPurge['tags_deleted'],
+                    'snapshot' => $snapshotFilename,
+                    'vacuum' => $runVacuum,
+                ]
+            );
+
+            $flash = 'Purged ' . (int) ($purgeResult['items_deleted'] ?? 0)
+                . ' catalog item(s) from ' . count($purgeKeys) . ' folder(s).'
+                . ($snapshotFilename !== null && $snapshotFilename !== '' ? ' Snapshot: ' . $snapshotFilename . '.' : '')
+                . ($clearTags
+                    ? ' Cleared ' . (int) $tagPurge['assignments_deleted'] . ' tag assignment(s)'
+                        . ((int) $tagPurge['tags_deleted'] > 0 ? ' and ' . (int) $tagPurge['tags_deleted'] . ' unused tag(s)' : '')
+                        . '.'
+                    : ' Search tags kept for re-attach after resync.')
+                . $vacuumNote
+                . ' Sync again to refill the catalog.';
+            header('Location: sharepoint.php?source=' . rawurlencode($activeSourceKey) . '#sharepoint-admin-purge');
+            exit;
         } else {
             throw new RuntimeException('Unknown action.');
         }
     } catch (Throwable $exception) {
         $action = (string) ($_POST['action'] ?? '');
-        if ($action === 'prepare_browser_sync' || $action === 'delegated_sync') {
-            header('Content-Type: application/json; charset=utf-8');
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
-            exit;
+        if ($action === 'prepare_browser_sync' || $action === 'delegated_sync'
+            || $action === 'create_search_tag' || $action === 'delete_search_tag'
+            || $action === 'save_project_tags' || $action === 'save_item_tags') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1'
+                || $action === 'prepare_browser_sync'
+                || $action === 'delegated_sync';
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
         }
         $error = $exception->getMessage();
     }
@@ -761,6 +995,42 @@ foreach ($allSources as $src) {
     $key = (string) ($src['source_key'] ?? '');
     $sourceCounts[$key] = $catalog->count($key);
 }
+
+$purgeDbConfig = require dirname(__DIR__) . '/config/database.php';
+$purgeMaintenance = SqliteMaintenance::fromConfig($pdo, $purgeDbConfig);
+$purgeDbStatus = $purgeMaintenance->status(false);
+$purgeTableStats = [
+    [
+        'name' => 'sharepoint_items',
+        'label' => 'Catalog items',
+        'rows' => $catalog->countAll(),
+        'bytes' => $catalog->approximateTableBytes('sharepoint_items'),
+    ],
+    [
+        'name' => 'sharepoint_items_fts',
+        'label' => 'Search index (FTS)',
+        'rows' => $catalog->countFts(),
+        'bytes' => $catalog->approximateTableBytes('sharepoint_items_fts'),
+    ],
+    [
+        'name' => 'sharepoint_sources',
+        'label' => 'Registered folders',
+        'rows' => count($allSources),
+        'bytes' => $catalog->approximateTableBytes('sharepoint_sources'),
+    ],
+    [
+        'name' => 'sharepoint_search_tags',
+        'label' => 'Search tags',
+        'rows' => $searchTags->countTags(),
+        'bytes' => $catalog->approximateTableBytes('sharepoint_search_tags'),
+    ],
+    [
+        'name' => 'sharepoint_search_tag_assignments',
+        'label' => 'Tag assignments',
+        'rows' => $searchTags->countAssignments(),
+        'bytes' => $catalog->approximateTableBytes('sharepoint_search_tag_assignments'),
+    ],
+];
 
 $catalogTones = [];
 $catalogToneExtra = 0;
@@ -1996,6 +2266,114 @@ $soloPageClass = $ownerSolo
                         <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
                         <div class="sharepoint-admin-actions sharepoint-admin-actions-row">
                             <button type="submit" class="button button-primary">📇 Reindex SharePoint search</button>
+                        </div>
+                    </form>
+                        </div>
+                    </details>
+
+                    <details class="sharepoint-admin-block" id="sharepoint-admin-purge">
+                        <summary>🧹 Purge catalog data (fresh resync)</summary>
+                        <div class="sharepoint-admin-block-body">
+                    <p class="panel-help">
+                        Clear synced SharePoint file/folder rows so you can sync again from scratch.
+                        Registered folder catalogs stay. Assessment data and users are never touched.
+                        Prefer a snapshot before purge.
+                    </p>
+                    <div class="sharepoint-purge-stats" aria-label="SharePoint table sizes">
+                        <div class="sharepoint-purge-stat">
+                            <span class="sharepoint-purge-stat-label">Database file</span>
+                            <strong><?= e((string) ($purgeDbStatus['sizeLabel'] ?? '—')) ?></strong>
+                        </div>
+                        <?php foreach ($purgeTableStats as $stat): ?>
+                            <div class="sharepoint-purge-stat">
+                                <span class="sharepoint-purge-stat-label"><?= e((string) $stat['label']) ?></span>
+                                <strong><?= number_format((int) $stat['rows']) ?> rows</strong>
+                                <?php if ($stat['bytes'] !== null): ?>
+                                    <span class="sharepoint-purge-stat-bytes"><?= e(SqliteMaintenance::formatBytes((int) $stat['bytes'])) ?></span>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <form method="post" class="sharepoint-purge-form" id="sharepoint-purge-form"
+                          onsubmit="return (function (form) {
+                            var typed = (form.querySelector('[name=confirm_purge]') || {}).value || '';
+                            if (String(typed).toUpperCase() !== 'PURGE') {
+                              alert('Type PURGE to confirm.');
+                              return false;
+                            }
+                            return confirm('Permanently delete catalog items for the selected folders? This cannot be undone (except from a snapshot restore).');
+                          })(this);">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="purge_catalog">
+                        <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
+                        <fieldset class="sharepoint-purge-sources">
+                            <legend>Folders to purge</legend>
+                            <?php foreach ($allSources as $src): ?>
+                                <?php
+                                $purgeKey = (string) ($src['source_key'] ?? '');
+                                if ($purgeKey === '') {
+                                    continue;
+                                }
+                                $purgeTitle = (string) ($src['title'] ?? $purgeKey);
+                                $purgeCount = (int) ($sourceCounts[$purgeKey] ?? 0);
+                                ?>
+                                <label class="sharepoint-purge-source">
+                                    <input type="checkbox" name="purge_sources[]" value="<?= e($purgeKey) ?>" checked>
+                                    <span>
+                                        <strong><?= e($purgeTitle) ?></strong>
+                                        <em><?= number_format($purgeCount) ?> items</em>
+                                    </span>
+                                </label>
+                            <?php endforeach; ?>
+                        </fieldset>
+                        <div class="sharepoint-purge-options">
+                            <label class="sharepoint-feature-toggle is-on">
+                                <span class="sharepoint-feature-toggle-copy">
+                                    <strong>📸 Take snapshot first</strong>
+                                    <span>Recommended. Saves a copy under <code>database/snapshots/</code>.</span>
+                                </span>
+                                <span class="sharepoint-feature-switch">
+                                    <input type="checkbox" name="take_snapshot" value="1" checked>
+                                    <span class="sharepoint-feature-switch-ui" aria-hidden="true"></span>
+                                </span>
+                            </label>
+                            <label class="sharepoint-feature-toggle">
+                                <span class="sharepoint-feature-toggle-copy">
+                                    <strong>🏷️ Also clear search tags</strong>
+                                    <span>Off by default so tags re-attach after resync by path.</span>
+                                </span>
+                                <span class="sharepoint-feature-switch">
+                                    <input type="checkbox" name="clear_tags" value="1" id="sharepoint-purge-clear-tags">
+                                    <span class="sharepoint-feature-switch-ui" aria-hidden="true"></span>
+                                </span>
+                            </label>
+                            <label class="sharepoint-feature-toggle" id="sharepoint-purge-unused-wrap">
+                                <span class="sharepoint-feature-toggle-copy">
+                                    <strong>Delete unused tag names</strong>
+                                    <span>Only applies when clearing tags.</span>
+                                </span>
+                                <span class="sharepoint-feature-switch">
+                                    <input type="checkbox" name="delete_unused_tags" value="1">
+                                    <span class="sharepoint-feature-switch-ui" aria-hidden="true"></span>
+                                </span>
+                            </label>
+                            <label class="sharepoint-feature-toggle">
+                                <span class="sharepoint-feature-toggle-copy">
+                                    <strong>VACUUM after purge</strong>
+                                    <span>Reclaims disk space. Can take a while and locks the database.</span>
+                                </span>
+                                <span class="sharepoint-feature-switch">
+                                    <input type="checkbox" name="run_vacuum" value="1">
+                                    <span class="sharepoint-feature-switch-ui" aria-hidden="true"></span>
+                                </span>
+                            </label>
+                        </div>
+                        <label class="sharepoint-add-field">
+                            <span class="sharepoint-add-field-label">Type <code>PURGE</code> to confirm</span>
+                            <input type="text" name="confirm_purge" value="" autocomplete="off" spellcheck="false" placeholder="PURGE" required>
+                        </label>
+                        <div class="sharepoint-admin-actions sharepoint-admin-actions-row">
+                            <button type="submit" class="button button-primary">🧹 Purge selected catalogs</button>
                         </div>
                     </form>
                         </div>

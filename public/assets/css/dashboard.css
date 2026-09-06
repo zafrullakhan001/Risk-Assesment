@@ -10387,6 +10387,141 @@ body.is-public-catalog-share .topbar-actions {
     display: grid;
     gap: 0.65rem;
 }
+.sharepoint-purge-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.55rem;
+}
+.sharepoint-purge-stat {
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.65rem;
+    padding: 0.55rem 0.7rem;
+    background: color-mix(in srgb, var(--card, #fff) 88%, #f8fafc);
+    display: grid;
+    gap: 0.15rem;
+}
+.sharepoint-purge-stat-label {
+    font-size: 0.75rem;
+    color: var(--muted, #64748b);
+}
+.sharepoint-purge-stat-bytes {
+    font-size: 0.78rem;
+    color: var(--muted, #64748b);
+}
+.sharepoint-purge-sources {
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    margin: 0;
+    display: grid;
+    gap: 0.35rem;
+}
+.sharepoint-purge-sources legend {
+    padding: 0 0.35rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.sharepoint-purge-source {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+.sharepoint-purge-source span {
+    display: grid;
+    gap: 0.1rem;
+}
+.sharepoint-purge-source em {
+    font-style: normal;
+    color: var(--muted, #64748b);
+    font-size: 0.82rem;
+}
+.sharepoint-purge-options {
+    display: grid;
+    gap: 0.45rem;
+}
+.sp-tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+}
+.sp-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, #7c3aed 14%, transparent);
+    color: #5b21b6;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.sp-tag-remove {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+    opacity: 0.75;
+}
+.sp-tag-remove:hover {
+    opacity: 1;
+}
+.sharepoint-project-dialog-tags {
+    margin: 0 0 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, var(--card, #fff) 92%, #f5f3ff);
+}
+.sp-tag-editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.35rem;
+}
+.sp-tag-editor-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.sp-tag-editor-add,
+.sp-tag-editor-create {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.sp-tag-select,
+.sp-tag-create-input {
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.45rem;
+    padding: 0.25rem 0.45rem;
+    font: inherit;
+    font-size: 0.85rem;
+    background: var(--card, #fff);
+}
+.sp-tag-select--compact {
+    font-size: 0.78rem;
+    padding: 0.12rem 0.3rem;
+}
+.sp-item-tag-add {
+    display: inline-flex;
+    margin-left: 0.35rem;
+}
+.sp-tag-empty {
+    font-size: 0.82rem;
+    color: var(--muted, #64748b);
+}
+.sp-tag-chips--empty {
+    margin-top: 0;
+}
 .sharepoint-active-folder-note {
     margin: 0.75rem 0 0;
 }

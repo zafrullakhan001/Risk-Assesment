@@ -309,12 +309,13 @@
       paths: [],
       has: [],
       lacks: [],
+      tags: [],
       rawRemainder: '',
     };
     let text = String(raw || '').trim();
     if (!text) return empty;
 
-    const out = { ...empty, phrases: [], excludes: [], extensions: [], types: [], paths: [], has: [], lacks: [] };
+    const out = { ...empty, phrases: [], excludes: [], extensions: [], types: [], paths: [], has: [], lacks: [], tags: [] };
     const words = [];
     const remainderParts = [];
 
@@ -341,7 +342,7 @@
 
     // Pull prefixed quoted values first: person:"Jane Doe"
     text = text.replace(
-      /\b(ext|extension|type|person|modified|modifiedby|mod|created|createdby|author|path|in|has|contain|contains|lacks|missing|without):"([^"]*)"/gi,
+      /\b(ext|extension|type|person|modified|modifiedby|mod|created|createdby|author|path|in|has|contain|contains|lacks|missing|without|tag|tags):"([^"]*)"/gi,
       (_, prefix, value) => {
         const key = String(prefix || '').toLowerCase();
         const val = String(value || '').trim();
@@ -356,6 +357,7 @@
           if (lower) out.paths.push(lower);
         } else if (key === 'has' || key === 'contain' || key === 'contains') pushCsv(out.has, normalizeType(lower));
         else if (key === 'lacks' || key === 'missing' || key === 'without') pushCsv(out.lacks, normalizeType(lower));
+        else if (key === 'tag' || key === 'tags') pushCsv(out.tags, lower);
         return ' ';
       }
     );
@@ -473,6 +475,12 @@
             .map(normalizeType)
             .join(',')
         );
+        remainderParts.push(value);
+        return;
+      }
+      taken = takePrefixed(value, ['tag:', 'tags:']);
+      if (taken !== null) {
+        pushCsv(out.tags, taken);
         remainderParts.push(value);
         return;
       }

@@ -20,6 +20,7 @@ declare(strict_types=1);
                         </div>
                     </div>
                     <div class="sharepoint-project-dialog-stats" id="sharepoint-project-dialog-stats" hidden></div>
+                    <div class="sharepoint-project-dialog-tags" id="sharepoint-project-dialog-tags" hidden></div>
                     <div class="sharepoint-project-dialog-actions" id="sharepoint-project-dialog-actions"></div>
                     <div class="sharepoint-dialog-search" id="sharepoint-project-dialog-search-wrap" hidden>
                         <div class="sharepoint-dialog-toolbar">

@@ -198,3 +198,22 @@ Catalog search uses SQLite B-tree indexes plus an FTS5 full-text index (`sharepo
 - **Sync / import** automatically refreshes the FTS rows for that folder source.
 - Admins can run a full rebuild anytime: SharePoint page → **SharePoint sync & import** → **Reindex SharePoint search**.
 - Use this after large syncs or if search feels slow / incomplete vs the item count.
+
+## 5. Search tags
+
+Admins can create shared **search tags** on project folders and nested files/folders (path-stable, so they survive resync).
+
+- Open a project dialog → add tags on the project header, or on individual files/folders.
+- Everyone (including public catalog shares) can search with `tag:name` or `tag:"Exact Label"`.
+- Tags live in `sharepoint_search_tags` / `sharepoint_search_tag_assignments` (not in `sharepoint_items`).
+
+## 6. Purge catalog for a fresh sync
+
+Admins can empty catalog rows without deleting registered folders:
+
+1. SharePoint page → **SharePoint sync & import** → **Purge catalog data**.
+2. Review table sizes / per-folder counts.
+3. Choose sources, optional snapshot (default on), whether to clear tags, optional VACUUM.
+4. Type `PURGE` and submit, then run Sync / Console sync / Import again.
+
+Does **not** delete assessments, users, or the SharePoint folder registrations themselves.
