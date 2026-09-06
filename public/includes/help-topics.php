@@ -19,14 +19,14 @@ function help_topic_groups(): array
                     'title' => 'About this app',
                     'html' => <<<'HTML'
 <p>This is the <strong>Architecture Risk Assessment register</strong>: a local web app for turning Excel workbooks into an interactive dashboard, then keeping project folders, templates, and go-live decisions in one place.</p>
-<p>The on-screen name can be customized under Admin → Branding. The default brand is Architecture Risk / Assessment register.</p>
+<p>The on-screen name can be customized under Admin → Branding. The default brand is Architecture Risk / Assessment register. The installed release is recorded in <code>VERSION.json</code> (shown under Admin → App updates).</p>
 <ul>
 <li>Upload a matured Risk Register or Adaptive Architecture workbook (<code>.xlsx</code>).</li>
 <li>Search saved projects, compare versions, and record responses, exceptions, and a final go-live evaluation.</li>
-<li>Keep blank templates (workbook, AI prompt, guide images, Mermaid).</li>
-<li>Index SharePoint project folders so people can search files without hunting in the library.</li>
+<li>Keep blank templates (workbook, AI prompt, guide images, Mermaid) — up to 15 slots by default.</li>
+<li>Index SharePoint project folders with live search, fuzzy matching, QR codes, owner insights, and public share links.</li>
 </ul>
-<p>The app runs on PHP 8+ with a SQLite database on this server. Uploaded workbooks stay in <code>uploads/</code>; the database is not in git, so updates do not wipe your projects.</p>
+<p>The app runs on PHP 8+ with a SQLite database on this server. Uploaded workbooks stay in <code>uploads/</code>. App updates apply a GitHub Release zip (git is not required); the database, uploads, and branding stay in place.</p>
 HTML,
                 ],
                 [
@@ -245,8 +245,10 @@ HTML,
 <p>Open <a href="sharepoint.php">SharePoint catalog</a>. Each SharePoint folder is its own catalog and search index.</p>
 <ul>
 <li><strong>Comfort / Compact / Table</strong> change how folder cards look. Compact leaves more room for search.</li>
-<li>You can open folders or the catalog in a <strong>new tab</strong> or a <strong>separate window</strong>.</li>
+<li>You can open folders, the catalog, or Owners in a <strong>new tab</strong> or a <strong>separate window</strong>.</li>
 <li>The section board lets you <strong>reorder panels</strong> (folders, search, owners, shares). Use Reset section order to restore the default.</li>
+<li>On the project table, select <strong>2–3 folders</strong> and open <strong>Compare selected</strong> for a side-by-side view. Use the Columns picker to show or hide fields (including Copy, QR, and tags).</li>
+<li>Each project row has a <strong>QR</strong> button so you can scan the SharePoint folder URL on a phone (print or copy from the dialog).</li>
 </ul>
 <p>Administrators add folder URLs, sync listings, and manage settings. Signed-in users can browse and search the catalogs they are allowed to see.</p>
 HTML,
@@ -255,13 +257,16 @@ HTML,
                     'id' => 'sharepoint-search',
                     'title' => 'Search, compare, and tags',
                     'html' => <<<'HTML'
-<p>Catalog search looks across project names, paths, and files (full-text). Select more than one catalog to <strong>compare</strong> — results show where a project is found and where it is missing.</p>
+<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Select more than one catalog to see where a project is found and where it is missing.</p>
+<p>Search operators and toggles:</p>
 <ul>
-<li>Use extension filters to keep PDFs, Visio, or Office files in view.</li>
-<li>Each compare panel has its own search and extension filters.</li>
-<li>Saved <strong>search tags</strong> (for example <code>tag:name</code>) reuse a common query. Admins maintain the tag list.</li>
+<li><code>tag:name</code>, <code>ext:pdf</code>, <code>type:visio</code>, <code>person:"Last, First"</code>, <code>path:drawings</code>, <code>has:pdf</code>, <code>"exact phrase"</code>, and <code>-exclude</code>.</li>
+<li><strong>Fuzzy</strong> — tolerate typos and similar-sounding words (for example Encore ≈ Encor).</li>
+<li><strong>Deep files</strong> — walk every cataloged file alongside the folder (names and paths, not file contents).</li>
+<li><strong>Show archived</strong> (admins) — include catalogs, projects, and files you hid so you can restore them.</li>
 </ul>
-<p>Open a project row for a workspace dialog: files, links, archive, and related actions without leaving the catalog.</p>
+<p>Refine further with file-type chips, person, catalog presence (Any / All / Only / Missing), “projects that contain,” and “projects that lack.” <strong>Save search</strong> pins the query and filters; <strong>Export CSV</strong> downloads the full filtered set. Press <code>/</code> to focus the search box.</p>
+<p>Open a project row for the workspace dialog: files, Copy / QR / tags, archive, and related actions. Admins maintain the reusable <strong>search tag</strong> list.</p>
 HTML,
                 ],
                 [
@@ -282,10 +287,13 @@ HTML,
                     'id' => 'sharepoint-owners',
                     'title' => 'Owners dashboard',
                     'html' => <<<'HTML'
-<p>The <strong>Owners</strong> view (top bar on SharePoint, or a solo window) shows owner × period insights: how many projects, activity, and related catalog signals.</p>
+<p>The <strong>Owners</strong> view (top bar on SharePoint, or a solo window) shows owner × period insights across the catalogs you select.</p>
 <ul>
-<li>Expand a row to load detail, or open the board in a new tab or window.</li>
-<li>You can create a <strong>public owners link</strong> so people browse only the owner cards without signing in.</li>
+<li>Group time by <strong>month</strong>, <strong>quarter</strong>, or <strong>year</strong>; filter by year; search people or projects.</li>
+<li><strong>Sort</strong> the leaderboard (projects, activity, and related options). Click a cell to see the folders in that period.</li>
+<li>Select <strong>2–3 owners</strong> and open <strong>Compare</strong> for a side-by-side view. Export <strong>CSV</strong> or <strong>Print</strong> a snapshot.</li>
+<li>Scope which catalogs count toward the stats; optional catalog colors make sources easier to tell apart.</li>
+<li>Create a <strong>public owners link</strong> so people browse only the owner cards without signing in.</li>
 </ul>
 <p>Recipients of that link cannot sync, edit folders, or open assessments.</p>
 HTML,
@@ -327,12 +335,12 @@ HTML,
                     'html' => <<<'HTML'
 <p>On SharePoint, administrators can create public links for <strong>catalog cards</strong> or <strong>owner cards</strong> only.</p>
 <ul>
-<li>Recipients browse and search the selected catalogs (or owners) without signing in.</li>
+<li>Recipients browse and search the selected catalogs (or owners) without signing in — including live search operators where the public card allows them.</li>
 <li>They cannot sync, edit folders, or open assessments.</li>
 <li>Uncheck any catalog you want to keep private. A tag/label is required so you can tell links apart.</li>
 <li>There is a maximum number of active links. Copy the URL when it appears — it is shown only once. Revoke when finished.</li>
 </ul>
-<p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners.</p>
+<p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. Signed-in users can still open <strong>QR</strong> on a project row to scan the SharePoint folder on a phone.</p>
 HTML,
                 ],
             ],
@@ -350,6 +358,7 @@ HTML,
 <li><strong>Local accounts</strong> store a password hash. New passwords need 8+ characters, one uppercase letter, one number, and one special character.</li>
 <li><strong>Self-registration</strong> (if enabled) stays pending until an administrator approves it.</li>
 <li><strong>LDAP / Active Directory</strong> checks the password against the directory. Directory passwords are never stored here.</li>
+<li>Administrators can search LDAP, open live <strong>LDAP details</strong> (status, groups, org fields — never passwords), add a user, or <strong>preview and import a directory group</strong> (all members or a selected subset).</li>
 </ul>
 <p>The default first admin is <code>admin</code> / <code>admin123</code>. Change that password under Admin → Overview before exposing the app on a network.</p>
 HTML,
@@ -360,14 +369,28 @@ HTML,
                     'html' => <<<'HTML'
 <p>The <strong>Admin</strong> link appears in the top bar for administrators. Open <a href="admin/index.php">Admin overview</a>.</p>
 <ul>
-<li><strong>Users</strong> — create, approve, disable, promote, reset local passwords, bulk-select and delete, search LDAP, import a directory group, inspect directory details, review the audit log. LDAP details never include passwords.</li>
+<li><strong>Users</strong> — create, approve, disable, promote, reset local passwords, bulk-select and delete, search LDAP, add or refresh a directory user, preview a group and import all or selected members, inspect LDAP details, review the audit log. LDAP details never include passwords.</li>
 <li><strong>Authentication</strong> — turn local and LDAP on or off, configure directory servers, test the bind.</li>
 <li><strong>Branding</strong> — title, subtitle, hero text, logo, favicon, footer.</li>
 <li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore. Treat backup files as secrets if encryption is on.</li>
-<li><strong>App updates</strong> — GitHub personal access token, check GitHub Releases, download and apply a packaged zip. Git is not required. Database, uploads, and branding stay in place.</li>
+<li><strong>App updates</strong> — see <a href="#app-updates">App updates</a> for Releases, commits, and zip apply.</li>
 <li><strong>SharePoint</strong> — jump to catalog admin (Tenant ID, Client ID, sync, import).</li>
 </ul>
 <p>Only administrators can open these pages. SharePoint folder management, sync, import, purge, tags, and archive controls are admin-gated as well.</p>
+HTML,
+                ],
+                [
+                    'id' => 'app-updates',
+                    'title' => 'App updates',
+                    'html' => <<<'HTML'
+<p>Administrators open <a href="admin/updates.php">Admin → App updates</a> to check GitHub and apply a newer build. <strong>Git is not required</strong> on the server. The database, <code>uploads/</code>, and custom branding stay in place.</p>
+<ul>
+<li>Save a GitHub personal access token when the badge says token needed (classic <code>repo</code> scope for private repos).</li>
+<li><strong>Check for updates</strong> lists newer <strong>GitHub Releases</strong>. If none are ahead, it also lists commits on the track branch (and the current git branch, when this folder is a checkout) after the installed version.</li>
+<li><strong>Download and apply</strong> prefers a packaged <code>RiskRegister-*.zip</code> Release asset; otherwise it uses GitHub’s source zipball. PHP <code>curl</code> and <code>zip</code> must be enabled.</li>
+<li>Installed version comes from <code>VERSION.json</code>. Keep the tab open until apply finishes and redirects — do not treat a garbled download as a failed page.</li>
+</ul>
+<p>Publishers package with <code>php bin/package_release.php vX.Y.Z</code> (or the GitHub Actions release workflow) so the zip includes <code>vendor/</code>. See the in-app notes on the App updates page for troubleshooting.</p>
 HTML,
                 ],
             ],
