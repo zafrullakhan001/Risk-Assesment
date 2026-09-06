@@ -8,6 +8,36 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
+  /** Schedule work after the browser paints so typing is not blocked. */
+  const debouncePaint = (fn, waitMs) => {
+    let timer = 0;
+    let raf = 0;
+    const cancel = () => {
+      window.clearTimeout(timer);
+      timer = 0;
+      if (raf) {
+        window.cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+    const schedule = (...args) => {
+      cancel();
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        timer = window.setTimeout(() => {
+          timer = 0;
+          fn(...args);
+        }, waitMs);
+      });
+    };
+    schedule.cancel = cancel;
+    schedule.flush = (...args) => {
+      cancel();
+      fn(...args);
+    };
+    return schedule;
+  };
+
   const bindWorkspaceDialog = (dialog) => {
     if (!dialog || dialog.dataset.workspaceBound === '1') return;
     dialog.dataset.workspaceBound = '1';
@@ -16,12 +46,68 @@
     const maximizeBtn =
       dialog.querySelector('.sp-dialog-maximize') ||
       document.getElementById(`${dialog.id}-maximize`);
+    const storageKey = `riskregister_sp_workspace_${dialog.id || 'dialog'}`;
 
     let maximized = false;
     let savedRect = null;
+    let lastRect = null;
     let drag = null;
+    let persistTimer = 0;
 
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+    const isUsableRect = (rect) =>
+      !!rect &&
+      Number.isFinite(Number(rect.left)) &&
+      Number.isFinite(Number(rect.top)) &&
+      Number(rect.width) >= 420 &&
+      Number(rect.height) >= 320;
+
+    const currentRect = () => {
+      const box = dialog.getBoundingClientRect();
+      return {
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        height: box.height,
+      };
+    };
+
+    const rememberRect = (rect = null) => {
+      const next = rect || (dialog.open && !maximized ? currentRect() : null);
+      if (isUsableRect(next)) lastRect = next;
+    };
+
+    const readLayout = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(storageKey) || 'null');
+        return raw && typeof raw === 'object' ? raw : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const persistLayout = () => {
+      const rect = lastRect || savedRect;
+      const payload = {
+        maximized,
+        left: rect?.left,
+        top: rect?.top,
+        width: rect?.width,
+        height: rect?.height,
+      };
+      if (!payload.maximized && !isUsableRect(payload)) return;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(payload));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const schedulePersist = () => {
+      window.clearTimeout(persistTimer);
+      persistTimer = window.setTimeout(persistLayout, 120);
+    };
 
     const applyRect = (rect) => {
       const maxLeft = Math.max(0, window.innerWidth - 120);
@@ -32,20 +118,22 @@
       const height = clamp(rect.height, 320, window.innerHeight);
       dialog.classList.add('is-placed');
       dialog.style.transform = 'none';
+      dialog.style.right = '';
+      dialog.style.bottom = '';
       dialog.style.left = `${Math.round(left)}px`;
       dialog.style.top = `${Math.round(top)}px`;
       dialog.style.width = `${Math.round(width)}px`;
       dialog.style.height = `${Math.round(height)}px`;
+      rememberRect({ left, top, width, height });
+      schedulePersist();
     };
 
-    const currentRect = () => {
-      const box = dialog.getBoundingClientRect();
-      return {
-        left: box.left,
-        top: box.top,
-        width: box.width,
-        height: box.height,
-      };
+    const syncMaximizeBtn = () => {
+      if (!maximizeBtn) return;
+      maximizeBtn.setAttribute('aria-pressed', maximized ? 'true' : 'false');
+      maximizeBtn.title = maximized ? 'Restore size' : 'Maximize';
+      maximizeBtn.setAttribute('aria-label', maximized ? 'Restore dialog size' : 'Maximize dialog');
+      maximizeBtn.textContent = maximized ? '❐' : '⛶';
     };
 
     const centerDefault = () => {
@@ -65,7 +153,10 @@
 
     const setMaximized = (next) => {
       if (next) {
-        if (!maximized) savedRect = currentRect();
+        if (!maximized) {
+          if (dialog.open) rememberRect();
+          savedRect = lastRect || savedRect;
+        }
         maximized = true;
         dialog.classList.add('is-maximized', 'is-placed');
         dialog.style.transform = 'none';
@@ -78,15 +169,34 @@
       } else {
         maximized = false;
         dialog.classList.remove('is-maximized');
-        if (savedRect) applyRect(savedRect);
+        if (isUsableRect(savedRect) || isUsableRect(lastRect)) applyRect(savedRect || lastRect);
         else centerDefault();
       }
-      if (maximizeBtn) {
-        maximizeBtn.setAttribute('aria-pressed', maximized ? 'true' : 'false');
-        maximizeBtn.title = maximized ? 'Restore size' : 'Maximize';
-        maximizeBtn.setAttribute('aria-label', maximized ? 'Restore dialog size' : 'Maximize dialog');
-        maximizeBtn.textContent = maximized ? '❐' : '⛶';
+      syncMaximizeBtn();
+      schedulePersist();
+    };
+
+    const restoreLayout = () => {
+      const saved = readLayout();
+      const rect = isUsableRect(saved)
+        ? { left: saved.left, top: saved.top, width: saved.width, height: saved.height }
+        : lastRect;
+      if (isUsableRect(rect)) {
+        savedRect = rect;
+        lastRect = rect;
       }
+      if (saved?.maximized || maximized) {
+        setMaximized(true);
+        return;
+      }
+      if (isUsableRect(rect)) {
+        maximized = false;
+        dialog.classList.remove('is-maximized');
+        applyRect(rect);
+        syncMaximizeBtn();
+        return;
+      }
+      centerDefault();
     };
 
     maximizeBtn?.addEventListener('click', (event) => {
@@ -132,6 +242,8 @@
       if (!drag || event.pointerId !== drag.pointerId) return;
       drag = null;
       dialog.classList.remove('is-dragging');
+      rememberRect();
+      persistLayout();
       try {
         head?.releasePointerCapture(event.pointerId);
       } catch {
@@ -148,46 +260,106 @@
       setMaximized(!maximized);
     });
 
+    if (typeof ResizeObserver === 'function') {
+      const resizeObserver = new ResizeObserver(() => {
+        if (!dialog.open || maximized || drag) return;
+        rememberRect();
+        schedulePersist();
+      });
+      resizeObserver.observe(dialog);
+    }
+
     dialog.addEventListener('close', () => {
       drag = null;
       dialog.classList.remove('is-dragging');
-      if (maximized) {
-        maximized = false;
-        dialog.classList.remove('is-maximized');
-        if (maximizeBtn) {
-          maximizeBtn.setAttribute('aria-pressed', 'false');
-          maximizeBtn.title = 'Maximize';
-          maximizeBtn.textContent = '⛶';
-        }
-      }
+      persistLayout();
+      if (maximized) dialog.classList.remove('is-maximized');
     });
 
+    dialog.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape' || event.isComposing || !dialog.open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dialog.close();
+      },
+      true
+    );
+
     dialog.__spPrepareWorkspace = () => {
-      if (maximized) setMaximized(false);
-      if (!dialog.classList.contains('is-placed') || !dialog.style.width) {
-        centerDefault();
-      } else {
-        applyRect(currentRect());
-      }
+      restoreLayout();
     };
+  };
+
+  const parseItemDate = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+      const iso = new Date(raw);
+      if (!Number.isNaN(iso.getTime())) return iso;
+    }
+    const us = raw.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i
+    );
+    if (us) {
+      let hour = Number(us[4] || 0);
+      const minute = Number(us[5] || 0);
+      const second = Number(us[6] || 0);
+      const ampm = String(us[7] || '').toUpperCase();
+      if (ampm === 'PM' && hour < 12) hour += 12;
+      if (ampm === 'AM' && hour === 12) hour = 0;
+      const parsed = new Date(Number(us[3]), Number(us[1]) - 1, Number(us[2]), hour, minute, second);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    const fallback = new Date(raw);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
   };
 
   const formatModified = (value) => {
     const raw = String(value ?? '').trim();
     if (!raw) return '—';
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
-      const date = new Date(raw);
-      if (!Number.isNaN(date.getTime())) {
-        return date.toLocaleString(undefined, {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        });
-      }
+    const date = parseItemDate(raw);
+    if (date) {
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
     }
     return raw;
+  };
+
+  const formatActivityDay = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const calendarDayDiff = (from, to) => {
+    if (!(from instanceof Date) || !(to instanceof Date)) return null;
+    const start = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+    const end = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+    return Math.max(0, Math.round((end - start) / 86400000));
+  };
+
+  const formatSize = (bytes) => {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n <= 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = n;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    const digits = unit === 0 || value >= 10 ? 0 : 1;
+    return `${value.toFixed(digits)} ${units[unit]}`;
   };
 
   const FILE_META = {
@@ -291,6 +463,78 @@
   const SEARCH_PREF = {
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
+    compareDensity: 'riskregister_sp_compare_density',
+    listDensity: 'riskregister_sp_list_density',
+  };
+
+  const readDialogDensity = () => {
+    try {
+      return localStorage.getItem(SEARCH_PREF.compareDensity) === 'comfort' ? 'comfort' : 'compact';
+    } catch {
+      return 'compact';
+    }
+  };
+
+  const applyDialogDensity = (targetDialog, targetWrap, next) => {
+    const density = next === 'comfort' ? 'comfort' : 'compact';
+    const dialogs = [targetDialog, document.getElementById('sharepoint-project-dialog'), document.getElementById('sharepoint-compare-dialog')].filter(
+      (el, index, list) => el && list.indexOf(el) === index
+    );
+    dialogs.forEach((el) => {
+      el.classList.toggle('is-compact-chrome', density === 'compact');
+      el.setAttribute('data-density', density);
+      el.querySelectorAll('.sp-view-btn[data-density]').forEach((btn) => {
+        const active = btn.getAttribute('data-density') === density;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    });
+    try {
+      localStorage.setItem(SEARCH_PREF.compareDensity, density);
+    } catch {
+      /* ignore */
+    }
+    return density;
+  };
+
+  const readListDensity = () => {
+    try {
+      return localStorage.getItem(SEARCH_PREF.listDensity) === 'comfort' ? 'comfort' : 'compact';
+    } catch {
+      return 'compact';
+    }
+  };
+
+  const applyListDensity = (next) => {
+    const density = next === 'comfort' ? 'comfort' : 'compact';
+    const card = document.getElementById('sharepoint-table-card');
+    if (card) {
+      card.classList.toggle('is-compact-rows', density === 'compact');
+      card.setAttribute('data-density', density);
+      card.querySelectorAll('.sp-view-btn[data-list-density]').forEach((btn) => {
+        const active = btn.getAttribute('data-list-density') === density;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+    try {
+      localStorage.setItem(SEARCH_PREF.listDensity, density);
+    } catch {
+      /* ignore */
+    }
+    return density;
+  };
+
+  const bindListDensityToggle = () => {
+    const card = document.getElementById('sharepoint-table-card');
+    if (!card || card.dataset.densityBound === '1') return;
+    card.dataset.densityBound = '1';
+    card.querySelectorAll('.sp-view-btn[data-list-density]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyListDensity(btn.getAttribute('data-list-density') || 'compact');
+      });
+    });
+    applyListDensity(readListDensity());
   };
 
   const readSearchPrefs = () => ({
@@ -316,7 +560,7 @@
       { text: meta.label, sourceLabel: 'Type', sourceName: 'type_label' },
       { text: String(item?.item_type || ''), sourceLabel: 'Type', sourceName: 'item_type' },
       { text: String(item?.modified_by || ''), sourceLabel: 'Modified by', sourceName: 'modified_by' },
-      { text: String(item?.person || ''), sourceLabel: 'Person', sourceName: 'person' },
+      { text: String(item?.person || ''), sourceLabel: 'Created By', sourceName: 'person' },
       { text: String(item?.mime_type || ''), sourceLabel: 'MIME', sourceName: 'mime' },
     ];
   };
@@ -350,6 +594,112 @@
   const matchesQuery = (item, query, options = {}) => scoreItemQuery(item, query, options).matched;
 
   const isFolderItem = (item) => String(item?.item_type || '').toLowerCase() === 'folder';
+
+  const isRootProjectFolder = (item, projectName) => {
+    if (!isFolderItem(item)) return false;
+    const name = String(item?.name || '').trim();
+    const path = String(item?.relative_path || '').trim();
+    const project = String(projectName || '').trim();
+    return path === '' || path === name || (project !== '' && (path === project || name === project));
+  };
+
+  const computeProjectActivityStats = (items, projectName = '') => {
+    const list = Array.isArray(items) ? items : [];
+    const userMap = new Map();
+    let firstCreated = null;
+    let rootCreated = null;
+    let lastUpdated = null;
+
+    list.forEach((item) => {
+      [item?.person, item?.modified_by].forEach((name) => {
+        const display = String(name || '').trim();
+        if (!display) return;
+        const key = display.toLowerCase();
+        if (!userMap.has(key)) userMap.set(key, display);
+      });
+
+      const created = parseItemDate(item?.date_created);
+      if (created) {
+        if (!firstCreated || created < firstCreated) firstCreated = created;
+        if (isRootProjectFolder(item, projectName) && (!rootCreated || created < rootCreated)) {
+          rootCreated = created;
+        }
+      }
+
+      const updated = parseItemDate(item?.last_modified) || created;
+      if (updated && (!lastUpdated || updated > lastUpdated)) lastUpdated = updated;
+    });
+
+    const createdAt = rootCreated || firstCreated;
+    const spanDays = calendarDayDiff(createdAt, lastUpdated);
+    const users = [...userMap.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    return {
+      userCount: users.length,
+      users,
+      createdAt,
+      lastUpdated,
+      spanDays,
+    };
+  };
+
+  const renderProjectActivityStats = (statsEl, stats) => {
+    if (!statsEl) return;
+    if (!stats || (!stats.userCount && !stats.createdAt && !stats.lastUpdated)) {
+      statsEl.hidden = true;
+      statsEl.innerHTML = '';
+      return;
+    }
+
+    const spanLabel =
+      stats.spanDays === null
+        ? '—'
+        : stats.spanDays === 0
+          ? 'same day'
+          : stats.spanDays === 1
+            ? '1 day'
+            : `${stats.spanDays} days`;
+
+    const userTitle = stats.users.length ? stats.users.join(', ') : 'No creators or modifiers recorded';
+    const chips = [
+      {
+        label: 'Users',
+        value: String(stats.userCount),
+        title: userTitle,
+      },
+      {
+        label: 'Created',
+        value: formatActivityDay(stats.createdAt),
+        title: stats.createdAt ? `First created ${formatModified(stats.createdAt.toISOString())}` : 'No created date',
+      },
+      {
+        label: 'Last update',
+        value: formatActivityDay(stats.lastUpdated),
+        title: stats.lastUpdated
+          ? `Last updated ${formatModified(stats.lastUpdated.toISOString())}`
+          : 'No modified date',
+      },
+      {
+        label: 'Span',
+        value: spanLabel,
+        title:
+          stats.spanDays === null
+            ? 'Need both a created and updated date'
+            : `Days from first creation to last update: ${spanLabel}`,
+      },
+    ];
+
+    statsEl.innerHTML = chips
+      .map(
+        (chip) =>
+          `<span class="sp-project-stat-chip" title="${escapeHtml(chip.title)}">
+            <span class="sp-project-stat-label">${escapeHtml(chip.label)}</span>
+            <strong class="sp-project-stat-value">${escapeHtml(chip.value)}</strong>
+          </span>`
+      )
+      .join('');
+    statsEl.hidden = false;
+  };
 
   const normalizeExtList = (ext) => {
     if (ext == null || ext === '') return [];
@@ -619,6 +969,74 @@
     )}</span>`;
   };
 
+  const personCellHtml = (name, emoji) => {
+    const value = String(name || '').trim();
+    return value ? `<span class="sp-person-cell">${emoji} ${escapeHtml(value)}</span>` : '—';
+  };
+
+  const resolveProjectMeta = (project) => {
+    const name = String(project?.project_name || '');
+    const ext = fileExtension(name);
+    if (ext) {
+      return FILE_META[ext] || { emoji: '📄', label: ext.toUpperCase(), tone: 'file' };
+    }
+    return FILE_META.folder;
+  };
+
+  const itemCountsHtml = (project) => {
+    const folders = Number(project?.folder_count || 0);
+    const files = Number(project?.file_count || 0);
+    const parts = [];
+    if (folders > 0) {
+      parts.push(`<span class="sp-type-badge sp-type-badge--folder">📁 ${folders}</span>`);
+    }
+    if (files > 0) {
+      parts.push(`<span class="sp-type-badge sp-type-badge--file">📄 ${files}</span>`);
+    }
+    if (!parts.length) {
+      parts.push('<span class="sp-type-badge sp-type-badge--folder">📁 0</span>');
+    }
+    return `<span class="sharepoint-item-counts" title="${folders} folders · ${files} files">${parts.join('')}</span>`;
+  };
+
+  const projectNameCellHtml = (project, sourceKey, sourceTitle, extraHtml = '', openQuery = '') => {
+    const name = String(project?.project_name || '');
+    const folderUrl = String(project?.folder_url || '');
+    const meta = resolveProjectMeta(project);
+    const typeLabel = meta.tone === 'folder' ? '📁 Folder' : meta.label;
+    const copyBtn = folderUrl
+      ? `<button type="button" class="sp-copy-link-btn" data-copy-url="${escapeHtml(folderUrl)}" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for ${escapeHtml(name)}">📋</button>`
+      : '';
+    return `<div class="sp-project-cell">
+      <div class="sp-tree-cell">
+        <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}">
+          <span class="sp-file-icon sp-file-icon--${escapeHtml(meta.tone)}" aria-hidden="true">${meta.emoji}</span>
+          <span class="sp-file-copy">
+            <span class="sp-file-name">${escapeHtml(name)}</span>
+          </span>
+        </button>
+        ${copyBtn}
+      </div>
+      <div class="sp-project-meta-line">
+        <span class="sp-type-badge sp-type-badge--${escapeHtml(meta.tone)}">${escapeHtml(typeLabel)}</span>
+        <span class="sp-catalog-badge">${escapeHtml(sourceTitle)}</span>
+      </div>
+      ${extraHtml}
+    </div>`;
+  };
+
+  const dialogItemCellsHtml = (item, depth, toggle) => {
+    const person = String(item?.person || '').trim();
+    const modifiedBy = String(item?.modified_by || '').trim();
+    return `<td>${nameCellHtml(item, depth, toggle)}</td>
+      <td>${typeBadgeHtml(item)}</td>
+      <td class="sp-meta-cell sp-size-cell">${escapeHtml(formatSize(item?.size_bytes))}</td>
+      <td class="sp-meta-cell">${escapeHtml(formatModified(item?.last_modified))}</td>
+      <td class="sp-meta-cell">${escapeHtml(formatModified(item?.date_created))}</td>
+      <td class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
+      <td class="sp-meta-cell">${personCellHtml(person, '🙋')}</td>`;
+  };
+
   /* ---- Project detail dialog ---- */
   const initDialog = () => {
     const dialog = document.getElementById('sharepoint-project-dialog');
@@ -627,6 +1045,7 @@
 
     const titleEl = document.getElementById('sharepoint-project-dialog-title');
     const subEl = document.getElementById('sharepoint-project-dialog-sub');
+    const statsEl = document.getElementById('sharepoint-project-dialog-stats');
     const actionsEl = document.getElementById('sharepoint-project-dialog-actions');
     const rowsEl = document.getElementById('sharepoint-project-dialog-rows');
     const closeBtn = document.getElementById('sharepoint-project-dialog-close');
@@ -642,6 +1061,14 @@
     const expanded = new Set();
     const selectedExts = new Set();
     let syncSearchModes = () => readSearchPrefs();
+
+    const clearActivityStats = () => {
+      if (!statsEl) return;
+      statsEl.hidden = true;
+      statsEl.innerHTML = '';
+    };
+
+    const applyProjectDensity = (next) => applyDialogDensity(dialog, searchWrap, next);
 
     const syncLayoutButtons = () => {
       searchWrap?.querySelectorAll('.sp-view-btn[data-layout]').forEach((btn) => {
@@ -687,14 +1114,8 @@
         const toggle = hasKids
           ? `<button type="button" class="sp-tree-toggle" data-tree-path="${escapeHtml(path)}" aria-expanded="${isOpen ? 'true' : 'false'}">${isOpen ? '▼' : '▶'}</button>`
           : `<span class="sp-tree-toggle sp-tree-toggle--spacer" aria-hidden="true"></span>`;
-        const person = String(node.item.person || '').trim();
-        const modifiedBy = String(node.item.modified_by || '').trim();
         acc.push(`<tr class="sp-dialog-row${isFolder ? ' sp-dialog-row--folder' : ''}${node.selfMatch === false && hasKids ? ' sp-tree-ancestor' : ''}">
-          <td>${nameCellHtml(node.item, depth, toggle)}</td>
-          <td>${typeBadgeHtml(node.item)}</td>
-          <td class="sp-meta-cell">${escapeHtml(formatModified(node.item.last_modified))}</td>
-          <td class="sp-meta-cell">${modifiedBy ? `👤 ${escapeHtml(modifiedBy)}` : '—'}</td>
-          <td class="sp-meta-cell">${person ? `🙋 ${escapeHtml(person)}` : '—'}</td>
+          ${dialogItemCellsHtml(node.item, depth, toggle)}
         </tr>`);
         if (isOpen) renderTreeRows(node.children, depth + 1, acc);
       });
@@ -717,7 +1138,7 @@
         rowsEl.innerHTML =
           rows.length > 0
             ? rows.join('')
-            : `<tr><td colspan="5" class="sharepoint-dialog-empty">${
+            : `<tr><td colspan="7" class="sharepoint-dialog-empty">${
                 allItems.length === 0
                   ? '🗂️ No files or folders found for this project.'
                   : 'No matches for this view / filter. Try OR mode or Fuzzy.'
@@ -736,7 +1157,7 @@
         const filtered = flattenFiltered(allItems, kind, ext, query, prefs);
         shown = filtered.length;
         if (filtered.length === 0) {
-          rowsEl.innerHTML = `<tr><td colspan="5" class="sharepoint-dialog-empty">${
+          rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${
             allItems.length === 0
               ? '🗂️ No files or folders found for this project.'
               : 'No matches for this view / filter. Try OR mode or Fuzzy.'
@@ -744,14 +1165,8 @@
         } else {
           rowsEl.innerHTML = filtered
             .map((item) => {
-              const person = String(item.person || '').trim();
-              const modifiedBy = String(item.modified_by || '').trim();
               return `<tr class="sp-dialog-row${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}">
-                <td>${nameCellHtml(item, 0, '')}</td>
-                <td>${typeBadgeHtml(item)}</td>
-                <td class="sp-meta-cell">${escapeHtml(formatModified(item.last_modified))}</td>
-                <td class="sp-meta-cell">${modifiedBy ? `👤 ${escapeHtml(modifiedBy)}` : '—'}</td>
-                <td class="sp-meta-cell">${person ? `🙋 ${escapeHtml(person)}` : '—'}</td>
+                ${dialogItemCellsHtml(item, 0, '')}
               </tr>`;
             })
             .join('');
@@ -773,8 +1188,9 @@
     };
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
+    const scheduleDialogFilter = debouncePaint(applyFilter, 60);
 
-    searchInput?.addEventListener('input', applyFilter);
+    searchInput?.addEventListener('input', () => scheduleDialogFilter());
     kindSelect?.addEventListener('change', applyFilter);
     extSelect?.addEventListener('change', () => {
       selectedExts.clear();
@@ -789,7 +1205,7 @@
       if (searchInput) searchInput.value = '';
       selectedExts.clear();
       syncExtSelectFromChips();
-      applyFilter();
+      scheduleDialogFilter.flush();
       searchInput?.focus();
     });
     searchWrap?.querySelectorAll('.sp-view-btn[data-layout]').forEach((btn) => {
@@ -798,6 +1214,12 @@
         applyFilter();
       });
     });
+    searchWrap?.querySelectorAll('.sp-view-btn[data-density]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyProjectDensity(btn.getAttribute('data-density') || 'compact');
+      });
+    });
+    applyProjectDensity(readDialogDensity());
     searchWrap?.querySelectorAll('.sp-tree-action-btn[data-tree-action]').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (layout !== 'tree') return;
@@ -821,22 +1243,23 @@
       });
     });
 
-    const openProject = async (projectName, sourceKey = '') => {
+    const openProject = async (projectName, sourceKey = '', initialQuery = '') => {
       const name = String(projectName || '').trim();
       if (!name) return;
 
       titleEl.textContent = name;
       subEl.innerHTML = '⏳ Loading SharePoint details…';
+      clearActivityStats();
       actionsEl.innerHTML = '';
       allItems = [];
       expanded.clear();
       selectedExts.clear();
       layout = 'tree';
-      if (searchInput) searchInput.value = '';
+      if (searchInput) searchInput.value = String(initialQuery || '').trim();
       if (kindSelect) kindSelect.value = 'all';
       if (extSelect) extSelect.value = '';
       if (searchWrap) searchWrap.hidden = true;
-      rowsEl.innerHTML = '<tr><td colspan="5" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>';
+      rowsEl.innerHTML = '<tr><td colspan="7" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>';
       dialog.__spPrepareWorkspace?.();
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
@@ -854,11 +1277,15 @@
         subEl.innerHTML = `${
           catalogLabel ? `<span class="sp-catalog-badge">${escapeHtml(catalogLabel)}</span> · ` : ''
         }📦 <strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} · 📁 <strong>${folders}</strong> folder${folders === 1 ? '' : 's'} · 📄 <strong>${files}</strong> file${files === 1 ? '' : 's'}`;
+        renderProjectActivityStats(
+          statsEl,
+          computeProjectActivityStats(allItems, project.project_name || name)
+        );
 
         if (project.folder_url) {
           actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
-            <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer">🔗 Open project folder in SharePoint</a>
-            <button type="button" class="button ghost sp-copy-link-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋 Copy folder link" title="Copy folder link">📋 Copy folder link</button>
+            <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open project folder in SharePoint">🔗 Open</a>
+            <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
           </div>`;
           bindCopyLinkButtons(actionsEl);
         }
@@ -868,16 +1295,13 @@
         window.setTimeout(() => searchInput?.focus(), 50);
       } catch (error) {
         subEl.textContent = '';
+        clearActivityStats();
         if (searchWrap) searchWrap.hidden = true;
-        rowsEl.innerHTML = `<tr><td colspan="5" class="sharepoint-dialog-empty">${escapeHtml(error.message || 'Failed to load project.')}</td></tr>`;
+        rowsEl.innerHTML = `<tr><td colspan="7" class="sharepoint-dialog-empty">${escapeHtml(error.message || 'Failed to load project.')}</td></tr>`;
       }
     };
 
     closeBtn?.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('cancel', (event) => {
-      // Keep open unless the user uses the explicit close (X) control.
-      event.preventDefault();
-    });
 
     return openProject;
   };
@@ -954,6 +1378,7 @@
       right: { query: '', exts: new Set() },
     };
     let layout = 'tree';
+    let density = 'compact';
     let syncSearchModes = () => readSearchPrefs();
 
     const emptySideFilter = () => ({ query: '', exts: new Set() });
@@ -975,6 +1400,10 @@
       });
       const treeActions = searchWrap?.querySelector('.sp-tree-actions');
       if (treeActions) treeActions.hidden = layout !== 'tree';
+    };
+
+    const applyCompareDensity = (next) => {
+      density = applyDialogDensity(dialog, searchWrap, next);
     };
 
     const expandAllFolders = () => {
@@ -1133,7 +1562,7 @@
       if (project.folder_url) {
         els.actions.innerHTML = `<div class="sp-dialog-folder-actions sp-compare-folder-actions">
           <a class="button button-primary btn-accent-violet-solid sp-compare-open-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer">🔗 Open</a>
-          <button type="button" class="button ghost-light sp-copy-link-btn sp-compare-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋 Copy" title="Copy folder link">📋 Copy</button>
+          <button type="button" class="button ghost-light sp-copy-link-btn sp-compare-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
         </div>`;
         bindCopyLinkButtons(els.actions);
       } else {
@@ -1313,6 +1742,7 @@
     };
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyCompareFilter);
+    const scheduleCompareFilter = debouncePaint(applyCompareFilter, 60);
 
     kindSelect?.addEventListener('change', applyCompareFilter);
     uniqueOnlyEl?.addEventListener('change', applyCompareFilter);
@@ -1322,6 +1752,12 @@
         applyCompareFilter();
       });
     });
+    searchWrap?.querySelectorAll('.sp-view-btn[data-density]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyCompareDensity(btn.getAttribute('data-density') || 'compact');
+      });
+    });
+    applyCompareDensity(readDialogDensity());
     searchWrap?.querySelectorAll('.sp-tree-action-btn[data-tree-action]').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (layout !== 'tree') return;
@@ -1333,11 +1769,11 @@
     SIDE_IDS.forEach((side) => {
       sideEls[side].searchInput?.addEventListener('input', () => {
         filtersBySide[side].query = sideEls[side].searchInput.value || '';
-        applyCompareFilter();
+        scheduleCompareFilter();
       });
       sideEls[side].clearBtn?.addEventListener('click', () => {
         resetSideFilter(side);
-        applyCompareFilter();
+        scheduleCompareFilter.flush();
         sideEls[side].searchInput?.focus();
       });
       sideEls[side].filters?.querySelectorAll('.sp-dialog-chip[data-ext]').forEach((chip) => {
@@ -1443,16 +1879,17 @@
     };
 
     closeBtn?.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('cancel', (event) => {
-      // Keep open unless the user uses the explicit close (X) control.
-      event.preventDefault();
-    });
 
     return openCompare;
   };
 
   const openProject = initDialog();
   const openCompare = initCompareDialog();
+  window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
+    openProject,
+  });
+
+  bindListDensityToggle();
 
   /* ---- Live LinkNest-style search ---- */
   const searchRoot = document.getElementById('sharepoint-search');
@@ -1487,12 +1924,14 @@
         }
       });
     });
+    bindCopyLinkButtons(tbody);
     return;
   }
 
   const STORAGE = {
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
+    deep: 'riskregister_sp_search_deep',
     scopes: 'riskregister_sp_search_scopes',
   };
 
@@ -1501,6 +1940,7 @@
   const controls = document.getElementById('sharepoint-search-controls');
   const wordModeGroup = document.getElementById('sharepoint-word-mode');
   const fuzzyToggle = document.getElementById('sharepoint-fuzzy-toggle');
+  const deepToggle = document.getElementById('sharepoint-deep-toggle');
   const refineInput = document.getElementById('sharepoint-refine-input');
   const refineClear = document.getElementById('sharepoint-refine-clear');
   const statsEl = document.getElementById('sharepoint-search-stats');
@@ -1576,19 +2016,109 @@
     refine: '',
     wordMode: localStorage.getItem(STORAGE.wordMode) === 'or' ? 'or' : 'and',
     fuzzy: localStorage.getItem(STORAGE.fuzzy) === '1',
+    deep: localStorage.getItem(STORAGE.deep) !== '0',
     page: 1,
     perPage: Number(searchRoot.dataset.perPage || perPageSelect?.value || 25) || 25,
     ready: false,
     loadingIndex: false,
   };
 
-  const projectFields = (project) => {
+  const projectEntries = (project) => {
+    if (Array.isArray(project?._entries)) return project._entries;
+    const files = Array.isArray(project.files) ? project.files : [];
+    const folders = Array.isArray(project.folders) ? project.folders : [];
+    const out = [];
+    files.forEach((item) => {
+      const name = String(item?.name || '').trim();
+      if (!name) return;
+      out.push({
+        kind: 'file',
+        name,
+        path: String(item?.path || name).trim() || name,
+      });
+    });
+    folders.forEach((item) => {
+      const name = String(item?.name || '').trim();
+      if (!name) return;
+      out.push({
+        kind: 'folder',
+        name,
+        path: String(item?.path || name).trim() || name,
+      });
+    });
+    if (out.length) return out;
+    (project.names || []).forEach((name) => {
+      const label = String(name || '').trim();
+      if (!label || label.toLowerCase() === String(project.project_name || '').trim().toLowerCase()) return;
+      out.push({ kind: 'file', name: label, path: label });
+    });
+    return out;
+  };
+
+  const prepareSearchProject = (project) => {
+    const entries = projectEntries(project);
+    project._entries = entries;
+    const shallow = [
+      project.project_name,
+      project.source_title,
+      project.modified_by,
+      project.person,
+    ]
+      .map((value) => String(value || '').toLowerCase())
+      .filter(Boolean);
+    project._hayShallow = shallow.join('\n');
+    project._hayDeep = [project._hayShallow]
+      .concat(entries.map((entry) => `${entry.name}\n${entry.path}`.toLowerCase()))
+      .join('\n');
+    return project;
+  };
+
+  const haystackHasWords = (hay, words, mode) => {
+    if (!hay) return false;
+    if (mode === 'or') return words.some((word) => hay.includes(word));
+    return words.every((word) => hay.includes(word));
+  };
+
+  const cheapProjectMatch = (project, words, mode, deep) => {
+    const hay = (deep ? project._hayDeep : project._hayShallow) || '';
+    if (!haystackHasWords(hay, words, mode)) return { matched: false, score: 0, kind: 'none' };
+    const name = String(project.project_name || '').toLowerCase();
+    const nameHit = mode === 'or' ? words.some((word) => name.includes(word)) : words.every((word) => name.includes(word));
+    if (nameHit) {
+      const exact = words.some((word) => name === word);
+      return {
+        matched: true,
+        score: exact ? 100 : 94,
+        kind: exact ? 'exact' : 'contains',
+        source: 'Project',
+        snippet: project.project_name,
+      };
+    }
+    return { matched: true, score: 86, kind: 'contains', source: deep ? 'File' : 'Catalog' };
+  };
+
+  const projectFields = (project, deep = true) => {
     const fields = [
       { text: project.project_name, sourceLabel: 'Project' },
       { text: project.source_title, sourceLabel: 'Catalog' },
       { text: project.modified_by, sourceLabel: 'Modified By' },
-      { text: project.person, sourceLabel: 'Person' },
+      { text: project.person, sourceLabel: 'Created By' },
     ];
+    if (!deep) return fields;
+    const entries = projectEntries(project);
+    if (entries.length) {
+      entries.forEach((entry) => {
+        fields.push({
+          text: entry.name,
+          sourceLabel: entry.kind === 'folder' ? 'Folder' : 'File',
+          sourceName: entry.name,
+        });
+        if (entry.path && entry.path !== entry.name) {
+          fields.push({ text: entry.path, sourceLabel: 'Path', sourceName: entry.path });
+        }
+      });
+      return fields;
+    }
     (project.names || []).forEach((name) => {
       fields.push({ text: name, sourceLabel: 'File', sourceName: name });
     });
@@ -1598,8 +2128,60 @@
     return fields;
   };
 
-  const scoreProject = (project, words, mode, fuzzy) =>
-    Fuzzy.scoreLabeledFieldsAgainstWords(projectFields(project), words, mode, fuzzy);
+  const scoreProject = (project, words, mode, fuzzy, deep = true) => {
+    if (!words.length) return { matched: true, score: 100, kind: 'exact' };
+    if (!fuzzy) {
+      const cheap = cheapProjectMatch(project, words, mode, deep);
+      if (!cheap.matched) return cheap;
+    }
+    return Fuzzy.scoreLabeledFieldsAgainstWords(projectFields(project, deep), words, mode, fuzzy);
+  };
+
+  const collectDeepHits = (project, words, mode, fuzzy, limit = 4) => {
+    if (!words.length) return { hits: [], total: 0 };
+    const hits = projectEntries(project)
+      .map((entry) => {
+        const match = Fuzzy.scoreLabeledFieldsAgainstWords(
+          [
+            {
+              text: entry.name,
+              sourceLabel: entry.kind === 'folder' ? 'Folder' : 'File',
+              sourceName: entry.name,
+            },
+            { text: entry.path, sourceLabel: 'Path', sourceName: entry.path },
+          ],
+          words,
+          mode,
+          fuzzy
+        );
+        return match.matched ? { ...entry, match } : null;
+      })
+      .filter(Boolean);
+    hits.sort((a, b) => (b.match?.score || 0) - (a.match?.score || 0));
+    return { hits: hits.slice(0, limit), total: hits.length };
+  };
+
+  const deepHitsHtml = (hitSet) => {
+    const hits = hitSet?.hits || [];
+    if (!hits.length) return '';
+    const extra = Math.max(0, (hitSet.total || hits.length) - hits.length);
+    return `<div class="sp-deep-hits">
+      ${hits
+        .map((hit) => {
+          const icon = hit.kind === 'folder' ? '📁' : '📄';
+          const path = hit.path && hit.path !== hit.name ? hit.path : '';
+          return `<button type="button" class="sp-deep-hit" data-hit-query="${escapeHtml(hit.name)}" title="${escapeHtml(
+            path ? `${hit.name} — ${path}` : hit.name
+          )}">
+            <span aria-hidden="true">${icon}</span>
+            <span class="sp-deep-hit-name">${escapeHtml(hit.name)}</span>
+            ${path ? `<span class="sp-deep-hit-path">${escapeHtml(path)}</span>` : ''}
+          </button>`;
+        })
+        .join('')}
+      ${extra ? `<span class="sp-deep-hit-more">+${extra} more</span>` : ''}
+    </div>`;
+  };
 
   const scoreBadgeHtml = (match) => {
     if (!match?.matched) return '<span class="sp-match-placeholder">—</span>';
@@ -1787,14 +2369,26 @@
   };
 
   const bindRowEvents = () => {
+    const openFromRow = (el, hitQuery = '') => {
+      const name = el.getAttribute('data-project-name') || '';
+      const sourceKey = el.getAttribute('data-source-key') || state.sourceKey;
+      const query = String(hitQuery || '').trim();
+      openProject?.(name, sourceKey, query);
+    };
     tbody.querySelectorAll('.sharepoint-project-open').forEach((btn) => {
       btn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openProject?.(
-          btn.getAttribute('data-project-name') || '',
-          btn.getAttribute('data-source-key') || state.sourceKey
-        );
+        openFromRow(btn, btn.getAttribute('data-open-query') || '');
+      });
+    });
+    tbody.querySelectorAll('.sp-deep-hit').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const row = btn.closest('.sharepoint-project-row');
+        if (!row) return;
+        openFromRow(row, btn.getAttribute('data-hit-query') || '');
       });
     });
     tbody.querySelectorAll('.sharepoint-compare-check').forEach((input) => {
@@ -1806,22 +2400,17 @@
     tbody.querySelectorAll('.sharepoint-project-row').forEach((row) => {
       row.addEventListener('click', (event) => {
         if (event.target.closest('a, button, input, label')) return;
-        openProject?.(
-          row.getAttribute('data-project-name') || '',
-          row.getAttribute('data-source-key') || state.sourceKey
-        );
+        openFromRow(row, row.getAttribute('data-open-query') || '');
       });
       row.addEventListener('keydown', (event) => {
         if (event.target.closest('input, label')) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          openProject?.(
-            row.getAttribute('data-project-name') || '',
-            row.getAttribute('data-source-key') || state.sourceKey
-          );
+          openFromRow(row, row.getAttribute('data-open-query') || '');
         }
       });
     });
+    bindCopyLinkButtons(tbody);
   };
 
   const filteredProjects = () => {
@@ -1829,24 +2418,29 @@
     const refineWords = Fuzzy.getSearchWords(state.refine);
 
     if (!words.length) {
-      return state.projects.map((project) => ({ project, match: null }));
+      return state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
     }
 
     let results = state.projects
       .map((project) => {
-        const match = scoreProject(project, words, state.wordMode, state.fuzzy);
-        return { project, match };
+        const match = state.fuzzy
+          ? scoreProject(project, words, state.wordMode, true, state.deep)
+          : cheapProjectMatch(project, words, state.wordMode, state.deep);
+        return { project, match, deepHits: { hits: [], total: 0 } };
       })
       .filter((row) => row.match?.matched);
 
     if (refineWords.length) {
       results = results
         .map((row) => {
-          const refineMatch = scoreProject(row.project, refineWords, state.wordMode, state.fuzzy);
+          const refineMatch = state.fuzzy
+            ? scoreProject(row.project, refineWords, state.wordMode, true, state.deep)
+            : cheapProjectMatch(row.project, refineWords, state.wordMode, state.deep);
           if (!refineMatch.matched) return null;
           return {
             project: row.project,
             match: Fuzzy.combineSearchScores(row.match, refineMatch),
+            deepHits: row.deepHits,
           };
         })
         .filter(Boolean);
@@ -1877,6 +2471,10 @@
     refineClear.classList.toggle('is-hidden', state.refine.trim() === '');
     fuzzyToggle.classList.toggle('is-active', state.fuzzy);
     fuzzyToggle.setAttribute('aria-pressed', state.fuzzy ? 'true' : 'false');
+    if (deepToggle) {
+      deepToggle.classList.toggle('is-active', state.deep);
+      deepToggle.setAttribute('aria-pressed', state.deep ? 'true' : 'false');
+    }
     wordModeGroup.querySelectorAll('[data-word-mode]').forEach((btn) => {
       const active = btn.getAttribute('data-word-mode') === state.wordMode;
       btn.classList.toggle('is-active', active);
@@ -1898,6 +2496,18 @@
     const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
     const best = scores.length ? Math.max(...scores) : 0;
     const barTone = avg >= 90 ? 'high' : avg >= 75 ? 'mid' : 'low';
+    const fileHitCount = state.deep
+      ? rows.reduce((sum, row) => {
+          const words = Fuzzy.getSearchWords(state.query);
+          return (
+            sum +
+            projectEntries(row.project).reduce((count, entry) => {
+              const hay = `${entry.name}\n${entry.path}`.toLowerCase();
+              return haystackHasWords(hay, words, state.wordMode) ? count + 1 : count;
+            }, 0)
+          );
+        }, 0)
+      : 0;
     const catalogCount = new Set(rows.map((row) => row.project.source_key).filter(Boolean)).size;
 
     statsEl.classList.remove('is-hidden');
@@ -1911,6 +2521,7 @@
         <span class="sp-stats-avg">Avg ${avg}%</span>
         <span>Best ${best}%</span>
         ${state.fuzzy ? '<span class="sp-stats-fuzzy">Fuzzy on</span>' : ''}
+        ${state.deep ? `<span class="sp-stats-deep">Deep files on${fileHitCount ? ` · ${fileHitCount} nested hit${fileHitCount === 1 ? '' : 's'}` : ''}</span>` : '<span class="sp-stats-deep">Folder names only</span>'}
         ${state.refine.trim() ? `<span class="sp-stats-refine">Refined with “${escapeHtml(state.refine.trim())}”</span>` : ''}
       </div>
       <div class="sp-stats-bar-track">
@@ -1933,6 +2544,8 @@
       if (state.lastStatus) html += ` (${escapeHtml(state.lastStatus)})`;
     }
     if (state.ready) html += ' · <span class="sp-live-pill">⚡ Live search</span>';
+    if (searching && state.deep) html += ' · <span class="sp-live-pill sp-live-pill--deep">📂 Deep files</span>';
+    else if (searching) html += ' · folder names only';
     metaEl.innerHTML = html;
   };
 
@@ -1989,6 +2602,15 @@
     const pageRows = rows.slice((state.page - 1) * state.perPage, state.page * state.perPage);
     const searching = Fuzzy.getSearchWords(state.query).length > 0;
     const presence = presenceMap();
+    if (searching) {
+      const words = Fuzzy.getSearchWords(state.query);
+      pageRows.forEach((row) => {
+        row.match = scoreProject(row.project, words, state.wordMode, state.fuzzy, state.deep);
+        if (state.deep) {
+          row.deepHits = collectDeepHits(row.project, words, state.wordMode, state.fuzzy);
+        }
+      });
+    }
 
     resultCountEl.textContent = `Showing ${from}–${to} of ${total}`;
     renderMeta(total);
@@ -2002,7 +2624,7 @@
           : state.projects.length === 0
             ? '📁 No catalog items yet.'
             : searching
-              ? `No projects matched <strong>${escapeHtml(state.query.trim())}</strong> in the selected catalog${state.scopeKeys.length === 1 ? '' : 's'}. Try Fuzzy, OR mode, or another name.`
+              ? `No projects matched <strong>${escapeHtml(state.query.trim())}</strong> in the selected catalog${state.scopeKeys.length === 1 ? '' : 's'}. ${state.deep ? 'Try Fuzzy, OR mode, or another file or folder name.' : 'Turn on Deep files to search nested files, or try Fuzzy / OR mode.'}`
               : 'No projects to show.'
       }</td></tr>`;
       syncCompareBar();
@@ -2010,7 +2632,7 @@
     }
 
     tbody.innerHTML = pageRows
-      .map(({ project, match }) => {
+      .map(({ project, match, deepHits }) => {
         const name = String(project.project_name || '');
         const sourceKey = String(project.source_key || state.sourceKey || '');
         const sourceTitle = String(project.source_title || titleByKey[sourceKey] || sourceKey);
@@ -2019,31 +2641,23 @@
         const person = String(project.person || '').trim();
         const selectId = selectionKey(sourceKey, name);
         const isSelected = state.selected.has(selectId);
-        return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" tabindex="0">
+        const hitSet = searching && state.deep ? deepHits : null;
+        const openQuery = hitSet?.total ? state.query.trim() : '';
+        const extra = `${hitSet ? deepHitsHtml(hitSet) : ''}${coverageHtml(project, presence)}`;
+        return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
           <td class="sharepoint-select-col" onclick="event.stopPropagation()">
             <label class="sharepoint-row-select">
               <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(name)} for compare">
             </label>
           </td>
           <td>
-            <button type="button" class="sharepoint-project-open" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}">
-              <span class="sharepoint-project-open-icon" aria-hidden="true">📂</span>
-              <span>${escapeHtml(name)}</span>
-            </button>
-            <div class="sp-project-meta-line">
-              <span class="sp-catalog-badge">${escapeHtml(sourceTitle)}</span>
-            </div>
-            ${coverageHtml(project, presence)}
+            ${projectNameCellHtml(project, sourceKey, sourceTitle, extra, openQuery)}
           </td>
           <td class="sp-match-cell">${searching ? scoreBadgeHtml(match) : '<span class="sp-match-placeholder">—</span>'}</td>
-          <td>
-            <span class="sharepoint-item-counts" title="${Number(project.folder_count || 0)} folders · ${Number(project.file_count || 0)} files">
-              ${Number(project.item_count || 0)}
-            </span>
-          </td>
-          <td>${escapeHtml(formatModified(project.last_modified))}</td>
-          <td>${modifiedBy ? escapeHtml(modifiedBy) : '—'}</td>
-          <td>${person ? escapeHtml(person) : '—'}</td>
+          <td class="sp-meta-cell">${itemCountsHtml(project)}</td>
+          <td class="sp-meta-cell">${escapeHtml(formatModified(project.last_modified))}</td>
+          <td class="sp-meta-cell">${personCellHtml(modifiedBy, '👤')}</td>
+          <td class="sp-meta-cell">${personCellHtml(person, '🙋')}</td>
           <td class="sharepoint-project-actions">
             ${
               folderUrl
@@ -2069,16 +2683,43 @@
     if (state.perPage !== 25) params.set('per', String(state.perPage));
     if (state.page > 1 && !state.query.trim()) params.set('page', String(state.page));
     const qs = params.toString();
-    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}#sharepoint-search`;
+    const hash = window.location.hash === '#sharepoint-owner-dash' ? '#sharepoint-owner-dash' : '#sharepoint-search';
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`;
     window.history.replaceState(null, '', next);
   };
 
-  const applySearch = ({ resetPage = true } = {}) => {
+  const applySearch = ({ resetPage = true, syncInputs = false } = {}) => {
     if (resetPage) state.page = 1;
-    if (input) input.value = state.query;
-    if (refineInput) refineInput.value = state.refine;
+    if (syncInputs) {
+      if (input && input.value !== state.query) input.value = state.query;
+      if (refineInput && refineInput.value !== state.refine) refineInput.value = state.refine;
+    }
     render();
-    syncUrl();
+    scheduleUrlSync();
+  };
+
+  const scheduleUrlSync = debouncePaint(syncUrl, 220);
+
+  const runTypedSearch = () => {
+    if (input) state.query = input.value;
+    if (refineInput) state.refine = refineInput.value;
+    applySearch({ resetPage: true, syncInputs: false });
+  };
+
+  const scheduleTypedSearch = debouncePaint(runTypedSearch, 70);
+  const onSearchInput = (event) => {
+    if (event?.isComposing || event?.inputType === 'insertCompositionText') return;
+    if (event?.target === refineInput) {
+      state.refine = refineInput?.value || '';
+    } else {
+      state.query = input?.value || '';
+    }
+    updateControlsVisibility();
+    if (!state.query.trim() && !state.refine.trim()) {
+      scheduleTypedSearch.flush();
+      return;
+    }
+    scheduleTypedSearch();
   };
 
   const loadIndex = () => {
@@ -2103,14 +2744,14 @@
         if (!payload?.ok || !Array.isArray(payload.projects)) {
           throw new Error(payload?.error || 'Unable to load search index.');
         }
-        state.projects = payload.projects;
+        state.projects = payload.projects.map(prepareSearchProject);
         state.itemCount = Number(payload.item_count || state.itemCount);
         state.projectCount = Number(payload.project_count || state.projects.length);
         state.lastSynced = payload.last_synced_at || state.lastSynced;
         state.lastStatus = payload.last_sync_status || state.lastStatus;
         state.loadingIndex = false;
         state.ready = true;
-        applySearch({ resetPage: true });
+        applySearch({ resetPage: true, syncInputs: true });
       })
       .catch((error) => {
         state.loadingIndex = false;
@@ -2138,35 +2779,47 @@
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
     state.query = input?.value || '';
-    applySearch();
+    scheduleTypedSearch.flush();
   });
 
-  input?.addEventListener('input', () => {
-    state.query = input.value;
-    applySearch();
+  let searchComposing = false;
+  input?.addEventListener('compositionstart', () => {
+    searchComposing = true;
+  });
+  input?.addEventListener('compositionend', () => {
+    searchComposing = false;
+    onSearchInput({ target: input });
+  });
+  input?.addEventListener('input', (event) => {
+    if (searchComposing) return;
+    onSearchInput(event);
   });
 
   clearBtn?.addEventListener('click', () => {
     state.query = '';
     state.refine = '';
-    applySearch();
+    scheduleTypedSearch.cancel();
+    applySearch({ resetPage: true, syncInputs: true });
     input?.focus();
   });
 
-  refineInput?.addEventListener('input', () => {
-    state.refine = refineInput.value;
-    applySearch();
-  });
+  refineInput?.addEventListener('input', onSearchInput);
 
   refineClear?.addEventListener('click', () => {
     state.refine = '';
-    applySearch();
+    applySearch({ resetPage: true, syncInputs: true });
     refineInput?.focus();
   });
 
   fuzzyToggle?.addEventListener('click', () => {
     state.fuzzy = !state.fuzzy;
     localStorage.setItem(STORAGE.fuzzy, state.fuzzy ? '1' : '0');
+    applySearch();
+  });
+
+  deepToggle?.addEventListener('click', () => {
+    state.deep = !state.deep;
+    localStorage.setItem(STORAGE.deep, state.deep ? '1' : '0');
     applySearch();
   });
 

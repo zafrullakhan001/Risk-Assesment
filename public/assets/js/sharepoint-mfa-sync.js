@@ -61,6 +61,44 @@
     const parts = String(serverPath || "").split("/");
     return location.origin + parts.map((part, index) => (index === 0 ? part : encodeURIComponent(part))).join("/");
   };
+  const lookupName = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value.trim();
+    if (Array.isArray(value) && value[0]) {
+      const first = value[0] || {};
+      return String(first.title || first.email || first.lookupValue || first.Title || "").trim();
+    }
+    return String(value.Title || value.Email || value.title || value.email || value.lookupValue || "").trim();
+  };
+  const toSizeBytes = (value) => {
+    if (value == null || value === "") return 0;
+    if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.round(value));
+    const raw = String(value).trim().replace(/,/g, "");
+    if (!raw) return 0;
+    if (/^\\d+(\\.\\d+)?$/.test(raw)) return Math.max(0, Math.round(Number(raw)));
+    const match = raw.match(/^([\\d.]+)\\s*([kmgt]i?b)?$/i);
+    if (!match) return 0;
+    const n = Number(match[1]);
+    if (!Number.isFinite(n)) return 0;
+    const unit = (match[2] || "").toLowerCase();
+    const mul =
+      unit === "kb" || unit === "kib" ? 1024 :
+      unit === "mb" || unit === "mib" ? 1024 * 1024 :
+      unit === "gb" || unit === "gib" ? 1024 * 1024 * 1024 :
+      unit === "tb" || unit === "tib" ? 1024 * 1024 * 1024 * 1024 :
+      1;
+    return Math.max(0, Math.round(n * mul));
+  };
+  const itemCreated = (item) =>
+    item.Created || item["Created."] || item.TimeCreated || item.Created_x0020_Date || "";
+  const itemSize = (item, isFolder) => {
+    const stream = toSizeBytes(item.SMTotalFileStreamSize);
+    if (stream > 0) return stream;
+    const fileSize = toSizeBytes(item.File_x0020_Size || item["File_x0020_Size"] || item.Length);
+    if (fileSize > 0) return fileSize;
+    if (isFolder) return toSizeBytes(item.SMTotalSize);
+    return toSizeBytes(item.FileSizeDisplay);
+  };
   const pushRow = (row) => {
     const key = ((row.path || "") + "|" + (row.type || "")).toLowerCase();
     if (seen.has(key) || rows.length >= CFG.maxRows) return false;
@@ -155,7 +193,13 @@
         "<FieldRef Name=\\"FSObjType\\"/>" +
         "<FieldRef Name=\\"File_x0020_Type\\"/>" +
         "<FieldRef Name=\\"Modified\\"/>" +
+        "<FieldRef Name=\\"Created\\"/>" +
+        "<FieldRef Name=\\"File_x0020_Size\\"/>" +
+        "<FieldRef Name=\\"FileSizeDisplay\\"/>" +
+        "<FieldRef Name=\\"SMTotalFileStreamSize\\"/>" +
+        "<FieldRef Name=\\"SMTotalSize\\"/>" +
         "<FieldRef Name=\\"Editor\\"/>" +
+        "<FieldRef Name=\\"Author\\"/>" +
         "</ViewFields>" +
         "<RowLimit Paged=\\"TRUE\\">" +
         CFG.pageSize +
@@ -194,9 +238,14 @@
         if (!rel && isFolder) continue;
 
         const editor =
-          (item.Editor && (item.Editor[0] && (item.Editor[0].title || item.Editor[0].email))) ||
+          lookupName(item.Editor) ||
           item.EditorTitle ||
           item["Editor.title"] ||
+          "";
+        const author =
+          lookupName(item.Author) ||
+          item.AuthorTitle ||
+          item["Author.title"] ||
           "";
 
         if (isFolder) {
@@ -207,8 +256,10 @@
             type: "Folder",
             url: folderBrowseUrl(fileRef),
             modified: item.Modified || item["Modified."] || "",
+            created: itemCreated(item),
+            size: itemSize(item, true),
             modified_by: editor,
-            person: "",
+            person: author,
           });
         } else {
           if (
@@ -218,8 +269,10 @@
               type: "File",
               url: fileBrowseUrl(fileRef),
               modified: item.Modified || item["Modified."] || "",
+              created: itemCreated(item),
+              size: itemSize(item, false),
               modified_by: editor,
-              person: "",
+              person: author,
             })
           ) {
             filesFound += 1;
@@ -278,8 +331,8 @@
     let url =
       urls.modern +
       (collection === "Files"
-        ? "&$select=Name,ServerRelativeUrl,TimeLastModified,Length,LinkingUrl&$expand=Author,ModifiedBy"
-        : "&$select=Name,ServerRelativeUrl,TimeLastModified,ItemCount");
+        ? "&$select=Name,ServerRelativeUrl,TimeLastModified,TimeCreated,Length,LinkingUrl&$expand=Author,ModifiedBy"
+        : "&$select=Name,ServerRelativeUrl,TimeLastModified,TimeCreated,ItemCount");
     const items = [];
     let usedLegacy = false;
     while (url) {
@@ -292,8 +345,8 @@
           url =
             urls.legacy +
             (collection === "Files"
-              ? "&$select=Name,ServerRelativeUrl,TimeLastModified,Length,LinkingUrl&$expand=Author,ModifiedBy"
-              : "&$select=Name,ServerRelativeUrl,TimeLastModified,ItemCount");
+              ? "&$select=Name,ServerRelativeUrl,TimeLastModified,TimeCreated,Length,LinkingUrl&$expand=Author,ModifiedBy"
+              : "&$select=Name,ServerRelativeUrl,TimeLastModified,TimeCreated,ItemCount");
           data = await apiGet(url);
         } else {
           throw error;
@@ -305,7 +358,7 @@
     return items;
   };
   const crawlViaFolders = async () => {
-    const queue = [{ path: cleanPath(CFG.rootServerRelative), depth: 0 }];
+    const queue = [{ path: cleanPath(CFG.rootServerRelative), depth: 0, modified: "", created: "" }];
     while (queue.length) {
       if (rows.length >= CFG.maxRows) break;
       const current = queue.shift();
@@ -325,7 +378,9 @@
           path: rel,
           type: "Folder",
           url: folderBrowseUrl(serverRelative),
-          modified: "",
+          modified: current.modified || "",
+          created: current.created || "",
+          size: 0,
           modified_by: "",
           person: "",
         });
@@ -349,10 +404,8 @@
         const fileName = file.Name || "";
         if (!fileName) continue;
         const childPath = cleanPath(file.ServerRelativeUrl || serverRelative + "/" + fileName);
-        const modifiedBy =
-          (file.ModifiedBy && (file.ModifiedBy.Title || file.ModifiedBy.Email)) ||
-          (file.Author && (file.Author.Title || file.Author.Email)) ||
-          "";
+        const modifiedBy = lookupName(file.ModifiedBy);
+        const author = lookupName(file.Author);
         if (
           pushRow({
             name: fileName,
@@ -360,8 +413,10 @@
             type: "File",
             url: file.LinkingUrl || fileBrowseUrl(childPath),
             modified: file.TimeLastModified || "",
-            modified_by: modifiedBy,
-            person: "",
+            created: file.TimeCreated || "",
+            size: toSizeBytes(file.Length),
+            modified_by: modifiedBy || author,
+            person: author,
           })
         ) {
           filesFound += 1;
@@ -375,7 +430,12 @@
         if (folderName.charAt(0) === "_" && folderName !== "_private") continue;
         const childPath = cleanPath(folder.ServerRelativeUrl || serverRelative + "/" + folderName);
         if (!visitedFolders.has(pathKey(childPath))) {
-          queue.push({ path: childPath, depth: depth + 1 });
+          queue.push({
+            path: childPath,
+            depth: depth + 1,
+            modified: folder.TimeLastModified || "",
+            created: folder.TimeCreated || "",
+          });
         }
       }
 

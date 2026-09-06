@@ -8880,10 +8880,10 @@ html.is-compact .site-footer {
 }
 .sharepoint-source-card {
     display: grid;
-    gap: 0.55rem;
-    padding: 0.95rem 1rem;
+    gap: 0.65rem;
+    padding: 1rem 1.05rem 0.95rem;
     border: 1px solid var(--border, #e2e8f0);
-    border-radius: 12px;
+    border-radius: 14px;
     background: var(--surface-2, rgba(148, 163, 184, 0.08));
 }
 .sharepoint-source-card.is-active {
@@ -8898,8 +8898,17 @@ html.is-compact .site-footer {
     gap: 0.5rem;
 }
 .sharepoint-source-card-head h3 {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     margin: 0;
+    min-width: 0;
     font-size: 1.05rem;
+}
+.sharepoint-source-card-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .sharepoint-source-badge {
     font-size: 0.72rem;
@@ -8922,11 +8931,202 @@ html.is-compact .site-footer {
 .sharepoint-source-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45rem;
+    gap: 0.5rem;
+}
+.sharepoint-source-actions .button {
+    min-height: 2.35rem;
+    height: auto;
+    padding: 0.28rem 0.7rem 0.28rem 0.35rem;
+    border-radius: 10px;
+    gap: 0.4rem;
+}
+.sharepoint-source-actions .button-primary {
+    padding-inline: 0.7rem 0.8rem;
+}
+.sharepoint-source-actions .button-primary .sp-card-emoji {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+[data-theme="indigo"] .sharepoint-source-actions .button-primary .sp-card-emoji {
+    background: color-mix(in srgb, #0c1524 18%, transparent);
+    border-color: color-mix(in srgb, #0c1524 22%, transparent);
+}
+.sp-card-emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    line-height: 1;
+    font-style: normal;
+    font-weight: 400;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+    background: color-mix(in srgb, var(--accent, #0f766e) 10%, var(--card, #fff));
+    border: 1px solid color-mix(in srgb, var(--accent, #0f766e) 16%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="folder"] {
+    background: color-mix(in srgb, #f59e0b 16%, var(--card, #fff));
+    border-color: color-mix(in srgb, #f59e0b 28%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="lock"] {
+    background: color-mix(in srgb, #ea580c 14%, var(--card, #fff));
+    border-color: color-mix(in srgb, #ea580c 26%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="link"] {
+    background: color-mix(in srgb, #2563eb 12%, var(--card, #fff));
+    border-color: color-mix(in srgb, #2563eb 24%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="sync"] {
+    background: color-mix(in srgb, var(--accent, #0f766e) 16%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--accent, #0f766e) 28%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="edit"],
+.sp-card-emoji[data-tone="tag"] {
+    background: color-mix(in srgb, #64748b 12%, var(--card, #fff));
+    border-color: color-mix(in srgb, #64748b 22%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="save"] {
+    background: color-mix(in srgb, var(--accent, #0f766e) 16%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--accent, #0f766e) 26%, var(--border, #e2e8f0));
+}
+.sp-card-emoji[data-tone="danger"] {
+    background: color-mix(in srgb, #ef4444 14%, var(--card, #fff));
+    border-color: color-mix(in srgb, #ef4444 28%, var(--border, #e2e8f0));
 }
 .sharepoint-source-edit {
-    margin-top: 0.25rem;
-    font-size: 0.9rem;
+    position: relative;
+    width: 100%;
+    margin-top: 0.15rem;
+    padding: 0.28rem 0.4rem;
+    border-radius: 10px;
+    border: 1px solid var(--border, #e2e8f0);
+    background: color-mix(in srgb, var(--card, #fff) 88%, transparent);
+    font-size: 0.85rem;
+}
+.sharepoint-source-edit:not([open]) {
+    display: flex;
+    justify-content: flex-end;
+    justify-self: end;
+    width: auto;
+    margin-left: auto;
+    border-color: transparent;
+    background: transparent;
+    padding: 0;
+}
+.sharepoint-source-edit[open] {
+    display: block;
+    width: 100%;
+    margin-left: 0;
+    padding: 0.35rem 0.45rem 0.6rem;
+}
+.sharepoint-source-edit > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    width: max-content;
+    max-width: 100%;
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--ink, #0f172a);
+}
+.sharepoint-source-edit:not([open]) > summary {
+    padding: 0.16rem 0.4rem 0.16rem 0.16rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card, #fff) 92%, transparent);
+}
+.sharepoint-source-edit[open] > summary {
+    display: flex;
+    width: 100%;
+    justify-content: flex-end;
+    padding-right: 5.1rem;
+    margin-bottom: 0.55rem;
+}
+.sharepoint-source-edit > summary::-webkit-details-marker { display: none; }
+.sharepoint-source-edit > summary::after {
+    content: "▸";
+    margin-left: 0.1rem;
+    color: var(--muted, #64748b);
+    font-size: 0.75rem;
+    font-weight: 700;
+    transition: transform 0.15s ease;
+}
+.sharepoint-source-edit[open] > summary::after {
+    transform: rotate(90deg);
+}
+.sharepoint-source-edit > summary .sp-card-emoji {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+}
+.sharepoint-source-edit-toolbar {
+    position: absolute;
+    top: 0.32rem;
+    right: 0.4rem;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.28rem;
+}
+.sharepoint-source-edit-toolbar .button {
+    height: 1.7rem;
+    min-height: 1.7rem;
+    padding: 0 0.45rem 0 0.18rem;
+    border-radius: 7px;
+    font-size: 0.7rem;
+    gap: 0.18rem;
+}
+.sharepoint-source-edit-toolbar .sp-card-emoji {
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 5px;
+    font-size: 0.68rem;
+}
+.sharepoint-source-save-btn .sp-card-emoji {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+[data-theme="indigo"] .sharepoint-source-save-btn .sp-card-emoji {
+    background: color-mix(in srgb, #0c1524 18%, transparent);
+    border-color: color-mix(in srgb, #0c1524 22%, transparent);
+}
+.sharepoint-source-delete-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.05rem;
+    height: 2.05rem;
+    min-width: 2.05rem;
+    min-height: 2.05rem;
+    padding: 0;
+    border-radius: 8px;
+    color: #fff;
+    background: #dc2626;
+    border: 1px solid #b91c1c;
+    cursor: pointer;
+    box-shadow: 0 1px 2px color-mix(in srgb, #991b1b 28%, transparent);
+}
+.sharepoint-source-delete-btn:hover {
+    background: #b91c1c;
+    border-color: #991b1b;
+    transform: translateY(-1px);
+}
+.sharepoint-source-delete-btn .sp-card-emoji {
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.28);
 }
 .sharepoint-source-edit-form,
 .sharepoint-add-source-form {
@@ -8934,17 +9134,134 @@ html.is-compact .site-footer {
     gap: 0.65rem;
     margin-top: 0.65rem;
 }
+.sharepoint-source-edit-form {
+    gap: 0.55rem;
+    margin: 0;
+}
 .sharepoint-source-edit-form label,
 .sharepoint-add-source-form label {
     display: grid;
     gap: 0.3rem;
 }
-.sharepoint-source-edit-actions,
-.sharepoint-source-delete-form {
+.sharepoint-source-edit-form .sharepoint-add-field {
+    padding: 0.5rem 0.6rem;
+}
+.sharepoint-source-edit-form .sharepoint-add-field-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.sharepoint-source-edit-form .sharepoint-add-field-label .sp-card-emoji {
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 5px;
+    font-size: 0.72rem;
+}
+.sharepoint-source-edit-form .sharepoint-add-field input[type="text"],
+.sharepoint-source-edit-form .sharepoint-add-field input[type="url"] {
+    min-height: 2.15rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.88rem;
+}
+.sharepoint-source-edit-foot {
     display: flex;
+    justify-content: flex-end;
+    margin-top: 0.45rem;
+}
+.sp-source-delete-dialog {
+    width: min(28rem, calc(100vw - 1.5rem));
+    padding: 0;
+    border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border, #e2e8f0));
+    border-radius: 14px;
+    background: var(--card, #fff);
+    color: var(--ink, #0f172a);
+    box-shadow: 0 24px 56px color-mix(in srgb, #7f1d1d 22%, transparent);
+}
+.sp-source-delete-dialog::backdrop {
+    background: color-mix(in srgb, #7f1d1d 28%, #0f172a);
+    opacity: 0.62;
+}
+.sp-source-delete-dialog-form {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem 1.05rem 1.05rem;
+}
+.sp-source-delete-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+}
+.sp-source-delete-dialog-head h3 {
+    margin: 0 0 0.3rem;
+    font-size: 1.05rem;
+}
+.sp-source-delete-dialog-head p {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--muted, #64748b);
+}
+.sp-source-delete-dialog-body {
+    display: grid;
+    gap: 0.65rem;
+}
+.sp-source-delete-target {
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, #ef4444 28%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #ef4444 8%, var(--card, #fff));
+    display: grid;
+    gap: 0.15rem;
+    font-size: 0.85rem;
+}
+.sp-source-delete-target span {
+    color: var(--muted, #64748b);
+}
+.sp-source-delete-dialog-body .sharepoint-add-field-label code {
+    font-family: inherit;
+    font-weight: 700;
+    color: #b91c1c;
+    word-break: break-word;
+}
+.sp-source-delete-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin-top: 0.35rem;
+}
+.sharepoint-source-delete-confirm-btn {
+    background: #dc2626;
+    border-color: #b91c1c;
+    color: #fff;
+}
+.sharepoint-source-delete-confirm-btn:hover:not(:disabled) {
+    background: #b91c1c;
+}
+.sharepoint-source-delete-confirm-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+[data-theme="indigo"] .sharepoint-source-edit {
+    background: color-mix(in srgb, #0f172a 72%, transparent);
+    border-color: color-mix(in srgb, #818cf8 22%, var(--border, #334155));
+}
+[data-theme="indigo"] .sharepoint-source-edit:not([open]) {
+    background: transparent;
+    border-color: transparent;
+}
+[data-theme="indigo"] .sharepoint-source-delete-btn {
+    color: #fff;
+    background: #ef4444;
+    border-color: #dc2626;
+}
+[data-theme="indigo"] .sp-source-delete-dialog {
+    background: #0f172a;
+    border-color: color-mix(in srgb, #ef4444 40%, #334155);
+}
+[data-theme="indigo"] .sp-source-delete-target {
+    background: color-mix(in srgb, #ef4444 16%, transparent);
 }
 .sharepoint-add-source-form h3 {
     margin: 0.5rem 0 0;
@@ -9317,6 +9634,16 @@ html.is-compact .site-footer {
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-actions { grid-area: actions; justify-content: flex-end; }
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-edit { display: none; }
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-card-head h3 { font-size: 0.95rem; }
+.sharepoint-sources-panel[data-folders-view="compact"] .sp-card-emoji {
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 7px;
+    font-size: 0.82rem;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-actions .button {
+    min-height: 2.1rem;
+    padding: 0.2rem 0.55rem 0.2rem 0.28rem;
+}
 .sharepoint-sources-panel[data-folders-view="table"] .sharepoint-sources-grid { display: none; }
 .sharepoint-sources-panel[data-folders-view="table"] .sharepoint-sources-table-wrap { display: block; }
 .sharepoint-sources-table-wrap {
@@ -9369,6 +9696,11 @@ html.is-compact .site-footer {
 }
 .sharepoint-source-actions--table {
     flex-wrap: nowrap;
+}
+.sharepoint-source-actions--table .button {
+    min-height: 2.1rem;
+    padding: 0.2rem 0.55rem 0.2rem 0.28rem;
+    font-size: 0.78rem;
 }
 @media (max-width: 900px) {
     .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-card {
@@ -9640,6 +9972,9 @@ html.is-compact .site-footer {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--muted, #64748b);
+    background: color-mix(in srgb, var(--paper-2, #f1f5f9) 82%, var(--card, #fff));
+    border-bottom: 1px solid var(--line, #cbd5e1);
+    white-space: nowrap;
 }
 .sharepoint-project-row {
     cursor: pointer;
@@ -9651,18 +9986,23 @@ html.is-compact .site-footer {
 .sharepoint-project-open {
     display: inline-flex;
     align-items: flex-start;
-    gap: 0.45rem;
+    gap: 0.55rem;
     border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
-    font-weight: 600;
+    font-weight: 650;
     text-align: left;
     cursor: pointer;
     padding: 0;
+    max-width: 100%;
 }
 .sharepoint-project-open:hover {
+    text-decoration: none;
+}
+.sharepoint-project-open:hover .sp-file-name {
     text-decoration: underline;
+    color: #0f766e;
 }
 .sharepoint-project-open-icon {
     line-height: 1.3;
@@ -9672,7 +10012,24 @@ html.is-compact .site-footer {
     text-align: right;
 }
 .sharepoint-item-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.28rem;
     font-variant-numeric: tabular-nums;
+}
+.sp-project-cell {
+    min-width: 12rem;
+}
+.sp-project-cell .sp-tree-cell {
+    padding-left: 0;
+}
+.sp-project-cell .sp-project-meta-line,
+.sp-project-cell .sp-coverage-line {
+    margin-left: 2.55rem;
+}
+.sp-person-cell {
+    white-space: nowrap;
 }
 .sharepoint-table-toolbar {
     display: flex;
@@ -9681,6 +10038,100 @@ html.is-compact .site-footer {
     justify-content: space-between;
     gap: 0.65rem 1rem;
     margin-bottom: 0.65rem;
+}
+.sharepoint-table-toolbar-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.85rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-projects-table th,
+.sharepoint-table-card.is-compact-rows .sharepoint-projects-table td {
+    padding: 0.28rem 0.5rem;
+    vertical-align: middle;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-projects-table th {
+    font-size: 0.7rem;
+    padding: 0.32rem 0.5rem;
+}
+.sharepoint-table-card.is-compact-rows .sp-project-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    min-width: 0;
+}
+.sharepoint-table-card.is-compact-rows .sp-project-cell .sp-tree-cell {
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 8rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-project-open {
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+.sharepoint-table-card.is-compact-rows .sp-file-copy {
+    min-width: 0;
+}
+.sharepoint-table-card.is-compact-rows .sp-file-icon {
+    width: 1.45rem;
+    height: 1.45rem;
+    font-size: 0.82rem;
+    border-radius: 0.4rem;
+}
+.sharepoint-table-card.is-compact-rows .sp-file-name {
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sharepoint-table-card.is-compact-rows .sp-copy-link-btn {
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-top: 0;
+    font-size: 0.66rem;
+}
+.sharepoint-table-card.is-compact-rows .sp-project-cell .sp-project-meta-line {
+    margin-left: 0;
+    margin-top: 0;
+    flex: 0 0 auto;
+    align-items: center;
+    white-space: nowrap;
+}
+.sharepoint-table-card.is-compact-rows .sp-project-cell .sp-coverage-line {
+    display: none;
+}
+.sharepoint-table-card.is-compact-rows .sp-type-badge,
+.sharepoint-table-card.is-compact-rows .sp-catalog-badge {
+    padding: 0.08rem 0.4rem;
+    font-size: 0.66rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-item-counts {
+    gap: 0.2rem;
+}
+.sharepoint-table-card.is-compact-rows .sp-meta-cell,
+.sharepoint-table-card.is-compact-rows .sp-person-cell {
+    font-size: 0.82rem;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-open-sp {
+    min-height: 1.65rem;
+    width: 1.65rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.sharepoint-table-card.is-compact-rows .sp-match-badge-wrap {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.35rem;
+}
+.sharepoint-table-card.is-compact-rows .sp-match-reason {
+    display: none;
+}
+.sharepoint-table-card.is-compact-rows .sharepoint-select-col {
+    vertical-align: middle;
 }
 .sharepoint-compare-bar {
     display: flex;
@@ -9976,10 +10427,19 @@ html.is-compact .site-footer {
     font-weight: 700;
 }
 .sp-compare-folder-actions .sp-compare-copy-btn.sp-copy-link-btn {
-    width: auto;
-    height: auto;
+    width: 2.15rem;
+    min-width: 2.15rem;
+    height: 2.15rem;
+    min-height: 2.15rem;
+    padding: 0;
     margin: 0;
     flex: 0 0 auto;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-size: 0.9rem;
 }
 .sharepoint-compare-panel-filters {
     display: grid;
@@ -10257,6 +10717,322 @@ html.is-compact .site-footer {
 .sharepoint-compare-search {
     margin-bottom: 0.35rem;
 }
+
+/* Compact chrome: give the file/folder lists most of the dialog height */
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-dialog-body,
+.sharepoint-compare-dialog.is-compact-chrome .response-dialog-form {
+    gap: 0.4rem;
+    padding: 0.6rem 0.8rem 0.7rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .response-dialog-head {
+    align-items: center;
+    gap: 0.45rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .response-dialog-head .eyebrow {
+    display: none;
+}
+.sharepoint-compare-dialog.is-compact-chrome .response-dialog-head h3 {
+    margin: 0;
+    font-size: 1.02rem;
+    line-height: 1.2;
+}
+.sharepoint-compare-dialog.is-compact-chrome .response-dialog-sub {
+    margin: 2px 0 0;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(72vw, 920px);
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-legend {
+    gap: 0.28rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-legend .sp-diff-pill {
+    padding: 0.08rem 0.38rem;
+    font-size: 0.65rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-search {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.55rem;
+    margin: 0;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-toolbar {
+    flex: 1 1 auto;
+    gap: 0.35rem 0.5rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-search-controls {
+    flex: 0 0 auto;
+    margin: 0;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-filter-hint {
+    display: none;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-view-btn,
+.sharepoint-compare-dialog.is-compact-chrome .sp-tree-action-btn {
+    padding: 0.22rem 0.48rem;
+    font-size: 0.72rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-view-select,
+.sharepoint-compare-dialog.is-compact-chrome .sp-view-check {
+    font-size: 0.72rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-view-select select {
+    padding: 0.18rem 0.35rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panels {
+    overflow: hidden;
+    min-height: 0;
+    gap: 0.55rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel {
+    padding: 0.45rem;
+    gap: 0.35rem;
+    border-radius: 10px;
+    min-height: 0;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-head {
+    gap: 0.3rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-head h4 {
+    font-size: 0.92rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-identity {
+    gap: 0.12rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-identity p,
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-head p {
+    font-size: 0.72rem;
+    gap: 0.25rem 0.35rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-tools {
+    padding: 0.08rem;
+    gap: 0.15rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-compare-tool-btn {
+    min-width: 1.5rem;
+    height: 1.5rem;
+    font-size: 0.66rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-chrome {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.45rem;
+    padding: 0.32rem 0.42rem;
+    border-radius: 8px;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-actions {
+    flex: 0 0 auto;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-filters {
+    display: contents;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-search-field {
+    flex: 1 1 150px;
+    min-height: 1.85rem;
+    padding: 0 0.5rem;
+    border-radius: 8px;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-search-field input[type="search"] {
+    padding: 0.18rem 0;
+    font-size: 0.8rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-filter-row {
+    flex: 1 1 auto;
+    gap: 0.28rem 0.4rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-filters .sp-dialog-chip {
+    padding: 0.16rem 0.42rem;
+    font-size: 0.68rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-filters .sp-compare-panel-clear {
+    min-height: 1.55rem;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.7rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-compare-panel-meta {
+    display: none;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-compare-folder-actions {
+    gap: 0.28rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-compare-folder-actions .sp-compare-open-btn {
+    min-height: 1.65rem;
+    padding: 0.12rem 0.5rem;
+    font-size: 0.72rem;
+    border-radius: 0.4rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-compare-folder-actions .sp-compare-copy-btn.sp-copy-link-btn {
+    width: 1.65rem;
+    min-width: 1.65rem;
+    height: 1.65rem;
+    min-height: 1.65rem;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-size: 0.78rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-table-wrap {
+    min-height: 0;
+    height: 100%;
+    border-radius: 8px;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-projects-table th,
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-projects-table td {
+    padding: 0.28rem 0.5rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-table thead th {
+    font-size: 0.7rem;
+    padding: 0.32rem 0.5rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-tree-toggle,
+.sharepoint-compare-dialog.is-compact-chrome .sp-tree-toggle--spacer {
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0.08rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-table-wrap .sp-copy-link-btn {
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-top: 0.05rem;
+    font-size: 0.66rem;
+}
+
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-body,
+.sharepoint-project-dialog.is-compact-chrome .response-dialog-form {
+    gap: 0.4rem;
+    padding: 0.6rem 0.8rem 0.7rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .response-dialog-head {
+    align-items: center;
+    gap: 0.45rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .response-dialog-head .eyebrow {
+    display: none;
+}
+.sharepoint-project-dialog.is-compact-chrome .response-dialog-head h3 {
+    margin: 0;
+    font-size: 1.02rem;
+    line-height: 1.2;
+}
+.sharepoint-project-dialog.is-compact-chrome .response-dialog-sub {
+    margin: 2px 0 0;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(72vw, 720px);
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-stats {
+    gap: 0.25rem 0.35rem;
+    margin: 0;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-chip {
+    padding: 0.12rem 0.45rem;
+    font-size: 0.7rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-label {
+    font-size: 0.58rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-value {
+    font-size: 0.72rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-actions {
+    gap: 0.35rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.55rem;
+    margin: 0;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-toolbar {
+    flex: 1 1 auto;
+    gap: 0.35rem 0.5rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-label {
+    flex: 1 1 180px;
+    min-height: 1.85rem;
+    padding: 0.15rem 0.55rem;
+    gap: 0.35rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-label input {
+    padding: 0.18rem 0;
+    font-size: 0.8rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-controls {
+    flex: 0 0 auto;
+    margin: 0;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-chips {
+    flex: 1 1 auto;
+    gap: 0.28rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-meta {
+    display: none;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-view-btn,
+.sharepoint-project-dialog.is-compact-chrome .sp-tree-action-btn {
+    padding: 0.22rem 0.48rem;
+    font-size: 0.72rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-view-select {
+    font-size: 0.72rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-view-select select {
+    padding: 0.18rem 0.35rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-chip {
+    padding: 0.16rem 0.42rem;
+    font-size: 0.68rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-search-clear {
+    min-height: 1.55rem;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.7rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-open-folder-btn {
+    min-height: 1.65rem;
+    padding: 0.12rem 0.55rem;
+    font-size: 0.72rem;
+    border-radius: 0.4rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-folder-actions {
+    gap: 0.28rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-table-wrap {
+    min-height: 0;
+    height: 100%;
+    border-radius: 8px;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-projects-table th,
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-projects-table td {
+    padding: 0.28rem 0.5rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-table thead th {
+    font-size: 0.7rem;
+    padding: 0.32rem 0.5rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-tree-toggle,
+.sharepoint-project-dialog.is-compact-chrome .sp-tree-toggle--spacer {
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0.08rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-table-wrap .sp-copy-link-btn {
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-top: 0.05rem;
+    font-size: 0.66rem;
+}
+
 .sp-tree-cell {
     display: flex;
     align-items: flex-start;
@@ -10296,11 +11072,25 @@ html.is-compact .site-footer {
     align-items: center;
 }
 .sp-dialog-folder-actions .sp-copy-link-btn {
-    width: auto;
-    height: auto;
-    padding: 0.35rem 0.65rem;
-    font-size: 0.8rem;
-    font-weight: 700;
+    width: 2.15rem;
+    min-width: 2.15rem;
+    height: 2.15rem;
+    min-height: 2.15rem;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-folder-actions .sp-copy-link-btn {
+    width: 1.65rem;
+    min-width: 1.65rem;
+    height: 1.65rem;
+    min-height: 1.65rem;
+    font-size: 0.78rem;
 }
 .sp-tree-toggle {
     flex: 0 0 auto;
@@ -10331,6 +11121,40 @@ html.is-compact .site-footer {
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
+}
+.sharepoint-project-dialog-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.45rem;
+    flex: 0 0 auto;
+}
+.sharepoint-project-dialog-stats[hidden] {
+    display: none !important;
+}
+.sp-project-stat-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    padding: 0.22rem 0.55rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-2, #f8fafc) 88%, transparent);
+    font-size: 0.75rem;
+    line-height: 1.25;
+    color: var(--muted, #64748b);
+    max-width: 100%;
+}
+.sp-project-stat-label {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    color: var(--muted, #64748b);
+}
+.sp-project-stat-value {
+    font-weight: 700;
+    color: var(--ink, #0f172a);
+    font-size: 0.78rem;
 }
 .sharepoint-project-dialog-actions {
     display: flex;
@@ -10412,6 +11236,10 @@ html.is-compact .site-footer {
     font-size: 0.9rem;
     color: #475569;
     white-space: nowrap;
+}
+.sharepoint-dialog-table .sp-size-cell {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 .sp-type-badge {
     display: inline-flex;
@@ -10713,6 +11541,10 @@ html.is-compact .site-footer {
     color: #7c3aed;
     font-weight: 700;
 }
+.sp-stats-deep {
+    color: #0369a1;
+    font-weight: 700;
+}
 .sp-stats-refine {
     color: #64748b;
     font-style: italic;
@@ -10754,6 +11586,80 @@ html.is-compact .site-footer {
     color: #047857;
     font-size: 0.75rem;
     font-weight: 700;
+}
+.sp-live-pill--deep {
+    background: rgba(14, 165, 233, 0.14);
+    color: #0369a1;
+}
+.sp-search-deep {
+    border: 1px solid var(--border, #e2e8f0);
+    background: rgba(255, 255, 255, 0.85);
+}
+.sp-search-deep.is-active,
+.sp-search-deep[aria-pressed="true"] {
+    background: rgba(14, 165, 233, 0.12);
+    color: #0369a1;
+    border-color: rgba(14, 165, 233, 0.28);
+}
+.sp-deep-hits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.28rem;
+    margin: 0.35rem 0 0 2.55rem;
+}
+.sp-deep-hit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    max-width: 100%;
+    border: 1px solid color-mix(in srgb, #0ea5e9 28%, transparent);
+    background: color-mix(in srgb, #0ea5e9 8%, #fff);
+    color: #0c4a6e;
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 650;
+    cursor: pointer;
+    text-align: left;
+}
+.sp-deep-hit:hover,
+.sp-deep-hit:focus-visible {
+    background: color-mix(in srgb, #0ea5e9 16%, #fff);
+    outline: 2px solid color-mix(in srgb, #0ea5e9 45%, transparent);
+    outline-offset: 1px;
+}
+.sp-deep-hit-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 14rem;
+}
+.sp-deep-hit-path {
+    color: #64748b;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 12rem;
+}
+.sp-deep-hit-more {
+    align-self: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #0369a1;
+}
+.sharepoint-table-card.is-compact-rows .sp-deep-hits {
+    flex: 1 1 100%;
+    margin: 0.1rem 0 0 2.2rem;
+}
+.sharepoint-table-card.is-compact-rows .sp-deep-hit-path {
+    display: none;
+}
+.sharepoint-table-card.is-compact-rows .sp-deep-hit {
+    padding: 0.06rem 0.4rem;
+    font-size: 0.64rem;
 }
 .sp-match-cell {
     min-width: 7.5rem;
@@ -10865,4 +11771,783 @@ html.is-compact .site-footer {
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+}
+
+/* ---- SharePoint owner insights dashboard ---- */
+#sharepoint-owner-dash {
+    scroll-margin-top: calc(var(--topbar-sticky-height, 72px) + 12px);
+    margin: 0 0 1.25rem;
+    padding: 1.15rem 1.2rem 1.3rem;
+    background:
+        radial-gradient(1200px 280px at 8% -20%, color-mix(in srgb, var(--primary, #0e7490) 16%, transparent), transparent 60%),
+        radial-gradient(900px 240px at 100% 0%, color-mix(in srgb, var(--pass, #0f766e) 12%, transparent), transparent 55%),
+        var(--card, #fff);
+}
+.sp-owner-dash-shell {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+}
+.sp-owner-dash-shell > summary {
+    list-style: none;
+}
+.sp-owner-dash-shell > summary::-webkit-details-marker { display: none; }
+.sp-owner-dash-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    cursor: pointer;
+}
+.sp-owner-dash-summary-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+}
+.sp-owner-dash-shell[open] .sharepoint-sources-collapse-hint::before {
+    content: "Collapse";
+}
+.sp-owner-dash-shell:not([open]) .sharepoint-sources-collapse-hint::before {
+    content: "Expand";
+}
+.sp-owner-dash-panel {
+    padding-top: 0.85rem;
+}
+.sharepoint-owner-solo-page .sp-owner-dash {
+    margin: 0;
+}
+.sharepoint-owner-solo-page .sp-owner-dash-summary {
+    cursor: default;
+}
+.sharepoint-owner-solo-page .sp-owner-dash-shell:not([open]) .sp-owner-dash-panel {
+    display: block;
+}
+.sp-owner-dash-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 0.85rem;
+}
+.sp-owner-dash-intro h2 {
+    margin: 0.15rem 0 0.35rem;
+    font-family: var(--font-display, Sora, sans-serif);
+    font-size: clamp(1.25rem, 2vw, 1.7rem);
+}
+.sp-owner-dash-intro p {
+    margin: 0;
+    max-width: 52rem;
+    color: var(--muted, #5b6b7c);
+}
+.sp-owner-dash-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.7rem;
+    align-items: center;
+    margin-bottom: 0.7rem;
+    padding: 0.5rem 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--primary, #0e7490) 16%, var(--line, #d0dae4));
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--primary, #0e7490) 6%, var(--card, #fff)),
+            var(--card, #fff) 72%);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(12, 21, 36, 0.05));
+}
+.sp-od-grain {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.22rem;
+    border: 1px solid color-mix(in srgb, var(--primary, #0e7490) 22%, var(--line, #d0dae4));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--paper, #e8eef3) 55%, var(--card, #fff));
+    box-shadow: inset 0 1px 2px rgba(12, 21, 36, 0.04);
+}
+.sp-od-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft, #243044);
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.84rem;
+    line-height: 1;
+    padding: 0.46rem 0.82rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+.sp-od-chip-ico {
+    font-size: 0.92rem;
+    line-height: 1;
+}
+.sp-od-chip:hover:not(.is-active) {
+    background: color-mix(in srgb, var(--primary, #0e7490) 10%, var(--card, #fff));
+    color: var(--primary, #0e7490);
+}
+.sp-od-chip.is-active {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary, #0e7490) 86%, #fff), var(--primary, #0e7490));
+    color: #fff;
+    box-shadow: 0 5px 14px color-mix(in srgb, var(--primary, #0e7490) 32%, transparent);
+}
+.sp-od-chip:focus-visible {
+    outline: 2px solid var(--primary, #0e7490);
+    outline-offset: 2px;
+}
+.sp-od-year-label,
+.sp-od-search-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-year-label select,
+.sp-od-search-toolbar input {
+    font: inherit;
+    font-weight: 600;
+    color: var(--ink, #0c1524);
+    border: 1px solid var(--line, #d0dae4);
+    border-radius: 999px;
+    background: var(--card, #fff);
+    padding: 0.46rem 0.85rem;
+    min-width: 8.5rem;
+    min-height: 2.35rem;
+}
+.sp-od-year-label select:focus,
+.sp-od-search-toolbar input:focus {
+    outline: 2px solid color-mix(in srgb, var(--primary, #0e7490) 45%, transparent);
+    outline-offset: 1px;
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 45%, var(--line, #d0dae4));
+}
+.sp-od-search-toolbar {
+    position: relative;
+    flex: 0 1 16rem;
+    min-width: 12rem;
+    margin-left: auto;
+}
+.sp-od-search-ico {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    font-size: 0.85rem;
+}
+.sp-od-search-toolbar input {
+    width: 100%;
+    min-width: 0;
+    padding-left: 2.1rem;
+}
+.sp-od-scopes {
+    margin: 0 0 0.9rem;
+    padding: 0.7rem 0.8rem 0.8rem;
+    border: 1px solid var(--line, #d0dae4);
+    border-radius: 16px;
+    background: var(--card, #fff);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(12, 21, 36, 0.05));
+}
+.sp-od-scopes-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.7rem;
+    margin-bottom: 0.55rem;
+}
+.sp-od-scopes-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-display, Sora, sans-serif);
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink, #0c1524);
+}
+.sp-od-scopes-count {
+    font-family: var(--font-body, inherit);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 0.16rem 0.48rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary, #0e7490) 12%, var(--card, #fff));
+    color: var(--primary, #0e7490);
+}
+.sp-od-scopes-all {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--primary, #0e7490) 28%, var(--line, #d0dae4));
+    background: var(--card, #fff);
+    color: var(--primary, #0e7490);
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.78rem;
+    line-height: 1;
+    padding: 0.42rem 0.78rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.sp-od-scopes-all:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary, #0e7490) 10%, var(--card, #fff));
+}
+.sp-od-scopes-all.is-active,
+.sp-od-scopes-all:disabled {
+    background: color-mix(in srgb, var(--primary, #0e7490) 14%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 38%, var(--line, #d0dae4));
+    color: var(--primary-dark, #155e75);
+    cursor: default;
+    opacity: 1;
+}
+.sp-od-scopes-all:focus-visible {
+    outline: 2px solid var(--primary, #0e7490);
+    outline-offset: 2px;
+}
+.sp-od-scopes-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+.sp-od-scopes .sharepoint-scope-chip {
+    padding: 0.4rem 0.78rem;
+    box-shadow: 0 1px 0 rgba(12, 21, 36, 0.03);
+    transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+.sp-od-scopes .sharepoint-scope-chip:hover {
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 40%, var(--line, #d0dae4));
+}
+.sp-od-context {
+    margin: 0 0 0.85rem;
+    color: var(--muted, #5b6b7c);
+    font-size: 0.92rem;
+}
+.sp-od-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+.sp-od-kpi {
+    position: relative;
+    overflow: hidden;
+    padding: 0.85rem 0.95rem 0.9rem;
+    border: 1px solid var(--line, #d0dae4);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--card, #fff) 88%, var(--paper, #e8eef3));
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(12, 21, 36, 0.05));
+}
+.sp-od-kpi::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: var(--od-accent, var(--primary, #0e7490));
+}
+.sp-od-kpi-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-kpi-value {
+    display: block;
+    margin: 0.15rem 0 0.1rem;
+    font-family: var(--font-display, Sora, sans-serif);
+    font-size: clamp(1.5rem, 3vw, 2.05rem);
+    line-height: 1.1;
+    color: var(--ink, #0c1524);
+}
+.sp-od-kpi-hint {
+    color: var(--muted, #5b6b7c);
+    font-size: 0.82rem;
+}
+.sp-od-portraits {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    gap: 0.55rem;
+    margin: 0 0 1rem;
+}
+.sp-od-portrait {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.7rem 0.4rem 0.65rem;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: center;
+}
+.sp-od-portrait:hover,
+.sp-od-portrait.is-active {
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 35%, var(--line, #d0dae4));
+    background: color-mix(in srgb, var(--primary, #0e7490) 8%, var(--card, #fff));
+}
+.sp-od-avatar {
+    --hue: 200;
+    --share: 0.4;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: conic-gradient(hsl(var(--hue), 68%, 46%) calc(var(--share) * 360deg), color-mix(in srgb, var(--line, #d0dae4) 70%, transparent) 0);
+    box-shadow: 0 8px 18px color-mix(in srgb, hsl(var(--hue), 68%, 46%) 28%, transparent);
+}
+.sp-od-avatar span {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--card, #fff);
+    color: hsl(var(--hue), 55%, 32%);
+    font-family: var(--font-display, Sora, sans-serif);
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+.sp-od-avatar-sm {
+    width: 36px;
+    height: 36px;
+    box-shadow: none;
+}
+.sp-od-avatar-sm span {
+    width: 28px;
+    height: 28px;
+    font-size: 0.72rem;
+}
+.sp-od-portrait-name {
+    font-weight: 700;
+    font-size: 0.82rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sp-od-portrait-count {
+    font-size: 0.75rem;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+    gap: 0.9rem;
+    margin-bottom: 1rem;
+    align-items: start;
+}
+.sp-od-board,
+.sp-od-detail,
+.sp-od-chart-wrap,
+.sp-od-heat {
+    border: 1px solid var(--line, #d0dae4);
+    border-radius: 16px;
+    background: var(--card, #fff);
+    padding: 0.85rem 0.95rem 1rem;
+}
+.sp-od-board-head,
+.sp-od-chart-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+    align-items: baseline;
+    margin-bottom: 0.65rem;
+}
+.sp-od-board-head h3,
+.sp-od-chart-head h3,
+.sp-od-detail h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+.sp-od-chart-head p,
+.sp-od-detail p {
+    margin: 0.15rem 0 0;
+    color: var(--muted, #5b6b7c);
+    font-size: 0.85rem;
+}
+.sp-od-ranks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 28rem;
+    overflow: auto;
+}
+.sp-od-rank {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1.4rem 36px minmax(0, 1fr) minmax(56px, 28%) auto;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.4rem 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.sp-od-rank:hover,
+.sp-od-rank.is-active {
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 30%, var(--line, #d0dae4));
+    background: color-mix(in srgb, var(--primary, #0e7490) 7%, transparent);
+}
+.sp-od-rank-n {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    color: var(--muted, #5b6b7c);
+    text-align: right;
+}
+.sp-od-rank-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.sp-od-rank-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+.sp-od-rank-copy span {
+    color: var(--muted, #5b6b7c);
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sp-od-rank-bar {
+    display: block;
+    height: 7px;
+    border-radius: 99px;
+    background: var(--paper, #e8eef3);
+    overflow: hidden;
+}
+.sp-od-rank-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+}
+.sp-od-rank b {
+    font-size: 0.92rem;
+    font-variant-numeric: tabular-nums;
+}
+.sp-od-detail {
+    min-height: 16rem;
+}
+.sp-od-detail.is-empty {
+    display: grid;
+    place-content: center;
+    text-align: center;
+    padding: 2rem 1.2rem;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-detail-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.7rem;
+    align-items: center;
+    margin-bottom: 0.7rem;
+}
+.sp-od-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem 1rem;
+    margin-bottom: 0.55rem;
+    font-size: 0.8rem;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-detail-meta b {
+    color: var(--ink, #0c1524);
+}
+.sp-od-spark {
+    display: block;
+    width: 100%;
+    height: 36px;
+    margin-bottom: 0.7rem;
+}
+.sp-od-timeline {
+    max-height: 22rem;
+    overflow: auto;
+    padding-right: 0.2rem;
+}
+.sp-od-year {
+    margin-bottom: 0.75rem;
+}
+.sp-od-year h4 {
+    margin: 0 0 0.35rem;
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+    font-size: 0.92rem;
+}
+.sp-od-year h4 small {
+    color: var(--muted, #5b6b7c);
+    font-weight: 600;
+}
+.sp-od-month-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #5b6b7c);
+    margin: 0.35rem 0 0.2rem;
+}
+.sp-od-month ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.sp-od-month li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem;
+    align-items: center;
+    border-top: 1px solid color-mix(in srgb, var(--line, #d0dae4) 70%, transparent);
+}
+.sp-od-project {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.05rem;
+    width: 100%;
+    padding: 0.4rem 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.sp-od-project:hover strong {
+    color: var(--primary, #0e7490);
+}
+.sp-od-project span {
+    font-size: 0.75rem;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-open-sp {
+    text-decoration: none;
+    padding: 0.2rem 0.35rem;
+    border-radius: 0.4rem;
+}
+.sp-od-chart-scroll,
+.sp-od-heat-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding-bottom: 0.55rem;
+    scrollbar-gutter: stable;
+    overscroll-behavior-x: contain;
+}
+.sp-od-heat-scroll.is-wide {
+    overflow-x: scroll;
+    scrollbar-width: auto;
+    scrollbar-color: color-mix(in srgb, var(--primary, #0e7490) 55%, #94a3b8) color-mix(in srgb, var(--paper, #e8eef3) 80%, transparent);
+}
+.sp-od-heat-scroll.is-wide::-webkit-scrollbar {
+    height: 10px;
+}
+.sp-od-heat-scroll.is-wide::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--primary, #0e7490) 45%, #94a3b8);
+    border-radius: 99px;
+}
+.sp-od-heat-scroll.is-wide::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--paper, #e8eef3) 80%, transparent);
+    border-radius: 99px;
+}
+.sp-od-chart {
+    display: block;
+    overflow: visible;
+}
+.sp-od-axis {
+    fill: var(--muted, #5b6b7c);
+    font-size: 9px;
+    font-family: var(--font-body, inherit);
+}
+.sp-od-bar-seg {
+    cursor: pointer;
+}
+.sp-od-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.7rem;
+    margin-top: 0.65rem;
+}
+.sp-od-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: 0.15rem 0.2rem;
+    border-radius: 0.4rem;
+}
+.sp-od-legend-item i {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 99px;
+    display: inline-block;
+}
+.sp-od-legend-item.is-active {
+    background: color-mix(in srgb, var(--primary, #0e7490) 10%, transparent);
+    font-weight: 700;
+}
+.sp-od-legend-item.is-static {
+    cursor: default;
+}
+.sp-od-heat {
+    margin-top: 0.9rem;
+}
+.sp-od-heat-table {
+    border-collapse: separate;
+    border-spacing: 3px;
+    font-size: 0.75rem;
+    width: max-content;
+    min-width: 100%;
+}
+.sp-od-heat-table th,
+.sp-od-heat-table td {
+    padding: 0;
+    font-weight: 600;
+}
+.sp-od-heat-table thead th {
+    color: var(--muted, #5b6b7c);
+    font-size: 0.68rem;
+    text-align: center;
+}
+.sp-od-heat-table thead th.sp-od-heat-period {
+    min-width: 2.6rem;
+}
+.sp-od-heat-year {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--ink, #0c1524);
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.35rem 0.3rem;
+    text-align: left;
+    border-bottom: 2px solid color-mix(in srgb, var(--primary, #0e7490) 35%, var(--line, #d0dae4));
+    white-space: nowrap;
+}
+.sp-od-heat-owner-head,
+.sp-od-heat-table tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    text-align: left;
+    padding-right: 0.65rem;
+    white-space: nowrap;
+    background: var(--card, #fff);
+    box-shadow: 6px 0 8px -6px rgba(12, 21, 36, 0.18);
+}
+.sp-od-heat-owner-head {
+    z-index: 3;
+    vertical-align: bottom;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-heat-table tr.is-active th,
+.sp-od-heat-table tr.is-active td {
+    outline: 1px solid color-mix(in srgb, var(--primary, #0e7490) 25%, transparent);
+}
+.sp-od-heat-owner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0.15rem 0;
+}
+.sp-od-swatch {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 99px;
+    display: inline-block;
+}
+.sp-od-heat-cell {
+    display: grid;
+    place-items: center;
+    min-width: 2.35rem;
+    height: 1.85rem;
+    border-radius: 0.4rem;
+    color: var(--ink, #0c1524);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.sp-od-heat-cell.is-empty {
+    background: color-mix(in srgb, var(--paper, #e8eef3) 80%, transparent) !important;
+    color: transparent;
+    cursor: default;
+}
+.sp-od-empty,
+.sp-od-chart-empty,
+.sp-od-empty-hero {
+    padding: 1.4rem 0.6rem;
+    text-align: center;
+    color: var(--muted, #5b6b7c);
+}
+.sp-od-empty-hero strong {
+    display: block;
+    color: var(--ink, #0c1524);
+    margin-bottom: 0.3rem;
+    font-size: 1.05rem;
+}
+@media (max-width: 980px) {
+    .sp-od-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sp-od-grid { grid-template-columns: 1fr; }
+    .sp-od-rank {
+        grid-template-columns: 1.2rem 32px minmax(0, 1fr) auto;
+    }
+    .sp-od-rank-bar { display: none; }
+    .sp-od-search-toolbar {
+        margin-left: 0;
+        flex: 1 1 14rem;
+    }
+}
+[data-theme="indigo"] .sp-owner-dash-toolbar,
+[data-theme="indigo"] .sp-od-scopes {
+    background: color-mix(in srgb, var(--card, #111a2b) 92%, #000);
+}
+[data-theme="indigo"] .sp-od-chip.is-active {
+    color: #0c1524;
+}
+[data-theme="indigo"] .sp-od-avatar span {
+    background: var(--card, #111a2b);
+    color: hsl(var(--hue), 70%, 78%);
+}
+[data-theme="indigo"] .sp-od-kpi,
+[data-theme="indigo"] .sp-od-board,
+[data-theme="indigo"] .sp-od-chart-wrap,
+[data-theme="indigo"] .sp-od-heat {
+    background: color-mix(in srgb, var(--card, #111a2b) 92%, #000);
 }

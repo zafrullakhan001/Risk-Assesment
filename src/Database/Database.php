@@ -283,6 +283,7 @@ final class Database
                 mime_type TEXT NOT NULL DEFAULT \'\',
                 size_bytes INTEGER NOT NULL DEFAULT 0,
                 last_modified TEXT NOT NULL DEFAULT \'\',
+                date_created TEXT NOT NULL DEFAULT \'\',
                 modified_by TEXT NOT NULL DEFAULT \'\',
                 person TEXT NOT NULL DEFAULT \'\',
                 synced_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
@@ -307,6 +308,7 @@ final class Database
         );
         self::ensureColumn($pdo, 'sharepoint_items', 'modified_by', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'sharepoint_items', 'person', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'sharepoint_items', 'date_created', "TEXT NOT NULL DEFAULT ''");
         self::ensureSharePointFts($pdo);
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS sharepoint_sources (

@@ -29,6 +29,7 @@ final class SharePointCatalogRepository
      *   mime_type?: string,
      *   size_bytes?: int,
      *   last_modified?: string,
+     *   date_created?: string,
      *   modified_by?: string,
      *   person?: string
      * }> $items
@@ -47,11 +48,11 @@ final class SharePointCatalogRepository
                 'INSERT INTO sharepoint_items (
                     source_key, item_key, parent_item_key, project_name, name, item_type,
                     web_url, relative_path, mime_type, size_bytes, last_modified,
-                    modified_by, person, synced_at
+                    date_created, modified_by, person, synced_at
                 ) VALUES (
                     :source_key, :item_key, :parent_item_key, :project_name, :name, :item_type,
                     :web_url, :relative_path, :mime_type, :size_bytes, :last_modified,
-                    :modified_by, :person, :synced_at
+                    :date_created, :modified_by, :person, :synced_at
                 )'
             );
 
@@ -88,6 +89,7 @@ final class SharePointCatalogRepository
                     ':mime_type' => mb_substr(trim((string) ($item['mime_type'] ?? '')), 0, 200),
                     ':size_bytes' => max(0, (int) ($item['size_bytes'] ?? 0)),
                     ':last_modified' => mb_substr(trim((string) ($item['last_modified'] ?? '')), 0, 64),
+                    ':date_created' => mb_substr(trim((string) ($item['date_created'] ?? '')), 0, 64),
                     ':modified_by' => mb_substr(trim((string) ($item['modified_by'] ?? '')), 0, 300),
                     ':person' => mb_substr(trim((string) ($item['person'] ?? '')), 0, 300),
                     ':synced_at' => $syncedAt,
@@ -595,7 +597,9 @@ final class SharePointCatalogRepository
      *   modified_by: string,
      *   person: string,
      *   names: list<string>,
-     *   paths: list<string>
+     *   paths: list<string>,
+     *   files: list<array{name: string, path: string}>,
+     *   folders: list<array{name: string, path: string}>
      * }>
      */
     public function listSearchIndex(string $sourceKey = self::SOURCE_DEFAULT, string $sourceTitle = ''): array
@@ -636,8 +640,12 @@ final class SharePointCatalogRepository
                     'person' => '',
                     'names' => [],
                     'paths' => [],
+                    'files' => [],
+                    'folders' => [],
                     '_name_set' => [],
                     '_path_set' => [],
+                    '_file_set' => [],
+                    '_folder_set' => [],
                 ];
             }
 
@@ -645,6 +653,8 @@ final class SharePointCatalogRepository
             $path = trim((string) ($row['relative_path'] ?? ''));
             $itemType = strtolower((string) ($row['item_type'] ?? 'file')) === 'folder' ? 'folder' : 'file';
             $webUrl = trim((string) ($row['web_url'] ?? ''));
+            $entryPath = $path !== '' ? $path : $name;
+            $entryKey = strtolower($entryPath);
 
             $projects[$projectName]['item_count']++;
             if ($itemType === 'folder') {
@@ -664,6 +674,21 @@ final class SharePointCatalogRepository
 
             $isRoot = $itemType === 'folder'
                 && ($path === '' || $path === $projectName || $path === $name);
+            if ($name !== '' && $entryKey !== '') {
+                if ($itemType === 'file' && !isset($projects[$projectName]['_file_set'][$entryKey])) {
+                    $projects[$projectName]['_file_set'][$entryKey] = true;
+                    $projects[$projectName]['files'][] = [
+                        'name' => $name,
+                        'path' => $entryPath,
+                    ];
+                } elseif ($itemType === 'folder' && !$isRoot && !isset($projects[$projectName]['_folder_set'][$entryKey])) {
+                    $projects[$projectName]['_folder_set'][$entryKey] = true;
+                    $projects[$projectName]['folders'][] = [
+                        'name' => $name,
+                        'path' => $entryPath,
+                    ];
+                }
+            }
             if ($isRoot && $webUrl !== '' && $projects[$projectName]['folder_url'] === '') {
                 $projects[$projectName]['folder_url'] = $webUrl;
                 $projects[$projectName]['last_modified'] = (string) ($row['last_modified'] ?? '');
@@ -681,7 +706,7 @@ final class SharePointCatalogRepository
             if ($project['last_modified'] === '') {
                 // Keep empty; client shows em dash. Root metadata was preferred above.
             }
-            unset($project['_name_set'], $project['_path_set']);
+            unset($project['_name_set'], $project['_path_set'], $project['_file_set'], $project['_folder_set']);
             $out[] = $project;
         }
 
@@ -817,7 +842,7 @@ final class SharePointCatalogRepository
         $statement = $this->pdo->prepare(
             'SELECT id, item_key, parent_item_key, project_name, name, item_type,
                     web_url, relative_path, mime_type, size_bytes, last_modified,
-                    modified_by, person
+                    date_created, modified_by, person
              FROM sharepoint_items
              WHERE source_key = :source_key AND project_name = :project_name
              ORDER BY
@@ -848,6 +873,7 @@ final class SharePointCatalogRepository
                 'mime_type' => (string) ($row['mime_type'] ?? ''),
                 'size_bytes' => (int) ($row['size_bytes'] ?? 0),
                 'last_modified' => (string) ($row['last_modified'] ?? ''),
+                'date_created' => (string) ($row['date_created'] ?? ''),
                 'modified_by' => (string) ($row['modified_by'] ?? ''),
                 'person' => (string) ($row['person'] ?? ''),
             ];

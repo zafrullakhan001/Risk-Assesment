@@ -391,6 +391,9 @@ final class SharePointGraphClient
                 'mime_type' => (string) ($child['file']['mimeType'] ?? ''),
                 'size_bytes' => (int) ($child['size'] ?? 0),
                 'last_modified' => (string) ($child['lastModifiedDateTime'] ?? ''),
+                'date_created' => (string) ($child['createdDateTime'] ?? ''),
+                'modified_by' => $this->graphIdentityName($child['lastModifiedBy'] ?? null),
+                'person' => $this->graphIdentityName($child['createdBy'] ?? null),
             ];
 
             if ($isFolder && $depth < self::MAX_DEPTH) {
@@ -492,7 +495,7 @@ final class SharePointGraphClient
     {
         $url = self::GRAPH_BASE . '/sites/' . rawurlencode($siteId)
             . '/drive/root%3A/' . $encodedFolderPath . '%3A/children'
-            . '?$select=id,name,webUrl,size,lastModifiedDateTime,folder,file,parentReference'
+            . '?$select=id,name,webUrl,size,lastModifiedDateTime,createdDateTime,folder,file,parentReference,createdBy,lastModifiedBy'
             . '&$top=200';
 
         $items = [];
@@ -531,6 +534,24 @@ final class SharePointGraphClient
         }
 
         return implode('/', $encoded);
+    }
+
+    /** @param mixed $identity */
+    private function graphIdentityName(mixed $identity): string
+    {
+        if (!is_array($identity)) {
+            return '';
+        }
+        $user = $identity['user'] ?? null;
+        if (!is_array($user)) {
+            $user = is_array($identity['application'] ?? null) ? $identity['application'] : [];
+        }
+        $name = trim((string) ($user['displayName'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return trim((string) ($user['email'] ?? ''));
     }
 
     private function normalizeSitePath(string $path): string

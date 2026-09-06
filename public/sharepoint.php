@@ -10,6 +10,7 @@ use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\SharePoint\SharePointBrowserSync;
 use RiskAssessment\SharePoint\SharePointGraphClient;
 use RiskAssessment\SharePoint\SharePointListingImporter;
+use RiskAssessment\SharePoint\SharePointOwnerDashboard;
 
 $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
@@ -271,6 +272,48 @@ if ($actionParam === 'search_index') {
     exit;
 }
 
+if ($actionParam === 'owner_stats') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=30');
+
+    $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $wantedKeys = [];
+    if ($sourcesParam === 'all' || $sourcesParam === '') {
+        foreach ($allSources as $src) {
+            $wantedKeys[] = (string) ($src['source_key'] ?? '');
+        }
+    } else {
+        $wantedKeys = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+    }
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $selectedKeys = [];
+    $sourceTitles = [];
+    foreach ($wantedKeys as $key) {
+        if (!isset($byKey[$key])) {
+            continue;
+        }
+        $selectedKeys[] = $key;
+        $sourceTitles[$key] = (string) ($byKey[$key]['title'] ?? $key);
+    }
+    if ($selectedKeys === []) {
+        $selectedKeys = [$activeSourceKey];
+        $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
+    }
+
+    $dashboard = new SharePointOwnerDashboard($pdo);
+    $payload = $dashboard->build($selectedKeys, $sourceTitles);
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         require_valid_csrf();
@@ -314,6 +357,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = 'SharePoint folder "' . (string) $updated['title'] . '" updated.';
         } elseif ($action === 'delete_source') {
             $key = trim((string) ($_POST['source_key'] ?? ''));
+            $source = $sourcesRepo->requireByKey($key);
+            $expected = trim((string) ($source['title'] ?? ''));
+            if ($expected === '') {
+                $expected = (string) $source['source_key'];
+            }
+            $confirmTitle = trim((string) ($_POST['confirm_title'] ?? ''));
+            if ($confirmTitle === '' || !hash_equals($expected, $confirmTitle)) {
+                throw new RuntimeException('Type the folder display name exactly to confirm deletion.');
+            }
             $sourcesRepo->delete($key, $catalog);
             $auth->users()->logAudit(
                 'sharepoint.source_deleted',
@@ -583,6 +635,55 @@ $formatModified = static function (string $modified): string {
     return $modified;
 };
 
+$projectFileMeta = static function (string $name): array {
+    static $map = [
+        'pdf' => ['emoji' => '📕', 'label' => 'PDF', 'tone' => 'pdf'],
+        'doc' => ['emoji' => '📘', 'label' => 'Word', 'tone' => 'word'],
+        'docx' => ['emoji' => '📘', 'label' => 'Word', 'tone' => 'word'],
+        'rtf' => ['emoji' => '📘', 'label' => 'Word', 'tone' => 'word'],
+        'xls' => ['emoji' => '📊', 'label' => 'Excel', 'tone' => 'excel'],
+        'xlsx' => ['emoji' => '📊', 'label' => 'Excel', 'tone' => 'excel'],
+        'xlsm' => ['emoji' => '📊', 'label' => 'Excel', 'tone' => 'excel'],
+        'csv' => ['emoji' => '📑', 'label' => 'CSV', 'tone' => 'excel'],
+        'ppt' => ['emoji' => '📙', 'label' => 'PowerPoint', 'tone' => 'ppt'],
+        'pptx' => ['emoji' => '📙', 'label' => 'PowerPoint', 'tone' => 'ppt'],
+        'vsd' => ['emoji' => '📐', 'label' => 'Visio', 'tone' => 'visio'],
+        'vsdx' => ['emoji' => '📐', 'label' => 'Visio', 'tone' => 'visio'],
+        'jpg' => ['emoji' => '🖼️', 'label' => 'Image', 'tone' => 'image'],
+        'jpeg' => ['emoji' => '🖼️', 'label' => 'Image', 'tone' => 'image'],
+        'png' => ['emoji' => '🖼️', 'label' => 'Image', 'tone' => 'image'],
+        'gif' => ['emoji' => '🖼️', 'label' => 'Image', 'tone' => 'image'],
+        'webp' => ['emoji' => '🖼️', 'label' => 'Image', 'tone' => 'image'],
+        'svg' => ['emoji' => '🖼️', 'label' => 'Image', 'tone' => 'image'],
+        'txt' => ['emoji' => '📝', 'label' => 'Text', 'tone' => 'text'],
+        'md' => ['emoji' => '📝', 'label' => 'Markdown', 'tone' => 'text'],
+        'json' => ['emoji' => '🧾', 'label' => 'JSON', 'tone' => 'code'],
+        'xml' => ['emoji' => '🧾', 'label' => 'XML', 'tone' => 'code'],
+        'html' => ['emoji' => '🌐', 'label' => 'HTML', 'tone' => 'code'],
+        'zip' => ['emoji' => '📦', 'label' => 'Archive', 'tone' => 'archive'],
+        'rar' => ['emoji' => '📦', 'label' => 'Archive', 'tone' => 'archive'],
+        '7z' => ['emoji' => '📦', 'label' => 'Archive', 'tone' => 'archive'],
+        'msg' => ['emoji' => '✉️', 'label' => 'Email', 'tone' => 'email'],
+        'eml' => ['emoji' => '✉️', 'label' => 'Email', 'tone' => 'email'],
+        'mp4' => ['emoji' => '🎬', 'label' => 'Video', 'tone' => 'media'],
+        'one' => ['emoji' => '📓', 'label' => 'OneNote', 'tone' => 'onenote'],
+        'agent' => ['emoji' => '📄', 'label' => 'AGENT', 'tone' => 'file'],
+    ];
+    $base = basename(str_replace('\\', '/', $name));
+    $dot = strrpos($base, '.');
+    if ($dot !== false && $dot > 0 && $dot < strlen($base) - 1) {
+        $ext = strtolower(substr($base, $dot + 1));
+        if (isset($map[$ext])) {
+            return $map[$ext];
+        }
+        if ($ext !== '') {
+            return ['emoji' => '📄', 'label' => strtoupper($ext), 'tone' => 'file'];
+        }
+    }
+
+    return ['emoji' => '📁', 'label' => 'Folder', 'tone' => 'folder'];
+};
+
 $activeTitle = (string) ($activeSource['title'] ?? 'SharePoint folder');
 $activeFolderPath = (string) ($activeSource['folder_path'] ?? '');
 $activeSiteHost = (string) ($activeSource['site_host'] ?? '');
@@ -591,13 +692,15 @@ $activeFolderUrl = (string) ($activeSource['folder_url'] ?? '');
 $activeLastSynced = (string) ($activeSource['last_synced_at'] ?? '');
 $activeLastStatus = (string) ($activeSource['last_sync_status'] ?? '');
 $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
+$ownerSolo = trim((string) ($_GET['view'] ?? '')) === 'owners';
+$ownerDashUrl = 'sharepoint.php?view=owners';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($activeTitle) ?> · SharePoint · <?= e($branding->documentTitle()) ?></title>
+    <title><?= e($ownerSolo ? 'Project owners' : $activeTitle) ?> · SharePoint · <?= e($branding->documentTitle()) ?></title>
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
     <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -605,20 +708,21 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
 </head>
 <body>
-    <div class="shell upload-page sharepoint-catalog-page">
+    <div class="shell upload-page sharepoint-catalog-page<?= $ownerSolo ? ' sharepoint-owner-solo-page' : '' ?>">
         <header class="topbar topbar-uplift">
             <a class="brand brand-link" href="index.php#find-projects" title="Find projects by name">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div class="brand-text">
                     <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
-                    <h1>📁 SharePoint catalog</h1>
+                    <h1><?= $ownerSolo ? '👤 Project owners' : '📁 SharePoint catalog' ?></h1>
                 </div>
             </a>
             <div class="topbar-actions">
                 <a class="button ghost home-link" href="index.php#find-projects">🔎 Find projects</a>
                 <a class="button ghost home-link" href="index.php#upload">📤 Upload</a>
                 <a class="button ghost home-link" href="templates.php">📚 Templates</a>
-                <a class="button ghost home-link is-active" href="sharepoint.php?source=<?= e($activeSourceKey) ?>" aria-current="page">📁 SharePoint</a>
+                <a class="button ghost home-link<?= $ownerSolo ? '' : ' is-active' ?>" href="sharepoint.php?source=<?= e($activeSourceKey) ?>"<?= $ownerSolo ? '' : ' aria-current="page"' ?>>📁 SharePoint</a>
+                <a class="button ghost home-link<?= $ownerSolo ? ' is-active' : '' ?>" href="<?= e($ownerDashUrl) ?>"<?= $ownerSolo ? ' aria-current="page"' : '' ?>>👤 Owners</a>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/theme-controls.php'; ?>
                 <div class="updated template-count-chip"><?= (int) $projectCount ?> project<?= $projectCount === 1 ? '' : 's' ?></div>
@@ -626,6 +730,7 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
         </header>
 
         <main>
+            <?php if (!$ownerSolo): ?>
             <section class="hero hero-compact">
                 <div class="hero-main">
                     <div class="hero-head">
@@ -685,7 +790,10 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                         ?>
                         <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?>" data-source-key="<?= e($srcKey) ?>">
                             <div class="sharepoint-source-card-head">
-                                <h3><?= e($srcTitle) ?></h3>
+                                <h3>
+                                    <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
+                                    <span class="sharepoint-source-card-title"><?= e($srcTitle) ?></span>
+                                </h3>
                                 <?php if ($isActiveCard): ?>
                                     <span class="sharepoint-source-badge">Active</span>
                                 <?php endif; ?>
@@ -704,46 +812,63 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                 <?php endif; ?>
                             </p>
                             <div class="sharepoint-source-actions">
-                                <a class="button ghost-light" href="sharepoint.php?source=<?= e($srcKey) ?>&amp;sources=<?= e($srcKey) ?>#sharepoint-search">📂 Open catalog</a>
+                                <a class="button ghost-light" href="sharepoint.php?source=<?= e($srcKey) ?>&amp;sources=<?= e($srcKey) ?>#sharepoint-search"><span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span> Open catalog</a>
                                 <?php if ($isAdmin): ?>
                                     <?php if ($enableOneClickSync): ?>
-                                        <button type="button" class="button button-primary sharepoint-msal-sync-btn" data-source-key="<?= e($srcKey) ?>">🔄 Sync</button>
+                                        <button type="button" class="button button-primary sharepoint-msal-sync-btn" data-source-key="<?= e($srcKey) ?>"><span class="sp-card-emoji" data-tone="sync" aria-hidden="true">🔄</span> Sync</button>
                                     <?php endif; ?>
                                     <?php if ($enableConsoleSync): ?>
-                                        <button type="button" class="button ghost-light sharepoint-mfa-prepare-btn" data-source-key="<?= e($srcKey) ?>" title="Prepare, copy script, and open SharePoint">🔐 Console sync</button>
+                                        <button type="button" class="button ghost-light sharepoint-mfa-prepare-btn" data-source-key="<?= e($srcKey) ?>" title="Prepare, copy script, and open SharePoint"><span class="sp-card-emoji" data-tone="lock" aria-hidden="true">🔐</span> Console sync</button>
                                     <?php endif; ?>
                                 <?php endif; ?>
                                 <?php if ($srcUrl !== ''): ?>
-                                    <a class="button ghost" href="<?= e($srcUrl) ?>" target="_blank" rel="noopener noreferrer">🔗 Open in SharePoint</a>
+                                    <a class="button ghost" href="<?= e($srcUrl) ?>" target="_blank" rel="noopener noreferrer"><span class="sp-card-emoji" data-tone="link" aria-hidden="true">🔗</span> Open in SharePoint</a>
                                 <?php endif; ?>
                             </div>
                             <?php if ($isAdmin): ?>
+                                <?php
+                                $srcIdSafe = preg_replace('/[^a-zA-Z0-9_-]/', '', $srcKey) ?: 'source';
+                                $editFormId = 'sp-src-edit-' . $srcIdSafe;
+                                ?>
                                 <details class="sharepoint-source-edit">
-                                    <summary>Edit folder</summary>
-                                    <form method="post" class="sharepoint-source-edit-form">
+                                    <summary>
+                                        <span class="sp-card-emoji" data-tone="edit" aria-hidden="true">✏️</span>
+                                        <span>Edit</span>
+                                    </summary>
+                                    <div class="sharepoint-source-edit-toolbar">
+                                        <button type="submit" class="button button-primary sharepoint-source-save-btn" form="<?= e($editFormId) ?>" title="Save folder">
+                                            <span class="sp-card-emoji" data-tone="save" aria-hidden="true">💾</span>
+                                            Save
+                                        </button>
+                                    </div>
+                                    <form method="post" class="sharepoint-source-edit-form" id="<?= e($editFormId) ?>">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="action" value="update_source">
                                         <input type="hidden" name="source_key" value="<?= e($srcKey) ?>">
                                         <input type="hidden" name="source" value="<?= e($activeSourceKey) ?>">
-                                        <label>
-                                            <span>Display name</span>
+                                        <label class="sharepoint-add-field">
+                                            <span class="sharepoint-add-field-label"><span class="sp-card-emoji" data-tone="tag" aria-hidden="true">🏷️</span> Display name</span>
                                             <input type="text" name="title" value="<?= e($srcTitle) ?>" required maxlength="200" autocomplete="off">
                                         </label>
-                                        <label>
-                                            <span>Folder URL</span>
+                                        <label class="sharepoint-add-field sharepoint-folder-url-label">
+                                            <span class="sharepoint-add-field-label"><span class="sp-card-emoji" data-tone="link" aria-hidden="true">🔗</span> Folder URL</span>
                                             <input type="url" name="folder_url" value="<?= e($srcUrl) ?>" required autocomplete="off" spellcheck="false">
                                         </label>
-                                        <div class="sharepoint-source-edit-actions">
-                                            <button type="submit" class="button button-primary">Save</button>
-                                        </div>
                                     </form>
                                     <?php if (count($allSources) > 1): ?>
-                                        <form method="post" class="sharepoint-source-delete-form" onsubmit="return confirm('Delete this SharePoint folder and its catalog items?');">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="action" value="delete_source">
-                                            <input type="hidden" name="source_key" value="<?= e($srcKey) ?>">
-                                            <button type="submit" class="button ghost">🗑️ Delete</button>
-                                        </form>
+                                        <div class="sharepoint-source-edit-foot">
+                                            <button
+                                                type="button"
+                                                class="sharepoint-source-delete-btn"
+                                                title="Delete this catalog"
+                                                data-source-key="<?= e($srcKey) ?>"
+                                                data-title="<?= e($srcTitle) ?>"
+                                                data-item-count="<?= (int) $srcCount ?>"
+                                            >
+                                                <span class="sp-card-emoji" data-tone="danger" aria-hidden="true">🗑️</span>
+                                                <span class="visually-hidden">Delete catalog</span>
+                                            </button>
+                                        </div>
                                     <?php endif; ?>
                                 </details>
                             <?php endif; ?>
@@ -778,6 +903,7 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                 <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?>" data-source-key="<?= e($srcKey) ?>">
                                     <td>
                                         <div class="sharepoint-source-table-title">
+                                            <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                             <strong><?= e($srcTitle) ?></strong>
                                             <?php if ($isActiveCard): ?>
                                                 <span class="sharepoint-source-badge">Active</span>
@@ -801,17 +927,17 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                     </td>
                                     <td>
                                         <div class="sharepoint-source-actions sharepoint-source-actions--table">
-                                            <a class="button ghost-light" href="sharepoint.php?source=<?= e($srcKey) ?>&amp;sources=<?= e($srcKey) ?>#sharepoint-search">📂 Open</a>
+                                            <a class="button ghost-light" href="sharepoint.php?source=<?= e($srcKey) ?>&amp;sources=<?= e($srcKey) ?>#sharepoint-search"><span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span> Open</a>
                                             <?php if ($isAdmin): ?>
                                                 <?php if ($enableOneClickSync): ?>
-                                                    <button type="button" class="button button-primary sharepoint-msal-sync-btn" data-source-key="<?= e($srcKey) ?>">🔄 Sync</button>
+                                                    <button type="button" class="button button-primary sharepoint-msal-sync-btn" data-source-key="<?= e($srcKey) ?>"><span class="sp-card-emoji" data-tone="sync" aria-hidden="true">🔄</span> Sync</button>
                                                 <?php endif; ?>
                                                 <?php if ($enableConsoleSync): ?>
-                                                    <button type="button" class="button ghost-light sharepoint-mfa-prepare-btn" data-source-key="<?= e($srcKey) ?>" title="Prepare, copy script, and open SharePoint">🔐 Console</button>
+                                                    <button type="button" class="button ghost-light sharepoint-mfa-prepare-btn" data-source-key="<?= e($srcKey) ?>" title="Prepare, copy script, and open SharePoint"><span class="sp-card-emoji" data-tone="lock" aria-hidden="true">🔐</span> Console</button>
                                                 <?php endif; ?>
                                             <?php endif; ?>
                                             <?php if ($srcUrl !== ''): ?>
-                                                <a class="button ghost" href="<?= e($srcUrl) ?>" target="_blank" rel="noopener noreferrer">🔗 SP</a>
+                                                <a class="button ghost" href="<?= e($srcUrl) ?>" target="_blank" rel="noopener noreferrer"><span class="sp-card-emoji" data-tone="link" aria-hidden="true">🔗</span> SP</a>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -854,11 +980,133 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                             </div>
                         </form>
                     </details>
+                    <?php if (count($allSources) > 1): ?>
+                        <dialog class="sp-source-delete-dialog" id="sp-source-delete-dialog" aria-labelledby="sp-source-delete-title">
+                            <form method="post" class="sp-source-delete-dialog-form" id="sp-source-delete-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="delete_source">
+                                <input type="hidden" name="source_key" id="sp-source-delete-key" value="">
+                                <div class="sp-source-delete-dialog-head">
+                                    <span class="sp-card-emoji" data-tone="danger" aria-hidden="true">🗑️</span>
+                                    <div>
+                                        <h3 id="sp-source-delete-title">Delete this catalog?</h3>
+                                        <p>This permanently removes the folder card and its related SharePoint catalog rows from the database. This cannot be undone.</p>
+                                    </div>
+                                </div>
+                                <div class="sp-source-delete-dialog-body">
+                                    <p class="sp-source-delete-target">
+                                        <strong data-delete-name></strong>
+                                        <span>· <span data-delete-count>0</span> catalog items</span>
+                                    </p>
+                                    <label class="sharepoint-add-field">
+                                        <span class="sharepoint-add-field-label">Type <code data-delete-phrase></code> to confirm</span>
+                                        <input type="text" name="confirm_title" id="sp-source-delete-confirm" required maxlength="200" autocomplete="off" spellcheck="false" placeholder="Folder display name">
+                                    </label>
+                                </div>
+                                <div class="sp-source-delete-dialog-actions">
+                                    <button type="button" class="button ghost" data-delete-cancel>Cancel</button>
+                                    <button type="submit" class="button sharepoint-source-delete-confirm-btn" id="sp-source-delete-submit" disabled>Delete catalog</button>
+                                </div>
+                            </form>
+                        </dialog>
+                    <?php endif; ?>
                 <?php endif; ?>
                     </div>
                 </details>
             </section>
+            <?php endif; ?>
 
+            <section
+                class="upload-card sp-owner-dash"
+                id="sharepoint-owner-dash"
+                data-solo="<?= $ownerSolo ? '1' : '0' ?>"
+                data-active-source="<?= e($activeSourceKey) ?>"
+                data-sources="<?= e(json_encode(array_map(static function (array $src): array {
+                    return [
+                        'source_key' => (string) ($src['source_key'] ?? ''),
+                        'title' => (string) ($src['title'] ?? $src['source_key'] ?? ''),
+                    ];
+                }, $allSources), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>"
+            >
+                <details class="sp-owner-dash-shell" id="sharepoint-owner-dash-shell"<?= $ownerSolo ? ' open' : '' ?>>
+                    <summary class="sp-owner-dash-summary">
+                        <div class="sp-owner-dash-intro">
+                            <div class="eyebrow">People over time</div>
+                            <h2>👤 Project owners</h2>
+                            <p>
+                                Who created the project folders in the catalogs you select — and how that work landed by month, quarter, and year.
+                            </p>
+                        </div>
+                        <div class="sp-owner-dash-summary-tools" data-no-toggle onclick="event.stopPropagation()">
+                            <?php if ($ownerSolo): ?>
+                                <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← Catalog</a>
+                            <?php else: ?>
+                                <a class="button ghost-light" id="sp-owner-open-tab" href="<?= e($ownerDashUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open Project owners in a new browser tab">↗ New tab</a>
+                                <button type="button" class="button ghost" id="sp-owner-open-window" title="Open Project owners in a separate window">🗗 Window</button>
+                                <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
+                            <?php endif; ?>
+                        </div>
+                    </summary>
+                    <div class="sp-owner-dash-panel">
+                        <div class="sp-owner-dash-toolbar">
+                            <div class="sp-od-grain" role="group" aria-label="Time grouping">
+                                <button type="button" class="sp-od-chip is-active" data-grain="month" aria-pressed="true">
+                                    <span class="sp-od-chip-ico" aria-hidden="true">📅</span>
+                                    <span>Months</span>
+                                </button>
+                                <button type="button" class="sp-od-chip" data-grain="quarter" aria-pressed="false">
+                                    <span class="sp-od-chip-ico" aria-hidden="true">📊</span>
+                                    <span>Quarters</span>
+                                </button>
+                                <button type="button" class="sp-od-chip" data-grain="year" aria-pressed="false">
+                                    <span class="sp-od-chip-ico" aria-hidden="true">📆</span>
+                                    <span>Years</span>
+                                </button>
+                            </div>
+                            <label class="sp-od-year-label">
+                                <span>Year</span>
+                                <select id="sp-owner-year" aria-label="Filter by year">
+                                    <option value="all">All years</option>
+                                </select>
+                            </label>
+                            <label class="sp-od-search sp-od-search-toolbar">
+                                <span class="visually-hidden">Filter owners</span>
+                                <span class="sp-od-search-ico" aria-hidden="true">🔍</span>
+                                <input type="search" id="sp-owner-query" placeholder="Filter people…" autocomplete="off">
+                            </label>
+                        </div>
+                        <?php if (count($allSources) > 0): ?>
+                            <div class="sp-od-scopes" id="sp-owner-scopes" role="group" aria-label="Catalogs for owner stats">
+                                <div class="sp-od-scopes-head">
+                                    <span class="sp-od-scopes-label">
+                                        <span aria-hidden="true">📁</span>
+                                        Folders
+                                        <b class="sp-od-scopes-count" id="sp-owner-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
+                                    </span>
+                                    <button type="button" class="sp-od-scopes-all is-active" id="sp-owner-scopes-all" disabled>All selected</button>
+                                </div>
+                                <div class="sp-od-scopes-list">
+                                    <?php foreach ($allSources as $src): ?>
+                                        <?php
+                                        $srcKey = (string) ($src['source_key'] ?? '');
+                                        $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                        ?>
+                                        <label class="sharepoint-scope-chip is-active">
+                                            <input type="checkbox" class="sp-owner-scope-check" value="<?= e($srcKey) ?>" checked>
+                                            <span><?= e($srcTitle) ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        <div class="sp-od-body" id="sp-owner-dash-body">
+                            <p class="panel-help"><?= $ownerSolo ? 'Loading owner insights…' : 'Expand to load owner insights, or open in a new tab or window.' ?></p>
+                        </div>
+                    </div>
+                </details>
+            </section>
+
+            <?php if (!$ownerSolo): ?>
             <section class="upload-card search-card" id="sharepoint-search"
                      data-source-key="<?= e($activeSourceKey) ?>"
                      data-source-title="<?= e($activeTitle) ?>"
@@ -878,7 +1126,7 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                      data-last-synced="<?= e($activeLastSynced) ?>"
                      data-last-status="<?= e($activeLastStatus) ?>">
                 <h2 id="sharepoint-search-heading">🔎 <?= e($activeTitle) ?></h2>
-                <p>Find a project folder — live search on project name, files, paths, Modified By, or Person. Typo-tolerant when Fuzzy is on.</p>
+                <p>Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, or Created By. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on.</p>
                 <?php if (count($allSources) > 1): ?>
                     <div class="sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
                         <div class="sharepoint-search-scopes-head">
@@ -907,7 +1155,7 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                     <div class="search-wrap search-wrap-wide sharepoint-search-main">
                         <span aria-hidden="true">Find</span>
                         <input type="search" name="q" id="sharepoint-search-input" value="<?= e($query) ?>"
-                               placeholder="Search projects, files, people…" autocomplete="off" autofocus
+                               placeholder="Search projects, nested files, people…" autocomplete="off" autofocus
                                aria-label="Search SharePoint catalog">
                         <button type="button" class="button ghost sharepoint-search-clear<?= $query === '' ? ' is-hidden' : '' ?>" id="sharepoint-search-clear" title="Clear search" aria-label="Clear search">Clear</button>
                         <noscript>
@@ -920,6 +1168,7 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                             <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
                         </div>
                         <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
+                        <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Search nested files and subfolders inside each project, not just the folder name" aria-pressed="true">Deep files</button>
                         <div class="sp-refine-wrap">
                             <input type="search" id="sharepoint-refine-input" placeholder="Refine results…" autocomplete="off" aria-label="Search within current results" title="Search within the current results">
                             <button type="button" class="sp-refine-clear is-hidden" id="sharepoint-refine-clear" title="Clear refine search" aria-label="Clear refine search">✕</button>
@@ -938,13 +1187,19 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                 </p>
             </section>
 
-            <section class="upload-card sharepoint-table-card" aria-label="SharePoint project table" id="sharepoint-table-card">
+            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact">
                 <div class="sharepoint-table-toolbar">
                     <span class="result-count" id="sharepoint-result-count">Showing <?= (int) $from ?>–<?= (int) $to ?> of <?= (int) $matchedProjectCount ?></span>
-                    <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
-                        <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
-                        <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
-                        <button type="button" class="button ghost" id="sharepoint-compare-clear" hidden>Clear selection</button>
+                    <div class="sharepoint-table-toolbar-tools">
+                        <div class="sp-view-toggle" role="group" aria-label="Row density">
+                            <button type="button" class="sp-view-btn" data-list-density="comfort" title="Taller rows with badges under the name" aria-pressed="false">Comfort</button>
+                            <button type="button" class="sp-view-btn is-active" data-list-density="compact" title="Shrink rows to a single line" aria-pressed="true">Compact</button>
+                        </div>
+                        <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
+                            <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
+                            <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
+                            <button type="button" class="button ghost" id="sharepoint-compare-clear" hidden>Clear selection</button>
+                        </div>
                     </div>
                 </div>
                 <div class="table-wrap sharepoint-projects-wrap">
@@ -954,12 +1209,12 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                 <th scope="col" class="sharepoint-select-col">
                                     <span class="visually-hidden">Select</span>
                                 </th>
-                                <th scope="col">Project</th>
-                                <th scope="col">Match</th>
-                                <th scope="col">Items</th>
-                                <th scope="col">Modified</th>
-                                <th scope="col">Modified By</th>
-                                <th scope="col">Person</th>
+                                <th scope="col">📂 Project</th>
+                                <th scope="col">🎯 Match</th>
+                                <th scope="col">📦 Items</th>
+                                <th scope="col">🕒 Modified</th>
+                                <th scope="col">👤 Modified By</th>
+                                <th scope="col">🙋 Created By</th>
                                 <th scope="col"><span class="visually-hidden">Open</span></th>
                             </tr>
                         </thead>
@@ -984,9 +1239,10 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                     <?php
                                     $projectName = (string) ($project['project_name'] ?? '');
                                     $folderUrl = (string) ($project['folder_url'] ?? '');
-                                    $itemTotal = (int) ($project['item_count'] ?? 0);
                                     $fileCount = (int) ($project['file_count'] ?? 0);
                                     $folderCount = (int) ($project['folder_count'] ?? 0);
+                                    $rowMeta = $projectFileMeta($projectName);
+                                    $rowTypeLabel = ($rowMeta['tone'] ?? '') === 'folder' ? '📁 Folder' : (string) $rowMeta['label'];
                                     $modifiedDisplay = $formatModified((string) ($project['last_modified'] ?? ''));
                                     $modifiedBy = (string) ($project['modified_by'] ?? '');
                                     $person = (string) ($project['person'] ?? '');
@@ -999,23 +1255,41 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                             </label>
                                         </td>
                                         <td>
-                                            <button type="button" class="sharepoint-project-open" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>">
-                                                <span class="sharepoint-project-open-icon" aria-hidden="true">📂</span>
-                                                <span><?= e($projectName) ?></span>
-                                            </button>
-                                            <div class="sp-project-meta-line">
-                                                <span class="sp-catalog-badge"><?= e($activeTitle) ?></span>
+                                            <div class="sp-project-cell">
+                                                <div class="sp-tree-cell">
+                                                    <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>">
+                                                        <span class="sp-file-icon sp-file-icon--<?= e((string) $rowMeta['tone']) ?>" aria-hidden="true"><?= e((string) $rowMeta['emoji']) ?></span>
+                                                        <span class="sp-file-copy">
+                                                            <span class="sp-file-name"><?= e($projectName) ?></span>
+                                                        </span>
+                                                    </button>
+                                                    <?php if ($folderUrl !== ''): ?>
+                                                        <button type="button" class="sp-copy-link-btn" data-copy-url="<?= e($folderUrl) ?>" data-label="📋" title="Copy SharePoint link" aria-label="Copy link for <?= e($projectName) ?>" onclick="event.stopPropagation()">📋</button>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <div class="sp-project-meta-line">
+                                                    <span class="sp-type-badge sp-type-badge--<?= e((string) $rowMeta['tone']) ?>"><?= e($rowTypeLabel) ?></span>
+                                                    <span class="sp-catalog-badge"><?= e($activeTitle) ?></span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td class="sp-match-cell"><span class="sp-match-placeholder">—</span></td>
-                                        <td>
+                                        <td class="sp-meta-cell">
                                             <span class="sharepoint-item-counts" title="<?= (int) $folderCount ?> folders · <?= (int) $fileCount ?> files">
-                                                <?= (int) $itemTotal ?>
+                                                <?php if ($folderCount > 0): ?>
+                                                    <span class="sp-type-badge sp-type-badge--folder">📁 <?= (int) $folderCount ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($fileCount > 0): ?>
+                                                    <span class="sp-type-badge sp-type-badge--file">📄 <?= (int) $fileCount ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($folderCount === 0 && $fileCount === 0): ?>
+                                                    <span class="sp-type-badge sp-type-badge--folder">📁 0</span>
+                                                <?php endif; ?>
                                             </span>
                                         </td>
-                                        <td><?= $modifiedDisplay !== '' ? e($modifiedDisplay) : '—' ?></td>
-                                        <td><?= $modifiedBy !== '' ? e($modifiedBy) : '—' ?></td>
-                                        <td><?= $person !== '' ? e($person) : '—' ?></td>
+                                        <td class="sp-meta-cell"><?= $modifiedDisplay !== '' ? e($modifiedDisplay) : '—' ?></td>
+                                        <td class="sp-meta-cell"><?= $modifiedBy !== '' ? '👤 ' . e($modifiedBy) : '—' ?></td>
+                                        <td class="sp-meta-cell"><?= $person !== '' ? '🙋 ' . e($person) : '—' ?></td>
                                         <td class="sharepoint-project-actions">
                                             <?php if ($folderUrl !== ''): ?>
                                                 <a class="button ghost-light sharepoint-open-sp" href="<?= e($folderUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
@@ -1072,8 +1346,9 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                     </form>
                 </nav>
             </section>
+            <?php endif; ?>
 
-            <dialog class="response-dialog sharepoint-project-dialog sp-workspace-dialog" id="sharepoint-project-dialog" aria-labelledby="sharepoint-project-dialog-title">
+            <dialog class="response-dialog sharepoint-project-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-project-dialog" aria-labelledby="sharepoint-project-dialog-title" data-density="compact">
                 <div class="response-dialog-form sharepoint-project-dialog-body">
                     <div class="response-dialog-head sp-dialog-drag-handle">
                         <div>
@@ -1086,12 +1361,17 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                             <button type="button" class="button ghost response-dialog-close" id="sharepoint-project-dialog-close" aria-label="Close">✕</button>
                         </div>
                     </div>
+                    <div class="sharepoint-project-dialog-stats" id="sharepoint-project-dialog-stats" hidden></div>
                     <div class="sharepoint-project-dialog-actions" id="sharepoint-project-dialog-actions"></div>
                     <div class="sharepoint-dialog-search" id="sharepoint-project-dialog-search-wrap" hidden>
                         <div class="sharepoint-dialog-toolbar">
                             <div class="sp-view-toggle" role="group" aria-label="Layout">
                                 <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
                                 <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
+                            </div>
+                            <div class="sp-view-toggle" role="group" aria-label="Chrome density">
+                                <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
+                                <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
                             </div>
                             <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
                                 <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders">⬇ Expand all</button>
@@ -1148,20 +1428,22 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                                 <tr>
                                     <th scope="col">📄 Name</th>
                                     <th scope="col">🏷️ Type</th>
+                                    <th scope="col">📦 Size</th>
                                     <th scope="col">🕒 Modified</th>
+                                    <th scope="col">📅 Created</th>
                                     <th scope="col">👤 Modified By</th>
-                                    <th scope="col">🙋 Person</th>
+                                    <th scope="col">🙋 Created By</th>
                                 </tr>
                             </thead>
                             <tbody id="sharepoint-project-dialog-rows">
-                                <tr><td colspan="5" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>
+                                <tr><td colspan="7" class="sharepoint-dialog-empty">⏳ Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </dialog>
 
-            <dialog class="response-dialog sharepoint-compare-dialog sp-workspace-dialog" id="sharepoint-compare-dialog" aria-labelledby="sharepoint-compare-dialog-title">
+            <dialog class="response-dialog sharepoint-compare-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-compare-dialog" aria-labelledby="sharepoint-compare-dialog-title" data-density="compact">
                 <div class="response-dialog-form sharepoint-compare-dialog-body">
                     <div class="response-dialog-head sp-dialog-drag-handle">
                         <div>
@@ -1186,6 +1468,10 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                             <div class="sp-view-toggle" role="group" aria-label="Layout">
                                 <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
                                 <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
+                            </div>
+                            <div class="sp-view-toggle" role="group" aria-label="Chrome density">
+                                <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
+                                <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
                             </div>
                             <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
                                 <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders on all sides">⬇ Expand all</button>
@@ -1362,7 +1648,7 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
                 </div>
             </dialog>
 
-            <?php if ($isAdmin): ?>
+            <?php if ($isAdmin && !$ownerSolo): ?>
                 <section class="upload-card sharepoint-admin-card" id="sharepoint-admin">
                     <details class="sharepoint-admin-shell" id="sharepoint-admin-shell" open>
                         <summary class="sharepoint-admin-shell-summary">
@@ -1631,11 +1917,15 @@ $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
-        <?php if ($isAdmin && $enableOneClickSync): ?>
+    <script src="assets/js/sharepoint-owner-stats.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-stats.js') ?>"></script>
+        <?php if (!$ownerSolo && $isAdmin): ?>
+        <script src="assets/js/sharepoint-source-delete.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-source-delete.js') ?>"></script>
+        <?php endif; ?>
+        <?php if (!$ownerSolo && $isAdmin && $enableOneClickSync): ?>
         <script src="assets/vendor/msal-browser.min.js?v=<?= filemtime(__DIR__ . '/assets/vendor/msal-browser.min.js') ?>"></script>
         <script src="assets/js/sharepoint-msal-sync.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-msal-sync.js') ?>"></script>
         <?php endif; ?>
-        <?php if ($isAdmin && $enableConsoleSync): ?>
+        <?php if (!$ownerSolo && $isAdmin && $enableConsoleSync): ?>
         <script src="assets/js/sharepoint-mfa-sync.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-mfa-sync.js') ?>"></script>
         <script src="assets/js/sharepoint-mfa-ui.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-mfa-ui.js') ?>"></script>
         <?php endif; ?>

@@ -68,6 +68,8 @@ final class SharePointListingImporter
                 'modified' => trim((string) ($row[$map['modified'] ?? -1] ?? '')),
                 'modified_by' => trim((string) ($row[$map['modified_by'] ?? -1] ?? '')),
                 'person' => trim((string) ($row[$map['person'] ?? -1] ?? '')),
+                'created' => trim((string) ($row[$map['created'] ?? -1] ?? '')),
+                'size' => trim((string) ($row[$map['size'] ?? -1] ?? '')),
             ];
         }
 
@@ -84,7 +86,11 @@ final class SharePointListingImporter
      *   url?: string,
      *   modified?: string,
      *   modified_by?: string,
-     *   person?: string
+     *   person?: string,
+     *   created?: string,
+     *   date_created?: string,
+     *   size?: int|string,
+     *   size_bytes?: int|string
      * }> $rows
      * @param array{source_key?: string, site_host?: string, site_path?: string, folder_path?: string}|null $source
      * @return array{ok: bool, count: int, projects: int, message: string, source_key: string}
@@ -121,6 +127,8 @@ final class SharePointListingImporter
             $modified = trim((string) ($row['modified'] ?? ''));
             $modifiedBy = trim((string) ($row['modified_by'] ?? ''));
             $person = trim((string) ($row['person'] ?? ''));
+            $created = trim((string) ($row['created'] ?? $row['date_created'] ?? ''));
+            $sizeBytes = $this->parseSizeBytes($row['size'] ?? $row['size_bytes'] ?? 0);
 
             if ($name === '' && $path === '') {
                 continue;
@@ -175,8 +183,9 @@ final class SharePointListingImporter
                     'web_url' => $url,
                     'relative_path' => $projectName,
                     'mime_type' => '',
-                    'size_bytes' => 0,
+                    'size_bytes' => $sizeBytes,
                     'last_modified' => $modified,
+                    'date_created' => $created,
                     'modified_by' => $modifiedBy,
                     'person' => $person,
                 ];
@@ -198,6 +207,7 @@ final class SharePointListingImporter
                         'mime_type' => '',
                         'size_bytes' => 0,
                         'last_modified' => '',
+                        'date_created' => '',
                         'modified_by' => '',
                         'person' => '',
                     ];
@@ -214,8 +224,9 @@ final class SharePointListingImporter
                 'web_url' => $url,
                 'relative_path' => $relative,
                 'mime_type' => '',
-                'size_bytes' => 0,
+                'size_bytes' => $sizeBytes,
                 'last_modified' => $modified,
+                'date_created' => $created,
                 'modified_by' => $modifiedBy,
                 'person' => $person,
             ];
@@ -248,7 +259,7 @@ final class SharePointListingImporter
 
     /**
      * @param array<int, mixed> $headerRow
-     * @return array{name?: int, path?: int, type?: int, url?: int, modified?: int, modified_by?: int, person?: int}
+     * @return array{name?: int, path?: int, type?: int, url?: int, modified?: int, modified_by?: int, person?: int, created?: int, size?: int}
      */
     private function mapHeaders(array $headerRow): array
     {
@@ -273,8 +284,14 @@ final class SharePointListingImporter
             } elseif (in_array($key, ['modifiedby', 'editor', 'lastmodifiedby'], true)
                 && !isset($map['modified_by'])) {
                 $map['modified_by'] = (int) $index;
-            } elseif (in_array($key, ['person', 'owner', 'assignedto'], true) && !isset($map['person'])) {
+            } elseif (in_array($key, ['person', 'owner', 'assignedto', 'createdby', 'author', 'createdbyuser'], true)
+                && !isset($map['person'])) {
                 $map['person'] = (int) $index;
+            } elseif (in_array($key, ['created', 'datecreated', 'createddate', 'timecreated'], true)
+                && !isset($map['created'])) {
+                $map['created'] = (int) $index;
+            } elseif (in_array($key, ['size', 'filesize', 'sizebytes', 'bytes'], true) && !isset($map['size'])) {
+                $map['size'] = (int) $index;
             }
         }
 
@@ -362,6 +379,35 @@ final class SharePointListingImporter
         }
 
         return 'https://' . $host . $sitePath . '/Shared%20Documents/' . implode('/', $encodedSegments);
+    }
+
+    private function parseSizeBytes(mixed $value): int
+    {
+        if (is_int($value) || is_float($value)) {
+            return max(0, (int) $value);
+        }
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return 0;
+        }
+        if (preg_match('/^\d+$/', $raw) === 1) {
+            return max(0, (int) $raw);
+        }
+        if (preg_match('/^([\d,.]+)\s*([kmgt]i?b)?$/i', $raw, $match) === 1) {
+            $number = (float) str_replace(',', '', $match[1]);
+            $unit = strtolower($match[2] ?? '');
+            $multiplier = match ($unit) {
+                'kb', 'kib' => 1024,
+                'mb', 'mib' => 1024 ** 2,
+                'gb', 'gib' => 1024 ** 3,
+                'tb', 'tib' => 1024 ** 4,
+                default => 1,
+            };
+
+            return max(0, (int) round($number * $multiplier));
+        }
+
+        return 0;
     }
 
     private function isAllowedUrl(string $url): bool

@@ -264,20 +264,17 @@ final class DashboardProjectResources
                                 $itemType = (string) ($item['item_type'] ?? 'file');
                                 $rel = (string) ($item['relative_path'] ?? '');
                                 $modified = (string) ($item['last_modified'] ?? '');
+                                $created = (string) ($item['date_created'] ?? '');
                                 $modifiedBy = (string) ($item['modified_by'] ?? '');
                                 $person = (string) ($item['person'] ?? '');
+                                $sizeBytes = (int) ($item['size_bytes'] ?? 0);
                                 if ($itemUrl === '') {
                                     continue;
                                 }
                                 $icon = $itemType === 'folder' ? '📁' : '📄';
-                                $modifiedDisplay = $modified;
-                                if ($modified !== '' && preg_match('/^\d{4}-\d{2}-\d{2}/', $modified) === 1) {
-                                    try {
-                                        $modifiedDisplay = (new \DateTimeImmutable($modified))->format('M j, Y g:i A');
-                                    } catch (\Throwable) {
-                                        $modifiedDisplay = $modified;
-                                    }
-                                }
+                                $modifiedDisplay = $this->formatSharePointDate($modified);
+                                $createdDisplay = $this->formatSharePointDate($created);
+                                $sizeDisplay = $this->formatSharePointSize($sizeBytes);
                                 ?>
                                 <li class="sharepoint-link-row">
                                     <span class="sharepoint-link-icon" aria-hidden="true"><?= $icon ?></span>
@@ -287,14 +284,20 @@ final class DashboardProjectResources
                                             <span class="sharepoint-link-path"><?= $this->e($rel) ?></span>
                                         <?php endif; ?>
                                         <span class="sharepoint-link-meta">
+                                            <?php if ($sizeDisplay !== ''): ?>
+                                                <span title="Size">📦 <?= $this->e($sizeDisplay) ?></span>
+                                            <?php endif; ?>
                                             <?php if ($modifiedDisplay !== ''): ?>
                                                 <span title="Modified">🕒 <?= $this->e($modifiedDisplay) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($createdDisplay !== ''): ?>
+                                                <span title="Created">📅 <?= $this->e($createdDisplay) ?></span>
                                             <?php endif; ?>
                                             <?php if ($modifiedBy !== ''): ?>
                                                 <span title="Modified By">✏️ <?= $this->e($modifiedBy) ?></span>
                                             <?php endif; ?>
                                             <?php if ($person !== ''): ?>
-                                                <span title="Person">👤 <?= $this->e($person) ?></span>
+                                                <span title="Created By">👤 <?= $this->e($person) ?></span>
                                             <?php endif; ?>
                                         </span>
                                     </div>
@@ -481,6 +484,40 @@ final class DashboardProjectResources
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    private function formatSharePointDate(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value) === 1) {
+            try {
+                return (new \DateTimeImmutable($value))->format('M j, Y g:i A');
+            } catch (\Throwable) {
+                return $value;
+            }
+        }
+
+        return $value;
+    }
+
+    private function formatSharePointSize(int $bytes): string
+    {
+        if ($bytes <= 0) {
+            return '';
+        }
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $value = (float) $bytes;
+        $unit = 0;
+        while ($value >= 1024 && $unit < count($units) - 1) {
+            $value /= 1024;
+            $unit++;
+        }
+        $digits = $unit === 0 || $value >= 10 ? 0 : 1;
+
+        return number_format($value, $digits) . ' ' . $units[$unit];
     }
 
     private function e(string $value): string
