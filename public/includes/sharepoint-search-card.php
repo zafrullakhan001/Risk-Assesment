@@ -144,6 +144,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                                 <label class="sharepoint-scope-chip-main">
                                     <input type="checkbox" class="sharepoint-scope-check" value="<?= e($srcKey) ?>"<?= $checked ? ' checked' : '' ?>>
                                     <span><?= e($srcTitle) ?></span>
+                                    <span class="sharepoint-scope-hit-count" hidden aria-hidden="true"></span>
                                 </label>
                                 <button type="button" class="sharepoint-scope-color-btn" data-source-key="<?= e($srcKey) ?>" title="Choose color for <?= e($srcTitle) ?>" aria-label="Choose color for <?= e($srcTitle) ?>" aria-haspopup="dialog" aria-expanded="false" style="--catalog-tone: <?= e($srcHex) ?>"></button>
                             </div>

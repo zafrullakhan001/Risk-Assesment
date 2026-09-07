@@ -4823,7 +4823,12 @@
         (urlSearchState.matchScope && urlSearchState.matchScope !== 'all')
       );
     })(),
+    /** @type {Record<string, array>} Prepared search projects keyed by source_key (for peer hit counts). */
+    indexBySource: {},
   };
+
+  /** @type {AbortController|null} */
+  let peerIndexAbort = null;
 
   const projectEntries = (project) => {
     if (!Array.isArray(project?._entriesAll)) {
@@ -5290,6 +5295,135 @@
       const checked = state.scopeKeys.includes(input.value);
       input.checked = checked;
       input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', checked);
+    });
+    syncCatalogHitBadges();
+  };
+
+  const hitCountSearchActive = () => !!(String(state.query || '').trim() || String(state.refine || '').trim());
+
+  const mergeProjectsIntoIndexCache = (projects) => {
+    if (!Array.isArray(projects) || !projects.length) return;
+    const grouped = {};
+    projects.forEach((project) => {
+      const key = String(project?.source_key || '');
+      if (!key) return;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(project);
+    });
+    Object.entries(grouped).forEach(([key, rows]) => {
+      state.indexBySource[key] = rows;
+    });
+  };
+
+  const ensurePeerIndexes = () => {
+    if (availableSources.length <= 1) return;
+    const missing = availableSources
+      .map((src) => String(src.source_key || ''))
+      .filter((key) => key && !Object.prototype.hasOwnProperty.call(state.indexBySource, key));
+    if (!missing.length) {
+      syncCatalogHitBadges();
+      return;
+    }
+
+    if (peerIndexAbort) {
+      try {
+        peerIndexAbort.abort();
+      } catch {
+        /* ignore */
+      }
+    }
+    const controller = new AbortController();
+    peerIndexAbort = controller;
+    const fetchGen = (state._peerIndexGen = (state._peerIndexGen || 0) + 1);
+
+    fetch(catalogApiUrl('search_index', { sources: missing.join(',') }), {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+    })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (fetchGen !== state._peerIndexGen) return;
+        if (!payload?.ok || !Array.isArray(payload.projects)) return;
+        mergeProjectsIntoIndexCache(payload.projects.map(prepareSearchProject));
+        // Ensure missing keys are marked present even if empty, so we do not refetch forever.
+        missing.forEach((key) => {
+          if (!Object.prototype.hasOwnProperty.call(state.indexBySource, key)) {
+            state.indexBySource[key] = [];
+          }
+        });
+        syncCatalogHitBadges();
+      })
+      .catch((error) => {
+        if (error?.name === 'AbortError') return;
+        /* Peer index is optional — leave badges for cached catalogs only. */
+      })
+      .finally(() => {
+        if (peerIndexAbort === controller) peerIndexAbort = null;
+      });
+  };
+
+  const catalogHitCounts = () => {
+    /** @type {Record<string, number>} */
+    const counts = {};
+    availableSources.forEach((src) => {
+      const key = String(src.source_key || '');
+      if (key) counts[key] = 0;
+    });
+    if (!hitCountSearchActive()) return counts;
+
+    const parsed = parseActiveQuery();
+    const refineParsed = state.refine.trim()
+      ? Fuzzy.parseCatalogQuery
+        ? Fuzzy.parseCatalogQuery(state.refine)
+        : { words: Fuzzy.getSearchWords(state.refine), phrases: [], excludes: [] }
+      : null;
+
+    Object.entries(state.indexBySource).forEach(([key, projects]) => {
+      if (!Array.isArray(projects)) return;
+      let n = 0;
+      projects.forEach((project) => {
+        if (!state.showArchived && project?.archived) return;
+        if (!projectPassesQueryFilters(project, parsed)) return;
+        const match = scoreParsedProject(project, parsed, refineParsed);
+        if (match?.matched) n += 1;
+      });
+      counts[key] = n;
+    });
+    return counts;
+  };
+
+  const syncCatalogHitBadges = () => {
+    if (!scopesRoot) return;
+    const active = hitCountSearchActive();
+    const counts = active ? catalogHitCounts() : {};
+    scopesRoot.querySelectorAll('.sharepoint-scope-chip[data-source-key]').forEach((chip) => {
+      const key = String(chip.getAttribute('data-source-key') || '');
+      let badge = chip.querySelector('.sharepoint-scope-hit-count');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'sharepoint-scope-hit-count';
+        badge.hidden = true;
+        badge.setAttribute('aria-hidden', 'true');
+        const label = chip.querySelector('.sharepoint-scope-chip-main');
+        label?.appendChild(badge);
+      }
+      const count = Number(counts[key] || 0);
+      const show = active && count > 0;
+      if (!show) {
+        badge.hidden = true;
+        badge.textContent = '';
+        badge.removeAttribute('title');
+        badge.setAttribute('aria-hidden', 'true');
+        chip.classList.remove('has-hits');
+        return;
+      }
+      badge.hidden = false;
+      badge.textContent = String(count);
+      badge.title = `${count} matching project${count === 1 ? '' : 's'} in this catalog`;
+      badge.setAttribute('aria-hidden', 'false');
+      chip.classList.toggle('has-hits', !chip.classList.contains('is-active'));
     });
   };
 
@@ -6663,6 +6797,14 @@
   const loadIndex = () => {
     const keys = state.scopeKeys.length ? state.scopeKeys : state.sourceKey ? [state.sourceKey] : [];
     if (!keys.length) return;
+    if (peerIndexAbort) {
+      try {
+        peerIndexAbort.abort();
+      } catch {
+        /* ignore */
+      }
+      peerIndexAbort = null;
+    }
     state.loadingIndex = true;
     state.ready = false;
     tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="${listVisibleColspan()}">⏳ Loading live search index…</td></tr>`;
@@ -6684,6 +6826,13 @@
           throw new Error(payload?.error || 'Unable to load search index.');
         }
         state.projects = payload.projects.map(prepareSearchProject);
+        mergeProjectsIntoIndexCache(state.projects);
+        // Mark requested keys present even when empty so peer fetch does not loop.
+        keys.forEach((key) => {
+          if (!Object.prototype.hasOwnProperty.call(state.indexBySource, key)) {
+            state.indexBySource[key] = [];
+          }
+        });
         state.itemCount = Number(payload.item_count || state.itemCount);
         state.projectCount = Number(payload.project_count || state.projects.length);
         state.lastSynced = payload.last_synced_at || state.lastSynced;
@@ -6700,6 +6849,7 @@
         state.loadingIndex = false;
         state.ready = true;
         populatePersonFilter();
+        ensurePeerIndexes();
         applySearch({ resetPage: true, syncInputs: true });
       })
       .catch((error) => {

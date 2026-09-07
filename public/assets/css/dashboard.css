@@ -5349,6 +5349,22 @@ body.is-presentation .print-only-block { display: block; }
     line-height: 1.45;
 }
 
+.ldap-details-head-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.65rem;
+    min-width: min(100%, 220px);
+}
+
+.ldap-export-form {
+    margin: 0;
+}
+
+.ldap-export-json-btn {
+    white-space: nowrap;
+}
+
 .ldap-status-badges {
     display: flex;
     flex-wrap: wrap;
@@ -5519,45 +5535,88 @@ body.is-presentation .print-only-block { display: block; }
 
 .ldap-group-list {
     margin: 0;
-    padding: 0;
+    padding: 0.25rem 0.7rem;
     list-style: none;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.55rem;
-    max-height: 280px;
+    display: block;
+    max-height: 240px;
     overflow: auto;
+    border: 1px solid color-mix(in srgb, #0284c7 22%, var(--line));
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, #e0f2fe 28%, var(--card));
 }
 
 .ldap-group-list li {
     display: flex;
-    gap: 0.55rem;
     align-items: flex-start;
-    padding: 0.55rem 0.65rem;
-    border: 1px solid color-mix(in srgb, #0284c7 22%, var(--line));
-    border-radius: var(--radius-sm);
-    background: linear-gradient(180deg, color-mix(in srgb, #e0f2fe 55%, var(--card)), var(--card));
+    gap: 0.45rem;
+    padding: 0.32rem 0;
+    border-bottom: 1px solid color-mix(in srgb, #0284c7 14%, var(--line));
+    font-size: 13px;
+    line-height: 1.35;
 }
 
-.ldap-group-icon {
+.ldap-group-list li:last-child {
+    border-bottom: none;
+}
+
+.ldap-group-line {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2rem 0.65rem;
+}
+
+.ldap-group-list strong {
     flex: 0 0 auto;
-    width: 28px;
-    height: 28px;
+    color: #0c4a6e;
+    font-size: 13px;
+}
+
+.ldap-group-list .table-sub {
+    flex: 1 1 12rem;
+    min-width: 0;
+    word-break: break-all;
+}
+
+.ldap-group-copy-btn {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 8px;
-    background: color-mix(in srgb, #38bdf8 22%, var(--card));
-    font-size: 14px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, #0284c7 28%, var(--line));
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, #e0f2fe 55%, var(--card));
+    color: #0369a1;
+    cursor: pointer;
 }
 
-.ldap-group-text {
-    min-width: 0;
-}
-
-.ldap-group-text strong {
+.ldap-group-copy-btn svg {
     display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.ldap-group-copy-btn:hover,
+.ldap-group-copy-btn:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, #0284c7 55%, var(--line));
+    background: color-mix(in srgb, #7dd3fc 28%, var(--card));
     color: #0c4a6e;
-    font-size: 13px;
+}
+
+.ldap-group-copy-btn.is-copied {
+    border-color: color-mix(in srgb, #16a34a 45%, var(--line));
+    background: color-mix(in srgb, #86efac 22%, var(--card));
+    color: #166534;
 }
 
 .ldap-attributes-details {
@@ -13691,6 +13750,35 @@ html.sp-workspace-scroll-lock body {
     gap: inherit;
     min-width: 0;
     cursor: pointer;
+}
+.sharepoint-scope-hit-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.15rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    color: var(--catalog-tone-ink, #0f172a);
+    background: color-mix(in srgb, var(--catalog-tone, var(--accent, #0f766e)) 22%, var(--surface, #fff));
+    border: 1px solid color-mix(in srgb, var(--catalog-tone, var(--accent, #0f766e)) 40%, transparent);
+}
+.sharepoint-scope-hit-count[hidden] {
+    display: none !important;
+}
+.sharepoint-scope-chip.has-hits:not(.is-active) {
+    border-color: color-mix(in srgb, var(--catalog-tone, var(--accent, #0f766e)) 45%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, var(--catalog-tone, var(--accent, #0f766e)) 8%, var(--surface, #fff));
+}
+#sharepoint-search.is-compact-chrome .sharepoint-scope-hit-count {
+    min-width: 1.1rem;
+    height: 1rem;
+    padding: 0 0.28rem;
+    font-size: 0.66rem;
 }
 .sharepoint-scope-color-btn {
     appearance: none;

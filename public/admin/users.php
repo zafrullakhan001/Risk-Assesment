@@ -124,6 +124,50 @@ function admin_provision_ldap_members(
     ];
 }
 
+/**
+ * @param array{
+ *   profile?: array<string, mixed>,
+ *   status?: array<string, mixed>,
+ *   groups?: list<array{cn: string, dn: string}>,
+ *   fields?: array<string, string>,
+ *   timestamps?: array<string, string>,
+ *   attributes?: array<string, string|list<string>>
+ * } $details
+ * @return array{
+ *   kind: string,
+ *   exported_at: string,
+ *   exported_by: string,
+ *   profile: array<string, mixed>,
+ *   status: array<string, mixed>,
+ *   groups: list<array{cn: string, dn: string}>,
+ *   fields: array<string, string>,
+ *   timestamps: array<string, string>,
+ *   attributes: array<string, string|list<string>>
+ * }
+ */
+function admin_ldap_user_export_payload(array $details, string $exportedBy): array
+{
+    return [
+        'kind' => 'ldap_user_details',
+        'exported_at' => gmdate('c'),
+        'exported_by' => $exportedBy,
+        'profile' => is_array($details['profile'] ?? null) ? $details['profile'] : [],
+        'status' => is_array($details['status'] ?? null) ? $details['status'] : [],
+        'groups' => is_array($details['groups'] ?? null) ? $details['groups'] : [],
+        'fields' => is_array($details['fields'] ?? null) ? $details['fields'] : [],
+        'timestamps' => is_array($details['timestamps'] ?? null) ? $details['timestamps'] : [],
+        'attributes' => is_array($details['attributes'] ?? null) ? $details['attributes'] : [],
+    ];
+}
+
+function admin_ldap_user_export_filename(string $username): string
+{
+    $safe = preg_replace('/[^A-Za-z0-9._-]+/', '-', $username) ?? '';
+    $safe = trim($safe, '-') ?: 'user';
+
+    return 'ldap-user-' . $safe . '-' . gmdate('Ymd-His') . '.json';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         require_valid_csrf();
@@ -269,6 +313,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ldapSearchResults = null;
                 }
             }
+        } elseif ($action === 'export_ldap_user') {
+            if (!$ldapEnabled) {
+                throw new RuntimeException('Enable LDAP under Authentication before exporting directory users.');
+            }
+            $username = trim((string) ($_POST['ldap_username'] ?? ''));
+            $ldapSearchQuery = trim((string) ($_POST['ldap_search_query'] ?? ''));
+            if ($username === '') {
+                throw new RuntimeException('Enter an LDAP username.');
+            }
+            $ldapUserDetails = $ldap->lookupUserDetails($username);
+            $json = json_encode(
+                admin_ldap_user_export_payload($ldapUserDetails, (string) $currentUser['username']),
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            if ($json === false) {
+                throw new RuntimeException('Unable to encode LDAP user details as JSON.');
+            }
+            $filename = admin_ldap_user_export_filename((string) ($ldapUserDetails['profile']['username'] ?? $username));
+            $usersRepo->logAudit(
+                'user.ldap_exported',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                (string) ($ldapUserDetails['profile']['username'] ?? $username),
+                ['dn' => (string) ($ldapUserDetails['profile']['dn'] ?? '')]
+            );
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . (string) strlen($json));
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-store');
+            echo $json;
+            exit;
         } elseif ($action === 'preview_ldap_group' || $action === 'create_ldap_group' || $action === 'import_ldap_group_selected') {
             if (!$ldapEnabled) {
                 throw new RuntimeException('Enable LDAP under Authentication before importing directory groups.');
@@ -711,17 +788,36 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                         <p class="ldap-details-dn"><span class="settings-emoji" aria-hidden="true">🧩</span> <?= e($detailProfile['dn']) ?></p>
                                     </div>
                                 </div>
-                                <div class="ldap-status-badges">
-                                    <?php foreach ($detailStatus['badges'] as $badge): ?>
-                                        <?php
-                                        $tone = (string) ($badge['tone'] ?? 'info');
-                                        $label = (string) ($badge['label'] ?? '');
-                                        ?>
-                                        <span class="ldap-status-badge tone-<?= e($tone) ?>">
-                                            <span class="settings-emoji" aria-hidden="true"><?= e($ldapBadgeEmoji($label, $tone)) ?></span>
-                                            <?= e($label) ?>
-                                        </span>
-                                    <?php endforeach; ?>
+                                <div class="ldap-details-head-actions">
+                                    <div class="ldap-status-badges">
+                                        <?php foreach ($detailStatus['badges'] as $badge): ?>
+                                            <?php
+                                            $tone = (string) ($badge['tone'] ?? 'info');
+                                            $label = (string) ($badge['label'] ?? '');
+                                            ?>
+                                            <span class="ldap-status-badge tone-<?= e($tone) ?>">
+                                                <span class="settings-emoji" aria-hidden="true"><?= e($ldapBadgeEmoji($label, $tone)) ?></span>
+                                                <?= e($label) ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <?php
+                                    $ldapExportJson = json_encode(
+                                        admin_ldap_user_export_payload($ldapUserDetails, (string) $currentUser['username']),
+                                        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS
+                                    );
+                                    $ldapExportFilename = admin_ldap_user_export_filename((string) $detailProfile['username']);
+                                    ?>
+                                    <?php if (is_string($ldapExportJson) && $ldapExportJson !== ''): ?>
+                                        <script type="application/json" id="ldap-user-export-json" data-filename="<?= e($ldapExportFilename) ?>"><?= $ldapExportJson ?></script>
+                                    <?php endif; ?>
+                                    <form method="post" class="ldap-export-form" id="ldap-user-export-form">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="export_ldap_user">
+                                        <input type="hidden" name="ldap_username" value="<?= e((string) $detailProfile['username']) ?>">
+                                        <input type="hidden" name="ldap_search_query" value="<?= e($ldapSearchQuery) ?>">
+                                        <button type="submit" class="button ghost ldap-export-json-btn" title="Download all LDAP details as JSON">⬇️ Export JSON</button>
+                                    </form>
                                 </div>
                             </div>
 
@@ -778,12 +874,22 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                     <?php else: ?>
                                         <ul class="ldap-group-list">
                                             <?php foreach ($detailGroups as $group): ?>
+                                                <?php
+                                                $groupCn = (string) $group['cn'];
+                                                $groupDn = (string) $group['dn'];
+                                                $groupCopyText = $groupCn . "\n" . $groupDn;
+                                                ?>
                                                 <li>
-                                                    <span class="ldap-group-icon" aria-hidden="true">🛡️</span>
-                                                    <span class="ldap-group-text">
-                                                        <strong><?= e($group['cn']) ?></strong>
-                                                        <span class="table-sub"><?= e($group['dn']) ?></span>
+                                                    <span class="ldap-group-line">
+                                                        <strong><?= e($groupCn) ?></strong>
+                                                        <span class="table-sub"><?= e($groupDn) ?></span>
                                                     </span>
+                                                    <button type="button" class="ldap-group-copy-btn" data-copy-text="<?= e($groupCopyText) ?>" title="Copy <?= e($groupCn) ?>" aria-label="Copy <?= e($groupCn) ?>">
+                                                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                                                            <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                                        </svg>
+                                                    </button>
                                                 </li>
                                             <?php endforeach; ?>
                                         </ul>
@@ -1491,6 +1597,78 @@ require dirname(__DIR__) . '/includes/admin-header.php';
         if (formId) {
             syncForm(formId);
         }
+    });
+
+    const copyTextToClipboard = async (text) => {
+        const value = String(text || '');
+        if (value === '') {
+            return false;
+        }
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+        } catch {
+            /* fall through */
+        }
+        try {
+            const area = document.createElement('textarea');
+            area.value = value;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.left = '-9999px';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            return ok;
+        } catch {
+            return false;
+        }
+    };
+
+    document.querySelectorAll('.ldap-group-copy-btn[data-copy-text]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const text = btn.getAttribute('data-copy-text') || '';
+            const ok = await copyTextToClipboard(text);
+            const label = btn.getAttribute('aria-label') || 'Copy group';
+            btn.classList.toggle('is-copied', ok);
+            btn.title = ok ? 'Copied' : 'Copy failed';
+            btn.setAttribute('aria-label', ok ? 'Copied' : 'Copy failed');
+            window.setTimeout(() => {
+                btn.classList.remove('is-copied');
+                btn.title = label;
+                btn.setAttribute('aria-label', label);
+            }, 1400);
+        });
+    });
+
+    const exportForm = document.getElementById('ldap-user-export-form');
+    const exportJsonEl = document.getElementById('ldap-user-export-json');
+    exportForm?.addEventListener('submit', (event) => {
+        if (!(exportJsonEl instanceof HTMLElement)) {
+            return;
+        }
+        let payload = exportJsonEl.textContent || '';
+        if (payload.trim() === '') {
+            return;
+        }
+        try {
+            payload = JSON.stringify(JSON.parse(payload), null, 2);
+        } catch {
+            /* keep the raw payload */
+        }
+        event.preventDefault();
+        const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = exportJsonEl.getAttribute('data-filename') || 'ldap-user.json';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 })();
 </script>
