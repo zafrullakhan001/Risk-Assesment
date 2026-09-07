@@ -7421,6 +7421,24 @@ html.is-compact .site-footer {
     flex-wrap: wrap;
     gap: 0.5rem;
 }
+.share-link-copy-row-compact {
+    margin-top: 0.35rem;
+    gap: 0.35rem;
+}
+.share-link-copy-row-compact .share-link-url-input {
+    flex: 1 1 12rem;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+.share-link-copy-row-compact .button {
+    padding: 5px 10px;
+    font-size: 12px;
+}
+.share-link-row-legacy {
+    margin: 0.35rem 0 0;
+    font-size: 11px;
+    color: var(--muted);
+}
 .share-link-url-input {
     flex: 1 1 16rem;
     min-width: 0;

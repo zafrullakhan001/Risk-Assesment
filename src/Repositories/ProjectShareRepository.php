@@ -6,6 +6,7 @@ namespace RiskAssessment\Repositories;
 
 use PDO;
 use RiskAssessment\AppUrl;
+use RiskAssessment\Crypto;
 
 final class ProjectShareRepository
 {
@@ -13,6 +14,7 @@ final class ProjectShareRepository
 
     public function __construct(
         private readonly PDO $pdo,
+        private readonly Crypto $crypto,
     ) {
     }
 
@@ -36,6 +38,7 @@ final class ProjectShareRepository
 
         $token = bin2hex(random_bytes(self::TOKEN_BYTES));
         $tokenHash = $this->hashToken($token);
+        $tokenSecret = $this->crypto->encrypt($token);
         $userId = isset($actor['id']) ? (int) $actor['id'] : null;
         $username = trim((string) ($actor['username'] ?? ''));
 
@@ -51,14 +54,15 @@ final class ProjectShareRepository
 
             $insert = $this->pdo->prepare(
                 'INSERT INTO assessment_share_links (
-                    assessment_id, token_hash, created_by_user_id, created_by_username, created_at
+                    assessment_id, token_hash, token_secret, created_by_user_id, created_by_username, created_at
                  ) VALUES (
-                    :assessment_id, :token_hash, :created_by_user_id, :created_by_username, datetime(\'now\')
+                    :assessment_id, :token_hash, :token_secret, :created_by_user_id, :created_by_username, datetime(\'now\')
                  )'
             );
             $insert->execute([
                 ':assessment_id' => $assessmentId,
                 ':token_hash' => $tokenHash,
+                ':token_secret' => $tokenSecret,
                 ':created_by_user_id' => $userId > 0 ? $userId : null,
                 ':created_by_username' => $username,
             ]);
@@ -184,7 +188,9 @@ final class ProjectShareRepository
      *   created_by_username: string,
      *   expires_at: ?string,
      *   last_accessed_at: ?string,
-     *   is_active: bool
+     *   is_active: bool,
+     *   url: string,
+     *   can_copy: bool
      * }>
      */
     public function listForAssessment(int $assessmentId): array
@@ -194,7 +200,7 @@ final class ProjectShareRepository
         }
 
         $statement = $this->pdo->prepare(
-            'SELECT id, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
+            'SELECT id, created_at, created_by_username, expires_at, last_accessed_at, revoked_at, token_secret
              FROM assessment_share_links
              WHERE assessment_id = :assessment_id
              ORDER BY id DESC
@@ -212,6 +218,16 @@ final class ProjectShareRepository
                 $expiresTs = strtotime((string) $expiresAt);
                 $expired = $expiresTs !== false && $expiresTs < $now;
             }
+            $isActive = !$revoked && !$expired;
+            $url = '';
+            $canCopy = false;
+            if ($isActive) {
+                $token = $this->decryptToken((string) ($row['token_secret'] ?? ''));
+                if ($token !== null) {
+                    $url = self::absoluteUrl($token);
+                    $canCopy = true;
+                }
+            }
             $links[] = [
                 'id' => (int) ($row['id'] ?? 0),
                 'created_at' => (string) ($row['created_at'] ?? ''),
@@ -220,7 +236,9 @@ final class ProjectShareRepository
                 'last_accessed_at' => ($row['last_accessed_at'] ?? null) !== null && (string) $row['last_accessed_at'] !== ''
                     ? (string) $row['last_accessed_at']
                     : null,
-                'is_active' => !$revoked && !$expired,
+                'is_active' => $isActive,
+                'url' => $url,
+                'can_copy' => $canCopy,
             ];
         }
 
@@ -242,6 +260,26 @@ final class ProjectShareRepository
     public static function absoluteUrl(string $token): string
     {
         return AppUrl::absolute('share.php?t=' . rawurlencode($token));
+    }
+
+    private function decryptToken(string $tokenSecret): ?string
+    {
+        $tokenSecret = trim($tokenSecret);
+        if ($tokenSecret === '') {
+            return null;
+        }
+
+        try {
+            $token = trim($this->crypto->decrypt($tokenSecret));
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($token === '' || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return null;
+        }
+
+        return $token;
     }
 
     private function hashToken(string $token): string

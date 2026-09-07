@@ -329,7 +329,7 @@ HTML,
                     'id' => 'share-assessment',
                     'title' => 'Share an assessment',
                     'html' => <<<'HTML'
-<p>From an open project, open <strong>Actions → Share</strong>. Create a public read-only link. Copy it immediately — the full URL is shown only once.</p>
+<p>From an open project, open <strong>Actions → Share</strong>. Create a public read-only link. You can copy the URL again anytime while the link is active.</p>
 <ul>
 <li>Anyone with the link can open the dashboard without signing in.</li>
 <li>They cannot change responses, upload versions, or create new shares.</li>
@@ -347,7 +347,7 @@ HTML,
 <li>Recipients browse and search the selected catalogs (or owners) without signing in — including live search operators where the public card allows them.</li>
 <li>They cannot sync, edit folders, or open assessments.</li>
 <li>Uncheck any catalog you want to keep private. A tag/label is required so you can tell links apart.</li>
-<li>There is a maximum number of active links. Copy the URL when it appears — it is shown only once. Revoke when finished.</li>
+<li>There is a maximum number of active links. You can copy any active link again from the list. Revoke when finished.</li>
 </ul>
 <p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. On the signed-in catalog, project rows also have <strong>QR</strong> so you can scan the SharePoint folder URL on a phone.</p>
 HTML,

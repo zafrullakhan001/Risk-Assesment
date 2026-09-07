@@ -16,7 +16,7 @@ header('Pragma: no-cache');
 header('X-Robots-Tag: noindex, nofollow');
 
 $token = trim((string) ($_GET['t'] ?? $_GET['token'] ?? ''));
-$shareRepository = new CatalogShareRepository($pdo);
+$shareRepository = new CatalogShareRepository($pdo, $crypto);
 $share = $shareRepository->findActiveByToken($token);
 
 if ($share === null || ($share['kind'] ?? CatalogShareRepository::KIND_CATALOG) !== CatalogShareRepository::KIND_CATALOG) {

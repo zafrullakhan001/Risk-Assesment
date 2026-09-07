@@ -234,10 +234,12 @@ final class Database
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_share_links_assessment_id ON assessment_share_links (assessment_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_share_links_token_hash ON assessment_share_links (token_hash)');
+        self::ensureColumn($pdo, 'assessment_share_links', 'token_secret', "TEXT NOT NULL DEFAULT ''");
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS catalog_share_links (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 token_hash TEXT NOT NULL UNIQUE,
+                token_secret TEXT NOT NULL DEFAULT \'\',
                 source_keys TEXT NOT NULL DEFAULT \'\',
                 kind TEXT NOT NULL DEFAULT \'catalog\',
                 label TEXT NOT NULL DEFAULT \'\',
@@ -255,6 +257,7 @@ final class Database
         $pdo->exec("UPDATE catalog_share_links SET kind = 'catalog' WHERE kind IS NULL OR kind = ''");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_catalog_share_links_kind ON catalog_share_links (kind)');
         self::ensureColumn($pdo, 'catalog_share_links', 'label', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'catalog_share_links', 'token_secret', "TEXT NOT NULL DEFAULT ''");
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS template_workbooks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

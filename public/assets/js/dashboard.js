@@ -3324,16 +3324,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const copyShareBtn = document.getElementById('btn-copy-share-link');
     const shareUrlInput = document.getElementById('share-link-url');
     const shareCopyStatus = document.getElementById('share-link-copy-status');
+    const copyShareText = async (input) => {
+        const value = String(input?.value || '');
+        if (!value) return false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(value);
+            return true;
+        }
+        input.select();
+        document.execCommand('copy');
+        return true;
+    };
     if (copyShareBtn && shareUrlInput) {
         copyShareBtn.addEventListener('click', async () => {
-            const value = shareUrlInput.value;
             try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(value);
-                } else {
-                    shareUrlInput.select();
-                    document.execCommand('copy');
-                }
+                await copyShareText(shareUrlInput);
                 if (shareCopyStatus) {
                     shareCopyStatus.hidden = false;
                     shareCopyStatus.textContent = 'Link copied to clipboard.';
@@ -3347,4 +3352,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+    document.querySelectorAll('#share-link-panel .share-link-copy-btn').forEach((btn) => {
+        if (btn.id === 'btn-copy-share-link') return;
+        btn.addEventListener('click', async () => {
+            const input = document.getElementById(btn.getAttribute('data-copy-input') || '');
+            const statusEl = document.getElementById(btn.getAttribute('data-copy-status') || '');
+            if (!input) return;
+            try {
+                await copyShareText(input);
+                if (statusEl) {
+                    statusEl.hidden = false;
+                    statusEl.textContent = 'Link copied to clipboard.';
+                }
+            } catch {
+                input.select();
+                if (statusEl) {
+                    statusEl.hidden = false;
+                    statusEl.textContent = 'Select the link and press Ctrl+C to copy.';
+                }
+            }
+        });
+    });
 });

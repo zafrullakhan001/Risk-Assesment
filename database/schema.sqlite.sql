@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS assessment_share_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     assessment_id INTEGER NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
+    token_secret TEXT NOT NULL DEFAULT '',
     label TEXT NOT NULL DEFAULT '',
     created_by_user_id INTEGER,
     created_by_username TEXT NOT NULL DEFAULT '',
@@ -211,6 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_assessment_share_links_token_hash ON assessment_s
 CREATE TABLE IF NOT EXISTS catalog_share_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token_hash TEXT NOT NULL UNIQUE,
+    token_secret TEXT NOT NULL DEFAULT '',
     source_keys TEXT NOT NULL DEFAULT '',
     kind TEXT NOT NULL DEFAULT 'catalog',
     label TEXT NOT NULL DEFAULT '',

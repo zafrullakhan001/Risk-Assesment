@@ -16,7 +16,7 @@ use RiskAssessment\Repositories\CatalogShareRepository;
  * @var bool $shareHasActive
  * @var int $shareActiveCount
  * @var string|null $shareFreshUrl
- * @var list<array{id: int, label?: string, source_keys: list<string>, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
+ * @var list<array{id: int, label?: string, source_keys: list<string>, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool, url?: string, can_copy?: bool}> $shareLinks
  * @var int $shareHistoryPage
  * @var int $shareHistoryPages
  * @var int $shareHistoryTotal
@@ -78,7 +78,7 @@ $showSectionMove = !empty($showSectionMove);
 
             <?php if ($shareFreshUrl !== ''): ?>
                 <div class="share-link-fresh alert alert-success">
-                    <strong><?= e((string) ($shareFreshLabel ?? 'Copy this public link now')) ?><?= $shareFreshTag !== '' ? ' · ' . e($shareFreshTag) : '' ?></strong> — it will not be shown again.
+                    <strong><?= e((string) ($shareFreshLabel ?? 'Public link created')) ?><?= $shareFreshTag !== '' ? ' · ' . e($shareFreshTag) : '' ?></strong>
                     <div class="share-link-copy-row">
                         <input type="text" class="share-link-url-input" id="<?= e($urlInputId) ?>" readonly value="<?= e($shareFreshUrl) ?>">
                         <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($urlInputId) ?>" data-copy-status="<?= e($statusId) ?>" id="<?= e($copyBtnId) ?>">📋 Copy</button>
@@ -164,6 +164,8 @@ $showSectionMove = !empty($showSectionMove);
                             $linkId = (int) ($link['id'] ?? 0);
                             $linkLabel = trim((string) ($link['label'] ?? ''));
                             $linkActive = !empty($link['is_active']);
+                            $linkUrl = trim((string) ($link['url'] ?? ''));
+                            $linkCanCopy = $linkActive && !empty($link['can_copy']) && $linkUrl !== '';
                             $scopeKeys = $link['source_keys'] ?? [];
                             if ($scopeKeys === []) {
                                 $scopeLabel = 'All catalogs';
@@ -182,6 +184,8 @@ $showSectionMove = !empty($showSectionMove);
                                 $meta .= ' · Opened ' . (string) $link['last_accessed_at'];
                             }
                             $revokeFormId = 'share-revoke-' . $formSuffix . '-' . $linkId;
+                            $rowUrlInputId = 'share-link-url-' . $formSuffix . '-' . $linkId;
+                            $rowStatusId = 'share-link-copy-status-' . $formSuffix . '-' . $linkId;
                             $revokeConfirm = $linkLabel !== ''
                                 ? 'Revoke the public link "' . $linkLabel . '"? Anyone with that URL will lose access.'
                                 : 'Revoke this public link? Anyone with that URL will lose access.';
@@ -201,6 +205,16 @@ $showSectionMove = !empty($showSectionMove);
                                     <?php endif; ?>
                                     <span class="share-link-row-scope"><?= e($scopeLabel) ?></span>
                                     <span class="share-link-row-meta"><?= e($meta) ?></span>
+                                    <?php if ($linkCanCopy): ?>
+                                        <div class="share-link-copy-row share-link-copy-row-compact">
+                                            <input type="text" class="share-link-url-input" id="<?= e($rowUrlInputId) ?>" readonly value="<?= e($linkUrl) ?>">
+                                            <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($rowUrlInputId) ?>" data-copy-status="<?= e($rowStatusId) ?>">📋 Copy</button>
+                                            <a class="button ghost-light" href="<?= e($linkUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
+                                        </div>
+                                        <p class="share-link-copy-status" id="<?= e($rowStatusId) ?>" hidden></p>
+                                    <?php elseif ($linkActive): ?>
+                                        <p class="share-link-row-legacy">URL was not stored for this older link. Revoke it and create a new one to copy the address again.</p>
+                                    <?php endif; ?>
                                 </div>
                                 <?php if ($linkActive && $linkId > 0): ?>
                                     <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" onsubmit="return confirm(<?= e($revokeConfirmJs) ?>);">

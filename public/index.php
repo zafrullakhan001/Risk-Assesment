@@ -34,7 +34,7 @@ $changeLogRepository = new AssessmentChangeLogRepository($pdo);
 $projectLinksRepository = new ProjectLinksRepository($pdo);
 $projectMermaidRepository = new ProjectMermaidRepository($pdo);
 $projectPicturesRepository = new ProjectPicturesRepository($pdo);
-$projectShareRepository = new ProjectShareRepository($pdo);
+$projectShareRepository = new ProjectShareRepository($pdo, $crypto);
 $sharePointCatalogRepository = new SharePointCatalogRepository($pdo);
 $sharePointArchives = new SharePointArchiveRepository($pdo);
 $projectImageConverter = new ProjectImageConverter();
@@ -957,7 +957,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($postedAction === 'create_share_link') {
                 $created = $projectShareRepository->create($targetId, $currentUser);
                 $_SESSION['fresh_share_url'] = ProjectShareRepository::absoluteUrl($created['token']);
-                $flash = 'Read-only share link created. Copy it from the Share tab — it is shown only once.';
+                $flash = 'Read-only share link created. You can copy it anytime from the Share tab while it is active.';
             } else {
                 $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
                 if ($shareId > 0) {

@@ -6,6 +6,7 @@ namespace RiskAssessment\Repositories;
 
 use PDO;
 use RiskAssessment\AppUrl;
+use RiskAssessment\Crypto;
 
 /**
  * Public read-only share links for SharePoint catalog cards and project-owner cards.
@@ -21,6 +22,7 @@ final class CatalogShareRepository
 
     public function __construct(
         private readonly PDO $pdo,
+        private readonly Crypto $crypto,
     ) {
     }
 
@@ -72,6 +74,7 @@ final class CatalogShareRepository
         $normalized = $this->normalizeSourceKeys($sourceKeys);
         $token = bin2hex(random_bytes(self::TOKEN_BYTES));
         $tokenHash = $this->hashToken($token);
+        $tokenSecret = $this->crypto->encrypt($token);
         $userId = isset($actor['id']) ? (int) $actor['id'] : null;
         $username = trim((string) ($actor['username'] ?? ''));
         $sourceJson = $normalized === [] ? '' : json_encode($normalized, JSON_UNESCAPED_UNICODE);
@@ -86,13 +89,14 @@ final class CatalogShareRepository
 
             $insert = $this->pdo->prepare(
                 'INSERT INTO catalog_share_links (
-                    token_hash, kind, label, source_keys, created_by_user_id, created_by_username, created_at
+                    token_hash, token_secret, kind, label, source_keys, created_by_user_id, created_by_username, created_at
                  ) VALUES (
-                    :token_hash, :kind, :label, :source_keys, :created_by_user_id, :created_by_username, datetime(\'now\')
+                    :token_hash, :token_secret, :kind, :label, :source_keys, :created_by_user_id, :created_by_username, datetime(\'now\')
                  )'
             );
             $insert->execute([
                 ':token_hash' => $tokenHash,
+                ':token_secret' => $tokenSecret,
                 ':kind' => $kind,
                 ':label' => $label,
                 ':source_keys' => is_string($sourceJson) ? $sourceJson : '',
@@ -278,7 +282,9 @@ final class CatalogShareRepository
      *   created_by_username: string,
      *   expires_at: ?string,
      *   last_accessed_at: ?string,
-     *   is_active: bool
+     *   is_active: bool,
+     *   url: string,
+     *   can_copy: bool
      * }>
      */
     public function listPage(string $kind = self::KIND_CATALOG, int $page = 1, int $perPage = self::HISTORY_PER_PAGE): array
@@ -289,7 +295,7 @@ final class CatalogShareRepository
         $offset = ($page - 1) * $perPage;
 
         $statement = $this->pdo->prepare(
-            'SELECT id, label, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
+            'SELECT id, label, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at, token_secret
              FROM catalog_share_links
              WHERE kind = :kind
              ORDER BY id DESC
@@ -301,7 +307,7 @@ final class CatalogShareRepository
         $statement->execute();
         $rows = $statement->fetchAll() ?: [];
 
-        return $this->mapHistoryRows($rows);
+        return $this->mapHistoryRows($rows, $kind);
     }
 
     /**
@@ -313,14 +319,16 @@ final class CatalogShareRepository
      *   created_by_username: string,
      *   expires_at: ?string,
      *   last_accessed_at: ?string,
-     *   is_active: bool
+     *   is_active: bool,
+     *   url: string,
+     *   can_copy: bool
      * }|null
      */
     public function findActive(string $kind = self::KIND_CATALOG): ?array
     {
         $kind = self::normalizeKind($kind);
         $statement = $this->pdo->prepare(
-            "SELECT id, label, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at
+            "SELECT id, label, source_keys, created_at, created_by_username, expires_at, last_accessed_at, revoked_at, token_secret
              FROM catalog_share_links
              WHERE kind = :kind
                AND (revoked_at IS NULL OR revoked_at = '')
@@ -337,7 +345,7 @@ final class CatalogShareRepository
         if (!is_array($row)) {
             return null;
         }
-        $mapped = $this->mapHistoryRows([$row]);
+        $mapped = $this->mapHistoryRows([$row], $kind);
 
         return $mapped[0] ?? null;
     }
@@ -351,7 +359,9 @@ final class CatalogShareRepository
      *   created_by_username: string,
      *   expires_at: ?string,
      *   last_accessed_at: ?string,
-     *   is_active: bool
+     *   is_active: bool,
+     *   url: string,
+     *   can_copy: bool
      * }>
      */
     public function listRecent(int $limit = 20, string $kind = self::KIND_CATALOG): array
@@ -399,11 +409,14 @@ final class CatalogShareRepository
      *   created_by_username: string,
      *   expires_at: ?string,
      *   last_accessed_at: ?string,
-     *   is_active: bool
+     *   is_active: bool,
+     *   url: string,
+     *   can_copy: bool
      * }>
      */
-    private function mapHistoryRows(array $rows): array
+    private function mapHistoryRows(array $rows, string $kind = self::KIND_CATALOG): array
     {
+        $kind = self::normalizeKind($kind);
         $now = time();
         $links = [];
         foreach ($rows as $row) {
@@ -413,6 +426,16 @@ final class CatalogShareRepository
             if ($expiresAt !== null && (string) $expiresAt !== '') {
                 $expiresTs = strtotime((string) $expiresAt);
                 $expired = $expiresTs !== false && $expiresTs < $now;
+            }
+            $isActive = !$revoked && !$expired;
+            $url = '';
+            $canCopy = false;
+            if ($isActive) {
+                $token = $this->decryptToken((string) ($row['token_secret'] ?? ''));
+                if ($token !== null) {
+                    $url = self::absoluteUrl($token, $kind);
+                    $canCopy = true;
+                }
             }
             $links[] = [
                 'id' => (int) ($row['id'] ?? 0),
@@ -424,11 +447,33 @@ final class CatalogShareRepository
                 'last_accessed_at' => ($row['last_accessed_at'] ?? null) !== null && (string) $row['last_accessed_at'] !== ''
                     ? (string) $row['last_accessed_at']
                     : null,
-                'is_active' => !$revoked && !$expired,
+                'is_active' => $isActive,
+                'url' => $url,
+                'can_copy' => $canCopy,
             ];
         }
 
         return $links;
+    }
+
+    private function decryptToken(string $tokenSecret): ?string
+    {
+        $tokenSecret = trim($tokenSecret);
+        if ($tokenSecret === '') {
+            return null;
+        }
+
+        try {
+            $token = trim($this->crypto->decrypt($tokenSecret));
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($token === '' || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return null;
+        }
+
+        return $token;
     }
 
     /**

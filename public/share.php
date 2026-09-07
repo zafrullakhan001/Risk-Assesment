@@ -23,7 +23,7 @@ header('Pragma: no-cache');
 header('X-Robots-Tag: noindex, nofollow');
 
 $token = trim((string) ($_GET['t'] ?? $_GET['token'] ?? ''));
-$shareRepository = new ProjectShareRepository($pdo);
+$shareRepository = new ProjectShareRepository($pdo, $crypto);
 $share = $shareRepository->findActiveByToken($token);
 
 if ($share === null) {

@@ -54,7 +54,7 @@ final class DashboardRenderer
      * @param array{name?: string, email?: string} $evaluatorDefaults
      * @param list<array{id: int, title: string, mime_type: string, original_filename: string, sort_order: int}> $projectPictures
      * @param list<array{id: int, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool}> $shareLinks
-     * @param string|null $freshShareUrl Absolute URL shown once after creating a share link
+     * @param string|null $freshShareUrl Absolute URL shown after creating a share link
      * @param array{project_name: string, folder_url: string, items: list<array<string, mixed>>}|null $sharePointCatalog
      */
     public function render(
