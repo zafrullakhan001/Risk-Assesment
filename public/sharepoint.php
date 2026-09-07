@@ -148,6 +148,10 @@ $isAdmin = !empty($currentUser['is_admin']);
 
 $error = '';
 $flash = '';
+$catalogShareFlash = '';
+$ownersShareFlash = '';
+$catalogShareFlashType = 'success';
+$ownersShareFlashType = 'success';
 $testResult = null;
 $freshCatalogShareUrl = null;
 $freshOwnersShareUrl = null;
@@ -1062,6 +1066,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $error = $exception->getMessage();
+        $action = (string) ($_POST['action'] ?? '');
+        if (str_contains($action, 'share')) {
+            if (str_contains($action, 'owners')) {
+                $ownersShareFlash = $error;
+                $ownersShareFlashType = 'error';
+            } else {
+                $catalogShareFlash = $error;
+                $catalogShareFlashType = 'error';
+            }
+            $error = '';
+        }
     }
 }
 
@@ -1078,17 +1093,20 @@ if ($thisClientIdSafe !== '' && !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{
 
 $msalRedirectUri = AppUrl::absoluteMatchingRequest('sharepoint.php');
 
-if (isset($_GET['emailed']) && $flash === '') {
+if (isset($_GET['emailed']) && $catalogShareFlash === '' && $ownersShareFlash === '') {
     $emailedCount = max(1, (int) $_GET['emailed']);
-    $flash = $emailedCount === 1
+    $emailedMsg = $emailedCount === 1
         ? 'Public link emailed to 1 recipient.'
         : 'Public link emailed to ' . $emailedCount . ' recipients.';
-}
-if (isset($_GET['catalog_shared']) && $flash === '') {
-    $flash = 'Catalog share settings updated.';
-}
-if (isset($_GET['owners_shared']) && $flash === '') {
-    $flash = 'Project owners share settings updated.';
+    if (isset($_GET['owners_shared'])) {
+        $ownersShareFlash = $emailedMsg;
+    } else {
+        $catalogShareFlash = $emailedMsg;
+    }
+} elseif (isset($_GET['catalog_shared']) && $catalogShareFlash === '') {
+    $catalogShareFlash = 'Catalog share settings updated.';
+} elseif (isset($_GET['owners_shared']) && $ownersShareFlash === '') {
+    $ownersShareFlash = 'Project owners share settings updated.';
 }
 
 $smtpSettingsUi = new SmtpSettings($settings, $crypto);
@@ -1828,7 +1846,10 @@ $soloPageClass = $ownerSolo
             $shareRevokeAction = 'revoke_catalog_share_link';
             $sharePurgeAction = 'purge_catalog_share_history';
             $shareEmailAction = 'email_catalog_share_link';
+            $sharePanelFlash = $catalogShareFlash;
+            $sharePanelFlashType = $catalogShareFlashType;
             $shareForceOpen = ($freshCatalogShareUrl !== null && $freshCatalogShareUrl !== '')
+                || $catalogShareFlash !== ''
                 || isset($_GET['catalog_shared'])
                 || isset($_GET['emailed'])
                 || (int) ($_GET['cshare_page'] ?? 0) > 0
@@ -2037,7 +2058,10 @@ $soloPageClass = $ownerSolo
             $shareRevokeAction = 'revoke_owners_share_link';
             $sharePurgeAction = 'purge_owners_share_history';
             $shareEmailAction = 'email_owners_share_link';
+            $sharePanelFlash = $ownersShareFlash;
+            $sharePanelFlashType = $ownersShareFlashType;
             $shareForceOpen = ($freshOwnersShareUrl !== null && $freshOwnersShareUrl !== '')
+                || $ownersShareFlash !== ''
                 || isset($_GET['owners_shared'])
                 || isset($_GET['emailed'])
                 || (int) ($_GET['oshare_page'] ?? 0) > 0

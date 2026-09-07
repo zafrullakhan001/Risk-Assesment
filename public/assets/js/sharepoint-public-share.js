@@ -32,6 +32,39 @@
     });
   });
 
+  const scrollShareCardIntoView = (card) => {
+    if (!(card instanceof HTMLElement)) return;
+    const run = () => {
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(run);
+    });
+    window.setTimeout(run, 80);
+  };
+
+  const focusShareTarget = (card) => {
+    if (!(card instanceof HTMLElement)) return;
+    const shell = card.querySelector('.sharepoint-share-shell');
+    if (shell) shell.open = true;
+    const fresh = card.querySelector('.share-link-fresh, .share-panel-flash');
+    const emailPanel = card.querySelector('.share-subpanel-email');
+    if (fresh) {
+      /* keep create/email context visible after create or email */
+    } else if (emailPanel && window.location.search.includes('emailed=')) {
+      emailPanel.open = true;
+    }
+    scrollShareCardIntoView(card);
+  };
+
+  try {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+  } catch {
+    /* ignore */
+  }
+
   document.querySelectorAll('.sharepoint-share-card').forEach((card) => {
     const shell = card.querySelector('.sharepoint-share-shell');
     if (!shell) return;
@@ -39,14 +72,20 @@
     const storageKey = `riskregister_sp_share_shell_${kind}`;
     const hashId = card.id ? `#${card.id}` : '';
     const forced = shell.hasAttribute('open');
+    const shouldAnchor =
+      (hashId && window.location.hash === hashId) ||
+      card.querySelector('.share-panel-flash, .share-link-fresh') !== null ||
+      (kind === 'catalog' && /[?&](catalog_shared|emailed)=/.test(window.location.search)) ||
+      (kind === 'owners' && /[?&](owners_shared|emailed)=/.test(window.location.search));
 
     card.querySelectorAll('[data-no-toggle]').forEach((el) => {
       el.addEventListener('click', (event) => event.stopPropagation());
       el.addEventListener('pointerdown', (event) => event.stopPropagation());
     });
 
-    if (hashId && window.location.hash === hashId) {
+    if (shouldAnchor) {
       shell.open = true;
+      focusShareTarget(card);
     } else if (!forced) {
       try {
         const saved = localStorage.getItem(storageKey);
