@@ -39,6 +39,10 @@ declare(strict_types=1);
                             <details class="sp-compare-columns-picker" id="sharepoint-project-columns-picker">
                                 <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
                                 <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
+                                    <div class="sp-compare-columns-menu-head">
+                                        <span class="sp-compare-columns-menu-title">Columns</span>
+                                        <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
+                                    </div>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size" checked> Size</label>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
@@ -183,6 +187,10 @@ declare(strict_types=1);
                             <details class="sp-compare-columns-picker" id="sharepoint-compare-columns-picker">
                                 <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
                                 <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
+                                    <div class="sp-compare-columns-menu-head">
+                                        <span class="sp-compare-columns-menu-title">Columns</span>
+                                        <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
+                                    </div>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size"> Size</label>
                                     <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>

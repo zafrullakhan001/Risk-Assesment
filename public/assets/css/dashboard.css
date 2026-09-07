@@ -12912,7 +12912,7 @@ html.sp-workspace-scroll-lock body {
     display: grid;
     gap: 0.35rem;
     min-width: 11rem;
-    padding: 0.65rem 0.75rem;
+    padding: 0.55rem 0.7rem 0.65rem;
     border-radius: 0.65rem;
     border: 1px solid var(--border, #e2e8f0);
     background: var(--surface, #fff);
@@ -12921,6 +12921,47 @@ html.sp-workspace-scroll-lock body {
 [data-theme="indigo"] .sp-compare-columns-menu {
     background: var(--card, #0f172a);
     border-color: color-mix(in srgb, #818cf8 28%, var(--border, #334155));
+}
+.sp-compare-columns-menu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.45rem;
+    margin: 0 -0.1rem 0.1rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+}
+[data-theme="indigo"] .sp-compare-columns-menu-head {
+    border-bottom-color: color-mix(in srgb, #818cf8 22%, var(--border, #334155));
+}
+.sp-compare-columns-menu-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #64748b);
+}
+.sp-columns-menu-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.55rem;
+    height: 1.55rem;
+    min-width: 1.55rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--text, #0f172a);
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.sp-columns-menu-close:hover,
+.sp-columns-menu-close:focus-visible {
+    background: color-mix(in srgb, #64748b 16%, transparent);
+    outline: none;
 }
 .sp-compare-col-option {
     display: flex;

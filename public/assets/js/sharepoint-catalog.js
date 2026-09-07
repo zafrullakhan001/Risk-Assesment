@@ -1216,6 +1216,33 @@
     return Math.max(count, LIST_FIXED_COL_COUNT);
   };
 
+  const closeColumnsPicker = (picker) => {
+    if (!picker) return;
+    if (picker instanceof HTMLDetailsElement) {
+      picker.open = false;
+      return;
+    }
+    const menu = picker.querySelector('.sp-compare-columns-menu');
+    const toggle = picker.querySelector('[aria-haspopup="true"]');
+    if (menu) menu.hidden = true;
+    if (toggle) {
+      toggle.classList.remove('is-active');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+  };
+
+  const bindColumnsMenuClose = (picker) => {
+    if (!picker || picker.dataset.columnsCloseBound === '1') return;
+    picker.dataset.columnsCloseBound = '1';
+    picker.querySelectorAll('[data-columns-close]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeColumnsPicker(picker);
+      });
+    });
+  };
+
   const applyListHiddenCols = () => {
     const card = document.getElementById('sharepoint-table-card');
     card?.setAttribute('data-hidden-cols', [...listHiddenCols].join(' '));
@@ -1263,6 +1290,7 @@
     picker.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
       event.stopPropagation();
     });
+    bindColumnsMenuClose(picker);
     document.addEventListener('click', (event) => {
       if (menu.hidden) return;
       if (picker.contains(event.target)) return;
@@ -2855,6 +2883,7 @@
     columnsPicker?.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
       event.stopPropagation();
     });
+    bindColumnsMenuClose(columnsPicker);
     applyHiddenColsToDialog();
 
     renderProjectTagsPanel = () => {
@@ -4337,6 +4366,7 @@
     columnsPicker?.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
       event.stopPropagation();
     });
+    bindColumnsMenuClose(columnsPicker);
 
     hiddenChips?.addEventListener('click', (event) => {
       const chip = event.target.closest('[data-unhide-key]');
