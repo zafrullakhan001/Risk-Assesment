@@ -68,13 +68,45 @@
     { key: 'type', label: 'Top file type' },
   ];
 
+  const publicShare = document.getElementById('sharepoint-search')?.getAttribute('data-public') === '1';
+  const CONTROLS_KEY = publicShare
+    ? 'riskregister_sp_public_search_dash_controls'
+    : 'riskregister_sp_search_dash_controls';
+  const HIT_SORT_KEYS = new Set(['modified', 'name', 'path', 'type', 'score']);
+
+  const readPersistedControls = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CONTROLS_KEY) || 'null');
+      return raw && typeof raw === 'object' ? raw : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const persistDashboardUi = () => {
+    try {
+      localStorage.setItem(
+        CONTROLS_KEY,
+        JSON.stringify({
+          sortBy: ui.sortBy,
+          groupBy: ui.groupBy,
+          hitsView: ui.hitsView,
+          hitSortKey: ui.hitSortKey,
+          hitSortDir: ui.hitSortDir,
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
   const ui = {
     typeFilter: '',
     catalogFilter: '',
     personFilter: '',
     sortBy: 'score',
     groupBy: '',
-    hitsView: 'chips', // chips | table
+    hitsView: 'table',
     hitSortKey: 'modified',
     hitSortDir: 'desc',
     selected: new Set(),
@@ -85,6 +117,18 @@
     hitCache: new Map(),
     detailMeta: new Map(),
   };
+
+  // Restore layout controls before first paint (table is default).
+  (() => {
+    const saved = readPersistedControls();
+    if (!saved) return;
+    if (SORT_OPTIONS.some((o) => o.key === saved.sortBy)) ui.sortBy = saved.sortBy;
+    if (GROUP_OPTIONS.some((o) => o.key === saved.groupBy)) ui.groupBy = saved.groupBy;
+    ui.hitsView = saved.hitsView === 'chips' ? 'chips' : 'table';
+    if (HIT_SORT_KEYS.has(saved.hitSortKey)) ui.hitSortKey = saved.hitSortKey;
+    ui.hitSortDir = saved.hitSortDir === 'asc' ? 'asc' : 'desc';
+  })();
+
 
   let currentSnapshot = null;
   let allowClose = false;
@@ -1186,17 +1230,29 @@
     hitSortDir: ui.hitSortDir,
   });
 
-  const applyDashboardUi = (saved) => {
+  const applyDashboardUi = (saved, { persist = true } = {}) => {
     if (!saved || typeof saved !== 'object') return;
-    ui.typeFilter = String(saved.typeFilter || '');
-    ui.catalogFilter = String(saved.catalogFilter || '');
-    ui.personFilter = String(saved.personFilter || '');
-    ui.sortBy = SORT_OPTIONS.some((o) => o.key === saved.sortBy) ? saved.sortBy : 'score';
-    ui.groupBy = GROUP_OPTIONS.some((o) => o.key === saved.groupBy) ? saved.groupBy : '';
-    ui.hitsView = saved.hitsView === 'table' ? 'table' : 'chips';
-    const hitKeys = new Set(['modified', 'name', 'path', 'type', 'score']);
-    ui.hitSortKey = hitKeys.has(saved.hitSortKey) ? saved.hitSortKey : 'modified';
-    ui.hitSortDir = saved.hitSortDir === 'asc' ? 'asc' : 'desc';
+    if (Object.prototype.hasOwnProperty.call(saved, 'typeFilter')) {
+      ui.typeFilter = String(saved.typeFilter || '');
+    }
+    if (Object.prototype.hasOwnProperty.call(saved, 'catalogFilter')) {
+      ui.catalogFilter = String(saved.catalogFilter || '');
+    }
+    if (Object.prototype.hasOwnProperty.call(saved, 'personFilter')) {
+      ui.personFilter = String(saved.personFilter || '');
+    }
+    if (SORT_OPTIONS.some((o) => o.key === saved.sortBy)) ui.sortBy = saved.sortBy;
+    if (GROUP_OPTIONS.some((o) => o.key === saved.groupBy) || saved.groupBy === '') {
+      ui.groupBy = saved.groupBy || '';
+    }
+    if (saved.hitsView === 'chips' || saved.hitsView === 'table') {
+      ui.hitsView = saved.hitsView;
+    }
+    if (HIT_SORT_KEYS.has(saved.hitSortKey)) ui.hitSortKey = saved.hitSortKey;
+    if (saved.hitSortDir === 'asc' || saved.hitSortDir === 'desc') {
+      ui.hitSortDir = saved.hitSortDir;
+    }
+    if (persist) persistDashboardUi();
   };
 
   const renderBody = (snapshot, kickFetch = true) => {
@@ -1279,10 +1335,12 @@
     });
     bodyEl.querySelector('[data-sd-sort]')?.addEventListener('change', (event) => {
       ui.sortBy = event.target.value || 'score';
+      persistDashboardUi();
       renderBody(snapshot, false);
     });
     bodyEl.querySelector('[data-sd-group]')?.addEventListener('change', (event) => {
       ui.groupBy = event.target.value || '';
+      persistDashboardUi();
       renderBody(snapshot, false);
     });
     bodyEl.querySelectorAll('[data-hits-view]').forEach((btn) => {
@@ -1293,6 +1351,7 @@
           ui.hitSortKey = 'modified';
           ui.hitSortDir = 'desc';
         }
+        persistDashboardUi();
         renderBody(snapshot, false);
       });
     });
@@ -1306,6 +1365,7 @@
           ui.hitSortDir = key === 'name' || key === 'path' || key === 'type' ? 'asc' : 'desc';
         }
         ui.hitsView = 'table';
+        persistDashboardUi();
         renderBody(snapshot, false);
       });
     });
@@ -1371,21 +1431,18 @@
     if (!snapshot || !snapshot.searching) return;
     allowClose = false;
     currentSnapshot = snapshot;
+    // Query-specific filters reset each open; layout controls stay from localStorage.
     ui.typeFilter = '';
     ui.catalogFilter = '';
     ui.personFilter = '';
-    ui.sortBy = 'score';
-    ui.groupBy = '';
-    ui.hitsView = 'chips';
-    ui.hitSortKey = 'modified';
-    ui.hitSortDir = 'desc';
     ui.selected = new Set();
     ui.expanded = new Set();
     ui.urlMap = new Map();
     ui.hitCache = new Map();
     ui.detailMeta = new Map();
     ui.loadingUrls = false;
-    applyDashboardUi(savedUi);
+    applyDashboardUi(readPersistedControls(), { persist: false });
+    if (savedUi) applyDashboardUi(savedUi, { persist: true });
     renderBody(snapshot, true);
     if (typeof dialog.showModal === 'function') {
       if (!dialog.open) dialog.showModal();
