@@ -613,7 +613,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $shareKind = str_contains($action, 'owners')
                 ? CatalogShareRepository::KIND_OWNERS
                 : CatalogShareRepository::KIND_CATALOG;
-            $shareHash = $shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners-share-panel' : 'catalog-share-panel';
             $shareFlag = $shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners_shared' : 'catalog_shared';
             $postedView = trim((string) ($_POST['view'] ?? $_GET['view'] ?? ''));
             $redirectParams = [
@@ -623,7 +622,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (in_array($postedView, ['owners', 'catalog', 'folders'], true)) {
                 $redirectParams['view'] = $postedView;
             }
-            $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams) . '#' . $shareHash;
+            // No URL hash: native hash scrolling fights section-board reorder and causes page jumps.
+            // Client JS restores the pre-submit scroll position instead.
+            $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams);
 
             if (str_starts_with($action, 'email_')) {
                 $smtpSettings = new SmtpSettings($settings, $crypto);
@@ -692,7 +693,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]
                 );
                 $redirectParams['emailed'] = (string) count($recipients);
-                $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams) . '#' . $shareHash;
+                $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams);
                 header('Location: ' . $shareRedirect);
                 exit;
             }
@@ -1308,7 +1309,6 @@ $shareListUrl = static function (array $overrides = []) use ($activeSourceKey, $
         'cshare_page' => $catalogShareHistPage,
         'oshare_page' => $ownersShareHistPage,
     ], $overrides);
-    $hash = trim((string) ($params['_hash'] ?? 'catalog-share-panel'));
     unset($params['_hash']);
     if (in_array($viewMode, ['owners', 'catalog', 'folders'], true) && ($params['view'] ?? '') === '') {
         $params['view'] = $viewMode;
@@ -1327,7 +1327,8 @@ $shareListUrl = static function (array $overrides = []) use ($activeSourceKey, $
     }
     $qs = http_build_query($params);
 
-    return 'sharepoint.php' . ($qs !== '' ? '?' . $qs : '') . '#' . ltrim($hash, '#');
+    // Keep pagination on the same viewport via JS scroll restore (no hash jump).
+    return 'sharepoint.php' . ($qs !== '' ? '?' . $qs : '');
 };
 
 $sourceTitleByKey = [];
@@ -1441,6 +1442,50 @@ $soloPageClass = $ownerSolo
         }
     })();
     </script>
+    <?php if ($isAdmin && !$foldersSolo): ?>
+    <script>
+    (function () {
+        try {
+            if ('scrollRestoration' in history) {
+                history.scrollRestoration = 'manual';
+            }
+            var search = String(location.search || '');
+            var shouldPin = /[?&](catalog_shared|owners_shared|emailed|cshare_page|oshare_page)=/.test(search);
+            if (!shouldPin) {
+                return;
+            }
+            var raw = sessionStorage.getItem('riskregister_sp_share_scroll');
+            var panelId = sessionStorage.getItem('riskregister_sp_share_panel') || '';
+            var rawOffset = sessionStorage.getItem('riskregister_sp_share_panel_offset');
+            if (raw === null || raw === '') {
+                return;
+            }
+            var top = parseInt(raw, 10);
+            if (!isFinite(top) || top < 0) {
+                return;
+            }
+            var offset = rawOffset === null || rawOffset === '' ? null : parseInt(rawOffset, 10);
+            var pin = function () {
+                var next = top;
+                if (panelId && isFinite(offset)) {
+                    var card = document.getElementById(panelId);
+                    if (card) {
+                        next = Math.max(0, Math.round(card.getBoundingClientRect().top + window.scrollY - offset));
+                    }
+                }
+                var se = document.scrollingElement || document.documentElement;
+                if (se) {
+                    se.scrollTop = next;
+                }
+                window.scrollTo(0, next);
+            };
+            pin();
+            document.addEventListener('DOMContentLoaded', pin);
+            window.addEventListener('load', pin);
+        } catch (e) { /* ignore */ }
+    })();
+    </script>
+    <?php endif; ?>
     <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

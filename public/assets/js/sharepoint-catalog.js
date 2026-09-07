@@ -7415,11 +7415,30 @@
     if (state.perPage !== 25) params.set('per', String(state.perPage));
     if (state.page > 1 && !state.query.trim() && !advancedFiltersActive()) params.set('page', String(state.page));
     const qs = params.toString();
-    const hash = catalogSolo
-      ? ''
-      : window.location.hash === '#sharepoint-owner-dash'
-        ? '#sharepoint-owner-dash'
-        : '#sharepoint-search';
+    const shareActionReturn = /[?&](catalog_shared|owners_shared|emailed)=/.test(window.location.search);
+    let hash = '';
+    if (!catalogSolo) {
+      if (window.location.hash === '#sharepoint-owner-dash') {
+        hash = '#sharepoint-owner-dash';
+      } else if (
+        window.location.hash === '#catalog-share-panel'
+        || window.location.hash === '#owners-share-panel'
+      ) {
+        hash = window.location.hash;
+      } else if (shareActionReturn) {
+        // Keep viewport stable after create/revoke/purge/email — do not force #sharepoint-search.
+        hash = '';
+      } else if (
+        window.location.hash === '#sharepoint-search'
+        || window.location.hash === '#sharepoint-table-card'
+      ) {
+        hash = window.location.hash;
+      } else if (window.location.hash) {
+        hash = window.location.hash;
+      } else {
+        hash = '#sharepoint-search';
+      }
+    }
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`;
     window.history.replaceState(null, '', next);
   };

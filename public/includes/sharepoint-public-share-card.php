@@ -165,7 +165,7 @@ $openHistory = $shareHistoryPage > 1 || ($shareHistoryTotal > 0 && $shareFreshUr
                                     <?= $shareHasActive ? '🔗 Create another' : '🔗 Create link' ?>
                                 </button>
                                 <?php if ($canPurge): ?>
-                                    <button type="submit" class="button ghost" form="<?= e($purgeFormId) ?>" onclick="return confirm('Permanently delete revoked and expired share history? Active links are kept.');">🧹 Purge</button>
+                                    <button type="submit" class="button ghost" form="<?= e($purgeFormId) ?>" data-share-confirm="Permanently delete revoked and expired share history? Active links are kept.">🧹 Purge</button>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -314,13 +314,6 @@ $openHistory = $shareHistoryPage > 1 || ($shareHistoryTotal > 0 && $shareFreshUr
                                     $revokeConfirm = $linkLabel !== ''
                                         ? 'Revoke the public link "' . $linkLabel . '"? Anyone with that URL will lose access.'
                                         : 'Revoke this public link? Anyone with that URL will lose access.';
-                                    $revokeConfirmJs = json_encode(
-                                        $revokeConfirm,
-                                        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP
-                                    );
-                                    if (!is_string($revokeConfirmJs)) {
-                                        $revokeConfirmJs = '"Revoke this public link?"';
-                                    }
                                     ?>
                                     <li class="share-link-row <?= $linkActive ? 'is-active' : 'is-revoked' ?>">
                                         <strong><?= $linkActive ? 'Active' : 'Revoked' ?></strong>
@@ -342,7 +335,7 @@ $openHistory = $shareHistoryPage > 1 || ($shareHistoryTotal > 0 && $shareFreshUr
                                             <?php endif; ?>
                                         </div>
                                         <?php if ($linkActive && $linkId > 0): ?>
-                                            <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" onsubmit="return confirm(<?= e($revokeConfirmJs) ?>);">
+                                            <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" data-share-confirm="<?= e($revokeConfirm) ?>">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="<?= e((string) $shareRevokeAction) ?>">
                                                 <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
