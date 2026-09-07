@@ -1804,7 +1804,7 @@
         title: stats.createdAt ? `First created ${formatModified(stats.createdAt.toISOString())}` : 'No created date',
       },
       {
-        label: 'Last update',
+        label: 'Updated',
         value: formatActivityDay(stats.lastUpdated),
         title: stats.lastUpdated
           ? `Last updated ${formatModified(stats.lastUpdated.toISOString())}`
@@ -3362,7 +3362,7 @@
       } else {
         editor = `<div class="sp-tag-editor"><span class="sp-tag-editor-label">Tags</span></div>`;
       }
-      tagsEl.innerHTML = `${editor}${chips || '<div class="sp-tag-chips sp-tag-chips--empty"><span class="sp-tag-empty">No tags yet</span></div>'}`;
+      tagsEl.innerHTML = `<div class="sp-project-tags-row">${editor}${chips || '<div class="sp-tag-chips sp-tag-chips--empty"><span class="sp-tag-empty">No tags yet</span></div>'}</div>`;
       bindTagEditor(tagsEl, {
         scope: 'project',
         path: '',

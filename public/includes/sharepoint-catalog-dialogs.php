@@ -5,107 +5,115 @@ declare(strict_types=1);
 ?>
             <dialog class="response-dialog sharepoint-project-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-project-dialog" aria-labelledby="sharepoint-project-dialog-title" data-density="compact">
                 <div class="response-dialog-form sharepoint-project-dialog-body">
-                    <div class="response-dialog-head sp-dialog-drag-handle">
-                        <div>
-                            <div class="eyebrow">📂 SharePoint project</div>
-                            <h3 id="sharepoint-project-dialog-title">Project</h3>
-                            <p class="response-dialog-sub" id="sharepoint-project-dialog-sub"></p>
+                    <section class="sp-dialog-band sp-dialog-band--identity" aria-label="Folder identity">
+                        <div class="response-dialog-head sp-dialog-drag-handle">
+                            <div>
+                                <div class="eyebrow">📂 SharePoint project</div>
+                                <h3 id="sharepoint-project-dialog-title">Project</h3>
+                                <p class="response-dialog-sub" id="sharepoint-project-dialog-sub"></p>
+                            </div>
+                            <div class="sp-dialog-window-tools">
+                                <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-project-dialog-refresh" title="Reload this folder from the database" aria-label="Refresh folder from database">
+                                    <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
+                                </button>
+                                <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-project-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
+                                <button type="button" class="button ghost response-dialog-close" id="sharepoint-project-dialog-close" aria-label="Close">✕</button>
+                            </div>
                         </div>
-                        <div class="sp-dialog-window-tools">
-                            <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-project-dialog-refresh" title="Reload this folder from the database" aria-label="Refresh folder from database">
-                                <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
-                            </button>
-                            <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-project-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
-                            <button type="button" class="button ghost response-dialog-close" id="sharepoint-project-dialog-close" aria-label="Close">✕</button>
-                        </div>
-                    </div>
-                    <div class="sharepoint-project-dialog-stats" id="sharepoint-project-dialog-stats" hidden></div>
-                    <div class="sharepoint-project-dialog-tags" id="sharepoint-project-dialog-tags" hidden></div>
-                    <div class="sharepoint-project-dialog-actions" id="sharepoint-project-dialog-actions"></div>
-                    <div class="sharepoint-dialog-search" id="sharepoint-project-dialog-search-wrap" hidden>
-                        <div class="sharepoint-dialog-toolbar">
-                            <div class="sp-view-toggle" role="group" aria-label="Layout">
-                                <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
-                                <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
-                            </div>
-                            <div class="sp-view-toggle" role="group" aria-label="Chrome density">
-                                <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
-                                <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
-                            </div>
-                            <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders">⬇ Expand all</button>
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders">⬆ Collapse all</button>
-                            </div>
-                            <details class="sp-compare-columns-picker" id="sharepoint-project-columns-picker">
-                                <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
-                                <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
-                                    <div class="sp-compare-columns-menu-head">
-                                        <span class="sp-compare-columns-menu-title">Columns</span>
-                                        <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
-                                    </div>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size" checked> Size</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created" checked> Created</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by" checked> Modified By</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Copy, QR &amp; tags</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="archive" checked> Archive</label>
+                        <div class="sharepoint-project-dialog-stats" id="sharepoint-project-dialog-stats" hidden></div>
+                    </section>
+                    <section class="sp-dialog-band sp-dialog-band--work" aria-label="Folder actions and tags">
+                        <div class="sharepoint-project-dialog-actions" id="sharepoint-project-dialog-actions"></div>
+                        <div class="sharepoint-project-dialog-tags" id="sharepoint-project-dialog-tags" hidden></div>
+                    </section>
+                    <section class="sp-dialog-band sp-dialog-band--find sharepoint-dialog-search" id="sharepoint-project-dialog-search-wrap" aria-label="Find and view" hidden>
+                        <div class="sp-dialog-find-primary">
+                            <div class="sharepoint-dialog-toolbar">
+                                <div class="sp-view-toggle" role="group" aria-label="Layout">
+                                    <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
+                                    <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
                                 </div>
-                            </details>
-                            <label class="sp-view-select">
-                                <span>Show</span>
-                                <select id="sharepoint-project-dialog-kind" aria-label="Show files and/or folders">
-                                    <option value="all" selected>Files &amp; folders</option>
-                                    <option value="files">Files only</option>
-                                    <option value="folders">Folders only</option>
-                                </select>
-                            </label>
-                            <label class="sp-view-select">
-                                <span>Type</span>
-                                <select id="sharepoint-project-dialog-ext" aria-label="File extension filter">
-                                    <option value="" selected>Any extension</option>
-                                    <option value="vsdx">Visio (.vsdx)</option>
-                                    <option value="vsd">Visio (.vsd)</option>
-                                    <option value="pdf">PDF</option>
-                                    <option value="xlsx">Excel (.xlsx)</option>
-                                    <option value="xls">Excel (.xls)</option>
-                                    <option value="docx">Word (.docx)</option>
-                                    <option value="doc">Word (.doc)</option>
-                                    <option value="pptx">PowerPoint (.pptx)</option>
-                                    <option value="msg">Email (.msg)</option>
-                                    <option value="zip">Archive (.zip)</option>
-                                </select>
-                            </label>
-                        </div>
-                        <div class="sharepoint-dialog-search-row">
-                            <label class="sharepoint-dialog-search-label" for="sharepoint-project-dialog-search">
-                                <span aria-hidden="true">🔎</span>
-                                <input type="search" id="sharepoint-project-dialog-search" placeholder='Try: encore · ext:pdf · path:archive · -exclude · "phrase"' autocomplete="off" title="Press Enter or Search to run. Supports AND/OR, Fuzzy, ext:, path:, person:, tag:, -exclude, and &quot;phrases&quot;.">
-                            </label>
-                            <button type="button" class="button button-primary sp-dialog-search-run" id="sharepoint-project-dialog-search-run" title="Run search (Enter)">Search</button>
-                        </div>
-                        <div class="sharepoint-dialog-saved-searches" id="sharepoint-project-dialog-saved" hidden>
-                            <span class="sharepoint-recent-label" title="Live Find query and saved searches from the main catalog">📌 Saved</span>
-                            <div class="sharepoint-recent-chips" id="sharepoint-project-dialog-saved-chips" role="list" aria-label="Saved searches"></div>
-                        </div>
-                        <p class="sp-dialog-search-pending-hint" id="sharepoint-project-dialog-search-pending" hidden>Press Enter or Search to apply</p>
-                        <div class="sharepoint-dialog-search-controls" id="sharepoint-project-dialog-search-controls">
-                            <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
-                                <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
-                                <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
+                                <div class="sp-view-toggle" role="group" aria-label="Chrome density">
+                                    <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
+                                    <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
+                                </div>
+                                <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
+                                    <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders">⬇ Expand all</button>
+                                    <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders">⬆ Collapse all</button>
+                                </div>
+                                <details class="sp-compare-columns-picker" id="sharepoint-project-columns-picker">
+                                    <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
+                                    <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
+                                        <div class="sp-compare-columns-menu-head">
+                                            <span class="sp-compare-columns-menu-title">Columns</span>
+                                            <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
+                                        </div>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size" checked> Size</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created" checked> Created</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by" checked> Modified By</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Copy, QR &amp; tags</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="archive" checked> Archive</label>
+                                    </div>
+                                </details>
+                                <label class="sp-view-select">
+                                    <span>Show</span>
+                                    <select id="sharepoint-project-dialog-kind" aria-label="Show files and/or folders">
+                                        <option value="all" selected>Files &amp; folders</option>
+                                        <option value="files">Files only</option>
+                                        <option value="folders">Folders only</option>
+                                    </select>
+                                </label>
+                                <label class="sp-view-select">
+                                    <span>Type</span>
+                                    <select id="sharepoint-project-dialog-ext" aria-label="File extension filter">
+                                        <option value="" selected>Any extension</option>
+                                        <option value="vsdx">Visio (.vsdx)</option>
+                                        <option value="vsd">Visio (.vsd)</option>
+                                        <option value="pdf">PDF</option>
+                                        <option value="xlsx">Excel (.xlsx)</option>
+                                        <option value="xls">Excel (.xls)</option>
+                                        <option value="docx">Word (.docx)</option>
+                                        <option value="doc">Word (.doc)</option>
+                                        <option value="pptx">PowerPoint (.pptx)</option>
+                                        <option value="msg">Email (.msg)</option>
+                                        <option value="zip">Archive (.zip)</option>
+                                    </select>
+                                </label>
                             </div>
-                            <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
+                            <div class="sharepoint-dialog-search-row">
+                                <label class="sharepoint-dialog-search-label" for="sharepoint-project-dialog-search">
+                                    <span aria-hidden="true">🔎</span>
+                                    <input type="search" id="sharepoint-project-dialog-search" placeholder='Try: encore · ext:pdf · path:archive · -exclude · "phrase"' autocomplete="off" title="Press Enter or Search to run. Supports AND/OR, Fuzzy, ext:, path:, person:, tag:, -exclude, and &quot;phrases&quot;.">
+                                </label>
+                                <button type="button" class="button button-primary sp-dialog-search-run" id="sharepoint-project-dialog-search-run" title="Run search (Enter)">Search</button>
+                            </div>
                         </div>
-                        <div class="sharepoint-dialog-search-chips" role="group" aria-label="Quick extensions">
-                            <button type="button" class="sp-dialog-chip" data-ext="vsdx">.vsdx</button>
-                            <button type="button" class="sp-dialog-chip" data-ext="pdf">.pdf</button>
-                            <button type="button" class="sp-dialog-chip" data-ext="xlsx">.xlsx</button>
-                            <button type="button" class="sp-dialog-chip" data-ext="docx">.docx</button>
-                            <button type="button" class="button ghost sp-dialog-search-clear" id="sharepoint-project-dialog-search-clear" hidden>Clear filters</button>
+                        <div class="sp-dialog-find-filters">
+                            <div class="sharepoint-dialog-saved-searches" id="sharepoint-project-dialog-saved" hidden>
+                                <span class="sharepoint-recent-label" title="Live Find query and saved searches from the main catalog">📌 Saved</span>
+                                <div class="sharepoint-recent-chips" id="sharepoint-project-dialog-saved-chips" role="list" aria-label="Saved searches"></div>
+                            </div>
+                            <p class="sp-dialog-search-pending-hint" id="sharepoint-project-dialog-search-pending" hidden>Press Enter or Search to apply</p>
+                            <div class="sharepoint-dialog-search-controls" id="sharepoint-project-dialog-search-controls">
+                                <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
+                                    <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
+                                    <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
+                                </div>
+                                <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
+                            </div>
+                            <div class="sharepoint-dialog-search-chips" role="group" aria-label="Quick extensions">
+                                <button type="button" class="sp-dialog-chip" data-ext="vsdx">.vsdx</button>
+                                <button type="button" class="sp-dialog-chip" data-ext="pdf">.pdf</button>
+                                <button type="button" class="sp-dialog-chip" data-ext="xlsx">.xlsx</button>
+                                <button type="button" class="sp-dialog-chip" data-ext="docx">.docx</button>
+                                <button type="button" class="button ghost sp-dialog-search-clear" id="sharepoint-project-dialog-search-clear" hidden>Clear filters</button>
+                            </div>
+                            <p class="sharepoint-dialog-search-meta" id="sharepoint-project-dialog-search-meta" aria-live="polite"></p>
                         </div>
-                        <p class="sharepoint-dialog-search-meta" id="sharepoint-project-dialog-search-meta" aria-live="polite"></p>
-                    </div>
+                    </section>
                     <div class="table-wrap sharepoint-dialog-table-wrap">
                         <table class="sharepoint-projects-table sharepoint-dialog-table">
                             <thead>

@@ -11130,11 +11130,16 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"
     opacity: 1;
 }
 .sharepoint-project-dialog-tags {
-    margin: 0 0 0.65rem;
-    padding: 0.55rem 0.7rem;
-    border: 1px solid var(--border, #e2e8f0);
-    border-radius: 0.65rem;
-    background: color-mix(in srgb, var(--card, #fff) 92%, #f5f3ff);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    min-width: 0;
+    flex: 1 1 14rem;
+}
+.sharepoint-project-dialog-tags[hidden] {
+    display: none !important;
 }
 .sp-tag-editor {
     display: flex;
@@ -12167,7 +12172,8 @@ html.sp-workspace-scroll-lock body {
 .sp-workspace-dialog .sharepoint-dialog-search,
 .sp-workspace-dialog .sharepoint-compare-legend,
 .sp-workspace-dialog .sharepoint-project-dialog-actions,
-.sp-workspace-dialog .response-dialog-head {
+.sp-workspace-dialog .response-dialog-head,
+.sp-workspace-dialog .sp-dialog-band {
     flex: 0 0 auto;
 }
 .sp-workspace-dialog .sharepoint-dialog-table-wrap,
@@ -13223,8 +13229,20 @@ html.sp-workspace-scroll-lock body {
 
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-body,
 .sharepoint-project-dialog.is-compact-chrome .response-dialog-form {
-    gap: 0.4rem;
-    padding: 0.6rem 0.8rem 0.7rem;
+    gap: 0.35rem;
+    padding: 0.55rem 0.75rem 0.65rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band + .sp-dialog-band:not(.sp-dialog-band--find) {
+    padding-top: 0.3rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band--find {
+    gap: 0.28rem;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0.5rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-find-primary,
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-find-filters {
+    gap: 0.28rem 0.4rem;
 }
 .sharepoint-project-dialog.is-compact-chrome .response-dialog-head {
     align-items: center;
@@ -13247,32 +13265,30 @@ html.sp-workspace-scroll-lock body {
     max-width: min(72vw, 720px);
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-stats {
-    gap: 0.25rem 0.35rem;
+    gap: 0.15rem 0.55rem;
     margin: 0;
 }
-.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-chip {
-    padding: 0.12rem 0.45rem;
-    font-size: 0.7rem;
-}
-.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-label {
-    font-size: 0.58rem;
-}
+.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-chip,
+.sharepoint-project-dialog.is-compact-chrome .sp-project-stat-label,
 .sharepoint-project-dialog.is-compact-chrome .sp-project-stat-value {
     font-size: 0.72rem;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-project-dialog-actions {
     gap: 0.35rem;
 }
-.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem 0.55rem;
-    margin: 0;
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band--work .sp-tag-editor-label,
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band--work .sp-tag-select,
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band--work .sp-tag-create-input,
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band--work .sp-tag-create-btn {
+    font-size: 0.72rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-band--work .sp-tag-chip {
+    font-size: 0.68rem;
+    padding: 0.08rem 0.38rem;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-toolbar {
     flex: 1 1 auto;
-    gap: 0.35rem 0.5rem;
+    gap: 0.3rem 0.4rem;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-label {
     flex: 1 1 180px;
@@ -13285,7 +13301,6 @@ html.sp-workspace-scroll-lock body {
     min-width: 0;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-saved-searches {
-    flex: 1 1 100%;
     margin: 0;
 }
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-saved-searches--panel {
@@ -13312,7 +13327,7 @@ html.sp-workspace-scroll-lock body {
     margin: 0;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-chips {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     gap: 0.28rem;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-meta {
@@ -13499,41 +13514,163 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-project-dialog-body {
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 0.5rem;
 }
+
+/* Three-band chrome: identity → work → find */
+.sharepoint-project-dialog .sp-dialog-band {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.65rem;
+    min-width: 0;
+}
+.sharepoint-project-dialog .sp-dialog-band + .sp-dialog-band:not(.sp-dialog-band--find) {
+    padding-top: 0.4rem;
+    border-top: 1px solid color-mix(in srgb, var(--border, #e2e8f0) 85%, transparent);
+}
+.sharepoint-project-dialog .sp-dialog-band + .sp-dialog-band--find {
+    margin-top: 0.15rem;
+}
+.sharepoint-project-dialog .sp-dialog-band--identity {
+    align-items: flex-start;
+    gap: 0.3rem 0.75rem;
+}
+.sharepoint-project-dialog .sp-dialog-band--identity .response-dialog-head {
+    flex: 1 1 16rem;
+    min-width: 0;
+    margin: 0;
+    width: 100%;
+}
+.sharepoint-project-dialog .sp-dialog-band--identity .sharepoint-project-dialog-stats {
+    flex: 1 1 100%;
+    margin: 0;
+}
+.sharepoint-project-dialog .sp-dialog-band--work {
+    align-items: center;
+}
+.sharepoint-project-dialog .sp-dialog-band--work:not(:has(#sharepoint-project-dialog-actions:not(:empty))):not(:has(#sharepoint-project-dialog-tags:not([hidden]))) {
+    display: none;
+}
+.sharepoint-project-dialog .sp-dialog-band--work .sharepoint-project-dialog-actions {
+    flex: 0 1 auto;
+    margin: 0;
+}
+.sharepoint-project-dialog .sp-dialog-band--work .sharepoint-project-dialog-tags {
+    flex: 1 1 12rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+}
+.sharepoint-project-dialog .sp-dialog-band--work .sp-project-tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+    min-width: 0;
+    width: 100%;
+}
+.sharepoint-project-dialog .sp-dialog-band--work .sp-tag-editor {
+    margin-bottom: 0;
+    gap: 0.35rem 0.45rem;
+}
+.sharepoint-project-dialog .sp-dialog-band--work .sp-tag-editor-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+.sharepoint-project-dialog .sp-dialog-band--work .sp-tag-chips {
+    margin-top: 0;
+    display: inline-flex;
+}
+.sharepoint-project-dialog .sp-dialog-band--find {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, var(--surface-2, #f8fafc) 92%, transparent);
+}
+.sharepoint-project-dialog .sp-dialog-band--find[hidden] {
+    display: none !important;
+}
+.sharepoint-project-dialog .sp-dialog-find-primary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+    min-width: 0;
+}
+.sharepoint-project-dialog .sp-dialog-find-primary .sharepoint-dialog-toolbar {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sharepoint-project-dialog .sp-dialog-find-primary .sharepoint-dialog-search-row {
+    flex: 1 1 14rem;
+    min-width: 0;
+}
+.sharepoint-project-dialog .sp-dialog-find-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.45rem;
+    min-width: 0;
+}
+.sharepoint-project-dialog .sp-dialog-find-filters .sharepoint-dialog-saved-searches,
+.sharepoint-project-dialog .sp-dialog-find-filters .sharepoint-dialog-search-controls,
+.sharepoint-project-dialog .sp-dialog-find-filters .sharepoint-dialog-search-chips {
+    margin: 0;
+}
+.sharepoint-project-dialog .sp-dialog-find-filters .sp-dialog-search-pending-hint {
+    flex: 1 1 100%;
+    margin: 0;
+}
+.sharepoint-project-dialog .sp-dialog-find-filters .sharepoint-dialog-search-meta {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
 .sharepoint-project-dialog-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem 0.45rem;
+    gap: 0.2rem 0.75rem;
     flex: 0 0 auto;
+    align-items: baseline;
 }
 .sharepoint-project-dialog-stats[hidden] {
     display: none !important;
 }
-.sp-project-stat-chip {
+.sharepoint-project-dialog .sp-project-stat-chip {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.3rem;
-    padding: 0.22rem 0.55rem;
-    border: 1px solid var(--border, #e2e8f0);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-2, #f8fafc) 88%, transparent);
-    font-size: 0.75rem;
-    line-height: 1.25;
+    gap: 0.28rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.78rem;
+    line-height: 1.3;
     color: var(--muted, #64748b);
     max-width: 100%;
 }
-.sp-project-stat-label {
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    font-size: 0.65rem;
+.sharepoint-project-dialog .sp-project-stat-label {
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 0.78rem;
     color: var(--muted, #64748b);
 }
-.sp-project-stat-value {
+.sharepoint-project-dialog .sp-project-stat-value {
     font-weight: 700;
     color: var(--ink, #0f172a);
     font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
 }
 .sharepoint-project-dialog-actions {
     display: flex;
