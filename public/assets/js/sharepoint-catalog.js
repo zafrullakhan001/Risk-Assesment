@@ -6634,7 +6634,7 @@
   const renderSavedSearches = () => {
     if (!savedRoot || !savedChips) return;
     const items = readSavedSearches();
-    const paintKey = items.map((item) => `${item.id}:${item.name}`).join('\u0001');
+    const paintKey = items.map((item) => `${item.id}:${item.name}:${item.kind || ''}`).join('\u0001');
     if (paintKey === savedPaintedKey) return;
     savedPaintedKey = paintKey;
     if (!items.length) {
@@ -6646,12 +6646,17 @@
     savedRoot.hidden = false;
     savedRoot.classList.remove('is-hidden');
     savedChips.innerHTML = items
-      .map(
-        (item) => `<span class="sharepoint-recent-chip-wrap" role="listitem">
-          <button type="button" class="sharepoint-recent-chip" data-saved-id="${escapeHtml(String(item.id))}" title="${escapeHtml(item.query || item.name)}">${escapeHtml(item.name)}</button>
+      .map((item) => {
+        const isDash = item.kind === 'dashboard';
+        const label = `${isDash ? '📊 ' : ''}${item.name}`;
+        const title = isDash
+          ? `Dashboard snapshot: ${item.query || item.name}`
+          : item.query || item.name;
+        return `<span class="sharepoint-recent-chip-wrap${isDash ? ' is-dashboard-snap' : ''}" role="listitem">
+          <button type="button" class="sharepoint-recent-chip${isDash ? ' sp-saved-dash-chip' : ''}" data-saved-id="${escapeHtml(String(item.id))}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>
           <button type="button" class="sharepoint-recent-remove" data-saved-remove="${escapeHtml(String(item.id))}" title="Remove saved search" aria-label="Remove saved search">×</button>
-        </span>`
-      )
+        </span>`;
+      })
       .join('');
   };
 
@@ -6689,23 +6694,39 @@
       setAdvancedOpen(true);
     }
     applySearch({ resetPage: true, syncInputs: true });
+    if (item.kind === 'dashboard') {
+      window.setTimeout(() => {
+        window.RiskRegisterSharePoint?.openSearchDashboard?.(item.dashboardUi || null);
+      }, 250);
+    }
   };
 
-  const saveCurrentSearch = () => {
-    const label = window.prompt('Name this saved search', state.query.trim() || 'Saved search');
-    if (label == null) return;
+  const saveCurrentSearch = (options = {}) => {
+    const isDash = options.kind === 'dashboard';
+    const defaultName = isDash
+      ? `📊 ${state.query.trim() || 'Dashboard'}`
+      : state.query.trim() || 'Saved search';
+    const label =
+      options.name != null
+        ? String(options.name)
+        : window.prompt(isDash ? 'Name this dashboard snapshot' : 'Name this saved search', defaultName);
+    if (label == null) return null;
     const name = String(label).trim();
-    if (!name) return;
+    if (!name) return null;
     const items = readSavedSearches().filter((item) => item.name.toLowerCase() !== name.toLowerCase());
-    items.unshift({
+    const entry = {
       id: `${Date.now()}`,
       name,
       query: state.query.trim(),
       state: snapshotSearchState(),
-    });
+      kind: isDash ? 'dashboard' : 'search',
+    };
+    if (isDash && options.dashboardUi) entry.dashboardUi = options.dashboardUi;
+    items.unshift(entry);
     writeSavedSearches(items);
     savedPaintedKey = '';
     renderSavedSearches();
+    return entry;
   };
 
   const removeSavedSearch = (id) => {
@@ -6713,6 +6734,14 @@
     savedPaintedKey = '';
     renderSavedSearches();
   };
+
+  window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
+    saveNamedSearch: saveCurrentSearch,
+    refreshSavedSearches: () => {
+      savedPaintedKey = '';
+      renderSavedSearches();
+    },
+  });
 
   const populatePersonFilter = () => {
     if (!personFilterEl) return;
