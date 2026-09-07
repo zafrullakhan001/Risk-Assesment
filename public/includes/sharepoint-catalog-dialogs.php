@@ -153,90 +153,98 @@ declare(strict_types=1);
 
             <dialog class="response-dialog sharepoint-compare-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-compare-dialog" aria-labelledby="sharepoint-compare-dialog-title" data-density="compact">
                 <div class="response-dialog-form sharepoint-compare-dialog-body">
-                    <div class="response-dialog-head sp-dialog-drag-handle">
-                        <div>
-                            <div class="eyebrow">⚖️ Side-by-side compare</div>
-                            <h3 id="sharepoint-compare-dialog-title">Compare folders</h3>
-                            <p class="response-dialog-sub" id="sharepoint-compare-dialog-sub">Select 2 or 3 project folders to compare files and folders.</p>
+                    <section class="sp-dialog-band sp-dialog-band--identity" aria-label="Compare identity">
+                        <div class="response-dialog-head sp-dialog-drag-handle">
+                            <div>
+                                <div class="eyebrow">⚖️ Side-by-side compare</div>
+                                <h3 id="sharepoint-compare-dialog-title">Compare folders</h3>
+                                <p class="response-dialog-sub" id="sharepoint-compare-dialog-sub">Select 2 or 3 project folders to compare files and folders.</p>
+                            </div>
+                            <div class="sp-dialog-window-tools">
+                                <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-compare-dialog-refresh" title="Reload compared folders from the database" aria-label="Refresh compared folders from database">
+                                    <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
+                                </button>
+                                <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-compare-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
+                                <button type="button" class="button ghost response-dialog-close" id="sharepoint-compare-dialog-close" aria-label="Close compare">✕</button>
+                            </div>
                         </div>
-                        <div class="sp-dialog-window-tools">
-                            <button type="button" class="button ghost sp-dialog-refresh" id="sharepoint-compare-dialog-refresh" title="Reload compared folders from the database" aria-label="Refresh compared folders from database">
-                                <span class="sp-dialog-refresh-icon" aria-hidden="true">↻</span>
-                            </button>
-                            <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-compare-dialog-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
-                            <button type="button" class="button ghost response-dialog-close" id="sharepoint-compare-dialog-close" aria-label="Close compare">✕</button>
+                    </section>
+                    <section class="sp-dialog-band sp-dialog-band--work" aria-label="Diff legend">
+                        <div class="sharepoint-compare-legend" id="sharepoint-compare-legend" hidden>
+                            <span class="sp-diff-pill sp-diff-pill--all">In all</span>
+                            <span class="sp-diff-pill sp-diff-pill--shared">Shared</span>
+                            <span class="sp-diff-pill sp-diff-pill--left">Only left</span>
+                            <span class="sp-diff-pill sp-diff-pill--mid">Only middle</span>
+                            <span class="sp-diff-pill sp-diff-pill--right">Only right</span>
                         </div>
-                    </div>
-                    <div class="sharepoint-compare-legend" id="sharepoint-compare-legend" hidden>
-                        <span class="sp-diff-pill sp-diff-pill--all">In all</span>
-                        <span class="sp-diff-pill sp-diff-pill--shared">Shared</span>
-                        <span class="sp-diff-pill sp-diff-pill--left">Only left</span>
-                        <span class="sp-diff-pill sp-diff-pill--mid">Only middle</span>
-                        <span class="sp-diff-pill sp-diff-pill--right">Only right</span>
-                    </div>
-                    <div class="sharepoint-dialog-search sharepoint-compare-search" id="sharepoint-compare-search-wrap" hidden>
-                        <div class="sharepoint-dialog-toolbar">
-                            <div class="sp-view-toggle" role="group" aria-label="Layout">
-                                <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
-                                <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
-                            </div>
-                            <div class="sp-view-toggle" role="group" aria-label="Chrome density">
-                                <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
-                                <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
-                            </div>
-                            <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders on all sides">⬇ Expand all</button>
-                                <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders on all sides">⬆ Collapse all</button>
-                            </div>
-                            <label class="sp-view-select">
-                                <span>Show</span>
-                                <select id="sharepoint-compare-kind" aria-label="Show files and/or folders">
-                                    <option value="all" selected>Files &amp; folders</option>
-                                    <option value="files">Files only</option>
-                                    <option value="folders">Folders only</option>
-                                </select>
-                            </label>
-                            <label class="sp-view-check" title="Hide files and folders that exist on another compared project">
-                                <input type="checkbox" id="sharepoint-compare-unique-only">
-                                <span>Unique only</span>
-                            </label>
-                            <details class="sp-compare-columns-picker" id="sharepoint-compare-columns-picker">
-                                <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
-                                <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
-                                    <div class="sp-compare-columns-menu-head">
-                                        <span class="sp-compare-columns-menu-title">Columns</span>
-                                        <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
-                                    </div>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size"> Size</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created" checked> Created</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by"> Modified By</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="diff" checked> Diff</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Copy, QR &amp; tags</label>
-                                    <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="archive" checked> Archive</label>
+                    </section>
+                    <section class="sp-dialog-band sp-dialog-band--find sharepoint-dialog-search sharepoint-compare-search" id="sharepoint-compare-search-wrap" aria-label="Find and view" hidden>
+                        <div class="sp-dialog-find-primary">
+                            <div class="sharepoint-dialog-toolbar">
+                                <div class="sp-view-toggle" role="group" aria-label="Layout">
+                                    <button type="button" class="sp-view-btn is-active" data-layout="tree" aria-pressed="true">🌳 Tree</button>
+                                    <button type="button" class="sp-view-btn" data-layout="flat" aria-pressed="false">☰ List</button>
                                 </div>
-                            </details>
-                        </div>
-                        <div class="sharepoint-dialog-search-controls" id="sharepoint-compare-search-controls">
-                            <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
-                                <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
-                                <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
+                                <div class="sp-view-toggle" role="group" aria-label="Chrome density">
+                                    <button type="button" class="sp-view-btn" data-density="comfort" title="Show full headers and filters" aria-pressed="false">Comfort</button>
+                                    <button type="button" class="sp-view-btn is-active" data-density="compact" title="Shrink headers so the file list uses more space" aria-pressed="true">Compact</button>
+                                </div>
+                                <div class="sp-tree-actions" role="group" aria-label="Tree expand collapse">
+                                    <button type="button" class="sp-tree-action-btn" data-tree-action="expand" title="Expand all folders on all sides">⬇ Expand all</button>
+                                    <button type="button" class="sp-tree-action-btn" data-tree-action="collapse" title="Collapse all folders on all sides">⬆ Collapse all</button>
+                                </div>
+                                <label class="sp-view-select">
+                                    <span>Show</span>
+                                    <select id="sharepoint-compare-kind" aria-label="Show files and/or folders">
+                                        <option value="all" selected>Files &amp; folders</option>
+                                        <option value="files">Files only</option>
+                                        <option value="folders">Folders only</option>
+                                    </select>
+                                </label>
+                                <label class="sp-view-check" title="Hide files and folders that exist on another compared project">
+                                    <input type="checkbox" id="sharepoint-compare-unique-only">
+                                    <span>Unique only</span>
+                                </label>
+                                <details class="sp-compare-columns-picker" id="sharepoint-compare-columns-picker">
+                                    <summary class="sp-view-btn" title="Show or hide table columns">Columns</summary>
+                                    <div class="sp-compare-columns-menu" role="group" aria-label="Visible columns">
+                                        <div class="sp-compare-columns-menu-head">
+                                            <span class="sp-compare-columns-menu-title">Columns</span>
+                                            <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
+                                        </div>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="type" checked> Type</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="size"> Size</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created" checked> Created</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by"> Modified By</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="diff" checked> Diff</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Copy, QR &amp; tags</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="archive" checked> Archive</label>
+                                    </div>
+                                </details>
                             </div>
-                            <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
                         </div>
-                        <div class="sharepoint-dialog-saved-searches" id="sharepoint-compare-dialog-saved" hidden>
-                            <span class="sharepoint-recent-label" title="Live Find query and saved searches from the main catalog. Click to fill every panel.">📌 Saved</span>
-                            <div class="sharepoint-recent-chips" id="sharepoint-compare-dialog-saved-chips" role="list" aria-label="Saved searches"></div>
+                        <div class="sp-dialog-find-filters">
+                            <div class="sharepoint-dialog-search-controls" id="sharepoint-compare-search-controls">
+                                <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
+                                    <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
+                                    <button type="button" class="sp-search-toggle" data-word-mode="or" title="Match when any word is found" aria-pressed="false">OR</button>
+                                </div>
+                                <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
+                            </div>
+                            <div class="sharepoint-dialog-saved-searches" id="sharepoint-compare-dialog-saved" hidden>
+                                <span class="sharepoint-recent-label" title="Live Find query and saved searches from the main catalog. Click to fill every panel.">📌 Saved</span>
+                                <div class="sharepoint-recent-chips" id="sharepoint-compare-dialog-saved-chips" role="list" aria-label="Saved searches"></div>
+                            </div>
+                            <p class="panel-help sharepoint-compare-filter-hint">Each panel has its own search and extension filters. Saved searches apply to every panel.</p>
+                            <div class="sharepoint-compare-hidden-bar" id="sharepoint-compare-hidden-bar" hidden>
+                                <span class="sharepoint-compare-hidden-label" id="sharepoint-compare-hidden-label">0 hidden</span>
+                                <div class="sharepoint-compare-hidden-chips" id="sharepoint-compare-hidden-chips" role="list"></div>
+                                <button type="button" class="button ghost" id="sharepoint-compare-show-all-hidden">Show all</button>
+                            </div>
                         </div>
-                        <p class="panel-help sharepoint-compare-filter-hint">Each panel has its own search and extension filters. Saved searches apply to every panel.</p>
-                        <div class="sharepoint-compare-hidden-bar" id="sharepoint-compare-hidden-bar" hidden>
-                            <span class="sharepoint-compare-hidden-label" id="sharepoint-compare-hidden-label">0 hidden</span>
-                            <div class="sharepoint-compare-hidden-chips" id="sharepoint-compare-hidden-chips" role="list"></div>
-                            <button type="button" class="button ghost" id="sharepoint-compare-show-all-hidden">Show all</button>
-                        </div>
-                    </div>
+                    </section>
                     <div class="sharepoint-compare-panels" id="sharepoint-compare-panels" data-panel-count="2">
                         <section class="sharepoint-compare-panel" data-side="left">
                             <header class="sharepoint-compare-panel-head">

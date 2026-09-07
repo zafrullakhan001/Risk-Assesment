@@ -6995,7 +6995,78 @@ html.is-compact .site-footer {
 .maint-snap-list {
     display: grid;
     gap: 10px;
-    margin-top: 12px;
+    margin-top: 0;
+}
+
+.maint-snap-panel > .maint-snap-summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.maint-snap-panel > .maint-snap-summary::-webkit-details-marker {
+    display: none;
+}
+
+.maint-snap-panel > .maint-snap-summary::marker {
+    content: '';
+}
+
+.maint-snap-panel[open] > .maint-snap-summary .maint-health-chevron {
+    transform: rotate(45deg);
+}
+
+.maint-snap-body {
+    padding: 0 4px 4px;
+}
+
+.maint-snap-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.maint-snap-pager-info {
+    font-size: 0.85rem;
+    color: var(--muted, #64748b);
+}
+
+.maint-snap-pager-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.maint-snap-page {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: inherit;
+    background: var(--card);
+}
+
+.maint-snap-page:hover {
+    border-color: color-mix(in srgb, #6366f1 40%, var(--line));
+}
+
+.maint-snap-page.is-current {
+    background: color-mix(in srgb, #6366f1 16%, var(--card));
+    border-color: color-mix(in srgb, #6366f1 40%, var(--line));
+    color: #4338ca;
 }
 
 .maint-snap-row {
@@ -7101,6 +7172,151 @@ html.is-compact .site-footer {
         min-width: 0;
     }
 }
+
+.maint-health {
+    margin: 16px 0 8px;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--card) 88%, #64748b 12%);
+}
+
+.maint-health.is-ok {
+    border-color: color-mix(in srgb, #16a34a 35%, var(--line));
+    background: color-mix(in srgb, #16a34a 8%, var(--card));
+}
+
+.maint-health.is-bad {
+    border-color: color-mix(in srgb, #dc2626 35%, var(--line));
+    background: color-mix(in srgb, #dc2626 8%, var(--card));
+}
+
+.maint-health-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 16px;
+    user-select: none;
+}
+
+.maint-health-head::-webkit-details-marker {
+    display: none;
+}
+
+.maint-health-head::marker {
+    content: '';
+}
+
+.maint-health-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.maint-health-chevron {
+    display: inline-block;
+    width: 0.45em;
+    height: 0.45em;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease;
+    opacity: 0.7;
+}
+
+.maint-health[open] > .maint-health-head .maint-health-chevron {
+    transform: rotate(45deg);
+}
+
+.maint-health-body {
+    padding: 0 16px 14px;
+}
+
+.maint-health-summary {
+    margin: 0 0 12px;
+    font-size: 0.92rem;
+    color: var(--muted, #64748b);
+}
+
+.maint-health-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 10px;
+}
+
+.maint-health-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.maint-health-table th,
+.maint-health-table td {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+    vertical-align: top;
+}
+
+.maint-health-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted, #64748b);
+    font-weight: 700;
+}
+
+.maint-health-table code {
+    font-size: 0.82rem;
+}
+
+.maint-health-critical {
+    color: #dc2626;
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+.maint-health-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+.maint-health-badge.is-ok {
+    background: color-mix(in srgb, #16a34a 18%, transparent);
+    color: #15803d;
+}
+
+.maint-health-badge.is-fail {
+    background: color-mix(in srgb, #dc2626 18%, transparent);
+    color: #b91c1c;
+}
+
+.maint-health-fix td {
+    padding-top: 0;
+    padding-bottom: 10px;
+    font-size: 0.8rem;
+    color: #b91c1c;
+}
+
+.maint-health-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted, #64748b);
+}
+
+.maint-health-hint code {
+    font-size: 0.78rem;
+}
+
 /* Adaptive Architecture workbook */
 .adaptive-meta-chips {
     margin-top: 10px;
@@ -12219,14 +12435,89 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-compare-dialog-body {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
     min-height: 0;
     flex: 1 1 auto;
 }
+
+/* Three-band chrome for compare (mirrors project dialog) */
+.sharepoint-compare-dialog .sp-dialog-band {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.65rem;
+    min-width: 0;
+}
+.sharepoint-compare-dialog .sp-dialog-band + .sp-dialog-band:not(.sp-dialog-band--find) {
+    padding-top: 0.4rem;
+    border-top: 1px solid color-mix(in srgb, var(--border, #e2e8f0) 85%, transparent);
+}
+.sharepoint-compare-dialog .sp-dialog-band + .sp-dialog-band--find {
+    margin-top: 0.15rem;
+}
+.sharepoint-compare-dialog .sp-dialog-band--identity {
+    align-items: flex-start;
+}
+.sharepoint-compare-dialog .sp-dialog-band--identity .response-dialog-head {
+    flex: 1 1 16rem;
+    min-width: 0;
+    margin: 0;
+    width: 100%;
+}
+.sharepoint-compare-dialog .sp-dialog-band--work:not(:has(#sharepoint-compare-legend:not([hidden]))) {
+    display: none;
+}
+.sharepoint-compare-dialog .sp-dialog-band--work .sharepoint-compare-legend {
+    margin: 0;
+    flex: 1 1 auto;
+}
+.sharepoint-compare-dialog .sp-dialog-band--find {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, var(--surface-2, #f8fafc) 92%, transparent);
+}
+.sharepoint-compare-dialog .sp-dialog-band--find[hidden] {
+    display: none !important;
+}
+.sharepoint-compare-dialog .sp-dialog-find-primary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+    min-width: 0;
+}
+.sharepoint-compare-dialog .sp-dialog-find-primary .sharepoint-dialog-toolbar {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sharepoint-compare-dialog .sp-dialog-find-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.45rem;
+    min-width: 0;
+}
+.sharepoint-compare-dialog .sp-dialog-find-filters .sharepoint-dialog-saved-searches,
+.sharepoint-compare-dialog .sp-dialog-find-filters .sharepoint-dialog-search-controls,
+.sharepoint-compare-dialog .sp-dialog-find-filters .sharepoint-compare-hidden-bar,
+.sharepoint-compare-dialog .sp-dialog-find-filters .sharepoint-compare-filter-hint {
+    margin: 0;
+}
+
 .sharepoint-compare-legend {
     display: flex;
     flex-wrap: wrap;
     gap: 0.45rem;
+}
+.sharepoint-compare-legend[hidden] {
+    display: none !important;
 }
 .sharepoint-compare-panels {
     position: relative;
@@ -12799,14 +13090,29 @@ html.sp-workspace-scroll-lock body {
     color: var(--muted, #64748b);
 }
 .sharepoint-compare-search {
-    margin-bottom: 0.35rem;
+    margin-bottom: 0;
+}
+.sharepoint-compare-dialog .sp-dialog-band--find.sharepoint-compare-search {
+    margin-bottom: 0;
 }
 
 /* Compact chrome: give the file/folder lists most of the dialog height */
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-dialog-body,
 .sharepoint-compare-dialog.is-compact-chrome .response-dialog-form {
-    gap: 0.4rem;
-    padding: 0.6rem 0.8rem 0.7rem;
+    gap: 0.35rem;
+    padding: 0.55rem 0.75rem 0.65rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-dialog-band + .sp-dialog-band:not(.sp-dialog-band--find) {
+    padding-top: 0.3rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-dialog-band--find {
+    gap: 0.28rem;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0.5rem;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sp-dialog-find-primary,
+.sharepoint-compare-dialog.is-compact-chrome .sp-dialog-find-filters {
+    gap: 0.28rem 0.4rem;
 }
 .sharepoint-compare-dialog.is-compact-chrome .response-dialog-head {
     align-items: center;
@@ -12835,16 +13141,9 @@ html.sp-workspace-scroll-lock body {
     padding: 0.08rem 0.38rem;
     font-size: 0.65rem;
 }
-.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-search {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem 0.55rem;
-    margin: 0;
-}
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-toolbar {
     flex: 1 1 auto;
-    gap: 0.35rem 0.5rem;
+    gap: 0.3rem 0.4rem;
 }
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-search-controls {
     flex: 0 0 auto;

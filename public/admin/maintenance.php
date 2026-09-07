@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/bootstrap.php';
 
 use RiskAssessment\Database\Database;
+use RiskAssessment\Database\SqliteHealthcheck;
 use RiskAssessment\SqliteMaintenance;
 
 $currentUser = $auth->requireAdmin();
@@ -173,7 +174,19 @@ if (!empty($_SESSION['admin_audit_pending']) && is_array($_SESSION['admin_audit_
 
 $status = $maintenance->status();
 $snapshots = $maintenance->listSnapshots();
+$snapshotTotal = count($snapshots);
+$snapshotPerPage = 5;
+$snapshotPage = max(1, (int) ($_GET['snap_page'] ?? 1));
+$snapshotPages = max(1, (int) ceil($snapshotTotal / $snapshotPerPage));
+if ($snapshotPage > $snapshotPages) {
+    $snapshotPage = $snapshotPages;
+}
+$snapshotOffset = ($snapshotPage - 1) * $snapshotPerPage;
+$snapshotsPage = array_slice($snapshots, $snapshotOffset, $snapshotPerPage);
+$snapshotsOpen = isset($_GET['snap_page']) || $snapshotTotal === 0;
 $freelistHot = (int) $status['freelistCount'] > 100;
+$sqliteHealth = SqliteHealthcheck::run($pdo, (string) ($dbConfig['path'] ?? ''), false);
+$healthOk = !empty($sqliteHealth['critical_ok']);
 
 $adminTitle = 'SQLite maintenance';
 $adminTab = 'maintenance';
@@ -226,6 +239,67 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     <span aria-hidden="true">📁</span>
                     <code><?= e($status['path']) ?></code>
                 </p>
+
+                <details class="maint-health <?= $healthOk ? 'is-ok' : 'is-bad' ?>"<?= $healthOk ? '' : ' open' ?>>
+                    <summary class="maint-health-head">
+                        <span class="maint-health-title">
+                            <span class="maint-health-chevron" aria-hidden="true"></span>
+                            <span aria-hidden="true">⚙️</span>
+                            Performance configuration
+                        </span>
+                        <span class="maint-pill <?= $healthOk ? 'maint-pill-safe' : 'maint-pill-warn' ?>">
+                            <?= $healthOk ? '● PASS' : '● FAIL' ?>
+                            · <?= e((string) ($sqliteHealth['checks_passed'] ?? '')) ?>
+                        </span>
+                    </summary>
+                    <div class="maint-health-body">
+                        <p class="maint-health-summary"><?= e((string) ($sqliteHealth['summary'] ?? '')) ?></p>
+                        <div class="maint-health-table-wrap">
+                            <table class="maint-health-table">
+                                <thead>
+                                    <tr>
+                                        <th>Setting</th>
+                                        <th>Expected</th>
+                                        <th>Current</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($sqliteHealth['settings'] ?? []) as $row): ?>
+                                        <tr class="<?= !empty($row['ok']) ? 'is-ok' : 'is-fail' ?>">
+                                            <td>
+                                                <code><?= e((string) ($row['id'] ?? '')) ?></code>
+                                                <?php if (!empty($row['critical'])): ?>
+                                                    <span class="maint-health-critical" title="Critical">*</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?= e((string) ($row['expected'] ?? '')) ?></td>
+                                            <td><?= e((string) ($row['actual'] ?? '')) ?></td>
+                                            <td>
+                                                <?php if (!empty($row['ok'])): ?>
+                                                    <span class="maint-health-badge is-ok">OK</span>
+                                                <?php else: ?>
+                                                    <span class="maint-health-badge is-fail">FAIL</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                        <?php if (empty($row['ok']) && ($row['fix'] ?? '') !== ''): ?>
+                                            <tr class="maint-health-fix">
+                                                <td colspan="4"><?= e((string) $row['fix']) ?></td>
+                                            </tr>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="maint-health-hint">
+                            CLI: <code>php bin/check_sqlite_health.php</code>
+                            · Cache <?= e((string) ($sqliteHealth['sizes']['cache_human'] ?? '?')) ?>
+                            · mmap <?= e((string) ($sqliteHealth['sizes']['mmap_human'] ?? '?')) ?>
+                            · SQLite <?= e((string) ($sqliteHealth['environment']['sqlite_version'] ?? '?')) ?>
+                        </p>
+                    </div>
+                </details>
 
                 <div class="maint-toolbar">
                     <div class="maint-toolbar-label">Quick actions</div>
@@ -300,11 +374,16 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 </section>
             </div>
 
-            <section class="upload-card maint-card maint-card-list">
-                <div class="maint-card-head">
-                    <h2><span class="maint-emoji" aria-hidden="true">🗂️</span> Snapshots</h2>
-                    <span class="maint-pill"><?= count($snapshots) ?> saved</span>
-                </div>
+            <details class="upload-card maint-card maint-card-list maint-snap-panel"<?= $snapshotsOpen ? ' open' : '' ?> id="snapshots">
+                <summary class="maint-card-head maint-snap-summary">
+                    <span class="maint-health-title">
+                        <span class="maint-health-chevron" aria-hidden="true"></span>
+                        <span class="maint-emoji" aria-hidden="true">🗂️</span>
+                        Snapshots
+                    </span>
+                    <span class="maint-pill"><?= (int) $snapshotTotal ?> saved<?= $snapshotTotal > $snapshotPerPage ? ' · page ' . (int) $snapshotPage . '/' . (int) $snapshotPages : '' ?></span>
+                </summary>
+                <div class="maint-snap-body">
                 <?php if ($snapshots === []): ?>
                     <div class="maint-empty">
                         <span class="maint-empty-icon" aria-hidden="true">📭</span>
@@ -312,7 +391,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     </div>
                 <?php else: ?>
                     <div class="maint-snap-list">
-                        <?php foreach ($snapshots as $snap): ?>
+                        <?php foreach ($snapshotsPage as $snap): ?>
                             <article class="maint-snap-row">
                                 <div class="maint-snap-main">
                                     <div class="maint-snap-title">
@@ -363,7 +442,31 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </article>
                         <?php endforeach; ?>
                     </div>
+                    <?php if ($snapshotPages > 1): ?>
+                        <nav class="maint-snap-pager" aria-label="Snapshot pages">
+                            <span class="maint-snap-pager-info">
+                                Showing <?= (int) ($snapshotOffset + 1) ?>–<?= (int) min($snapshotOffset + $snapshotPerPage, $snapshotTotal) ?>
+                                of <?= (int) $snapshotTotal ?>
+                            </span>
+                            <div class="maint-snap-pager-links">
+                                <?php if ($snapshotPage > 1): ?>
+                                    <a class="button ghost maint-btn" href="?snap_page=<?= (int) ($snapshotPage - 1) ?>#snapshots">← Prev</a>
+                                <?php endif; ?>
+                                <?php for ($p = 1; $p <= $snapshotPages; $p++): ?>
+                                    <?php if ($p === $snapshotPage): ?>
+                                        <span class="maint-snap-page is-current" aria-current="page"><?= $p ?></span>
+                                    <?php else: ?>
+                                        <a class="maint-snap-page" href="?snap_page=<?= $p ?>#snapshots"><?= $p ?></a>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+                                <?php if ($snapshotPage < $snapshotPages): ?>
+                                    <a class="button ghost maint-btn" href="?snap_page=<?= (int) ($snapshotPage + 1) ?>#snapshots">Next →</a>
+                                <?php endif; ?>
+                            </div>
+                        </nav>
+                    <?php endif; ?>
                 <?php endif; ?>
-            </section>
+                </div>
+            </details>
 <?php
 require dirname(__DIR__) . '/includes/admin-footer.php';

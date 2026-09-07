@@ -32,7 +32,8 @@ final class Database
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
 
-        self::$connection->exec('PRAGMA foreign_keys = ON');
+        // Enterprise PRAGMAs (WAL, mmap, sized cache); foreign_keys ON included.
+        SqlitePerformance::apply(self::$connection, $path, false);
         self::migrate(self::$connection);
 
         return self::$connection;
