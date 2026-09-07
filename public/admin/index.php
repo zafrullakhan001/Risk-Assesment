@@ -41,7 +41,8 @@ $adminTitle = 'Admin';
 $adminTab = 'home';
 $adminEyebrow = 'Control room';
 $adminHeading = 'Install <em>administration</em>';
-$adminIntro = 'User access, branding, local/LDAP sign-in, SQLite backups, and GitHub updates live here.';
+$adminIntro = 'User access, branding, email (SMTP), local/LDAP sign-in, SQLite backups, and GitHub updates live here.';
+$smtpEnabled = $settings->get('smtp_enabled', '0') === '1';
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
             <section class="admin-grid">
@@ -63,6 +64,13 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <a class="upload-card admin-tile" href="branding.php">
                     <h2>Branding</h2>
                     <p>Personalize the brand name, logo, home hero, footer text, and favicon.</p>
+                </a>
+                <a class="upload-card admin-tile" href="email.php">
+                    <h2>✉️ Email</h2>
+                    <p>Configure Custom or Office 365 SMTP, send a test message, and email public share links.</p>
+                    <div class="auth-source-row">
+                        <span class="auth-badge <?= $smtpEnabled ? 'is-local' : 'is-off' ?>">SMTP <?= $smtpEnabled ? 'on' : 'off' ?></span>
+                    </div>
                 </a>
                 <a class="upload-card admin-tile" href="maintenance.php">
                     <h2>🗄️ SQLite</h2>

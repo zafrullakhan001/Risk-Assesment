@@ -79,7 +79,9 @@ final class DashboardRenderer
         string $shareToken = '',
         array $shareLinks = [],
         ?string $freshShareUrl = null,
-        ?array $sharePointCatalog = null
+        ?array $sharePointCatalog = null,
+        bool $smtpEnabled = false,
+        bool $viewerIsAdmin = false
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -373,7 +375,7 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl, $isAdaptive) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl, $isAdaptive, $smtpEnabled, $viewerIsAdmin) ?>
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>

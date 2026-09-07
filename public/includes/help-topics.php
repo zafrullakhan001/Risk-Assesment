@@ -334,6 +334,7 @@ HTML,
 <li>Anyone with the link can open the dashboard without signing in.</li>
 <li>They cannot change responses, upload versions, or create new shares.</li>
 <li>Revoke the link when it should stop working. Invalid or revoked tokens show “Share link unavailable”.</li>
+<li>When SMTP is enabled under Admin → Email, use <strong>Email this link</strong> to send a branded message with the URL (optional note, up to 20 recipients).</li>
 </ul>
 <p>Tag or label shares in your own notes; treat the URL like a secret. Search engines are asked not to index these pages.</p>
 HTML,
@@ -348,6 +349,7 @@ HTML,
 <li>They cannot sync, edit folders, or open assessments.</li>
 <li>Uncheck any catalog you want to keep private. A tag/label is required so you can tell links apart.</li>
 <li>There is a maximum number of active links. You can copy any active link again from the list. Revoke when finished.</li>
+<li>With SMTP enabled, each active copyable link has <strong>Email this link</strong> so you can send the public URL in a branded HTML email.</li>
 </ul>
 <p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. On the signed-in catalog, project rows also have <strong>QR</strong> so you can scan the SharePoint folder URL on a phone.</p>
 HTML,
@@ -381,11 +383,26 @@ HTML,
 <li><strong>Users</strong> — create, approve, disable, promote, reset local passwords, bulk-select and delete, search LDAP, add or refresh a directory user, preview a group and import all or selected members, inspect LDAP details, review the audit log. LDAP details never include passwords.</li>
 <li><strong>Authentication</strong> — turn local and LDAP on or off, registration toggle, LDAP auto-create / auto-update / auto-approve, configure directory servers, test the bind, export or import LDAP settings.</li>
 <li><strong>Branding</strong> — brand title, subtitle, browser title, hero text (with <code>*accent*</code> preview), logo, logo size, favicon, footer.</li>
+<li><strong>Email</strong> — see <a href="#email-smtp">Email (SMTP)</a> for Custom and Office 365 setup, test send, and emailing public links.</li>
 <li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore. Treat backup files as secrets if encryption is on.</li>
 <li><strong>App updates</strong> — see <a href="#app-updates">App updates</a> for Releases, commits, and zip apply.</li>
 <li><strong>SharePoint</strong> — jump to catalog admin (Tenant ID, Client ID, sync, import).</li>
 </ul>
 <p>Only administrators can open these pages. SharePoint folder management, sync, import, purge, tags, and archive controls are admin-gated as well.</p>
+HTML,
+                ],
+                [
+                    'id' => 'email-smtp',
+                    'title' => 'Email (SMTP)',
+                    'html' => <<<'HTML'
+<p>Administrators open <a href="admin/email.php">Admin → Email</a> to configure outbound SMTP used for test messages and for emailing public share links.</p>
+<ul>
+<li><strong>Custom SMTP</strong> — enter host, port, encryption (None / SSL / STARTTLS), username, password, and From address.</li>
+<li><strong>Office 365 / Microsoft 365</strong> — fills <code>smtp.office365.com</code>, port <code>587</code>, and STARTTLS (same working path as LinkNest). Enable Authenticated SMTP for the mailbox. Username must be the full mailbox email. With MFA, use an app password. From should match that mailbox (or an allowed send-as address).</li>
+<li><strong>Enable outbound email</strong>, save settings (password is encrypted at rest), then use <strong>Send test email</strong> to confirm delivery.</li>
+<li>Leave the password blank when saving to keep the current secret.</li>
+<li>Once enabled, assessment Share and SharePoint catalog/owners share panels show <strong>Email this link</strong>.</li>
+</ul>
 HTML,
                 ],
                 [
@@ -398,6 +415,7 @@ HTML,
 <li><strong>Check for updates</strong> lists newer <strong>GitHub Releases</strong>. If none are ahead, it also lists commits on the track branch (and the current git branch, when this folder is a checkout) after the installed version.</li>
 <li><strong>Download and apply</strong> prefers a packaged <code>RiskRegister-*.zip</code> Release asset; otherwise it uses GitHub’s source zipball. PHP <code>curl</code> and <code>zip</code> must be enabled.</li>
 <li>Installed version comes from <code>VERSION.json</code>. Keep the tab open until apply finishes and redirects — do not treat a garbled download as a failed page.</li>
+<li>Admins also see a header <strong>bell</strong> when a newer build is available. The bell menu can turn <strong>toast</strong> and <strong>browser</strong> notifications on or off (browser alerts need localhost or HTTPS).</li>
 </ul>
 <p>Publishers package with <code>php bin/package_release.php vX.Y.Z</code> (or the GitHub Actions release workflow) so the zip includes <code>vendor/</code>. See the in-app notes on the App updates page for troubleshooting.</p>
 HTML,

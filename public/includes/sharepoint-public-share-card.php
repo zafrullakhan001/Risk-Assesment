@@ -140,6 +140,9 @@ $showSectionMove = !empty($showSectionMove);
                     <?php endif; ?>
                 </div>
             </form>
+            <?php if (empty($smtpEnabled) && !empty($viewerIsAdmin)): ?>
+                <p class="share-email-hint">To email public links, configure SMTP under <a href="admin/email.php">Admin → Email</a>.</p>
+            <?php endif; ?>
             <form method="post" id="<?= e($purgeFormId) ?>" class="inline-form">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="<?= e((string) $sharePurgeAction) ?>">
@@ -212,6 +215,27 @@ $showSectionMove = !empty($showSectionMove);
                                             <a class="button ghost-light" href="<?= e($linkUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
                                         </div>
                                         <p class="share-link-copy-status" id="<?= e($rowStatusId) ?>" hidden></p>
+                                        <?php if (!empty($smtpEnabled) && ($shareEmailAction ?? '') !== ''): ?>
+                                            <form method="post" class="share-email-form">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="action" value="<?= e((string) $shareEmailAction) ?>">
+                                                <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
+                                                <?php if (($shareView ?? '') !== ''): ?>
+                                                    <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                                                <?php endif; ?>
+                                                <input type="hidden" name="share_id" value="<?= $linkId ?>">
+                                                <p class="share-email-form-title">✉️ Email this link</p>
+                                                <label>
+                                                    <span>To (comma or newline separated, max 20)</span>
+                                                    <textarea name="email_to" rows="2" required maxlength="2000" placeholder="colleague@example.com"></textarea>
+                                                </label>
+                                                <label>
+                                                    <span>Optional note</span>
+                                                    <textarea name="email_note" rows="2" maxlength="1000" placeholder="Short message for the recipient…"></textarea>
+                                                </label>
+                                                <button type="submit" class="button button-primary">📨 Send email</button>
+                                            </form>
+                                        <?php endif; ?>
                                     <?php elseif ($linkActive): ?>
                                         <p class="share-link-row-legacy">URL was not stored for this older link. Revoke it and create a new one to copy the address again.</p>
                                     <?php endif; ?>

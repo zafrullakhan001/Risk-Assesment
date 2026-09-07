@@ -24,6 +24,9 @@ use RiskAssessment\Repositories\ProjectPicturesRepository;
 use RiskAssessment\Repositories\ProjectShareRepository;
 use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
+use RiskAssessment\Mail\EmailTemplates;
+use RiskAssessment\Mail\SmtpMailer;
+use RiskAssessment\Mail\SmtpSettings;
 
 $currentUser = $auth->requireAuth();
 $actor = Actor::fromUser($currentUser);
@@ -943,7 +946,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($postedAction === 'create_share_link' || $postedAction === 'revoke_share_link') {
+    if ($postedAction === 'create_share_link' || $postedAction === 'revoke_share_link' || $postedAction === 'email_share_link') {
         try {
             if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
                 throw new RuntimeException('Invalid form submission. Please refresh and try again.');
@@ -958,7 +961,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $created = $projectShareRepository->create($targetId, $currentUser);
                 $_SESSION['fresh_share_url'] = ProjectShareRepository::absoluteUrl($created['token']);
                 $flash = 'Read-only share link created. You can copy it anytime from the Share tab while it is active.';
-            } else {
+            } elseif ($postedAction === 'revoke_share_link') {
                 $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
                 if ($shareId > 0) {
                     $projectShareRepository->revokeById($shareId, $targetId);
@@ -967,6 +970,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 unset($_SESSION['fresh_share_url']);
                 $flash = 'Public share link revoked.';
+            } else {
+                $smtpSettings = new SmtpSettings($settings, $crypto);
+                if (!$smtpSettings->isEnabled()) {
+                    throw new RuntimeException('Outbound email is not enabled. Ask an administrator to configure Admin → Email.');
+                }
+                $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+                $linkUrl = '';
+                $matchedId = 0;
+                foreach ($projectShareRepository->listForAssessment($targetId) as $link) {
+                    if ((int) ($link['id'] ?? 0) === $shareId
+                        && !empty($link['is_active'])
+                        && !empty($link['can_copy'])
+                        && trim((string) ($link['url'] ?? '')) !== ''
+                    ) {
+                        $linkUrl = trim((string) $link['url']);
+                        $matchedId = (int) $link['id'];
+                        break;
+                    }
+                }
+                if ($linkUrl === '' || $matchedId <= 0) {
+                    throw new RuntimeException('That share link is not available to email. Create or copy an active link first.');
+                }
+                $recipients = SmtpSettings::normalizeRecipients((string) ($_POST['email_to'] ?? ''));
+                if ($recipients === []) {
+                    throw new RuntimeException('Enter at least one valid recipient email address.');
+                }
+                $note = trim((string) ($_POST['email_note'] ?? ''));
+                if (mb_strlen($note) > 1000) {
+                    $note = mb_substr($note, 0, 1000);
+                }
+                $senderName = trim((string) ($currentUser['display_name'] ?? ''));
+                if ($senderName === '') {
+                    $senderName = trim((string) ($currentUser['username'] ?? ''));
+                }
+                $templates = new EmailTemplates($branding);
+                $message = $templates->shareLink('assessment', $linkUrl, $senderName, $note);
+                $mailer = new SmtpMailer();
+                $result = $mailer->send(
+                    $recipients,
+                    $message['subject'],
+                    $message['text'],
+                    $smtpSettings->mailerConfig(),
+                    [],
+                    [
+                        'html' => $message['html'],
+                        'text' => $message['text'],
+                    ]
+                );
+                if ($result !== true) {
+                    throw new RuntimeException('Failed to send email: ' . (string) $result);
+                }
+                $auth->users()->logAudit(
+                    'share.email',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    null,
+                    [
+                        'kind' => 'assessment',
+                        'share_id' => $matchedId,
+                        'assessment_id' => $targetId,
+                        'recipients' => count($recipients),
+                    ]
+                );
+                header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=share&emailed=' . count($recipients));
+                exit;
             }
 
             header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=share&shared=1');
@@ -1181,6 +1250,17 @@ if (isset($_GET['shared']) && $flash === '') {
     $flash = 'Share settings updated.';
 }
 
+if (isset($_GET['emailed']) && $flash === '') {
+    $emailedCount = max(1, (int) $_GET['emailed']);
+    $flash = $emailedCount === 1
+        ? 'Share link emailed to 1 recipient.'
+        : 'Share link emailed to ' . $emailedCount . ' recipients.';
+}
+
+$smtpSettingsForUi = new SmtpSettings($settings, $crypto);
+$smtpEnabledForUi = $smtpSettingsForUi->isEnabled();
+$viewerIsAdmin = !empty($currentUser['is_admin']);
+
 if (isset($_SESSION['fresh_share_url'])) {
     $freshShareUrl = (string) $_SESSION['fresh_share_url'];
     unset($_SESSION['fresh_share_url']);
@@ -1248,7 +1328,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 '',
                 $shareLinks,
                 $freshShareUrl,
-                $sharePointCatalog
+                $sharePointCatalog,
+                $smtpEnabledForUi,
+                $viewerIsAdmin
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -1315,7 +1397,9 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
             '',
             $storedId > 0 ? $projectShareRepository->listForAssessment($storedId) : [],
             $freshShareUrl,
-            $sharePointCatalog
+            $sharePointCatalog,
+            $smtpEnabledForUi,
+            $viewerIsAdmin
         );
     }
 }

@@ -20,6 +20,9 @@ final class GitHubUpdater
     private const VERSION_FILE = 'VERSION.json';
     private const STAGING_DIR = 'database/update-staging';
     private const LAST_LOG = 'database/updater-last.log';
+    private const NOTIFY_CACHE_KEY = 'updater_notify_cache';
+    private const NOTIFY_TTL = 900;
+    private const NOTIFY_ERROR_TTL = 180;
 
     public function __construct(
         private readonly SettingsRepository $settings,
@@ -189,6 +192,64 @@ final class GitHubUpdater
             'commits' => $items,
             'branch' => (string) ($commitCheck['branch'] ?? $this->trackBranch()),
         ];
+    }
+
+    /**
+     * Cached snapshot for the admin bell, toast, and browser notifications.
+     *
+     * @return array{
+     *   ok: bool,
+     *   error: string,
+     *   available: bool,
+     *   aheadBy: int,
+     *   mode: string,
+     *   branch: string,
+     *   repo: string,
+     *   installedLabel: string,
+     *   latestLabel: string,
+     *   latestMessage: string,
+     *   items: list<array{short: string, message: string, kind: string}>,
+     *   fingerprint: string,
+     *   hasToken: bool,
+     *   checkedAt: string,
+     *   fromCache?: bool
+     * }
+     */
+    public function notificationState(bool $forceRefresh = false): array
+    {
+        if (!$forceRefresh) {
+            $cached = $this->readNotificationCache();
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        try {
+            $payload = $this->buildNotificationPayload($this->check(false), '');
+            $this->writeNotificationCache($payload, self::NOTIFY_TTL);
+
+            return $payload;
+        } catch (\Throwable $exception) {
+            $payload = $this->buildNotificationPayload(null, $exception->getMessage());
+            $this->writeNotificationCache($payload, self::NOTIFY_ERROR_TTL);
+
+            return $payload;
+        }
+    }
+
+    /**
+     * Persist a just-completed check so the bell stays in sync without another GitHub round-trip.
+     *
+     * @param array{aheadBy?: int, headSha?: string, mode?: string, commits?: list<array<string, string>>, branch?: string} $check
+     */
+    public function rememberNotificationState(array $check): void
+    {
+        $this->writeNotificationCache($this->buildNotificationPayload($check, ''), self::NOTIFY_TTL);
+    }
+
+    public function clearNotificationCache(): void
+    {
+        $this->settings->delete(self::NOTIFY_CACHE_KEY);
     }
 
     public function apply(string $ref = ''): array
@@ -711,6 +772,7 @@ final class GitHubUpdater
         if ($tag !== '') {
             $this->settings->set('updater_last_applied_tag', $tag);
         }
+        $this->clearNotificationCache();
     }
 
     /**
@@ -825,6 +887,107 @@ final class GitHubUpdater
         if (!$this->capabilities()['zipAvailable']) {
             throw new RuntimeException('PHP zip is required to apply updates. Enable extension=zip in php.ini and restart Apache.');
         }
+    }
+
+    /**
+     * @param array{aheadBy?: int, headSha?: string, mode?: string, commits?: list<array<string, string>>, branch?: string}|null $check
+     * @return array{
+     *   ok: bool,
+     *   error: string,
+     *   available: bool,
+     *   aheadBy: int,
+     *   mode: string,
+     *   branch: string,
+     *   repo: string,
+     *   installedLabel: string,
+     *   latestLabel: string,
+     *   latestMessage: string,
+     *   items: list<array{short: string, message: string, kind: string}>,
+     *   fingerprint: string,
+     *   hasToken: bool,
+     *   checkedAt: string
+     * }
+     */
+    private function buildNotificationPayload(?array $check, string $error): array
+    {
+        $status = $this->status();
+        $installedLabel = $status['installedTag'] !== ''
+            ? $status['installedTag']
+            : ($status['installedVersion'] !== ''
+                ? $status['installedVersion']
+                : ($status['installedShort'] !== '' ? $status['installedShort'] : 'unknown'));
+        $aheadBy = (int) ($check['aheadBy'] ?? 0);
+        $commits = is_array($check['commits'] ?? null) ? $check['commits'] : [];
+        $items = [];
+        foreach (array_slice($commits, 0, 5) as $commit) {
+            if (!is_array($commit)) {
+                continue;
+            }
+            $items[] = [
+                'short' => trim((string) ($commit['short'] ?? '')),
+                'message' => trim((string) ($commit['message'] ?? '')),
+                'kind' => trim((string) ($commit['kind'] ?? '')),
+            ];
+        }
+        $headSha = trim((string) ($check['headSha'] ?? ''));
+
+        return [
+            'ok' => $error === '',
+            'error' => $error,
+            'available' => $error === '' && $aheadBy > 0,
+            'aheadBy' => $aheadBy,
+            'mode' => (string) ($check['mode'] ?? ''),
+            'branch' => (string) ($check['branch'] ?? $status['branch']),
+            'repo' => $status['repo'],
+            'installedLabel' => $installedLabel,
+            'latestLabel' => $items[0]['short'] ?? '',
+            'latestMessage' => $items[0]['message'] ?? '',
+            'items' => $items,
+            'fingerprint' => $aheadBy . ':' . $headSha,
+            'hasToken' => $status['hasToken'],
+            'checkedAt' => date('c'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function readNotificationCache(): ?array
+    {
+        $raw = $this->settings->get(self::NOTIFY_CACHE_KEY, '');
+        if ($raw === '') {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+        $cachedAt = (int) ($decoded['cachedAt'] ?? 0);
+        $ttl = (int) ($decoded['ttl'] ?? 0);
+        $payload = $decoded['payload'] ?? null;
+        if ($cachedAt <= 0 || $ttl <= 0 || (time() - $cachedAt) > $ttl || !is_array($payload)) {
+            return null;
+        }
+        $payload['fromCache'] = true;
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function writeNotificationCache(array $payload, int $ttl): void
+    {
+        unset($payload['fromCache']);
+        $json = json_encode([
+            'cachedAt' => time(),
+            'ttl' => $ttl,
+            'payload' => $payload,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json)) {
+            return;
+        }
+        $this->settings->set(self::NOTIFY_CACHE_KEY, $json);
     }
 
     private function installedCommitFromGit(): string

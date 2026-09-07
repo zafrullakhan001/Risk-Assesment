@@ -228,7 +228,9 @@ final class DashboardDecisionViews
         bool $readOnly = false,
         array $shareLinks = [],
         ?string $freshShareUrl = null,
-        bool $isAdaptive = false
+        bool $isAdaptive = false,
+        bool $smtpEnabled = false,
+        bool $viewerIsAdmin = false
     ): string {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
@@ -723,7 +725,7 @@ final class DashboardDecisionViews
 
             <?php if (!$readOnly && $currentId > 0): ?>
                 <div class="action-panel" data-action-panel="share" hidden>
-                    <?= $this->renderShareSection($currentId, $csrfToken, $shareLinks, $freshShareUrl) ?>
+                    <?= $this->renderShareSection($currentId, $csrfToken, $shareLinks, $freshShareUrl, $smtpEnabled, $viewerIsAdmin) ?>
                 </div>
             <?php endif; ?>
 
@@ -1251,10 +1253,23 @@ final class DashboardDecisionViews
     /**
      * @param list<array{id: int, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool, url?: string, can_copy?: bool}> $shareLinks
      */
-    private function renderShareSection(int $assessmentId, string $csrfToken, array $shareLinks, ?string $freshShareUrl): string
-    {
+    private function renderShareSection(
+        int $assessmentId,
+        string $csrfToken,
+        array $shareLinks,
+        ?string $freshShareUrl,
+        bool $smtpEnabled = false,
+        bool $viewerIsAdmin = false
+    ): string {
         $activeLinks = array_values(array_filter($shareLinks, static fn (array $link): bool => !empty($link['is_active'])));
         $hasActive = $activeLinks !== [];
+        $copyableActive = null;
+        foreach ($activeLinks as $link) {
+            if (!empty($link['can_copy']) && trim((string) ($link['url'] ?? '')) !== '') {
+                $copyableActive = $link;
+                break;
+            }
+        }
 
         ob_start();
         ?>
@@ -1304,6 +1319,29 @@ final class DashboardDecisionViews
                     <?php endif; ?>
                 <?php endif; ?>
             </div>
+
+            <?php if ($copyableActive !== null && $csrfToken !== ''): ?>
+                <?php if ($smtpEnabled): ?>
+                    <form method="post" action="index.php" class="share-email-form">
+                        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                        <input type="hidden" name="action" value="email_share_link">
+                        <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                        <input type="hidden" name="share_id" value="<?= (int) $copyableActive['id'] ?>">
+                        <p class="share-email-form-title">✉️ Email this link</p>
+                        <label>
+                            <span>To (comma or newline separated, max 20)</span>
+                            <textarea name="email_to" rows="2" required maxlength="2000" placeholder="colleague@example.com"></textarea>
+                        </label>
+                        <label>
+                            <span>Optional note</span>
+                            <textarea name="email_note" rows="2" maxlength="1000" placeholder="Short message for the recipient…"></textarea>
+                        </label>
+                        <button type="submit" class="button button-primary">📨 Send email</button>
+                    </form>
+                <?php elseif ($viewerIsAdmin): ?>
+                    <p class="share-email-hint">To email this link, configure SMTP under <a href="admin/email.php">Admin → Email</a>.</p>
+                <?php endif; ?>
+            <?php endif; ?>
 
             <?php if ($shareLinks === []): ?>
                 <p class="empty-panel project-empty-state">No share links yet for this version.</p>

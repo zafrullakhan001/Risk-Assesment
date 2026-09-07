@@ -5,6 +5,9 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\AppUrl;
+use RiskAssessment\Mail\EmailTemplates;
+use RiskAssessment\Mail\SmtpMailer;
+use RiskAssessment\Mail\SmtpSettings;
 use RiskAssessment\PaginationPreference;
 use RiskAssessment\Repositories\CatalogShareRepository;
 use RiskAssessment\Repositories\SharePointArchiveRepository;
@@ -600,6 +603,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             || $action === 'revoke_owners_share_link'
             || $action === 'purge_catalog_share_history'
             || $action === 'purge_owners_share_history'
+            || $action === 'email_catalog_share_link'
+            || $action === 'email_owners_share_link'
         ) {
             $shareKind = str_contains($action, 'owners')
                 ? CatalogShareRepository::KIND_OWNERS
@@ -615,6 +620,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $redirectParams['view'] = $postedView;
             }
             $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams) . '#' . $shareHash;
+
+            if (str_starts_with($action, 'email_')) {
+                $smtpSettings = new SmtpSettings($settings, $crypto);
+                if (!$smtpSettings->isEnabled()) {
+                    throw new RuntimeException('Outbound email is not enabled. Configure Admin → Email first.');
+                }
+                $shareId = filter_var($_POST['share_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+                $linkUrl = '';
+                $linkLabel = '';
+                $matchedId = 0;
+                foreach ($catalogShareRepository->listRecent(50, $shareKind) as $link) {
+                    if ((int) ($link['id'] ?? 0) === $shareId
+                        && !empty($link['is_active'])
+                        && !empty($link['can_copy'])
+                        && trim((string) ($link['url'] ?? '')) !== ''
+                    ) {
+                        $linkUrl = trim((string) $link['url']);
+                        $linkLabel = trim((string) ($link['label'] ?? ''));
+                        $matchedId = (int) $link['id'];
+                        break;
+                    }
+                }
+                if ($linkUrl === '' || $matchedId <= 0) {
+                    throw new RuntimeException('That public link is not available to email. Copy an active link first.');
+                }
+                $recipients = SmtpSettings::normalizeRecipients((string) ($_POST['email_to'] ?? ''));
+                if ($recipients === []) {
+                    throw new RuntimeException('Enter at least one valid recipient email address.');
+                }
+                $note = trim((string) ($_POST['email_note'] ?? ''));
+                if (mb_strlen($note) > 1000) {
+                    $note = mb_substr($note, 0, 1000);
+                }
+                $senderName = trim((string) ($currentUser['display_name'] ?? ''));
+                if ($senderName === '') {
+                    $senderName = trim((string) ($currentUser['username'] ?? ''));
+                }
+                $emailKind = $shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners' : 'catalog';
+                $templates = new EmailTemplates($branding);
+                $message = $templates->shareLink($emailKind, $linkUrl, $senderName, $note, $linkLabel);
+                $mailer = new SmtpMailer();
+                $result = $mailer->send(
+                    $recipients,
+                    $message['subject'],
+                    $message['text'],
+                    $smtpSettings->mailerConfig(),
+                    [],
+                    [
+                        'html' => $message['html'],
+                        'text' => $message['text'],
+                    ]
+                );
+                if ($result !== true) {
+                    throw new RuntimeException('Failed to send email: ' . (string) $result);
+                }
+                $auth->users()->logAudit(
+                    'share.email',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    null,
+                    null,
+                    [
+                        'kind' => $emailKind,
+                        'share_id' => $matchedId,
+                        'recipients' => count($recipients),
+                    ]
+                );
+                $redirectParams['emailed'] = (string) count($recipients);
+                $shareRedirect = 'sharepoint.php?' . http_build_query($redirectParams) . '#' . $shareHash;
+                header('Location: ' . $shareRedirect);
+                exit;
+            }
 
             if (str_starts_with($action, 'create_')) {
                 $postedKeys = $_POST['share_source_keys'] ?? [];
@@ -995,12 +1072,21 @@ if ($thisClientIdSafe !== '' && !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{
 
 $msalRedirectUri = AppUrl::absoluteMatchingRequest('sharepoint.php');
 
+if (isset($_GET['emailed']) && $flash === '') {
+    $emailedCount = max(1, (int) $_GET['emailed']);
+    $flash = $emailedCount === 1
+        ? 'Public link emailed to 1 recipient.'
+        : 'Public link emailed to ' . $emailedCount . ' recipients.';
+}
 if (isset($_GET['catalog_shared']) && $flash === '') {
     $flash = 'Catalog share settings updated.';
 }
 if (isset($_GET['owners_shared']) && $flash === '') {
     $flash = 'Project owners share settings updated.';
 }
+
+$smtpEnabled = (new SmtpSettings($settings, $crypto))->isEnabled();
+$viewerIsAdmin = $isAdmin;
 if (isset($_SESSION['fresh_catalog_share_url'])) {
     $freshCatalogShareUrl = (string) $_SESSION['fresh_catalog_share_url'];
     unset($_SESSION['fresh_catalog_share_url']);
@@ -1720,8 +1806,10 @@ $soloPageClass = $ownerSolo
             $shareCreateAction = 'create_catalog_share_link';
             $shareRevokeAction = 'revoke_catalog_share_link';
             $sharePurgeAction = 'purge_catalog_share_history';
+            $shareEmailAction = 'email_catalog_share_link';
             $shareForceOpen = ($freshCatalogShareUrl !== null && $freshCatalogShareUrl !== '')
                 || isset($_GET['catalog_shared'])
+                || isset($_GET['emailed'])
                 || (int) ($_GET['cshare_page'] ?? 0) > 0
                 || ($error !== '' && str_contains((string) ($_POST['action'] ?? ''), 'catalog_share'));
             $shareView = '';
@@ -1926,8 +2014,10 @@ $soloPageClass = $ownerSolo
             $shareCreateAction = 'create_owners_share_link';
             $shareRevokeAction = 'revoke_owners_share_link';
             $sharePurgeAction = 'purge_owners_share_history';
+            $shareEmailAction = 'email_owners_share_link';
             $shareForceOpen = ($freshOwnersShareUrl !== null && $freshOwnersShareUrl !== '')
                 || isset($_GET['owners_shared'])
+                || isset($_GET['emailed'])
                 || (int) ($_GET['oshare_page'] ?? 0) > 0
                 || ($error !== '' && str_contains((string) ($_POST['action'] ?? ''), 'owners_share'));
             $shareView = $ownerSolo ? 'owners' : '';

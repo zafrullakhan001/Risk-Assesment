@@ -91,6 +91,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             throw new RuntimeException('Unknown action.');
         }
+        if (is_array($checkResult)) {
+            $updater->rememberNotificationState($checkResult);
+        }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
