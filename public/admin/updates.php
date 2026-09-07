@@ -80,6 +80,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Update already applied; audit logging is best-effort.
             }
             $flash = (string) $applied['message'];
+            $checkResult = $updater->check(false);
+            if ((int) $checkResult['aheadBy'] <= 0) {
+                $flash .= ' This install is up to date with GitHub.';
+            } else {
+                $flash .= ' ' . $checkResult['aheadBy'] . ' further update'
+                    . ($checkResult['aheadBy'] === 1 ? '' : 's')
+                    . ' remain after this apply.';
+            }
         } else {
             throw new RuntimeException('Unknown action.');
         }

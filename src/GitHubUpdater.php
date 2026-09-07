@@ -81,11 +81,11 @@ final class GitHubUpdater
         $caps = $this->capabilities();
         $manifest = $this->installedManifest();
         $sha = (string) ($manifest['sha'] ?? '');
-        if ($sha === '' && $caps['gitAvailable']) {
-            $sha = $this->installedCommitFromGit();
-        }
         $tag = (string) ($manifest['tag'] ?? '');
         $version = (string) ($manifest['version'] ?? '');
+        if ($sha === '' && $tag === '' && $caps['gitAvailable']) {
+            $sha = $this->installedCommitFromGit();
+        }
 
         return [
             'repo' => $this->repoSlug(),
@@ -135,7 +135,24 @@ final class GitHubUpdater
             }
         }
 
-        $commitCheck = $this->checkFromCommits($releases, $latestReleaseTag !== '' ? $latestReleaseTag : null);
+        $manifest = $this->installedManifest();
+        $installedSha = strtolower((string) ($manifest['sha'] ?? ''));
+        $installedTag = $this->installedTagOrVersion();
+        // After an apply, compare commits to what this install actually has.
+        // Only use the latest Release as the commit base when newer Releases are still pending
+        // (so we do not re-list commits that are already inside that Release).
+        $commitBase = '';
+        if ($releaseCheck['commits'] !== []) {
+            $commitBase = $latestReleaseTag;
+        } elseif ($installedSha !== '') {
+            $commitBase = $installedSha;
+        } elseif ($installedTag !== '') {
+            $commitBase = $installedTag;
+        } elseif ($latestReleaseTag !== '') {
+            $commitBase = $latestReleaseTag;
+        }
+
+        $commitCheck = $this->checkFromCommits($releases, $commitBase !== '' ? $commitBase : null);
         $items = [];
         $seen = [];
         foreach (array_merge($releaseCheck['commits'], $commitCheck['commits']) as $item) {
@@ -144,6 +161,12 @@ final class GitHubUpdater
             }
             $key = strtolower((string) ($item['sha'] ?? ''));
             if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            if ($installedSha !== '' && (str_starts_with($installedSha, $key) || str_starts_with($key, $installedSha))) {
+                continue;
+            }
+            if ($installedTag !== '' && $this->sameVersion($key, $installedTag)) {
                 continue;
             }
             $seen[$key] = true;
@@ -210,6 +233,10 @@ final class GitHubUpdater
             } else {
                 $tag = $target;
                 $sha = $this->githubRefSha($target);
+                if ($sha === '') {
+                    $fromPackage = $this->readVersionFile();
+                    $sha = isset($fromPackage['sha']) ? strtolower(trim((string) $fromPackage['sha'])) : '';
+                }
             }
             $this->recordApplied($tag, $sha);
             $this->clearLastLog();
