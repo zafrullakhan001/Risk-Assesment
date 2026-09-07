@@ -397,9 +397,9 @@ HTML,
                     'html' => <<<'HTML'
 <p>Administrators open <a href="admin/email.php">Admin → Email</a> to configure outbound SMTP used for test messages and for emailing public share links.</p>
 <ul>
-<li><strong>Custom SMTP</strong> — enter host, port, encryption (None / SSL / STARTTLS), username, password, and From address.</li>
+<li><strong>Custom SMTP</strong> — enter host, port, encryption (None / SSL / STARTTLS), and From address. Username and password are optional (leave blank for open / internal relays).</li>
 <li><strong>Office 365 / Microsoft 365</strong> — fills <code>smtp.office365.com</code>, port <code>587</code>, and STARTTLS (same working path as LinkNest). Enable Authenticated SMTP for the mailbox. Username must be the full mailbox email. With MFA, use an app password. From should match that mailbox (or an allowed send-as address).</li>
-<li><strong>Enable outbound email</strong>, save settings (password is encrypted at rest), then use <strong>Send test email</strong> to confirm delivery.</li>
+<li><strong>Enable outbound email</strong>, save settings (password is encrypted at rest when used), then use <strong>Send test email</strong> to confirm delivery.</li>
 <li>Leave the password blank when saving to keep the current secret.</li>
 <li>Once enabled, assessment Share and SharePoint catalog/owners share panels show <strong>Email this link</strong>.</li>
 </ul>

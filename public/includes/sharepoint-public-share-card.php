@@ -16,6 +16,7 @@ use RiskAssessment\Repositories\CatalogShareRepository;
  * @var bool $shareHasActive
  * @var int $shareActiveCount
  * @var string|null $shareFreshUrl
+ * @var int|null $shareFreshId
  * @var list<array{id: int, label?: string, source_keys: list<string>, created_at: string, created_by_username: string, expires_at: ?string, last_accessed_at: ?string, is_active: bool, url?: string, can_copy?: bool}> $shareLinks
  * @var int $shareHistoryPage
  * @var int $shareHistoryPages
@@ -24,6 +25,10 @@ use RiskAssessment\Repositories\CatalogShareRepository;
  * @var string $shareCreateAction
  * @var string $shareRevokeAction
  * @var string $sharePurgeAction
+ * @var string $shareEmailAction
+ * @var bool $smtpEnabled
+ * @var bool $smtpConfigured
+ * @var bool $viewerIsAdmin
  * @var string $activeSourceKey
  * @var list<array<string, mixed>> $allSources
  * @var array<string, string> $sourceTitleByKey
@@ -37,14 +42,20 @@ $shareActiveCount = max(0, (int) ($shareActiveCount ?? 0));
 $shareHasActive = !empty($shareHasActive) || $shareActiveCount > 0;
 $shareFreshUrl = isset($shareFreshUrl) ? (string) $shareFreshUrl : '';
 $shareFreshTag = trim((string) ($shareFreshTag ?? ''));
+$shareFreshId = isset($shareFreshId) ? (int) $shareFreshId : 0;
 $shareForceOpen = !empty($shareForceOpen) || $shareFreshUrl !== '';
 $shareHistoryPage = max(1, (int) ($shareHistoryPage ?? 1));
 $shareHistoryPages = max(1, (int) ($shareHistoryPages ?? 1));
 $shareHistoryTotal = max(0, (int) ($shareHistoryTotal ?? 0));
 $shareLinks = is_array($shareLinks ?? null) ? $shareLinks : [];
+$smtpEnabled = !empty($smtpEnabled);
+$smtpConfigured = !empty($smtpConfigured);
+$viewerIsAdmin = !empty($viewerIsAdmin);
+$shareEmailAction = (string) ($shareEmailAction ?? '');
 $formSuffix = preg_replace('/[^a-z0-9_-]/i', '', $shareKind) ?: 'catalog';
 $createFormId = 'share-create-' . $formSuffix;
 $purgeFormId = 'share-purge-' . $formSuffix;
+$emailFormId = 'share-email-' . $formSuffix;
 $urlInputId = 'share-link-url-' . $formSuffix;
 $copyBtnId = 'btn-copy-share-link-' . $formSuffix;
 $statusId = 'share-link-copy-status-' . $formSuffix;
@@ -56,6 +67,20 @@ $badgeText = $shareActiveCount > 0
     : 'Off';
 $shareSectionKey = (string) ($shareSectionKey ?? ($shareKind === CatalogShareRepository::KIND_OWNERS ? 'owners-share' : 'catalog-share'));
 $showSectionMove = !empty($showSectionMove);
+
+$copyableLinks = [];
+foreach ($shareLinks as $link) {
+    if (
+        !empty($link['is_active'])
+        && !empty($link['can_copy'])
+        && trim((string) ($link['url'] ?? '')) !== ''
+        && (int) ($link['id'] ?? 0) > 0
+    ) {
+        $copyableLinks[] = $link;
+    }
+}
+$defaultEmailShareId = $shareFreshId > 0 ? $shareFreshId : (int) ($copyableLinks[0]['id'] ?? 0);
+$canEmailLinks = $smtpEnabled && $shareEmailAction !== '' && $copyableLinks !== [];
 ?>
 <section class="upload-card share-link-card sharepoint-share-card" id="<?= e($sharePanelId) ?>" data-sp-section="<?= e($shareSectionKey) ?>" data-share-kind="<?= e($shareKind) ?>">
     <details class="sharepoint-share-shell" id="<?= e($sharePanelId) ?>-shell"<?= $shareForceOpen ? ' open' : '' ?>>
@@ -85,6 +110,27 @@ $showSectionMove = !empty($showSectionMove);
                         <a class="button ghost-light" href="<?= e($shareFreshUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
                     </div>
                     <p class="share-link-copy-status" id="<?= e($statusId) ?>" hidden></p>
+                    <?php if ($smtpEnabled && $shareEmailAction !== '' && $shareFreshId > 0): ?>
+                        <form method="post" class="share-email-form share-email-form-fresh">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="<?= e($shareEmailAction) ?>">
+                            <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
+                            <?php if (($shareView ?? '') !== ''): ?>
+                                <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                            <?php endif; ?>
+                            <input type="hidden" name="share_id" value="<?= (int) $shareFreshId ?>">
+                            <p class="share-email-form-title">✉️ Email this new link</p>
+                            <label>
+                                <span>Recipient email</span>
+                                <input type="text" name="email_to" required maxlength="2000" placeholder="colleague@example.com" inputmode="email" autocomplete="email">
+                            </label>
+                            <label>
+                                <span>Optional note</span>
+                                <textarea name="email_note" rows="2" maxlength="1000" placeholder="Short message for the recipient…"></textarea>
+                            </label>
+                            <button type="submit" class="button button-primary">📨 Send email</button>
+                        </form>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 
@@ -140,9 +186,66 @@ $showSectionMove = !empty($showSectionMove);
                     <?php endif; ?>
                 </div>
             </form>
-            <?php if (empty($smtpEnabled) && !empty($viewerIsAdmin)): ?>
-                <p class="share-email-hint">To email public links, configure SMTP under <a href="admin/email.php">Admin → Email</a>.</p>
+
+            <?php if ($canEmailLinks): ?>
+                <form method="post" class="share-email-form share-email-form-panel" id="<?= e($emailFormId) ?>">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="<?= e($shareEmailAction) ?>">
+                    <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
+                    <?php if (($shareView ?? '') !== ''): ?>
+                        <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                    <?php endif; ?>
+                    <p class="share-email-form-title">✉️ Email a public link</p>
+                    <p class="panel-help" style="margin:0;">Send the public URL to someone by email. They open it without signing in.</p>
+                    <?php if (count($copyableLinks) > 1): ?>
+                        <label>
+                            <span>Which link</span>
+                            <select name="share_id" required>
+                                <?php foreach ($copyableLinks as $link): ?>
+                                    <?php
+                                    $optId = (int) $link['id'];
+                                    $optLabel = trim((string) ($link['label'] ?? ''));
+                                    if ($optLabel === '') {
+                                        $optLabel = 'Link #' . $optId;
+                                    }
+                                    ?>
+                                    <option value="<?= $optId ?>"<?= $optId === $defaultEmailShareId ? ' selected' : '' ?>><?= e($optLabel) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    <?php else: ?>
+                        <input type="hidden" name="share_id" value="<?= (int) $defaultEmailShareId ?>">
+                        <?php
+                        $onlyLabel = trim((string) ($copyableLinks[0]['label'] ?? ''));
+                        if ($onlyLabel !== ''):
+                        ?>
+                            <p class="share-email-link-tag">Sending: <strong><?= e($onlyLabel) ?></strong></p>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <label>
+                        <span>Recipient email(s)</span>
+                        <textarea name="email_to" rows="2" required maxlength="2000" placeholder="colleague@example.com&#10;optional-second@example.com"></textarea>
+                    </label>
+                    <label>
+                        <span>Optional note</span>
+                        <textarea name="email_note" rows="2" maxlength="1000" placeholder="Short message for the recipient…"></textarea>
+                    </label>
+                    <button type="submit" class="button button-primary">📨 Send email</button>
+                </form>
+            <?php elseif ($viewerIsAdmin && !$smtpEnabled): ?>
+                <p class="share-email-hint">
+                    <?php if ($smtpConfigured): ?>
+                        SMTP is saved but not enabled. Turn on <strong>Enable outbound email</strong> under <a href="admin/email.php">Admin → Email</a>, then save, to email public links from here.
+                    <?php else: ?>
+                        To email public links, configure SMTP under <a href="admin/email.php">Admin → Email</a>.
+                    <?php endif; ?>
+                </p>
+            <?php elseif ($smtpEnabled && $shareHasActive && $copyableLinks === []): ?>
+                <p class="share-email-hint">Active links exist but their URLs cannot be copied. Create a new public link, then email it from this panel.</p>
+            <?php elseif ($smtpEnabled && !$shareHasActive): ?>
+                <p class="share-email-hint">Create a public link above, then you can email the URL to a recipient from this panel.</p>
             <?php endif; ?>
+
             <form method="post" id="<?= e($purgeFormId) ?>" class="inline-form">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="<?= e((string) $sharePurgeAction) ?>">
@@ -215,27 +318,6 @@ $showSectionMove = !empty($showSectionMove);
                                             <a class="button ghost-light" href="<?= e($linkUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
                                         </div>
                                         <p class="share-link-copy-status" id="<?= e($rowStatusId) ?>" hidden></p>
-                                        <?php if (!empty($smtpEnabled) && ($shareEmailAction ?? '') !== ''): ?>
-                                            <form method="post" class="share-email-form">
-                                                <?= csrf_field() ?>
-                                                <input type="hidden" name="action" value="<?= e((string) $shareEmailAction) ?>">
-                                                <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
-                                                <?php if (($shareView ?? '') !== ''): ?>
-                                                    <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
-                                                <?php endif; ?>
-                                                <input type="hidden" name="share_id" value="<?= $linkId ?>">
-                                                <p class="share-email-form-title">✉️ Email this link</p>
-                                                <label>
-                                                    <span>To (comma or newline separated, max 20)</span>
-                                                    <textarea name="email_to" rows="2" required maxlength="2000" placeholder="colleague@example.com"></textarea>
-                                                </label>
-                                                <label>
-                                                    <span>Optional note</span>
-                                                    <textarea name="email_note" rows="2" maxlength="1000" placeholder="Short message for the recipient…"></textarea>
-                                                </label>
-                                                <button type="submit" class="button button-primary">📨 Send email</button>
-                                            </form>
-                                        <?php endif; ?>
                                     <?php elseif ($linkActive): ?>
                                         <p class="share-link-row-legacy">URL was not stored for this older link. Revoke it and create a new one to copy the address again.</p>
                                     <?php endif; ?>

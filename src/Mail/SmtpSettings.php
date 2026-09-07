@@ -150,11 +150,14 @@ final class SmtpSettings
             if ($port < 1 || $port > 65535) {
                 throw new RuntimeException('SMTP port must be between 1 and 65535.');
             }
-            if ($provider === self::PROVIDER_OFFICE365 && $username === '') {
-                throw new RuntimeException('Office 365 requires the full mailbox email as the username.');
-            }
-            if ($password === '' && !$this->all(false)['has_password']) {
-                throw new RuntimeException('SMTP password is required when email is enabled.');
+            // Office 365 needs AUTH LOGIN; Custom SMTP may be an open relay (host + port only).
+            if ($provider === self::PROVIDER_OFFICE365) {
+                if ($username === '') {
+                    throw new RuntimeException('Office 365 requires the full mailbox email as the username.');
+                }
+                if ($password === '' && !$this->all(false)['has_password']) {
+                    throw new RuntimeException('Office 365 requires an SMTP password (or app password).');
+                }
             }
         }
 
@@ -219,15 +222,23 @@ final class SmtpSettings
         if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
             throw new RuntimeException('From email address is not valid.');
         }
-        if ($password === '' && trim((string) ($input['smtp_username'] ?? '')) !== '') {
-            throw new RuntimeException('SMTP password is required for authentication. Enter it or save settings first.');
+        $username = trim((string) ($input['smtp_username'] ?? ''));
+        // Custom open relays need no auth. Office 365 (or custom with a username) needs a password.
+        if ($provider === self::PROVIDER_OFFICE365 || $username !== '') {
+            if ($password === '') {
+                throw new RuntimeException(
+                    $provider === self::PROVIDER_OFFICE365
+                        ? 'Office 365 requires an SMTP password (or app password). Enter it or save settings first.'
+                        : 'SMTP password is required when a username is set. Enter it or save settings first.'
+                );
+            }
         }
 
         return [
             'host' => $host,
             'port' => $port > 0 ? $port : 587,
             'encryption' => $encryption,
-            'username' => trim((string) ($input['smtp_username'] ?? '')),
+            'username' => $username,
             'password' => $password,
             'from_email' => $fromEmail,
             'from_name' => $fromName !== '' ? $fromName : 'Risk Register',

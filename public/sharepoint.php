@@ -728,6 +728,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : 'fresh_catalog_share_label';
                 $_SESSION[$sessionUrlKey] = CatalogShareRepository::absoluteUrl($created['token'], $shareKind);
                 $_SESSION[$sessionLabelKey] = (string) ($created['label'] ?? $shareTag);
+                $sessionIdKey = $shareKind === CatalogShareRepository::KIND_OWNERS
+                    ? 'fresh_owners_share_id'
+                    : 'fresh_catalog_share_id';
+                $_SESSION[$sessionIdKey] = (int) $created['id'];
                 $auth->users()->logAudit(
                     $shareKind === CatalogShareRepository::KIND_OWNERS
                         ? 'sharepoint.owners_share_created'
@@ -755,7 +759,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['fresh_catalog_share_url'],
                     $_SESSION['fresh_owners_share_url'],
                     $_SESSION['fresh_catalog_share_label'],
-                    $_SESSION['fresh_owners_share_label']
+                    $_SESSION['fresh_owners_share_label'],
+                    $_SESSION['fresh_catalog_share_id'],
+                    $_SESSION['fresh_owners_share_id']
                 );
                 $auth->users()->logAudit(
                     $shareKind === CatalogShareRepository::KIND_OWNERS
@@ -1085,8 +1091,14 @@ if (isset($_GET['owners_shared']) && $flash === '') {
     $flash = 'Project owners share settings updated.';
 }
 
-$smtpEnabled = (new SmtpSettings($settings, $crypto))->isEnabled();
+$smtpSettingsUi = new SmtpSettings($settings, $crypto);
+$smtpAllUi = $smtpSettingsUi->all(false);
+$smtpEnabled = $smtpSettingsUi->isEnabled();
+$smtpConfigured = trim((string) $smtpAllUi['host']) !== ''
+    && trim((string) $smtpAllUi['from_email']) !== '';
 $viewerIsAdmin = $isAdmin;
+$freshCatalogShareId = null;
+$freshOwnersShareId = null;
 if (isset($_SESSION['fresh_catalog_share_url'])) {
     $freshCatalogShareUrl = (string) $_SESSION['fresh_catalog_share_url'];
     unset($_SESSION['fresh_catalog_share_url']);
@@ -1095,6 +1107,10 @@ if (isset($_SESSION['fresh_catalog_share_label'])) {
     $freshCatalogShareLabel = (string) $_SESSION['fresh_catalog_share_label'];
     unset($_SESSION['fresh_catalog_share_label']);
 }
+if (isset($_SESSION['fresh_catalog_share_id'])) {
+    $freshCatalogShareId = (int) $_SESSION['fresh_catalog_share_id'];
+    unset($_SESSION['fresh_catalog_share_id']);
+}
 if (isset($_SESSION['fresh_owners_share_url'])) {
     $freshOwnersShareUrl = (string) $_SESSION['fresh_owners_share_url'];
     unset($_SESSION['fresh_owners_share_url']);
@@ -1102,6 +1118,10 @@ if (isset($_SESSION['fresh_owners_share_url'])) {
 if (isset($_SESSION['fresh_owners_share_label'])) {
     $freshOwnersShareLabel = (string) $_SESSION['fresh_owners_share_label'];
     unset($_SESSION['fresh_owners_share_label']);
+}
+if (isset($_SESSION['fresh_owners_share_id'])) {
+    $freshOwnersShareId = (int) $_SESSION['fresh_owners_share_id'];
+    unset($_SESSION['fresh_owners_share_id']);
 }
 
 $shareHistoryPerPage = CatalogShareRepository::HISTORY_PER_PAGE;
@@ -1798,6 +1818,7 @@ $soloPageClass = $ownerSolo
             $shareHasActive = $catalogShareActiveCount > 0;
             $shareActiveCount = $catalogShareActiveCount;
             $shareFreshUrl = $freshCatalogShareUrl;
+            $shareFreshId = $freshCatalogShareId;
             $shareLinks = $catalogShareLinks;
             $shareHistoryPage = $catalogShareHistPage;
             $shareHistoryPages = $catalogSharePages;
@@ -2006,6 +2027,7 @@ $soloPageClass = $ownerSolo
             $shareHasActive = $ownersShareActiveCount > 0;
             $shareActiveCount = $ownersShareActiveCount;
             $shareFreshUrl = $freshOwnersShareUrl;
+            $shareFreshId = $freshOwnersShareId;
             $shareLinks = $ownersShareLinks;
             $shareHistoryPage = $ownersShareHistPage;
             $shareHistoryPages = $ownersSharePages;

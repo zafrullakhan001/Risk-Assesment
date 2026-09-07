@@ -130,15 +130,17 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </label>
                         </div>
                         <div class="smtp-provider-help" id="smtp-help-custom"<?= $formProvider === 'office365' ? ' hidden' : '' ?>>
-                            <p class="settings-hint">Enter your mail server host, port, and credentials manually.</p>
+                            <p class="settings-hint">Enter your mail server host and port. Username and password are optional — leave them blank for open / internal relays that do not require authentication.</p>
                         </div>
                         <div class="smtp-provider-help smtp-provider-help-o365" id="smtp-help-office365"<?= $formProvider === 'office365' ? '' : ' hidden' ?>>
                             <p><strong>Office 365:</strong> Uses <code>smtp.office365.com</code> on port <code>587</code> with STARTTLS. Enable Authenticated SMTP for the mailbox in the Microsoft 365 admin center. Username must be the full mailbox email. If MFA is on, use an app password. From address should match that mailbox (or an allowed send-as address).</p>
                         </div>
-                        <label class="remember-row" style="margin-top:12px;">
-                            <input type="checkbox" name="smtp_enabled" value="1"<?= $formEnabled ? ' checked' : '' ?>>
-                            <span>Enable outbound email</span>
-                        </label>
+                        <div class="smtp-enable-box">
+                            <label class="remember-row">
+                                <input type="checkbox" name="smtp_enabled" value="1"<?= $formEnabled ? ' checked' : '' ?>>
+                                <span><strong>Enable outbound email</strong> — required before share panels show “Email a public link”</span>
+                            </label>
+                        </div>
                     </fieldset>
 
                     <fieldset class="settings-fieldset settings-tone-sky">
@@ -165,16 +167,18 @@ require dirname(__DIR__) . '/includes/admin-header.php';
 
                     <fieldset class="settings-fieldset settings-tone-amber">
                         <legend><span class="settings-emoji" aria-hidden="true">🔑</span> Authentication</legend>
+                        <p class="settings-hint" id="smtp-auth-hint-custom"<?= $formProvider === 'office365' ? ' hidden' : '' ?>>Optional for Custom SMTP. Leave blank if your server only needs host and port.</p>
+                        <p class="settings-hint" id="smtp-auth-hint-office365"<?= $formProvider === 'office365' ? '' : ' hidden' ?>>Required for Office 365. Use the full mailbox email and password (or app password).</p>
                         <div class="settings-grid">
                             <label class="settings-field">
-                                <span>Username</span>
+                                <span>Username <em class="settings-optional">(optional for Custom)</em></span>
                                 <input type="text" name="smtp_username" id="smtp_username" value="<?= e($formUsername) ?>" maxlength="200" placeholder="user@yourdomain.com" autocomplete="off">
                             </label>
                             <label class="settings-field">
-                                <span>Password</span>
+                                <span>Password <em class="settings-optional">(optional for Custom)</em></span>
                                 <input type="password" name="smtp_password" id="smtp_password" value="" maxlength="500" placeholder="<?= $hasPassword ? 'Leave blank to keep current' : 'SMTP password or app password' ?>" autocomplete="new-password">
                                 <?php if ($hasPassword): ?>
-                                    <small class="settings-help">A password is already stored (encrypted). Leave blank to keep it.</small>
+                                    <small class="settings-help">A password is already stored (encrypted). Leave blank to keep it. Clear the username and save without a password only if you no longer need auth.</small>
                                 <?php endif; ?>
                             </label>
                         </div>
@@ -225,6 +229,8 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 var encryption = document.getElementById('smtp_encryption');
                 var helpCustom = document.getElementById('smtp-help-custom');
                 var helpO365 = document.getElementById('smtp-help-office365');
+                var authHintCustom = document.getElementById('smtp-auth-hint-custom');
+                var authHintO365 = document.getElementById('smtp-auth-hint-office365');
                 var form = document.getElementById('smtp-settings-form');
                 var actionInput = document.getElementById('smtp-form-action');
                 var saveBtn = document.getElementById('smtp-save-btn');
@@ -233,6 +239,8 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     var isO365 = provider && provider.value === 'office365';
                     if (helpCustom) helpCustom.hidden = !!isO365;
                     if (helpO365) helpO365.hidden = !isO365;
+                    if (authHintCustom) authHintCustom.hidden = !!isO365;
+                    if (authHintO365) authHintO365.hidden = !isO365;
                     if (isO365) {
                         if (host) { host.value = 'smtp.office365.com'; host.readOnly = true; }
                         if (port) { port.value = '587'; port.readOnly = true; }

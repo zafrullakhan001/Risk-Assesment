@@ -6367,11 +6367,27 @@ body.is-presentation .print-only-block { display: block; }
     gap: 10px;
 }
 
+.share-email-form-panel {
+    margin-top: 16px;
+    border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
+    background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+
+.share-email-form-fresh {
+    margin-top: 14px;
+}
+
 .share-email-form-title {
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: var(--ink);
+}
+
+.share-email-link-tag {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
 }
 
 .share-email-form .settings-field,
@@ -6384,18 +6400,38 @@ body.is-presentation .print-only-block { display: block; }
 
 .share-email-form input[type="text"],
 .share-email-form input[type="email"],
-.share-email-form textarea {
+.share-email-form textarea,
+.share-email-form select {
     width: 100%;
 }
 
 .share-email-hint {
-    margin: 8px 0 0;
-    font-size: 12px;
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px dashed var(--line);
+    font-size: 13px;
     color: var(--muted);
+    background: color-mix(in srgb, var(--card) 80%, var(--wash, #f8fafc));
 }
 
 .share-email-hint a {
     color: var(--primary);
+}
+
+.smtp-enable-box {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--pass) 35%, var(--line));
+    background: color-mix(in srgb, var(--pass) 10%, var(--card));
+}
+
+.settings-optional {
+    font-style: normal;
+    font-weight: 500;
+    color: var(--muted);
+    font-size: 12px;
 }
 
 @media (max-width: 900px) {
