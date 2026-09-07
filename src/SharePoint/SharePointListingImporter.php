@@ -111,8 +111,12 @@ final class SharePointListingImporter
         if (!str_starts_with($sitePath, '/')) {
             $sitePath = '/' . $sitePath;
         }
-        $folderPath = trim((string) ($source['folder_path'] ?? ''))
-            ?: (trim($this->settings->get('sharepoint_folder_path', 'Architectural Projects [Public]')) ?: 'Architectural Projects [Public]');
+        if ($source !== null && array_key_exists('folder_path', $source)) {
+            $folderPath = trim(str_replace('\\', '/', (string) $source['folder_path']), '/');
+        } else {
+            $folderPath = trim($this->settings->get('sharepoint_folder_path', 'Architectural Projects [Public]'))
+                ?: 'Architectural Projects [Public]';
+        }
 
         $items = [];
         $seenKeys = [];
@@ -319,10 +323,16 @@ final class SharePointListingImporter
         $folderNorm = trim(str_replace('\\', '/', $folderPath), '/');
         $lower = mb_strtolower($path);
         $prefixCandidates = [
-            'shared documents/' . mb_strtolower($folderNorm) . '/',
-            mb_strtolower($folderNorm) . '/',
-            'documents/' . mb_strtolower($folderNorm) . '/',
+            'shared documents/',
         ];
+        if ($folderNorm !== '') {
+            array_unshift(
+                $prefixCandidates,
+                'shared documents/' . mb_strtolower($folderNorm) . '/',
+                mb_strtolower($folderNorm) . '/',
+                'documents/' . mb_strtolower($folderNorm) . '/',
+            );
+        }
         foreach ($prefixCandidates as $prefix) {
             if (str_starts_with($lower, $prefix)) {
                 $path = substr($path, strlen($prefix));
@@ -361,7 +371,7 @@ final class SharePointListingImporter
         $sitePath = '/' . trim($sitePath, '/');
         $folderPath = trim(str_replace('\\', '/', $folderPath), '/');
         $relative = trim(str_replace('\\', '/', $relative), '/');
-        $full = $folderPath . ($relative !== '' ? '/' . $relative : '');
+        $full = trim($folderPath . ($relative !== '' ? '/' . $relative : ''), '/');
 
         // Encode each path segment for a Forms AllItems / Doc.aspx style deep link.
         $encodedSegments = [];
@@ -371,11 +381,16 @@ final class SharePointListingImporter
             }
             $encodedSegments[] = rawurlencode($segment);
         }
-        $idPath = $sitePath . '/Shared Documents/' . implode('/', $encodedSegments);
+        $idPath = $sitePath . '/Shared Documents' . ($full !== '' ? '/' . $full : '');
         // Prefer a direct folder view when it is a folder; otherwise a document path.
         if ($isFolder) {
             return 'https://' . $host . $sitePath . '/Shared%20Documents/Forms/AllItems.aspx?id='
-                . rawurlencode($sitePath . '/Shared Documents/' . $full);
+                . rawurlencode($idPath);
+        }
+
+        if ($encodedSegments === []) {
+            return 'https://' . $host . $sitePath . '/Shared%20Documents/Forms/AllItems.aspx?id='
+                . rawurlencode($idPath);
         }
 
         return 'https://' . $host . $sitePath . '/Shared%20Documents/' . implode('/', $encodedSegments);

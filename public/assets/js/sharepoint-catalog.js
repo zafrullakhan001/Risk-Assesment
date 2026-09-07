@@ -822,6 +822,8 @@
         if (event.key !== 'Escape' || event.isComposing || !dialog.open) return;
         event.preventDefault();
         event.stopPropagation();
+        // Search stats dashboard stays open until the Close button is used.
+        if (dialog.getAttribute('data-require-close-btn') === '1') return;
         dialog.close();
       },
       true
@@ -1428,7 +1430,77 @@
     localStorage.setItem(SEARCH_PREF.fuzzy, prefs.fuzzy ? '1' : '0');
   };
 
+  const DIALOG_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
+  const DIALOG_CAD_EXTS = new Set(['dwg', 'dxf']);
+  const DIALOG_VISIO_EXTS = new Set(['vsdx', 'vsd']);
+  /** Auto-expand matching folders only when the full match tree stays this small. */
+  const DIALOG_TREE_EXPAND_ROW_CAP = 400;
+  /** Skip FLIP settle animations above this many visible rows. */
+  const DIALOG_SETTLE_ROW_CAP = 250;
+
+  const isFolderItem = (item) => String(item?.item_type || '').toLowerCase() === 'folder';
+
+  const emptyDialogParsedQuery = () => ({
+    words: [],
+    phrases: [],
+    excludes: [],
+    extensions: [],
+    types: [],
+    person: '',
+    modifiedBy: '',
+    createdBy: '',
+    paths: [],
+    has: [],
+    lacks: [],
+    tags: [],
+  });
+
+  const parseDialogQuery = (query) => {
+    if (query && typeof query === 'object' && Array.isArray(query.words)) return query;
+    if (Fuzzy?.parseCatalogQuery) return Fuzzy.parseCatalogQuery(query);
+    const words = Fuzzy?.getSearchWords
+      ? Fuzzy.getSearchWords(query)
+      : String(query || '')
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+    return { ...emptyDialogParsedQuery(), words };
+  };
+
+  const dialogQueryIsActive = (parsed) =>
+    !!(
+      parsed?.words?.length ||
+      parsed?.phrases?.length ||
+      parsed?.excludes?.length ||
+      parsed?.extensions?.length ||
+      parsed?.types?.length ||
+      parsed?.paths?.length ||
+      parsed?.has?.length ||
+      parsed?.lacks?.length ||
+      (parsed?.tags && parsed.tags.length) ||
+      parsed?.person ||
+      parsed?.modifiedBy ||
+      parsed?.createdBy
+    );
+
+  const dialogHayHasWords = (hay, words, mode) => {
+    if (!hay) return false;
+    if (!words.length) return true;
+    if (mode === 'or') return words.some((word) => hay.includes(word));
+    return words.every((word) => hay.includes(word));
+  };
+
+  const dialogResolveMeAlias = (value) => {
+    const raw = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (raw !== 'me') return raw;
+    const display = String(currentUser?.display || currentUser?.name || currentUser?.email || '').trim().toLowerCase();
+    return display || 'me';
+  };
+
   const itemSearchFields = (item) => {
+    if (Array.isArray(item?._fields) && item._fields.length) return item._fields;
     const name = String(item?.name || '');
     const path = String(item?.relative_path || '');
     const meta = resolveMeta(item);
@@ -1446,35 +1518,213 @@
     ];
   };
 
+  const collectItemSelfTraits = (item, name, path, ext) => {
+    const traits = new Set();
+    if (isFolderItem(item)) {
+      traits.add('folders');
+      return traits;
+    }
+    if (ext) traits.add(ext);
+    if (ext === 'pdf') traits.add('pdf');
+    if (DIALOG_VISIO_EXTS.has(ext)) traits.add('visio');
+    if (DIALOG_CAD_EXTS.has(ext)) {
+      traits.add('cad');
+      traits.add('drawings');
+    }
+    if (DIALOG_IMAGE_EXTS.has(ext)) traits.add('images');
+    if (/\bdrawings?\b/i.test(`${name}\n${path}`)) traits.add('drawings');
+    return traits;
+  };
+
+  const prepareSearchItem = (item, { force = false } = {}) => {
+    if (!item || (item._searchReady && !force)) return item;
+    const name = String(item?.name || '');
+    const path = String(item?.relative_path || '');
+    const meta = resolveMeta(item);
+    const ext = fileExtension(name);
+    const fields = [
+      { text: name, sourceLabel: 'Name', sourceName: 'name' },
+      { text: path, sourceLabel: 'Path', sourceName: 'path' },
+      { text: ext, sourceLabel: 'Extension', sourceName: 'ext' },
+      { text: ext ? `.${ext}` : '', sourceLabel: 'Extension', sourceName: 'ext_dot' },
+      { text: meta.label, sourceLabel: 'Type', sourceName: 'type_label' },
+      { text: String(item?.item_type || ''), sourceLabel: 'Type', sourceName: 'item_type' },
+      { text: String(item?.modified_by || ''), sourceLabel: 'Modified by', sourceName: 'modified_by' },
+      { text: String(item?.person || ''), sourceLabel: 'Created By', sourceName: 'person' },
+      { text: String(item?.mime_type || ''), sourceLabel: 'MIME', sourceName: 'mime' },
+    ];
+    const tagBits = [];
+    normalizeTagList(item.tags).forEach((tag) => {
+      tagBits.push(tag.label.toLowerCase(), tag.slug);
+    });
+    const hayParts = fields
+      .map((field) => String(field.text || '').toLowerCase())
+      .filter(Boolean)
+      .concat(tagBits);
+    item._fields = fields;
+    item._hay = hayParts.join('\n');
+    item._pathHay = path.toLowerCase();
+    item._tagHay = [...new Set(tagBits.filter(Boolean))].join('\n');
+    item._ext = ext;
+    const selfTraits = collectItemSelfTraits(item, name, path, ext);
+    item._selfTraits = [...selfTraits];
+    item._traits = new Set(selfTraits);
+    item._searchReady = true;
+    return item;
+  };
+
+  const prepareSearchItems = (items) => {
+    const list = Array.isArray(items) ? items : [];
+    list.forEach((item) => prepareSearchItem(item, { force: true }));
+    list.forEach((item) => {
+      if (!isFolderItem(item)) return;
+      const folderPath = normalizeRelPath(item.relative_path || item.name || '').toLowerCase();
+      if (!folderPath) return;
+      const traits = new Set(item._selfTraits || []);
+      const prefix = `${folderPath}/`;
+      list.forEach((child) => {
+        if (child === item) return;
+        const childPath = normalizeRelPath(child.relative_path || child.name || '').toLowerCase();
+        if (!childPath.startsWith(prefix)) return;
+        (child._selfTraits || []).forEach((trait) => traits.add(trait));
+      });
+      item._traits = traits;
+    });
+    return list;
+  };
+
+  const itemHasTrait = (item, trait) => {
+    const key = String(trait || '')
+      .toLowerCase()
+      .replace(/^\.+/, '');
+    if (!key) return true;
+    if (key === 'folder' || key === 'folders') return isFolderItem(item);
+    if (key === 'file' || key === 'files') return !isFolderItem(item);
+    if (item._ext === key) return true;
+    const traits = item._traits instanceof Set ? item._traits : null;
+    return !!(traits && traits.has(key));
+  };
+
+  const itemHasTagNeedle = (item, needle) => {
+    const want = String(needle || '')
+      .trim()
+      .toLowerCase();
+    if (!want) return true;
+    const hay = String(item?._tagHay || '');
+    if (!hay) return false;
+    return hay.split('\n').some((line) => line === want || line.includes(want));
+  };
+
+  const cheapItemMatch = (item, words, mode) => {
+    const hay = item._hay || '';
+    if (!words.length) return { matched: true, score: 100, kind: 'exact' };
+    if (!dialogHayHasWords(hay, words, mode)) return { matched: false, score: 0, kind: 'none' };
+    const name = String(item?.name || '').toLowerCase();
+    const nameHit =
+      mode === 'or' ? words.some((word) => name.includes(word)) : words.every((word) => name.includes(word));
+    if (nameHit) {
+      const exact = words.some((word) => name === word);
+      return {
+        matched: true,
+        score: exact ? 100 : 94,
+        kind: exact ? 'exact' : 'contains',
+        source: 'Name',
+        snippet: item.name,
+      };
+    }
+    return { matched: true, score: 86, kind: 'contains', source: 'Path' };
+  };
+
   /** @returns {{ matched: boolean, score: number, kind?: string }} */
   const scoreItemQuery = (item, query, options = {}) => {
-    const words = Fuzzy?.getSearchWords
-      ? Fuzzy.getSearchWords(query)
-      : String(query || '')
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(Boolean);
-    if (!words.length) return { matched: true, score: 100, kind: 'exact' };
-
     const prefs = { ...readSearchPrefs(), ...options };
     const mode = prefs.wordMode === 'or' ? 'or' : 'and';
     const fuzzyOn = !!prefs.fuzzy;
+    const parsed = prefs.parsed || parseDialogQuery(query);
 
-    if (Fuzzy?.scoreLabeledFieldsAgainstWords) {
-      return Fuzzy.scoreLabeledFieldsAgainstWords(itemSearchFields(item), words, mode, fuzzyOn);
+    if (!dialogQueryIsActive(parsed)) return { matched: true, score: 100, kind: 'exact' };
+    if (!item?._searchReady) prepareSearchItem(item);
+
+    const hay = item._hay || '';
+    if (parsed.excludes?.length && parsed.excludes.some((token) => hay.includes(token))) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.phrases?.length && !parsed.phrases.every((phrase) => hay.includes(phrase))) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.paths?.length) {
+      const pathHay = item._pathHay || String(item?.relative_path || '').toLowerCase();
+      if (!parsed.paths.every((path) => pathHay.includes(path))) {
+        return { matched: false, score: 0, kind: 'none' };
+      }
+    }
+    if (parsed.extensions?.length && !parsed.extensions.every((ext) => itemHasTrait(item, ext))) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.types?.length && !parsed.types.every((type) => itemHasTrait(item, type))) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.has?.length && !parsed.has.every((trait) => itemHasTrait(item, trait))) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.lacks?.length && !parsed.lacks.every((trait) => !itemHasTrait(item, trait))) {
+      return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.person) {
+      const needle = dialogResolveMeAlias(parsed.person);
+      const people = `${item.modified_by || ''}\n${item.person || ''}`.toLowerCase();
+      if (!people.includes(needle)) return { matched: false, score: 0, kind: 'none' };
+    }
+    if (parsed.modifiedBy) {
+      const needle = dialogResolveMeAlias(parsed.modifiedBy);
+      if (!String(item.modified_by || '')
+        .toLowerCase()
+        .includes(needle)) {
+        return { matched: false, score: 0, kind: 'none' };
+      }
+    }
+    if (parsed.createdBy) {
+      const needle = dialogResolveMeAlias(parsed.createdBy);
+      if (!String(item.person || '')
+        .toLowerCase()
+        .includes(needle)) {
+        return { matched: false, score: 0, kind: 'none' };
+      }
+    }
+    if (parsed.tags?.length && !parsed.tags.every((tag) => itemHasTagNeedle(item, tag))) {
+      return { matched: false, score: 0, kind: 'none' };
     }
 
-    const blob = itemSearchFields(item)
-      .map((field) => String(field.text || '').toLowerCase())
-      .join(' ');
-    const matched =
-      mode === 'or' ? words.some((word) => blob.includes(word)) : words.every((word) => blob.includes(word));
-    return { matched, score: matched ? 80 : 0, kind: matched ? 'contains' : 'none' };
+    const scoreWords = parsed.words || [];
+    if (!scoreWords.length) {
+      return {
+        matched: true,
+        score: parsed.phrases?.length ? 96 : 88,
+        kind: parsed.phrases?.length ? 'exact' : 'contains',
+        source: parsed.tags?.length ? 'Tag' : parsed.paths?.length ? 'Path' : 'Filter',
+        snippet: parsed.phrases?.[0] || parsed.tags?.[0] || parsed.paths?.[0] || '',
+      };
+    }
+
+    if (fuzzyOn && Fuzzy?.scoreLabeledFieldsAgainstWords) {
+      return Fuzzy.scoreLabeledFieldsAgainstWords(itemSearchFields(item), scoreWords, mode, true);
+    }
+    return cheapItemMatch(item, scoreWords, mode);
   };
 
   const matchesQuery = (item, query, options = {}) => scoreItemQuery(item, query, options).matched;
 
-  const isFolderItem = (item) => String(item?.item_type || '').toLowerCase() === 'folder';
+  const countTreeRowsIfExpanded = (nodes) => {
+    let count = 0;
+    const walk = (list) => {
+      (list || []).forEach((node) => {
+        count += 1;
+        if (node.children?.length) walk(node.children);
+      });
+    };
+    walk(nodes);
+    return count;
+  };
 
   const isRootProjectFolder = (item, projectName) => {
     if (!isFolderItem(item)) return false;
@@ -1788,10 +2038,12 @@
   };
 
   const filterTree = (nodes, kind, ext, query, options = {}) => {
+    const parsed = options.parsed || parseDialogQuery(query);
+    const matchOpts = { ...options, parsed };
     const out = [];
     nodes.forEach((node) => {
-      const filteredChildren = filterTree(node.children, kind, ext, query, options);
-      const selfMatch = passesKindExt(node.item, kind, ext) && matchesQuery(node.item, query, options);
+      const filteredChildren = filterTree(node.children, kind, ext, query, matchOpts);
+      const selfMatch = passesKindExt(node.item, kind, ext) && matchesQuery(node.item, query, matchOpts);
       const keepFolderForChildren = isFolderItem(node.item) && filteredChildren.length > 0;
       const keep = selfMatch || keepFolderForChildren;
 
@@ -1806,8 +2058,11 @@
     return out;
   };
 
-  const flattenFiltered = (items, kind, ext, query, options = {}) =>
-    (items || []).filter((item) => passesKindExt(item, kind, ext) && matchesQuery(item, query, options));
+  const flattenFiltered = (items, kind, ext, query, options = {}) => {
+    const parsed = options.parsed || parseDialogQuery(query);
+    const matchOpts = { ...options, parsed };
+    return (items || []).filter((item) => passesKindExt(item, kind, ext) && matchesQuery(item, query, matchOpts));
+  };
 
   const SORT_KEYS = new Set(['name', 'type', 'size', 'modified', 'created', 'modified_by', 'created_by']);
 
@@ -1900,12 +2155,8 @@
 
     const syncUi = (query = '') => {
       const prefs = readSearchPrefs();
-      const words = Fuzzy?.getSearchWords
-        ? Fuzzy.getSearchWords(query)
-        : String(query || '')
-            .toLowerCase()
-            .split(/\s+/)
-            .filter(Boolean);
+      const parsed = parseDialogQuery(query);
+      const words = parsed.words || [];
       if (wordModeGroup) wordModeGroup.hidden = words.length <= 1;
       wordModeGroup?.querySelectorAll('[data-word-mode]').forEach((btn) => {
         const active = btn.getAttribute('data-word-mode') === prefs.wordMode;
@@ -1943,15 +2194,11 @@
 
   const formatSearchModeBits = (query, prefs) => {
     const bits = [];
-    const words = Fuzzy?.getSearchWords
-      ? Fuzzy.getSearchWords(query)
-      : String(query || '')
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(Boolean);
+    const parsed = parseDialogQuery(query);
+    const words = parsed.words || [];
     if (words.length > 1) bits.push(String(prefs.wordMode || 'and').toUpperCase());
     if (prefs.fuzzy) bits.push('Fuzzy');
-    if (words.length) bits.push(`“${String(query).trim()}”`);
+    if (dialogQueryIsActive(parsed)) bits.push(`“${String(query).trim()}”`);
     return bits;
   };
   const copyTextToClipboard = async (text) => {
@@ -2556,6 +2803,8 @@
     const refreshBtn = document.getElementById('sharepoint-project-dialog-refresh');
     const searchWrap = document.getElementById('sharepoint-project-dialog-search-wrap');
     const searchInput = document.getElementById('sharepoint-project-dialog-search');
+    const searchRun = document.getElementById('sharepoint-project-dialog-search-run');
+    const searchPending = document.getElementById('sharepoint-project-dialog-search-pending');
     const searchClear = document.getElementById('sharepoint-project-dialog-search-clear');
     const searchMeta = document.getElementById('sharepoint-project-dialog-search-meta');
     const kindSelect = document.getElementById('sharepoint-project-dialog-kind');
@@ -2595,6 +2844,9 @@
     };
 
     let allItems = [];
+    let preparedTreeAll = null;
+    let preparedTreeActive = null;
+    let committedQuery = '';
     let layout = 'tree';
     let sortKey = 'name';
     let sortDir = 'asc';
@@ -2614,6 +2866,29 @@
     let renderProjectTagsPanel = () => {};
     let saveTagsForTarget = async () => [];
     let bindTagEditor = () => {};
+
+    const invalidatePreparedTree = () => {
+      preparedTreeAll = null;
+      preparedTreeActive = null;
+    };
+
+    const getPreparedTree = (visibleItems, showArchived) => {
+      if (showArchived) {
+        if (!preparedTreeAll) preparedTreeAll = buildTreeNodes(visibleItems);
+        return preparedTreeAll;
+      }
+      if (!preparedTreeActive) preparedTreeActive = buildTreeNodes(visibleItems);
+      return preparedTreeActive;
+    };
+
+    const syncPendingSearchHint = () => {
+      const draft = searchInput?.value || '';
+      const pending = draft !== committedQuery;
+      searchWrap?.classList.toggle('has-pending-search', pending);
+      searchRun?.classList.toggle('is-pending', pending);
+      if (searchPending) searchPending.hidden = !pending;
+      syncSearchModes(draft);
+    };
 
     const clearActivityStats = () => {
       if (!statsEl) return;
@@ -2720,42 +2995,49 @@
     };
 
     const applyFilter = () => {
-      const query = searchInput?.value || '';
+      const query = committedQuery;
       const kind = kindSelect?.value || 'all';
       const ext = activeExtFilter();
-      const prefs = syncSearchModes(query);
+      const prefs = syncSearchModes(searchInput?.value || query);
+      const parsed = parseDialogQuery(query);
+      const matchOpts = { ...prefs, parsed };
       syncLayoutButtons();
-      const visibleItems = catalogShowArchived()
-        ? allItems
-        : allItems.filter((item) => !item.archived);
+      syncPendingSearchHint();
+      const showArchived = catalogShowArchived();
+      const visibleItems = showArchived ? allItems : allItems.filter((item) => !item.archived);
       syncExtChips(searchWrap, visibleItems, selectedExts);
       syncHeaderSort();
 
       let shown = 0;
       if (layout === 'tree') {
-        const tree = sortTreeNodesBy(filterTree(buildTreeNodes(visibleItems), kind, ext, query, prefs), sortKey, sortDir);
+        const baseTree = getPreparedTree(visibleItems, showArchived);
+        const tree = sortTreeNodesBy(filterTree(baseTree, kind, ext, query, matchOpts), sortKey, sortDir);
         const key = treeRevealKey(query, kind, ext, prefs);
         if (key !== lastRevealKey) {
           lastRevealKey = key;
           if (String(query || '').trim() !== '' || ext.length > 0) {
-            collectTreeFolderPaths(tree).forEach((path) => expanded.add(path));
+            const fullCount = countTreeRowsIfExpanded(tree);
+            if (fullCount <= DIALOG_TREE_EXPAND_ROW_CAP) {
+              collectTreeFolderPaths(tree).forEach((path) => expanded.add(path));
+            }
           }
         }
         const rows = [];
         renderTreeRows(tree, 0, rows);
         shown = rows.length;
-        const previousTops = snapshotTreeRowTops(rowsEl);
+        const skipSettle = String(query || '').trim() !== '' || rows.length > DIALOG_SETTLE_ROW_CAP;
+        const previousTops = skipSettle ? null : snapshotTreeRowTops(rowsEl);
         rowsEl.innerHTML =
           rows.length > 0
             ? rows.join('')
             : emptyRowHtml(
                 visibleItems.length === 0
-                  ? catalogShowArchived()
+                  ? showArchived
                     ? '🗂️ No files or folders found for this project.'
                     : '🗂️ No files or folders to show. Turn on Show archived to restore hidden items.'
                   : 'No matches for this view / filter. Try OR mode or Fuzzy.'
               );
-        if (rows.length > 0) settleTreeRows(rowsEl, previousTops);
+        if (previousTops && rows.length > 0) settleTreeRows(rowsEl, previousTops);
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
           btn.addEventListener('click', (event) => {
             event.preventDefault();
@@ -2767,12 +3049,12 @@
           });
         });
       } else {
-        const filtered = sortItemsBy(flattenFiltered(visibleItems, kind, ext, query, prefs), sortKey, sortDir);
+        const filtered = sortItemsBy(flattenFiltered(visibleItems, kind, ext, query, matchOpts), sortKey, sortDir);
         shown = filtered.length;
         if (filtered.length === 0) {
           rowsEl.innerHTML = emptyRowHtml(
             visibleItems.length === 0
-              ? catalogShowArchived()
+              ? showArchived
                 ? '🗂️ No files or folders found for this project.'
                 : '🗂️ No files or folders to show. Turn on Show archived to restore hidden items.'
               : 'No matches for this view / filter. Try OR mode or Fuzzy.'
@@ -2793,7 +3075,7 @@
       if (searchMeta) {
         const hiddenCount = allItems.filter((item) => item.archived).length;
         const bits = [`${shown} shown`, `of ${visibleItems.length}`];
-        if (!catalogShowArchived() && hiddenCount) bits.push(`${hiddenCount} archived hidden`);
+        if (!showArchived && hiddenCount) bits.push(`${hiddenCount} archived hidden`);
         if (kind !== 'all') bits.push(kind === 'files' ? 'files only' : 'folders only');
         if (ext.length) bits.push(ext.map((value) => `.${value}`).join(' + '));
         if (layout === 'tree') bits.push('tree');
@@ -2802,7 +3084,7 @@
         searchMeta.textContent = bits.join(' · ');
       }
       if (searchClear) {
-        searchClear.hidden = String(query || '').trim() === '' && selectedExts.size === 0;
+        searchClear.hidden = String(query || '').trim() === '' && selectedExts.size === 0 && String(searchInput?.value || '').trim() === '';
       }
       bindCopyLinkButtons(rowsEl);
       bindQrButtons(rowsEl);
@@ -2810,10 +3092,30 @@
       bindItemArchiveButtons();
     };
 
-    syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
-    const scheduleDialogFilter = debouncePaint(applyFilter, 60);
+    const commitDialogSearch = () => {
+      committedQuery = searchInput?.value || '';
+      syncPendingSearchHint();
+      applyFilter();
+    };
 
-    searchInput?.addEventListener('input', () => scheduleDialogFilter());
+    syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
+
+    searchInput?.addEventListener('input', () => {
+      syncPendingSearchHint();
+      if (searchClear) {
+        searchClear.hidden =
+          String(committedQuery || '').trim() === '' &&
+          selectedExts.size === 0 &&
+          String(searchInput?.value || '').trim() === '';
+      }
+    });
+    searchInput?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      if (event.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      commitDialogSearch();
+    });
+    searchRun?.addEventListener('click', () => commitDialogSearch());
     kindSelect?.addEventListener('change', applyFilter);
     extSelect?.addEventListener('change', () => {
       selectedExts.clear();
@@ -2826,9 +3128,11 @@
     });
     searchClear?.addEventListener('click', () => {
       if (searchInput) searchInput.value = '';
+      committedQuery = '';
       selectedExts.clear();
       syncExtSelectFromChips();
-      scheduleDialogFilter.flush();
+      syncPendingSearchHint();
+      applyFilter();
       searchInput?.focus();
     });
     searchWrap?.querySelectorAll('.sp-view-btn[data-layout]').forEach((btn) => {
@@ -3003,9 +3307,11 @@
 
     const applyLoadedProject = (project, name, { seedExpanded = false } = {}) => {
       allItems = Array.isArray(project.items) ? project.items : [];
+      prepareSearchItems(allItems);
+      invalidatePreparedTree();
       if (seedExpanded) {
         expanded.clear();
-        buildTreeNodes(allItems).forEach((node) => {
+        getPreparedTree(allItems, true).forEach((node) => {
           if (isFolderItem(node.item)) expanded.add(node.path.toLowerCase());
         });
       }
@@ -3103,6 +3409,7 @@
               .filter((id) => id !== removeId);
             try {
               item.tags = await saveTagsForTarget({ scope: 'item', path, tagIds: nextIds });
+              prepareSearchItem(item, { force: true });
               applyFilter();
               if (typeof loadIndex === 'function') loadIndex();
             } catch (error) {
@@ -3129,6 +3436,7 @@
               path: String(item.relative_path || item.name || path).trim(),
               tagIds: nextIds,
             });
+            prepareSearchItem(item, { force: true });
             applyFilter();
             if (typeof loadIndex === 'function') loadIndex();
           } catch (error) {
@@ -3195,6 +3503,7 @@
       actionsEl.innerHTML = '';
       currentProjectTags = [];
       allItems = [];
+      invalidatePreparedTree();
       expanded.clear();
       lastRevealKey = '';
       selectedExts.clear();
@@ -3202,7 +3511,9 @@
       sortKey = 'name';
       sortDir = 'asc';
       syncHeaderSort();
-      if (searchInput) searchInput.value = String(initialQuery || '').trim();
+      committedQuery = String(initialQuery || '').trim();
+      if (searchInput) searchInput.value = committedQuery;
+      syncPendingSearchHint();
       if (kindSelect) kindSelect.value = 'all';
       if (extSelect) extSelect.value = '';
       if (searchWrap) searchWrap.hidden = true;
@@ -3281,10 +3592,15 @@
         actions: document.getElementById('sharepoint-compare-left-actions'),
         rows: document.getElementById('sharepoint-compare-left-rows'),
         filters: document.querySelector('.sharepoint-compare-panel-filters[data-side="left"]'),
+        searchWrap: document.querySelector('.sharepoint-compare-search-field-wrap[data-side="left"]'),
         searchInput: document.querySelector('.sp-compare-panel-search[data-side="left"]'),
+        searchBtn: document.querySelector('.sp-compare-panel-search-btn[data-side="left"]'),
+        searchPending: document.querySelector('.sp-compare-panel-pending[data-side="left"]'),
         clearBtn: document.querySelector('.sp-compare-panel-clear[data-side="left"]'),
         meta: document.querySelector('.sp-compare-panel-meta[data-side="left"]'),
         expanded: new Set(),
+        lastRevealKey: '',
+        preparedTree: null,
       },
       mid: {
         panel: document.querySelector('.sharepoint-compare-panel[data-side="mid"]'),
@@ -3293,10 +3609,15 @@
         actions: document.getElementById('sharepoint-compare-mid-actions'),
         rows: document.getElementById('sharepoint-compare-mid-rows'),
         filters: document.querySelector('.sharepoint-compare-panel-filters[data-side="mid"]'),
+        searchWrap: document.querySelector('.sharepoint-compare-search-field-wrap[data-side="mid"]'),
         searchInput: document.querySelector('.sp-compare-panel-search[data-side="mid"]'),
+        searchBtn: document.querySelector('.sp-compare-panel-search-btn[data-side="mid"]'),
+        searchPending: document.querySelector('.sp-compare-panel-pending[data-side="mid"]'),
         clearBtn: document.querySelector('.sp-compare-panel-clear[data-side="mid"]'),
         meta: document.querySelector('.sp-compare-panel-meta[data-side="mid"]'),
         expanded: new Set(),
+        lastRevealKey: '',
+        preparedTree: null,
       },
       right: {
         panel: document.querySelector('.sharepoint-compare-panel[data-side="right"]'),
@@ -3305,10 +3626,15 @@
         actions: document.getElementById('sharepoint-compare-right-actions'),
         rows: document.getElementById('sharepoint-compare-right-rows'),
         filters: document.querySelector('.sharepoint-compare-panel-filters[data-side="right"]'),
+        searchWrap: document.querySelector('.sharepoint-compare-search-field-wrap[data-side="right"]'),
         searchInput: document.querySelector('.sp-compare-panel-search[data-side="right"]'),
+        searchBtn: document.querySelector('.sp-compare-panel-search-btn[data-side="right"]'),
+        searchPending: document.querySelector('.sp-compare-panel-pending[data-side="right"]'),
         clearBtn: document.querySelector('.sp-compare-panel-clear[data-side="right"]'),
         meta: document.querySelector('.sp-compare-panel-meta[data-side="right"]'),
         expanded: new Set(),
+        lastRevealKey: '',
+        preparedTree: null,
       },
     };
 
@@ -3473,10 +3799,13 @@
     const assignProjectToSide = (side, project, { seedExpanded = false } = {}) => {
       projectsBySide[side] = project;
       itemsBySide[side] = Array.isArray(project.items) ? project.items : [];
+      prepareSearchItems(itemsBySide[side]);
+      sideEls[side].preparedTree = null;
       keysBySide[side] = new Set(itemsBySide[side].map((item) => compareItemKey(item, project?.project_name || '')));
       if (seedExpanded) {
         sideEls[side].expanded.clear();
-        buildTreeNodes(itemsBySide[side]).forEach((node) => {
+        const tree = sideEls[side].preparedTree || (sideEls[side].preparedTree = buildTreeNodes(itemsBySide[side]));
+        tree.forEach((node) => {
           if (isFolderItem(node.item)) sideEls[side].expanded.add(node.path.toLowerCase());
         });
       }
@@ -3512,11 +3841,23 @@
 
     const emptySideFilter = () => ({ query: '', exts: new Set() });
 
+    const syncComparePendingHint = (side) => {
+      const els = sideEls[side];
+      if (!els) return;
+      const draft = els.searchInput?.value || '';
+      const committed = filtersBySide[side]?.query || '';
+      const pending = draft !== committed;
+      els.searchWrap?.classList.toggle('has-pending-search', pending);
+      els.searchBtn?.classList.toggle('is-pending', pending);
+      if (els.searchPending) els.searchPending.hidden = !pending;
+    };
+
     const resetSideFilter = (side) => {
       filtersBySide[side] = emptySideFilter();
       if (sideEls[side].searchInput) sideEls[side].searchInput.value = '';
       if (sideEls[side].clearBtn) sideEls[side].clearBtn.hidden = true;
       if (sideEls[side].meta) sideEls[side].meta.textContent = '';
+      syncComparePendingHint(side);
     };
 
     const sideExtFilter = (side) => [...(filtersBySide[side]?.exts || [])];
@@ -3615,6 +3956,8 @@
       const filterState = filtersBySide[side] || emptySideFilter();
       const query = filterState.query || '';
       const ext = [...(filterState.exts || [])];
+      const parsed = parseDialogQuery(query);
+      const matchOpts = { ...prefs, parsed };
       let shared = 0;
       let only = 0;
       let shown = 0;
@@ -3624,12 +3967,23 @@
       );
 
       if (layout === 'tree') {
-        const tree = sortTreeNodesBy(filterTree(buildTreeNodes(baseItems), kind, ext, query, prefs), sortKey, sortDir);
+        const canUseCache = !uniqueOnly && hiddenItemKeys.size === 0;
+        let baseTree;
+        if (canUseCache) {
+          if (!sideEls[side].preparedTree) sideEls[side].preparedTree = buildTreeNodes(items);
+          baseTree = sideEls[side].preparedTree;
+        } else {
+          baseTree = buildTreeNodes(baseItems);
+        }
+        const tree = sortTreeNodesBy(filterTree(baseTree, kind, ext, query, matchOpts), sortKey, sortDir);
         const key = `${treeRevealKey(query, kind, ext, prefs)}|${uniqueOnly ? '1' : '0'}|${sortKey}:${sortDir}`;
         if (sideEls[side].lastRevealKey !== key) {
           sideEls[side].lastRevealKey = key;
           if (String(query || '').trim() !== '' || ext.length > 0 || uniqueOnly) {
-            collectTreeFolderPaths(tree).forEach((path) => sideEls[side].expanded.add(path));
+            const fullCount = countTreeRowsIfExpanded(tree);
+            if (fullCount <= DIALOG_TREE_EXPAND_ROW_CAP) {
+              collectTreeFolderPaths(tree).forEach((path) => sideEls[side].expanded.add(path));
+            }
           }
         }
         const acc = [];
@@ -3639,7 +3993,8 @@
           shared += row.shared;
           only += row.only;
         });
-        const previousTops = snapshotTreeRowTops(rowsEl);
+        const skipSettle = String(query || '').trim() !== '' || acc.length > DIALOG_SETTLE_ROW_CAP;
+        const previousTops = skipSettle ? null : snapshotTreeRowTops(rowsEl);
         rowsEl.innerHTML =
           acc.length > 0
             ? acc.map((row) => row.html).join('')
@@ -3650,7 +4005,7 @@
                     ? 'No unique files or folders on this side.'
                     : 'No matches for this panel filter. Try OR mode or Fuzzy.'
               );
-        if (acc.length > 0) settleTreeRows(rowsEl, previousTops);
+        if (previousTops && acc.length > 0) settleTreeRows(rowsEl, previousTops);
         rowsEl.querySelectorAll('.sp-tree-toggle[data-tree-path]').forEach((btn) => {
           btn.addEventListener('click', (event) => {
             event.preventDefault();
@@ -3663,7 +4018,7 @@
           });
         });
       } else {
-        const filtered = sortItemsBy(flattenFiltered(baseItems, kind, ext, query, prefs), sortKey, sortDir);
+        const filtered = sortItemsBy(flattenFiltered(baseItems, kind, ext, query, matchOpts), sortKey, sortDir);
         shown = filtered.length;
         if (filtered.length === 0) {
           rowsEl.innerHTML = emptyRowHtml(
@@ -3760,9 +4115,13 @@
 
       syncExtChips(els.filters, items, filtersBySide[side].exts);
       if (els.clearBtn) {
+        const draft = String(els.searchInput?.value || '').trim();
         els.clearBtn.hidden =
-          String(filtersBySide[side].query || '').trim() === '' && filtersBySide[side].exts.size === 0;
+          String(filtersBySide[side].query || '').trim() === '' &&
+          filtersBySide[side].exts.size === 0 &&
+          draft === '';
       }
+      syncComparePendingHint(side);
       if (els.meta) {
         const bits = [`${stats.shown} shown`, `of ${items.length}`];
         if (stats.ext?.length) bits.push(stats.ext.map((value) => `.${value}`).join(' + '));
@@ -4043,6 +4402,7 @@
       keysBySide[side] = new Set();
       sideEls[side].expanded.clear();
       sideEls[side].lastRevealKey = '';
+      sideEls[side].preparedTree = null;
       resetSideFilter(side);
       sideEls[side].actions.innerHTML = '';
       sideEls[side].rows.innerHTML = emptyRowHtml('Select folders to compare.');
@@ -4063,6 +4423,8 @@
     const restoreSide = (side, snap) => {
       projectsBySide[side] = snap.project;
       itemsBySide[side] = snap.items || [];
+      prepareSearchItems(itemsBySide[side]);
+      sideEls[side].preparedTree = null;
       keysBySide[side] = new Set(
         itemsBySide[side].map((item) => compareItemKey(item, snap.project?.project_name || ''))
       );
@@ -4077,6 +4439,7 @@
       if (sideEls[side].searchInput) {
         sideEls[side].searchInput.value = filtersBySide[side].query;
       }
+      syncComparePendingHint(side);
       sideEls[side].lastRevealKey = `${treeRevealKey(
         filtersBySide[side].query,
         kindSelect?.value || 'all',
@@ -4259,8 +4622,11 @@
       if (activeSides.some((side) => !projectsBySide[side])) return;
       const kind = kindSelect?.value || 'all';
       const uniqueOnly = !!uniqueOnlyEl?.checked;
-      // Sync AND/OR visibility from any active panel query that has multiple words.
-      const sampleQuery = activeSides.map((side) => filtersBySide[side].query).find((q) => q.trim()) || '';
+      // Prefer draft text for AND/OR visibility while typing; fall back to committed queries.
+      const sampleQuery =
+        activeSides.map((side) => sideEls[side].searchInput?.value || '').find((q) => String(q).trim()) ||
+        activeSides.map((side) => filtersBySide[side].query).find((q) => q.trim()) ||
+        '';
       const prefs = syncSearchModes(sampleQuery);
       syncLayoutButtons();
       syncPanelVisibility();
@@ -4268,13 +4634,19 @@
 
       const statsBySide = {};
       activeSides.forEach((side) => {
+        syncComparePendingHint(side);
         statsBySide[side] = renderSide(side, kind, uniqueOnly, prefs);
         fillSide(side, projectsBySide[side], statsBySide[side]);
       });
     };
 
+    const commitCompareSideSearch = (side) => {
+      filtersBySide[side].query = sideEls[side].searchInput?.value || '';
+      syncComparePendingHint(side);
+      applyCompareFilter();
+    };
+
     syncSearchModes = bindDialogSearchModes(searchWrap, applyCompareFilter);
-    const scheduleCompareFilter = debouncePaint(applyCompareFilter, 60);
 
     kindSelect?.addEventListener('change', applyCompareFilter);
     uniqueOnlyEl?.addEventListener('change', applyCompareFilter);
@@ -4300,12 +4672,29 @@
 
     SIDE_IDS.forEach((side) => {
       sideEls[side].searchInput?.addEventListener('input', () => {
-        filtersBySide[side].query = sideEls[side].searchInput.value || '';
-        scheduleCompareFilter();
+        syncComparePendingHint(side);
+        if (sideEls[side].clearBtn) {
+          const draft = String(sideEls[side].searchInput?.value || '').trim();
+          sideEls[side].clearBtn.hidden =
+            String(filtersBySide[side].query || '').trim() === '' &&
+            filtersBySide[side].exts.size === 0 &&
+            draft === '';
+        }
+        // Keep AND/OR visibility in sync while typing without re-filtering.
+        const sampleQuery =
+          activeSides.map((s) => sideEls[s].searchInput?.value || '').find((q) => String(q).trim()) || '';
+        syncSearchModes(sampleQuery);
       });
+      sideEls[side].searchInput?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        if (event.isComposing || event.keyCode === 229) return;
+        event.preventDefault();
+        commitCompareSideSearch(side);
+      });
+      sideEls[side].searchBtn?.addEventListener('click', () => commitCompareSideSearch(side));
       sideEls[side].clearBtn?.addEventListener('click', () => {
         resetSideFilter(side);
-        scheduleCompareFilter.flush();
+        applyCompareFilter();
         sideEls[side].searchInput?.focus();
       });
       sideEls[side].filters?.querySelectorAll('.sp-dialog-chip[data-ext]').forEach((chip) => {
@@ -4506,6 +4895,20 @@
   const openCompare = initCompareDialog();
   window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
     openProject,
+    openCompare,
+    escapeHtml,
+    catalogBadgeHtml,
+    catalogToneFor,
+    fetchProjectDetail,
+    bindCopyLinkButtons,
+    bindQrButtons,
+    qrButtonHtml,
+    bindWorkspaceDialog,
+    fileExtension,
+    resolveMeta,
+    formatModified,
+    formatSize,
+    FILE_META,
   });
 
   bindListDensityToggle();
@@ -5127,7 +5530,8 @@
       })
       .filter(Boolean);
     hits.sort((a, b) => (b.match?.score || 0) - (a.match?.score || 0));
-    return { hits: hits.slice(0, limit), total: hits.length };
+    const capped = Number.isFinite(limit) && limit >= 0 ? hits.slice(0, limit) : hits;
+    return { hits: capped, total: hits.length };
   };
 
   const deepHitsHtml = (hitSet) => {
@@ -6033,10 +6437,26 @@
     }
   };
 
+  /** @type {{ rows: array, query: string, refine: string, deep: boolean, fuzzy: boolean, wordMode: string, matchScope: string, scopeKeys: string[], itemCount: number, ready: boolean, searching: boolean } | null} */
+  let liveSearchSnapshot = null;
+
+  const getLiveSearchSnapshot = () => {
+    if (!liveSearchSnapshot) return null;
+    return {
+      ...liveSearchSnapshot,
+      rows: (liveSearchSnapshot.rows || []).map((row) => ({
+        project: row.project,
+        match: row.match,
+        deepHits: row.deepHits || { hits: [], total: 0 },
+      })),
+    };
+  };
+
   const renderStats = (rows) => {
     const parsed = parseActiveQuery();
     const searching = queryIsActive(parsed);
     if (!searching) {
+      liveSearchSnapshot = null;
       statsEl.classList.add('is-hidden');
       statsEl.innerHTML = '';
       return;
@@ -6051,10 +6471,33 @@
     const nestedMatchTotal = rows.reduce((sum, row) => sum + Number(row.deepHits?.total || 0), 0);
     const catalogCount = new Set(rows.map((row) => row.project.source_key).filter(Boolean)).size;
 
+    liveSearchSnapshot = {
+      rows,
+      query: state.query,
+      refine: state.refine,
+      deep: !!state.deep,
+      fuzzy: !!state.fuzzy,
+      wordMode: state.wordMode || 'and',
+      matchScope: state.matchScope || 'all',
+      scopeKeys: [...(state.scopeKeys || [])],
+      itemCount: Number(state.itemCount || 0),
+      ready: !!state.ready,
+      searching: true,
+      exactCount,
+      similarCount,
+      avg,
+      best,
+      nestedMatchTotal,
+      catalogCount,
+    };
+
     statsEl.classList.remove('is-hidden');
     statsEl.innerHTML = `
       <div class="sp-stats-row">
         <span class="sp-stats-title">Search stats</span>
+        <button type="button" class="button ghost sp-stats-dash-btn" id="sharepoint-search-dash-open" title="Open search stats dashboard with links to matched files and folders">
+          📊 Dashboard
+        </button>
         <span>${rows.length} project${rows.length === 1 ? '' : 's'}</span>
         ${nestedMatchTotal ? `<span>${nestedMatchTotal} nested match${nestedMatchTotal === 1 ? '' : 'es'}</span>` : ''}
         ${state.scopeKeys.length > 1 ? `<span>${catalogCount} catalog${catalogCount === 1 ? '' : 's'} hit</span>` : ''}
@@ -6074,6 +6517,13 @@
         <span class="sp-stats-bar-label">${avg}% match probability</span>
       </div>`;
   };
+
+  window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
+    getLiveSearchSnapshot,
+    collectDeepHits,
+    formatAgeLabel,
+    scoreBadgeHtml,
+  });
 
   const renderMeta = (matchedCount) => {
     const searching = queryIsActive();

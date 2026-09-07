@@ -100,9 +100,7 @@ final class SharePointGraphClient
         if ($sitePath === '' || $sitePath === '/') {
             throw new RuntimeException('SharePoint site path is required (e.g. /teams/AITTechnologyEngagement).');
         }
-        if ($folderPath === '') {
-            throw new RuntimeException('SharePoint folder path is required.');
-        }
+        // Empty folder_path means the Shared Documents library root.
         if ($tenant !== '' && !$this->looksLikeGuid($tenant)) {
             throw new RuntimeException(
                 'Tenant ID must be a GUID from Entra Overview (example: 6ac36678-7785-476f-be03-b68b403734c2).'
@@ -292,7 +290,9 @@ final class SharePointGraphClient
             $status = $this->status();
             $siteHost = trim((string) ($options['site_host'] ?? $status['site_host'])) ?: $status['site_host'];
             $sitePath = $this->normalizeSitePath((string) ($options['site_path'] ?? $status['site_path']));
-            $folderPath = trim((string) ($options['folder_path'] ?? $status['folder_path'])) ?: $status['folder_path'];
+            $folderPath = array_key_exists('folder_path', $options)
+                ? trim((string) $options['folder_path'])
+                : (string) $status['folder_path'];
 
             $site = $this->resolveSite($siteHost, $sitePath, $token);
             $siteId = (string) ($site['id'] ?? '');
@@ -398,7 +398,7 @@ final class SharePointGraphClient
 
             if ($isFolder && $depth < self::MAX_DEPTH) {
                 $childPath = $relativePrefix === '' ? $name : ($relativePrefix . '/' . $name);
-                $fullPath = rtrim($rootFolderPath, '/') . '/' . $childPath;
+                $fullPath = trim($rootFolderPath . '/' . $childPath, '/');
                 $grandChildren = $this->listChildren($siteId, $this->encodeDrivePath($fullPath), $token);
                 $this->walkChildren(
                     $siteId,
@@ -493,10 +493,12 @@ final class SharePointGraphClient
      */
     private function listChildren(string $siteId, string $encodedFolderPath, string $token): array
     {
-        $url = self::GRAPH_BASE . '/sites/' . rawurlencode($siteId)
-            . '/drive/root%3A/' . $encodedFolderPath . '%3A/children'
-            . '?$select=id,name,webUrl,size,lastModifiedDateTime,createdDateTime,folder,file,parentReference,createdBy,lastModifiedBy'
+        $select = '?$select=id,name,webUrl,size,lastModifiedDateTime,createdDateTime,folder,file,parentReference,createdBy,lastModifiedBy'
             . '&$top=200';
+        $url = $encodedFolderPath === ''
+            ? self::GRAPH_BASE . '/sites/' . rawurlencode($siteId) . '/drive/root/children' . $select
+            : self::GRAPH_BASE . '/sites/' . rawurlencode($siteId)
+                . '/drive/root%3A/' . $encodedFolderPath . '%3A/children' . $select;
 
         $items = [];
         while ($url !== '') {

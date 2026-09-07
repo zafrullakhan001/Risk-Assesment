@@ -26,11 +26,11 @@ final class SharePointFolderUrl
         if ($url === '') {
             throw new RuntimeException('SharePoint folder URL is required.');
         }
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        if (!preg_match('#^https://#i', $url)) {
             throw new RuntimeException('SharePoint folder URL is not a valid URL.');
         }
 
-        $parts = parse_url($url);
+        $parts = parse_url(str_replace(' ', '%20', $url));
         $host = strtolower((string) ($parts['host'] ?? ''));
         if ($host === '' || !str_ends_with($host, 'sharepoint.com')) {
             throw new RuntimeException('URL host must be a *.sharepoint.com site.');
@@ -38,44 +38,30 @@ final class SharePointFolderUrl
 
         $query = [];
         parse_str((string) ($parts['query'] ?? ''), $query);
-        $idPath = trim(rawurldecode((string) ($query['id'] ?? '')));
-        $path = (string) ($parts['path'] ?? '');
-
-        // Modern sharing links: /:f:/r/teams/.../Shared Documents/Forms/AllItems.aspx
-        if ($idPath === '' && preg_match('#/(?:teams|sites)/[^/]+/#i', $path)) {
-            $decodedPath = rawurldecode($path);
-            if (preg_match('#(/(?:teams|sites)/[^/]+)/Shared Documents(?:/Forms/AllItems\.aspx)?$#i', $decodedPath, $m)) {
-                // Not enough — need folder under Shared Documents from id= preferably.
-            }
-            if (preg_match('#/(?:teams|sites)/([^/]+)/Shared%20Documents/#i', $path)
-                || preg_match('#/(?:teams|sites)/([^/]+)/Shared Documents/#i', $decodedPath)) {
-                // fall through; id may still be empty
-            }
+        $idPath = self::folderPathFromQuery($query);
+        if ($idPath === '') {
+            $idPath = self::folderPathFromUrlPath((string) ($parts['path'] ?? ''));
         }
 
         if ($idPath === '') {
             throw new RuntimeException(
-                'Could not find the folder path. Use a Forms/AllItems.aspx link that includes an id=… query, '
-                . 'or paste a link like …/AllItems.aspx?id=/teams/…/Shared Documents/Architectural Projects [Public].'
+                'Could not find the folder path. Use a Forms/AllItems.aspx library or folder link '
+                . '(viewid is fine), or paste a link like …/AllItems.aspx?id=/teams/…/Shared Documents/Your Folder.'
             );
         }
 
         $idPath = str_replace('\\', '/', $idPath);
         $idPath = '/' . trim($idPath, '/');
 
-        if (!preg_match('#^(/(?:teams|sites)/[^/]+)/Shared Documents/(.+)$#i', $idPath, $m)) {
+        if (!preg_match('#^(/(?:teams|sites)/[^/]+)/Shared Documents(?:/(.*))?$#i', $idPath, $m)) {
             throw new RuntimeException(
-                'Folder id path must look like /teams/SiteName/Shared Documents/Your Folder.'
+                'Folder id path must look like /teams/SiteName/Shared Documents or /teams/SiteName/Shared Documents/Your Folder.'
             );
         }
 
         $sitePath = $m[1];
-        $folderPath = trim(str_replace('\\', '/', $m[2]), '/');
-        if ($folderPath === '') {
-            throw new RuntimeException('Folder path under Shared Documents is empty.');
-        }
-
-        $serverRelative = $sitePath . '/Shared Documents/' . $folderPath;
+        $folderPath = trim(str_replace('\\', '/', (string) ($m[2] ?? '')), '/');
+        $serverRelative = $sitePath . '/Shared Documents' . ($folderPath !== '' ? '/' . $folderPath : '');
         $folderUrl = self::buildBrowseUrl($host, $sitePath, $folderPath);
 
         return [
@@ -92,7 +78,7 @@ final class SharePointFolderUrl
         $host = strtolower(trim($host));
         $sitePath = '/' . trim($sitePath, '/');
         $folderPath = trim(str_replace('\\', '/', $folderPath), '/');
-        $id = $sitePath . '/Shared Documents/' . $folderPath;
+        $id = $sitePath . '/Shared Documents' . ($folderPath !== '' ? '/' . $folderPath : '');
 
         return 'https://' . $host . $sitePath . '/Shared%20Documents/Forms/AllItems.aspx?id='
             . rawurlencode($id) . '&p=true';
@@ -121,5 +107,48 @@ final class SharePointFolderUrl
         $folderPath = trim($folderPath) !== '' ? trim($folderPath) : 'Architectural Projects [Public]';
 
         return self::buildBrowseUrl($siteHost, $sitePath, $folderPath);
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     */
+    private static function folderPathFromQuery(array $query): string
+    {
+        foreach (['id', 'RootFolder', 'rootfolder'] as $key) {
+            $raw = trim((string) ($query[$key] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            $decoded = trim(rawurldecode(str_replace('+', ' ', $raw)));
+            if ($decoded !== '') {
+                return $decoded;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Library-home AllItems links often have only viewid=… (no id=).
+     * Also accepts modern sharing paths such as /:f:/r/teams/…/Shared Documents/…
+     */
+    private static function folderPathFromUrlPath(string $path): string
+    {
+        $decoded = rawurldecode(str_replace('\\', '/', $path));
+        $decoded = preg_replace('#/+#', '/', $decoded) ?? $decoded;
+
+        // /:f:/r/…  /:f:/s/…  /:u:/r/…
+        if (preg_match('#^/:[a-z0-9]+:/[a-z0-9]+(/.*)$#i', $decoded, $m)) {
+            $decoded = $m[1];
+        }
+
+        $decoded = preg_replace('#/Forms/AllItems\.aspx$#i', '', $decoded) ?? $decoded;
+        $decoded = rtrim($decoded, '/');
+
+        if (preg_match('#^/(?:teams|sites)/[^/]+/Shared Documents(?:/.*)?$#i', $decoded)) {
+            return $decoded;
+        }
+
+        return '';
     }
 }

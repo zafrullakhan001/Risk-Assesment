@@ -12667,6 +12667,16 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-dialog-search-controls .sp-search-toggle-group[hidden] {
     display: none !important;
 }
+.sharepoint-dialog-search-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: stretch;
+}
+.sharepoint-dialog-search-row .sharepoint-dialog-search-label {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
 .sharepoint-dialog-search-label {
     display: flex;
     align-items: center;
@@ -12683,6 +12693,39 @@ html.sp-workspace-scroll-lock body {
     background: transparent;
     font: inherit;
     min-width: 0;
+}
+.sp-dialog-search-run {
+    flex: 0 0 auto;
+    align-self: stretch;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.sp-dialog-search-run.is-pending,
+.sharepoint-dialog-search.has-pending-search .sp-dialog-search-run,
+.sharepoint-compare-search-field-wrap.has-pending-search .sp-dialog-search-run {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #0f766e) 35%, transparent);
+}
+.sp-dialog-search-pending-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--muted, #64748b);
+}
+.sp-dialog-search-pending-hint[hidden] {
+    display: none !important;
+}
+.sharepoint-compare-search-field-wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.4rem 0.45rem;
+    align-items: stretch;
+}
+.sharepoint-compare-search-field-wrap .sharepoint-compare-search-field {
+    min-width: 0;
+}
+.sharepoint-compare-search-field-wrap .sp-dialog-search-pending-hint {
+    grid-column: 1 / -1;
 }
 .sharepoint-dialog-search-chips {
     display: flex;
@@ -13199,6 +13242,18 @@ html.sp-workspace-scroll-lock body {
     min-height: 1.85rem;
     padding: 0.15rem 0.55rem;
     gap: 0.35rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-row {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-search-run {
+    padding: 0.2rem 0.65rem;
+    font-size: 0.75rem;
+}
+.sharepoint-project-dialog.is-compact-chrome .sp-dialog-search-pending-hint {
+    flex: 1 1 100%;
+    margin: 0;
 }
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-label input {
     padding: 0.18rem 0;
@@ -16131,4 +16186,354 @@ html.is-compact .help-article h2 {
 }
 [data-theme="indigo"] .help-article-body code {
     background: color-mix(in srgb, #7dd3fc 12%, var(--card, #111a2b));
+}
+
+/* ---- Search stats dashboard ---- */
+.sp-stats-dash-btn {
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    padding: 0.2rem 0.65rem !important;
+    min-height: 1.7rem;
+    border-radius: 999px !important;
+    border: 1px solid color-mix(in srgb, #0e7490 28%, var(--border, #e2e8f0)) !important;
+    background: color-mix(in srgb, #0e7490 10%, #fff) !important;
+    color: #0f766e !important;
+}
+.sp-stats-dash-btn:hover,
+.sp-stats-dash-btn:focus-visible {
+    background: color-mix(in srgb, #0e7490 18%, #fff) !important;
+    outline: 2px solid color-mix(in srgb, #0e7490 40%, transparent);
+    outline-offset: 1px;
+}
+.sharepoint-search-dash-dialog {
+    width: min(1120px, calc(100vw - 1.5rem));
+    max-width: none;
+    height: min(860px, calc(100vh - 1.5rem));
+}
+.sharepoint-search-dash-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+}
+.sharepoint-search-dash-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.15rem 0.15rem 0.85rem;
+}
+.sp-sd-loading {
+    margin: 0 0 0.75rem;
+    color: #0369a1;
+    font-weight: 600;
+}
+.sp-sd-kpis {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin-bottom: 0.9rem;
+}
+.sp-sd-kpi {
+    border: 1px solid color-mix(in srgb, var(--primary, #0e7490) 16%, var(--line, #d0dae4));
+    border-radius: 14px;
+    padding: 0.65rem 0.7rem;
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--primary, #0e7490) 7%, var(--card, #fff)),
+            var(--card, #fff) 70%);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(12, 21, 36, 0.05));
+}
+.sp-sd-kpi-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--muted, #64748b);
+}
+.sp-sd-kpi-value {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--ink, #0f172a);
+    line-height: 1.1;
+}
+.sp-sd-kpi-hint {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.68rem;
+    color: var(--muted, #64748b);
+}
+.sp-sd-breakdowns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+.sp-sd-panel {
+    border: 1px solid var(--line, #d0dae4);
+    border-radius: 14px;
+    padding: 0.7rem 0.8rem 0.8rem;
+    background: color-mix(in srgb, var(--paper, #f8fafc) 70%, var(--card, #fff));
+}
+.sp-sd-panel h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+.sp-sd-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.sp-sd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--line, #d0dae4);
+    background: var(--card, #fff);
+    color: var(--ink-soft, #243044);
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 650;
+    padding: 0.32rem 0.62rem;
+    border-radius: 999px;
+    cursor: pointer;
+}
+.sp-sd-chip:hover {
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 40%, var(--line, #d0dae4));
+    color: var(--primary, #0e7490);
+}
+.sp-sd-chip.is-active {
+    background: color-mix(in srgb, var(--primary, #0e7490) 14%, var(--card, #fff));
+    border-color: color-mix(in srgb, var(--primary, #0e7490) 42%, var(--line, #d0dae4));
+    color: var(--primary-dark, #155e75);
+}
+.sp-sd-chip-count {
+    font-size: 0.68rem;
+    opacity: 0.75;
+}
+.sp-sd-bars {
+    display: grid;
+    gap: 0.4rem;
+}
+.sp-sd-bar-row {
+    display: grid;
+    grid-template-columns: 4.5rem 1fr auto;
+    gap: 0.45rem;
+    align-items: center;
+    font-size: 0.75rem;
+}
+.sp-sd-bar-label { color: #475569; font-weight: 600; }
+.sp-sd-bar-track {
+    height: 0.4rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+.sp-sd-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    min-width: 0.35rem;
+}
+.sp-sd-bar-fill--fresh { background: #10b981; }
+.sp-sd-bar-fill--normal { background: #38bdf8; }
+.sp-sd-bar-fill--stale { background: #f59e0b; }
+.sp-sd-bar-fill--unknown { background: #94a3b8; }
+.sp-sd-people {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.35rem;
+}
+.sp-sd-people li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.78rem;
+    padding: 0.28rem 0.4rem;
+    border-radius: 0.45rem;
+    background: color-mix(in srgb, #fff 70%, transparent);
+}
+.sp-sd-person-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.sp-sd-person-count {
+    font-weight: 800;
+    color: #0f766e;
+}
+.sp-sd-empty-note {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    font-style: italic;
+}
+.sp-sd-results-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem 1rem;
+    margin: 0.2rem 0 0.55rem;
+}
+.sp-sd-results-head h4 {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 800;
+}
+.sp-sd-results-meta {
+    font-size: 0.74rem;
+    color: #64748b;
+    font-weight: 600;
+}
+.sp-sd-cards {
+    display: grid;
+    gap: 0.7rem;
+}
+.sp-sd-card {
+    border: 1px solid color-mix(in srgb, var(--primary, #0e7490) 14%, var(--line, #d0dae4));
+    border-radius: 16px;
+    padding: 0.75rem 0.85rem 0.85rem;
+    background:
+        radial-gradient(700px 120px at 0% 0%, color-mix(in srgb, var(--primary, #0e7490) 8%, transparent), transparent 60%),
+        var(--card, #fff);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(12, 21, 36, 0.04));
+}
+.sp-sd-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.55rem 0.85rem;
+    align-items: flex-start;
+}
+.sp-sd-card-title {
+    min-width: 0;
+    flex: 1 1 16rem;
+}
+.sp-sd-project-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 0;
+    background: transparent;
+    color: #0c4a6e;
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 800;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+}
+.sp-sd-project-open:hover,
+.sp-sd-project-open:focus-visible {
+    color: #0369a1;
+    text-decoration: underline;
+    outline: none;
+}
+.sp-sd-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+    margin-top: 0.35rem;
+}
+.sp-sd-card-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+}
+.sp-sd-card-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.85rem;
+    margin: 0.45rem 0 0.55rem;
+    font-size: 0.74rem;
+    color: #64748b;
+    font-weight: 600;
+}
+.sp-sd-hits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+}
+.sp-sd-hit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    max-width: 100%;
+    border: 1px solid color-mix(in srgb, #0ea5e9 28%, transparent);
+    background: color-mix(in srgb, #0ea5e9 8%, #fff);
+    color: #0c4a6e;
+    border-radius: 999px;
+    padding: 0.18rem 0.55rem;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 650;
+    cursor: pointer;
+    text-align: left;
+    text-decoration: none;
+}
+.sp-sd-hit:hover,
+.sp-sd-hit:focus-visible {
+    background: color-mix(in srgb, #0ea5e9 16%, #fff);
+    outline: 2px solid color-mix(in srgb, #0ea5e9 45%, transparent);
+    outline-offset: 1px;
+}
+.sp-sd-hit--fallback {
+    border-style: dashed;
+    color: #334155;
+    background: color-mix(in srgb, #94a3b8 10%, #fff);
+}
+.sp-sd-hit-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 16rem;
+}
+.sp-sd-hit-path {
+    color: #64748b;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 12rem;
+}
+.sp-sd-more {
+    align-self: center;
+    border: 0;
+    background: transparent;
+    color: #0369a1;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 800;
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+}
+.sp-sd-more:hover {
+    text-decoration: underline;
+}
+@media (max-width: 1100px) {
+    .sp-sd-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+    .sp-sd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sp-sd-breakdowns { grid-template-columns: 1fr; }
+    .sharepoint-search-dash-dialog {
+        width: calc(100vw - 0.75rem);
+        height: calc(100vh - 0.75rem);
+    }
+}
+[data-theme="indigo"] .sp-sd-kpi,
+[data-theme="indigo"] .sp-sd-panel,
+[data-theme="indigo"] .sp-sd-card {
+    background: color-mix(in srgb, #0e7490 8%, var(--card, #111a2b));
 }

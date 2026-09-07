@@ -1654,9 +1654,9 @@ $soloPageClass = $ownerSolo
                                 <label class="sharepoint-add-field sharepoint-folder-url-label">
                                     <span class="sharepoint-add-field-label">SharePoint folder URL</span>
                                     <input type="url" name="folder_url" required
-                                           placeholder="https://….sharepoint.com/…/AllItems.aspx?id=/teams/…/Shared Documents/…"
+                                           placeholder="https://….sharepoint.com/…/Shared Documents/Forms/AllItems.aspx"
                                            autocomplete="off" spellcheck="false">
-                                    <span class="sharepoint-add-field-hint">Copy the browser address while viewing the folder in SharePoint (AllItems.aspx links work best).</span>
+                                    <span class="sharepoint-add-field-hint">Copy the browser address while viewing the library or folder in SharePoint. AllItems.aspx links work, including library home links that only have viewid=….</span>
                                 </label>
                             </div>
                             <div class="sharepoint-add-source-actions">
@@ -2546,6 +2546,7 @@ $soloPageClass = $ownerSolo
     <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <script src="assets/js/sharepoint-search-dashboard.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-search-dashboard.js') ?>"></script>
     <?php if (!$panelSolo): ?>
     <script src="assets/js/sharepoint-section-board.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-section-board.js') ?>"></script>
     <?php endif; ?>

@@ -78,10 +78,14 @@ declare(strict_types=1);
                                 </select>
                             </label>
                         </div>
-                        <label class="sharepoint-dialog-search-label" for="sharepoint-project-dialog-search">
-                            <span aria-hidden="true">🔎</span>
-                            <input type="search" id="sharepoint-project-dialog-search" placeholder="Search name or path… (AND / OR · Fuzzy)" autocomplete="off">
-                        </label>
+                        <div class="sharepoint-dialog-search-row">
+                            <label class="sharepoint-dialog-search-label" for="sharepoint-project-dialog-search">
+                                <span aria-hidden="true">🔎</span>
+                                <input type="search" id="sharepoint-project-dialog-search" placeholder='Try: encore · ext:pdf · path:archive · -exclude · "phrase"' autocomplete="off" title="Press Enter or Search to run. Supports AND/OR, Fuzzy, ext:, path:, person:, tag:, -exclude, and &quot;phrases&quot;.">
+                            </label>
+                            <button type="button" class="button button-primary sp-dialog-search-run" id="sharepoint-project-dialog-search-run" title="Run search (Enter)">Search</button>
+                        </div>
+                        <p class="sp-dialog-search-pending-hint" id="sharepoint-project-dialog-search-pending" hidden>Press Enter or Search to apply</p>
                         <div class="sharepoint-dialog-search-controls" id="sharepoint-project-dialog-search-controls">
                             <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
                                 <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="Match only when every word is found" aria-pressed="true">AND</button>
@@ -234,10 +238,14 @@ declare(strict_types=1);
                                 <div class="sharepoint-compare-panel-chrome">
                                     <div class="sharepoint-compare-panel-actions" id="sharepoint-compare-left-actions"></div>
                                     <div class="sharepoint-compare-panel-filters" data-side="left">
-                                        <label class="sharepoint-compare-search-field">
-                                            <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
-                                            <input type="search" class="sp-compare-panel-search" data-side="left" placeholder="Search this panel…" autocomplete="off" aria-label="Search left panel">
-                                        </label>
+                                        <div class="sharepoint-compare-search-field-wrap" data-side="left">
+                                            <label class="sharepoint-compare-search-field">
+                                                <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
+                                                <input type="search" class="sp-compare-panel-search" data-side="left" placeholder='Try: encore · ext:pdf · path:archive · -exclude' autocomplete="off" aria-label="Search left panel" title="Press Enter or Search to run. Supports the same operators as main Find.">
+                                            </label>
+                                            <button type="button" class="button button-primary sp-dialog-search-run sp-compare-panel-search-btn" data-side="left" title="Run search (Enter)">Search</button>
+                                            <p class="sp-dialog-search-pending-hint sp-compare-panel-pending" data-side="left" hidden>Press Enter or Search</p>
+                                        </div>
                                         <div class="sharepoint-compare-filter-row">
                                             <div class="sharepoint-dialog-search-chips" role="group" aria-label="Left panel extensions">
                                                 <button type="button" class="sp-dialog-chip" data-ext="vsdx" data-side="left">.vsdx</button>
@@ -304,10 +312,14 @@ declare(strict_types=1);
                                 <div class="sharepoint-compare-panel-chrome">
                                     <div class="sharepoint-compare-panel-actions" id="sharepoint-compare-mid-actions"></div>
                                     <div class="sharepoint-compare-panel-filters" data-side="mid">
-                                        <label class="sharepoint-compare-search-field">
-                                            <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
-                                            <input type="search" class="sp-compare-panel-search" data-side="mid" placeholder="Search this panel…" autocomplete="off" aria-label="Search middle panel">
-                                        </label>
+                                        <div class="sharepoint-compare-search-field-wrap" data-side="mid">
+                                            <label class="sharepoint-compare-search-field">
+                                                <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
+                                                <input type="search" class="sp-compare-panel-search" data-side="mid" placeholder='Try: encore · ext:pdf · path:archive · -exclude' autocomplete="off" aria-label="Search middle panel" title="Press Enter or Search to run. Supports the same operators as main Find.">
+                                            </label>
+                                            <button type="button" class="button button-primary sp-dialog-search-run sp-compare-panel-search-btn" data-side="mid" title="Run search (Enter)">Search</button>
+                                            <p class="sp-dialog-search-pending-hint sp-compare-panel-pending" data-side="mid" hidden>Press Enter or Search</p>
+                                        </div>
                                         <div class="sharepoint-compare-filter-row">
                                             <div class="sharepoint-dialog-search-chips" role="group" aria-label="Middle panel extensions">
                                                 <button type="button" class="sp-dialog-chip" data-ext="vsdx" data-side="mid">.vsdx</button>
@@ -374,10 +386,14 @@ declare(strict_types=1);
                                 <div class="sharepoint-compare-panel-chrome">
                                     <div class="sharepoint-compare-panel-actions" id="sharepoint-compare-right-actions"></div>
                                     <div class="sharepoint-compare-panel-filters" data-side="right">
-                                        <label class="sharepoint-compare-search-field">
-                                            <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
-                                            <input type="search" class="sp-compare-panel-search" data-side="right" placeholder="Search this panel…" autocomplete="off" aria-label="Search right panel">
-                                        </label>
+                                        <div class="sharepoint-compare-search-field-wrap" data-side="right">
+                                            <label class="sharepoint-compare-search-field">
+                                                <span class="sharepoint-compare-search-icon" aria-hidden="true">🔎</span>
+                                                <input type="search" class="sp-compare-panel-search" data-side="right" placeholder='Try: encore · ext:pdf · path:archive · -exclude' autocomplete="off" aria-label="Search right panel" title="Press Enter or Search to run. Supports the same operators as main Find.">
+                                            </label>
+                                            <button type="button" class="button button-primary sp-dialog-search-run sp-compare-panel-search-btn" data-side="right" title="Run search (Enter)">Search</button>
+                                            <p class="sp-dialog-search-pending-hint sp-compare-panel-pending" data-side="right" hidden>Press Enter or Search</p>
+                                        </div>
                                         <div class="sharepoint-compare-filter-row">
                                             <div class="sharepoint-dialog-search-chips" role="group" aria-label="Right panel extensions">
                                                 <button type="button" class="sp-dialog-chip" data-ext="vsdx" data-side="right">.vsdx</button>
@@ -523,6 +539,25 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                             <span aria-hidden="true">✕</span>
                             <span class="sharepoint-qr-close-label">Close</span>
                         </button>
+                    </div>
+                </div>
+            </dialog>
+
+            <dialog class="response-dialog sharepoint-search-dash-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-search-dash-dialog" aria-labelledby="sharepoint-search-dash-title" data-density="compact" data-require-close-btn="1">
+                <div class="response-dialog-form sharepoint-search-dash-body">
+                    <div class="response-dialog-head sp-dialog-drag-handle">
+                        <div>
+                            <div class="eyebrow">📊 Search dashboard</div>
+                            <h3 id="sharepoint-search-dash-title">Search stats</h3>
+                            <p class="response-dialog-sub" id="sharepoint-search-dash-sub">Live results for the current query</p>
+                        </div>
+                        <div class="sp-dialog-window-tools">
+                            <button type="button" class="button ghost sp-dialog-maximize" id="sharepoint-search-dash-maximize" title="Maximize" aria-label="Maximize dialog" aria-pressed="false">⛶</button>
+                            <button type="button" class="button ghost response-dialog-close" id="sharepoint-search-dash-close" aria-label="Close">✕</button>
+                        </div>
+                    </div>
+                    <div class="sharepoint-search-dash-content" id="sharepoint-search-dash-body">
+                        <p class="panel-help">Run a search to open the dashboard.</p>
                     </div>
                 </div>
             </dialog>
