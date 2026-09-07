@@ -1165,6 +1165,7 @@ a.brand-link:hover h1 {
 .chart-card-tone-signoff { border-top-color: #059669; }
 .chart-card-tone-versions { border-top-color: #6366f1; }
 .chart-card-tone-workspace { border-top-color: #0e7490; }
+.chart-card-tone-access { border-top-color: #db2777; }
 
 .card-heading-uplift {
     padding: 12px 14px 8px;
@@ -5260,6 +5261,305 @@ body.is-presentation .print-only-block { display: block; }
     cursor: not-allowed;
 }
 
+.shared-access-btn.has-shared {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary-soft) 70%, var(--card));
+}
+
+.shared-access-panel {
+    width: min(420px, calc(100vw - 32px));
+    max-height: min(70vh, 640px);
+    overflow: auto;
+}
+
+.shared-access-section {
+    margin: 0 0 12px;
+}
+
+.shared-access-section-head {
+    margin: 0 0 6px;
+}
+
+.shared-access-section-head h4,
+.shared-access-projects-head h4 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.shared-access-notices {
+    max-height: min(220px, 28vh);
+    overflow: auto;
+    margin: 0 0 8px;
+}
+
+.shared-access-notice {
+    padding: 0;
+}
+
+.shared-access-notice.is-unread .shared-access-notice-link {
+    background: color-mix(in srgb, var(--primary-soft) 40%, var(--card));
+}
+
+.shared-access-notice-link {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.shared-access-notice-link:hover,
+.shared-access-notice-link:focus-visible {
+    background: color-mix(in srgb, var(--primary-soft) 55%, var(--card));
+}
+
+.shared-access-notice-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.shared-access-notice-body {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.shared-access-new-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.4rem;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--primary) 18%, var(--card));
+    color: var(--primary-dark);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.shared-access-search-wrap {
+    margin: 0 0 10px;
+}
+
+.shared-access-search {
+    width: 100%;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--text);
+    font: inherit;
+}
+
+.shared-access-search:focus {
+    outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+    outline-offset: 1px;
+}
+
+.shared-access-list {
+    max-height: min(340px, 50vh);
+    overflow: auto;
+}
+
+.shared-access-item {
+    padding: 0;
+}
+
+.shared-access-link {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.7rem 0.75rem;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.shared-access-link:hover,
+.shared-access-link:focus-visible {
+    background: color-mix(in srgb, var(--primary-soft) 55%, var(--card));
+}
+
+.shared-access-item-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.shared-access-item-meta {
+    display: grid;
+    gap: 0.15rem;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.shared-access-item-owner,
+.shared-access-item-granted {
+    display: block;
+}
+
+.shared-access-empty {
+    margin: 0 0 10px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.shared-access-badge {
+    background: #0f766e;
+}
+
+.project-access-transfer {
+    padding: 12px 0 14px;
+    margin: 10px 12px 4px;
+    border-top: none;
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg, color-mix(in srgb, #f59e0b 10%, var(--card)), color-mix(in srgb, #db2777 8%, var(--card)));
+    border: 1px solid color-mix(in srgb, #f59e0b 28%, var(--line));
+}
+
+.project-access-transfer .panel-help,
+.project-access-transfer .project-access-grant-form,
+.project-access-transfer .card-heading {
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.project-access-transfer-form {
+    align-items: flex-start;
+}
+
+.project-access-keep-editor {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 100%;
+    font-size: 0.92rem;
+    color: var(--text);
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, #fff 55%, transparent);
+    border: 1px dashed color-mix(in srgb, #f59e0b 40%, var(--line));
+}
+
+.project-access-keep-editor input {
+    accent-color: #db2777;
+    width: auto;
+    margin: 0;
+}
+
+.transfer-ownership-card .card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.transfer-ownership-controls {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.transfer-ownership-controls label > span,
+.transfer-ownership-mode legend {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+}
+
+.transfer-ownership-controls select {
+    width: min(420px, 100%);
+    min-height: 2.4rem;
+}
+
+.transfer-ownership-mode {
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin: 0;
+}
+
+.transfer-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.35rem 0;
+}
+
+.transfer-ownership-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.transfer-ownership-toolbar .shared-access-search {
+    flex: 1 1 220px;
+    min-width: 180px;
+}
+
+.transfer-ownership-list {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+    max-height: min(420px, 50vh);
+    overflow: auto;
+}
+
+.transfer-ownership-list.is-all-mode .transfer-project-check {
+    opacity: 0.45;
+}
+
+.transfer-ownership-item label {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    cursor: pointer;
+}
+
+.transfer-ownership-item-body {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.transfer-ownership-item-body span {
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
+.transfer-ownership-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
 .update-nav-badge {
     display: inline-flex;
     align-items: center;
@@ -5277,7 +5577,8 @@ body.is-presentation .print-only-block { display: block; }
     vertical-align: middle;
 }
 
-.update-toast-host {
+.update-toast-host,
+.app-toast-host {
     position: fixed;
     right: 18px;
     bottom: 18px;
@@ -5288,7 +5589,8 @@ body.is-presentation .print-only-block { display: block; }
     pointer-events: none;
 }
 
-.update-toast {
+.update-toast,
+.app-toast {
     pointer-events: auto;
     padding: 14px 16px;
     border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--line));
@@ -5299,19 +5601,22 @@ body.is-presentation .print-only-block { display: block; }
     animation: update-toast-in 0.22s ease;
 }
 
-.update-toast strong {
+.update-toast strong,
+.app-toast strong {
     display: block;
     margin-bottom: 4px;
     font-size: 14px;
 }
 
-.update-toast p {
+.update-toast p,
+.app-toast p {
     margin: 0 0 10px;
     font-size: 13px;
     color: var(--ink-soft);
 }
 
-.update-toast-actions {
+.update-toast-actions,
+.app-toast-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -5330,7 +5635,8 @@ body.is-presentation .print-only-block { display: block; }
 
 @media print {
     .update-bell,
-    .update-toast-host {
+    .update-toast-host,
+    .app-toast-host {
         display: none !important;
     }
 }
@@ -8251,14 +8557,43 @@ html[data-theme="dark"] .project-lock-badge {
     color: var(--text);
 }
 
+.project-access-card .project-access-status-badge.is-open {
+    color: #0f766e;
+    background: color-mix(in srgb, #ccfbf1 70%, var(--card));
+    border-color: color-mix(in srgb, #14b8a6 35%, var(--line));
+}
+
+.project-access-card .project-access-status-badge.is-locked {
+    color: #9f1239;
+    background: color-mix(in srgb, #ffe4e6 75%, var(--card));
+    border-color: color-mix(in srgb, #fb7185 40%, var(--line));
+}
+
 .project-access-card .project-access-lock {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 0.85rem;
-    padding: 0 12px 14px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    margin: 0 12px 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+}
+
+.project-access-card .project-access-lock.is-open {
+    background: linear-gradient(135deg, color-mix(in srgb, #ccfbf1 55%, var(--card)), color-mix(in srgb, #e0f2fe 45%, var(--card)));
+    border-color: color-mix(in srgb, #14b8a6 32%, var(--line));
+}
+
+.project-access-card .project-access-lock.is-locked {
+    background: linear-gradient(135deg, color-mix(in srgb, #ffe4e6 60%, var(--card)), color-mix(in srgb, #ffedd5 40%, var(--card)));
+    border-color: color-mix(in srgb, #fb7185 36%, var(--line));
+}
+
+.project-access-card .project-access-lock-copy strong {
+    display: block;
+    font-size: 1rem;
 }
 
 .project-access-card .project-access-lock p {
@@ -8269,6 +8604,49 @@ html[data-theme="dark"] .project-lock-badge {
 
 .project-access-editors {
     padding: 4px 0 12px;
+    margin: 0 12px 8px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, color-mix(in srgb, #ede9fe 42%, var(--card)), var(--card));
+    border: 1px solid color-mix(in srgb, #8b5cf6 22%, var(--line));
+}
+
+.project-access-subhead {
+    align-items: center;
+    padding: 12px 12px 4px;
+    gap: 10px;
+}
+
+.project-access-subhead .card-heading-with-icon,
+.project-access-subhead.card-heading-with-icon {
+    width: 100%;
+}
+
+.project-access-editor-count {
+    margin-left: auto;
+    color: #6d28d9;
+    background: color-mix(in srgb, #ede9fe 80%, var(--card));
+    border-color: color-mix(in srgb, #7c3aed 28%, var(--line));
+}
+
+.card-icon-sm {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+    border-radius: 9px;
+}
+
+.project-access-editors .card-icon-sm {
+    background: color-mix(in srgb, #ede9fe 80%, var(--card));
+    border-color: color-mix(in srgb, #8b5cf6 30%, var(--line));
+}
+
+.project-access-transfer .card-icon-sm {
+    background: color-mix(in srgb, #ffedd5 80%, var(--card));
+    border-color: color-mix(in srgb, #f59e0b 35%, var(--line));
+}
+
+.project-access-notify-hint {
+    color: #0f766e !important;
 }
 
 .project-access-grant-form {
@@ -8291,10 +8669,14 @@ html[data-theme="dark"] .project-lock-badge {
     min-height: 2.4rem;
 }
 
+.project-access-empty {
+    margin: 0 12px 12px;
+}
+
 .project-access-editor-list {
     list-style: none;
     margin: 0;
-    padding: 0 12px;
+    padding: 0 12px 12px;
     display: grid;
     gap: 0.55rem;
 }
@@ -8305,10 +8687,29 @@ html[data-theme="dark"] .project-lock-badge {
     align-items: center;
     justify-content: space-between;
     gap: 0.65rem;
-    padding: 0.7rem 0.85rem;
+    padding: 0.75rem 0.9rem;
     border-radius: 12px;
-    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    border: 1px solid color-mix(in srgb, #8b5cf6 22%, var(--line));
+    background: color-mix(in srgb, #fff 70%, var(--card));
+    box-shadow: 0 1px 0 color-mix(in srgb, #8b5cf6 8%, transparent);
+}
+
+.project-access-editor-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+}
+
+.project-access-editor-avatar {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: color-mix(in srgb, #ddd6fe 75%, var(--card));
+    border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--line));
+    flex-shrink: 0;
 }
 
 .project-access-editor-list li strong {
@@ -8318,6 +8719,11 @@ html[data-theme="dark"] .project-lock-badge {
 .project-access-editor-list li span {
     color: var(--muted);
     font-size: 0.88rem;
+}
+
+.project-access-bulk-link a {
+    font-weight: 700;
+    color: #c2410c;
 }
 
 .brand-static { text-decoration: none; color: inherit; cursor: default; }

@@ -6,6 +6,7 @@ require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\Actor;
 use RiskAssessment\AccessDeniedException;
+use RiskAssessment\AccessNotifier;
 use RiskAssessment\AssessmentComparer;
 use RiskAssessment\AssessmentDate;
 use RiskAssessment\AssessmentInsights;
@@ -27,6 +28,7 @@ use RiskAssessment\Repositories\ProjectPicturesRepository;
 use RiskAssessment\Repositories\ProjectShareRepository;
 use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
+use RiskAssessment\Repositories\UserNotificationRepository;
 use RiskAssessment\Mail\EmailTemplates;
 use RiskAssessment\Mail\SmtpMailer;
 use RiskAssessment\Mail\SmtpSettings;
@@ -1206,7 +1208,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $requireProjectManage($targetId);
             $accessRepository->grantEditor($targetId, $editorUserId, (int) ($currentUser['id'] ?? 0));
-            header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=access&access=1');
+
+            $meta = $accessRepository->loadAccessMeta($targetId);
+            $projectName = trim((string) ($meta['solution_name'] ?? ''));
+            $notifier = new AccessNotifier(
+                new UserNotificationRepository($pdo),
+                $auth->users(),
+                new SmtpSettings($settings, $crypto),
+                $branding
+            );
+            $notifyResult = $notifier->notifyEditorGrant($targetId, $projectName, $currentUser, $editorUserId);
+            $mailQs = '';
+            if ($notifyResult['email_sent']) {
+                $mailQs = '&mail=1';
+            } elseif ($notifyResult['email_attempted']) {
+                $mailQs = '&mail=0';
+            }
+
+            header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=access&access=1' . $mailQs);
             exit;
         }
 
@@ -1219,6 +1238,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $requireProjectManage($targetId);
             $accessRepository->revokeEditor($targetId, $editorUserId);
             header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=access&access=1');
+            exit;
+        }
+
+        if ($action === 'transfer_ownership') {
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $newOwnerId = filter_var($_POST['new_owner_user_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $keepFormer = !isset($_POST['keep_former_editor']) || (string) $_POST['keep_former_editor'] === '1';
+            if ($targetId <= 0) {
+                throw new RuntimeException('Assessment not found.');
+            }
+            $requireProjectManage($targetId);
+            $meta = $accessRepository->loadAccessMeta($targetId);
+            $projectName = trim((string) ($meta['solution_name'] ?? ''));
+            $accessRepository->transferOwnership(
+                $targetId,
+                ['id' => $newOwnerId],
+                (int) ($currentUser['id'] ?? 0),
+                $keepFormer
+            );
+
+            $notifier = new AccessNotifier(
+                new UserNotificationRepository($pdo),
+                $auth->users(),
+                new SmtpSettings($settings, $crypto),
+                $branding
+            );
+            $notifyResult = $notifier->notifyOwnershipTransfer(
+                $targetId,
+                $projectName,
+                $currentUser,
+                $newOwnerId
+            );
+            $mailQs = '';
+            if ($notifyResult['email_sent']) {
+                $mailQs = '&mail=1';
+            } elseif ($notifyResult['email_attempted']) {
+                $mailQs = '&mail=0';
+            }
+
+            header('Location: index.php?view=1&id=' . $targetId . '&transferred=1&kept=' . ($keepFormer ? '1' : '0') . $mailQs);
             exit;
         }
 
@@ -1398,6 +1457,26 @@ if (isset($_GET['deleted_older'])) {
 
 if (isset($_GET['access']) && $flash === '') {
     $flash = 'Project access settings updated.';
+    if ((string) ($_GET['mail'] ?? '') === '1') {
+        $flash .= ' Email sent to you and the recipient.';
+    } elseif ((string) ($_GET['mail'] ?? '') === '0') {
+        $flash .= ' Email could not be sent.';
+    }
+}
+
+if (isset($_GET['transferred']) && $flash === '') {
+    if ((string) ($_GET['kept'] ?? '') === '1') {
+        $flash = 'Ownership transferred. You remain an editor on this project.';
+    } elseif ((string) ($_GET['kept'] ?? '') === '0') {
+        $flash = 'Ownership transferred. You no longer have edit access to this project.';
+    } else {
+        $flash = 'Ownership transferred. You are no longer the owner of this project.';
+    }
+    if ((string) ($_GET['mail'] ?? '') === '1') {
+        $flash .= ' Email sent to you and the new owner.';
+    } elseif ((string) ($_GET['mail'] ?? '') === '0') {
+        $flash .= ' Email could not be sent.';
+    }
 }
 
 $smtpSettingsForUi = new SmtpSettings($settings, $crypto);

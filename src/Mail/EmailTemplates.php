@@ -341,6 +341,196 @@ final class EmailTemplates
         ];
     }
 
+    /**
+     * @return array{html: string, text: string, subject: string}
+     */
+    public function editorAccessGranted(
+        string $projectName,
+        string $projectUrl,
+        string $granterName = '',
+        bool $forRecipient = true
+    ): array {
+        $appName = $this->appName();
+        $accent = $this->accentHex();
+        $projectName = trim($projectName) !== '' ? trim($projectName) : 'a risk project';
+        $granterName = trim($granterName);
+
+        if ($forRecipient) {
+            $title = 'Edit access granted';
+            $lead = $granterName !== ''
+                ? '<strong>' . $this->e($granterName) . '</strong> granted you edit access to <strong>' . $this->e($projectName) . '</strong>.'
+                : 'You were granted edit access to <strong>' . $this->e($projectName) . '</strong>.';
+            $detail = 'You can open the project, update responses, and upload new workbook versions. Only the owner can lock the project, manage editors, share public links, or delete versions.';
+            $cta = 'Open project';
+            $textLead = ($granterName !== '' ? $granterName . ' granted you' : 'You were granted')
+                . ' edit access to ' . $projectName . '.';
+        } else {
+            $title = 'Edit access confirmation';
+            $lead = 'You granted edit access to <strong>' . $this->e($projectName) . '</strong>'
+                . ($granterName !== '' ? ' for <strong>' . $this->e($granterName) . '</strong>.' : '.');
+            $detail = 'This email is your record of the grant. You can revoke access anytime from Actions → Access.';
+            $cta = 'Open project';
+            $textLead = 'You granted edit access to ' . $projectName
+                . ($granterName !== '' ? ' for ' . $granterName : '') . '.';
+        }
+
+        return $this->accessMessage($title, $lead, $detail, $projectUrl, $cta, $textLead, $appName, $accent);
+    }
+
+    /**
+     * @param list<string> $projectNames
+     * @return array{html: string, text: string, subject: string}
+     */
+    public function ownershipTransferred(
+        string $projectNameOrSummary,
+        string $projectUrl,
+        string $otherPartyName = '',
+        bool $forNewOwner = true,
+        array $projectNames = [],
+        int $projectCount = 1
+    ): array {
+        $appName = $this->appName();
+        $accent = $this->accentHex();
+        $otherPartyName = trim($otherPartyName);
+        $projectCount = max(1, $projectCount);
+        $summary = trim($projectNameOrSummary);
+        if ($summary === '') {
+            $summary = $projectCount === 1 ? 'a risk project' : $projectCount . ' risk projects';
+        }
+
+        $listHtml = $this->projectListHtml($projectNames);
+        $listText = $this->projectListText($projectNames);
+
+        if ($forNewOwner) {
+            $title = $projectCount === 1 ? 'You are the new project owner' : 'You received project ownership';
+            $lead = $otherPartyName !== ''
+                ? '<strong>' . $this->e($otherPartyName) . '</strong> transferred ownership of <strong>' . $this->e($summary) . '</strong> to you.'
+                : 'Ownership of <strong>' . $this->e($summary) . '</strong> was transferred to you.';
+            $detail = 'You now control edit access, locking, public share links, and deletion for '
+                . ($projectCount === 1 ? 'this project' : 'these projects')
+                . ' (including all saved versions).';
+            $textLead = ($otherPartyName !== '' ? $otherPartyName . ' transferred' : 'Someone transferred')
+                . ' ownership of ' . $summary . ' to you.';
+        } else {
+            $title = $projectCount === 1 ? 'Ownership transfer confirmation' : 'Ownership transfer confirmation';
+            $lead = 'You transferred ownership of <strong>' . $this->e($summary) . '</strong>'
+                . ($otherPartyName !== '' ? ' to <strong>' . $this->e($otherPartyName) . '</strong>.' : '.');
+            $detail = 'This email is your record of the handoff. The new owner can manage access and may keep you as an editor if you opted in.';
+            $textLead = 'You transferred ownership of ' . $summary
+                . ($otherPartyName !== '' ? ' to ' . $otherPartyName : '') . '.';
+        }
+
+        return $this->accessMessage(
+            $title,
+            $lead . $listHtml,
+            $detail,
+            $projectUrl,
+            $projectCount === 1 ? 'Open project' : 'Open Risk Register',
+            $textLead . $listText,
+            $appName,
+            $accent
+        );
+    }
+
+    /**
+     * @return array{html: string, text: string, subject: string}
+     */
+    private function accessMessage(
+        string $title,
+        string $leadHtml,
+        string $detail,
+        string $url,
+        string $ctaLabel,
+        string $textLead,
+        string $appName,
+        string $accent
+    ): array {
+        $inner = '
+      <div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;">
+        <div style="font-size:14px;line-height:1.6;color:#334155;margin:0 0 12px 0;">'
+            . $leadHtml .
+        '</div>
+        <div style="font-size:14px;line-height:1.6;color:#334155;margin:0 0 14px 0;">'
+            . $this->e($detail) .
+        '</div>
+        ' . ($url !== '' ? $this->ctaButton($url, $ctaLabel, $accent) : '') . '
+      </div>
+    ';
+
+        $html = $this->baseLayout($title, $appName, $accent, $inner, $title, $appName);
+        $text = $title . "\n\n" . $textLead . "\n\n" . $detail . "\n";
+        if ($url !== '') {
+            $text .= "\nOpen:\n{$url}\n";
+        }
+
+        return [
+            'subject' => $appName . ': ' . $title,
+            'html' => $html,
+            'text' => $text,
+        ];
+    }
+
+    /**
+     * @param list<string> $projectNames
+     */
+    private function projectListHtml(array $projectNames): string
+    {
+        $names = [];
+        foreach ($projectNames as $name) {
+            $name = trim((string) $name);
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+        if (count($names) <= 1) {
+            return '';
+        }
+
+        $shown = array_slice($names, 0, 12);
+        $extra = count($names) - count($shown);
+        $items = '';
+        foreach ($shown as $name) {
+            $items .= '<li style="margin:0 0 4px 0;">' . $this->e($name) . '</li>';
+        }
+        if ($extra > 0) {
+            $items .= '<li style="margin:0;">…and ' . (int) $extra . ' more</li>';
+        }
+
+        return '<div style="margin:12px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;">'
+            . '<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 8px 0;">Projects</div>'
+            . '<ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.5;color:#0f172a;">' . $items . '</ul>'
+            . '</div>';
+    }
+
+    /**
+     * @param list<string> $projectNames
+     */
+    private function projectListText(array $projectNames): string
+    {
+        $names = [];
+        foreach ($projectNames as $name) {
+            $name = trim((string) $name);
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+        if (count($names) <= 1) {
+            return '';
+        }
+
+        $shown = array_slice($names, 0, 12);
+        $extra = count($names) - count($shown);
+        $text = "\n\nProjects:\n";
+        foreach ($shown as $name) {
+            $text .= '- ' . $name . "\n";
+        }
+        if ($extra > 0) {
+            $text .= '- …and ' . $extra . " more\n";
+        }
+
+        return $text;
+    }
+
     private function e(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

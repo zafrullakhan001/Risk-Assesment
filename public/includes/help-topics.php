@@ -101,6 +101,8 @@ HTML,
 </ul>
 <p>Use <strong>Show filters</strong> to narrow columns, then switch <strong>Cards</strong>, <strong>Table</strong>, or <strong>Strip</strong>. Change rows per page and sort from the table header. Click a project name to open its dashboard.</p>
 <p>The person who first creates a project owns it. Everyone signed in can see projects in the list. Editing requires the owner’s permission. If a project shows <strong>Locked</strong>, only the owner, invited editors, and administrators can open it — other people still see it listed.</p>
+<p>When someone grants you edit access or transfers ownership to you, a <strong>people</strong> icon in the header shows a badge and lists recent notices. Open it to see grants, ownership handoffs, and projects shared with you. If Admin → Email is configured, both parties also receive an email.</p>
+<p>If you are leaving the team, open <strong>Actions → Access</strong> on a project you own to transfer that project, or use <a href="transfer-ownership.php">Transfer ownership</a> to hand off selected projects or everything you own to another approved user.</p>
 HTML,
                 ],
                 [
@@ -184,7 +186,7 @@ HTML,
 <li><strong>Exceptions</strong> — accepted exceptions, mitigations, owners, and timelines. On the register, ✏️ adds comments and up to 5 ServiceNow links.</li>
 <li><strong>Sign-off</strong> — Final evaluation form: evaluator name, notes, and ready-to-go-live. Go-live gates summarize what still blocks a clean sign-off. Sign-off history is kept.</li>
 <li><strong>Versions</strong> — compare and manage uploads of this solution.</li>
-<li><strong>Access</strong> — owners lock or unlock the project and invite editors who can change it.</li>
+<li><strong>Access</strong> — owners lock or unlock the project, invite editors, and transfer ownership when leaving the team. Grants and transfers notify both parties in-app (people icon / toaster) and by email when SMTP is configured.</li>
 <li><strong>Share</strong> — owners create or revoke a read-only public link (shown once when created).</li>
 </ul>
 HTML,

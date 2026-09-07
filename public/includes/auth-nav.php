@@ -17,6 +17,7 @@ $navOnHelp = str_ends_with($navScript, '/help.php');
         title="Help and About"
         <?= $navOnHelp ? ' aria-current="page"' : '' ?>
     >Help</a>
+    <?php require __DIR__ . '/shared-access-nav.php'; ?>
     <?php if (!empty($navUser['is_admin'])): ?>
         <a class="button ghost home-link" href="<?= e($navPrefix) ?>admin/index.php" title="Users, branding, LDAP, and GitHub updates">Admin</a>
         <?php

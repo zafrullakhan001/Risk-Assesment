@@ -1274,21 +1274,23 @@ final class DashboardDecisionViews
     ): string {
         ob_start();
         ?>
-        <section class="table-card table-card-uplift project-access-card" id="project-access-panel">
+        <section class="table-card table-card-uplift project-access-card chart-card-tone-access" id="project-access-panel">
             <div class="card-heading card-heading-uplift">
                 <div class="card-heading-with-icon">
                     <span class="card-icon" aria-hidden="true">🔐</span>
                     <div>
-                        <div class="eyebrow">Ownership</div>
+                        <div class="eyebrow">👑 Ownership</div>
                         <h3>Project access</h3>
                     </div>
                 </div>
-                <span class="result-count result-count-badge"><?= $isLocked ? 'Locked' : 'Open to view' ?></span>
+                <span class="result-count result-count-badge project-access-status-badge<?= $isLocked ? ' is-locked' : ' is-open' ?>">
+                    <?= $isLocked ? '🔒 Locked' : '👀 Open to view' ?>
+                </span>
             </div>
             <p class="panel-help">You own this project. Everyone signed in can see it in Find projects. Editing requires your permission. Locking keeps the project listed, but only you, editors you invite, and administrators can open the details.</p>
 
-            <div class="project-access-lock">
-                <div>
+            <div class="project-access-lock<?= $isLocked ? ' is-locked' : ' is-open' ?>">
+                <div class="project-access-lock-copy">
                     <strong><?= $isLocked ? '🔒 Project is locked' : '🔓 Project is unlocked' ?></strong>
                     <p><?= $isLocked
                         ? 'People without access still see it in the list, but cannot open the dashboard.'
@@ -1300,21 +1302,23 @@ final class DashboardDecisionViews
                         <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
                         <input type="hidden" name="action" value="<?= $isLocked ? 'unlock_project' : 'lock_project' ?>">
                         <button type="submit" class="button <?= $isLocked ? 'button-primary' : 'ghost-light' ?>">
-                            <?= $isLocked ? 'Unlock project' : 'Lock project' ?>
+                            <?= $isLocked ? '🔓 Unlock project' : '🔒 Lock project' ?>
                         </button>
                     </form>
                 <?php endif; ?>
             </div>
 
             <div class="project-access-editors">
-                <div class="card-heading" style="padding-top: 4px;">
+                <div class="card-heading card-heading-with-icon project-access-subhead">
+                    <span class="card-icon card-icon-sm" aria-hidden="true">✏️</span>
                     <div>
-                        <div class="eyebrow">Editors</div>
+                        <div class="eyebrow">👥 Editors</div>
                         <h3>People who can edit</h3>
                     </div>
-                    <span class="result-count result-count-badge"><?= count($projectEditors) ?></span>
+                    <span class="result-count result-count-badge project-access-editor-count"><?= count($projectEditors) ?></span>
                 </div>
                 <p class="panel-help">Editors can change responses, resources, and upload new versions. They cannot lock the project, manage editors, create public share links, or delete versions.</p>
+                <p class="panel-help project-access-notify-hint">📬 When Email is configured under Admin → Email, granting access or transferring ownership emails both parties. The recipient also sees a notice on the people icon.</p>
 
                 <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
                     <form method="post" action="index.php" class="project-access-grant-form">
@@ -1322,7 +1326,7 @@ final class DashboardDecisionViews
                         <input type="hidden" name="action" value="grant_editor">
                         <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
                         <label>
-                            <span>Grant edit access</span>
+                            <span>➕ Grant edit access</span>
                             <select name="editor_user_id" required<?= $eligibleEditors === [] ? ' disabled' : '' ?>>
                                 <option value=""><?= $eligibleEditors === [] ? 'No other approved users available' : 'Choose a user…' ?></option>
                                 <?php foreach ($eligibleEditors as $user): ?>
@@ -1338,21 +1342,24 @@ final class DashboardDecisionViews
                                 <?php endforeach; ?>
                             </select>
                         </label>
-                        <button type="submit" class="button button-primary"<?= $eligibleEditors === [] ? ' disabled' : '' ?>>Add editor</button>
+                        <button type="submit" class="button button-primary"<?= $eligibleEditors === [] ? ' disabled' : '' ?>>✨ Add editor</button>
                     </form>
                 <?php endif; ?>
 
                 <?php if ($projectEditors === []): ?>
-                    <p class="empty-panel">No editors yet. Only you can edit this project.</p>
+                    <p class="empty-panel project-access-empty">👤 No editors yet. Only you can edit this project.</p>
                 <?php else: ?>
                     <ul class="project-access-editor-list">
                         <?php foreach ($projectEditors as $editor): ?>
                             <li>
-                                <div>
-                                    <strong><?= $this->e((string) ($editor['label'] ?? '')) ?></strong>
-                                    <?php if (trim((string) ($editor['email'] ?? '')) !== ''): ?>
-                                        <span><?= $this->e((string) $editor['email']) ?></span>
-                                    <?php endif; ?>
+                                <div class="project-access-editor-identity">
+                                    <span class="project-access-editor-avatar" aria-hidden="true">🧑‍💻</span>
+                                    <div>
+                                        <strong><?= $this->e((string) ($editor['label'] ?? '')) ?></strong>
+                                        <?php if (trim((string) ($editor['email'] ?? '')) !== ''): ?>
+                                            <span>✉️ <?= $this->e((string) $editor['email']) ?></span>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
                                 <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
                                     <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Remove edit access for this user?');">
@@ -1360,12 +1367,86 @@ final class DashboardDecisionViews
                                         <input type="hidden" name="action" value="revoke_editor">
                                         <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
                                         <input type="hidden" name="editor_user_id" value="<?= (int) ($editor['user_id'] ?? 0) ?>">
-                                        <button type="submit" class="button ghost-light">Remove</button>
+                                        <button type="submit" class="button ghost-light">🗑️ Remove</button>
                                     </form>
                                 <?php endif; ?>
                             </li>
                         <?php endforeach; ?>
                     </ul>
+                <?php endif; ?>
+            </div>
+
+            <div class="project-access-transfer">
+                <div class="card-heading card-heading-with-icon project-access-subhead">
+                    <span class="card-icon card-icon-sm" aria-hidden="true">🧳</span>
+                    <div>
+                        <div class="eyebrow">👋 Leaving the team?</div>
+                        <h3>Transfer ownership</h3>
+                    </div>
+                </div>
+                <p class="panel-help">Make another person the owner of this project (all saved versions). They gain full control: edit, lock, share, delete, and manage editors. You can keep edit access as an editor after the handoff.</p>
+                <?php
+                $transferCandidates = [];
+                $seenTransferIds = [];
+                foreach (array_merge($eligibleEditors, $projectEditors) as $candidate) {
+                    $candidateId = (int) ($candidate['id'] ?? $candidate['user_id'] ?? 0);
+                    if ($candidateId <= 0 || isset($seenTransferIds[$candidateId])) {
+                        continue;
+                    }
+                    $seenTransferIds[$candidateId] = true;
+                    $transferCandidates[] = $candidate;
+                }
+                usort(
+                    $transferCandidates,
+                    static function (array $left, array $right): int {
+                        $leftLabel = trim((string) ($left['display_name'] ?? '')) !== ''
+                            ? (string) $left['display_name']
+                            : (string) ($left['username'] ?? $left['label'] ?? '');
+                        $rightLabel = trim((string) ($right['display_name'] ?? '')) !== ''
+                            ? (string) $right['display_name']
+                            : (string) ($right['username'] ?? $right['label'] ?? '');
+
+                        return strcasecmp($leftLabel, $rightLabel);
+                    }
+                );
+                ?>
+                <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
+                    <form
+                        method="post"
+                        action="index.php"
+                        class="project-access-grant-form project-access-transfer-form"
+                        onsubmit="return confirm('Transfer ownership of this project to the selected user? This cannot be undone by you afterward.');"
+                    >
+                        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                        <input type="hidden" name="action" value="transfer_ownership">
+                        <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                        <label>
+                            <span>👑 New owner</span>
+                            <select name="new_owner_user_id" required<?= $transferCandidates === [] ? ' disabled' : '' ?>>
+                                <option value=""><?= $transferCandidates === [] ? 'No other approved users available' : 'Choose a user…' ?></option>
+                                <?php foreach ($transferCandidates as $user): ?>
+                                    <?php
+                                    $userId = (int) ($user['id'] ?? $user['user_id'] ?? 0);
+                                    $label = trim((string) ($user['label'] ?? ''));
+                                    if ($label === '') {
+                                        $label = \RiskAssessment\Actor::formatLabel(
+                                            trim((string) ($user['display_name'] ?? '')),
+                                            trim((string) ($user['username'] ?? '')),
+                                            trim((string) ($user['auth_source'] ?? ''))
+                                        );
+                                    }
+                                    ?>
+                                    <option value="<?= $userId ?>"><?= $this->e($label) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="project-access-keep-editor">
+                            <input type="checkbox" name="keep_former_editor" value="1" checked>
+                            <span>🤝 Keep me as an editor after transfer</span>
+                        </label>
+                        <button type="submit" class="button button-primary"<?= $transferCandidates === [] ? ' disabled' : '' ?>>🚀 Transfer this project</button>
+                    </form>
+                    <p class="panel-help project-access-bulk-link"><a href="transfer-ownership.php">📦 Transfer several or all of your projects →</a></p>
                 <?php endif; ?>
             </div>
         </section>

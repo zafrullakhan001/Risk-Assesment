@@ -223,6 +223,24 @@ CREATE TABLE IF NOT EXISTS assessment_editors (
 CREATE INDEX IF NOT EXISTS idx_assessment_editors_assessment_id ON assessment_editors (assessment_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_editors_user_id ON assessment_editors (user_id);
 
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT '',
+    assessment_id INTEGER,
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    link_url TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    read_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_notifications_user_id ON user_notifications (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_notifications_user_unread ON user_notifications (user_id, read_at);
+CREATE INDEX IF NOT EXISTS idx_user_notifications_created_at ON user_notifications (created_at);
+
 CREATE TABLE IF NOT EXISTS catalog_share_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token_hash TEXT NOT NULL UNIQUE,
