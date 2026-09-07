@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 use RiskAssessment\Actor;
+use RiskAssessment\AccessDeniedException;
 use RiskAssessment\AssessmentComparer;
 use RiskAssessment\AssessmentDate;
 use RiskAssessment\AssessmentInsights;
@@ -12,6 +13,8 @@ use RiskAssessment\DashboardRenderer;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
 use RiskAssessment\GoliveGate;
+use RiskAssessment\ProjectAccess;
+use RiskAssessment\Repositories\AssessmentAccessRepository;
 use RiskAssessment\Repositories\AssessmentChangeLogRepository;
 use RiskAssessment\Repositories\AssessmentRepository;
 use RiskAssessment\Repositories\FinalEvaluationRepository;
@@ -31,6 +34,8 @@ use RiskAssessment\Mail\SmtpSettings;
 $currentUser = $auth->requireAuth();
 $actor = Actor::fromUser($currentUser);
 $repository = new AssessmentRepository($pdo);
+$accessRepository = new AssessmentAccessRepository($pdo);
+$projectAccess = new ProjectAccess($accessRepository);
 $responseRepository = new ItemResponseRepository($pdo);
 $evaluationRepository = new FinalEvaluationRepository($pdo);
 $changeLogRepository = new AssessmentChangeLogRepository($pdo);
@@ -43,6 +48,65 @@ $sharePointArchives = new SharePointArchiveRepository($pdo);
 $projectImageConverter = new ProjectImageConverter();
 $findingStatusRepository = new FindingStatusRepository($pdo);
 $goliveGate = new GoliveGate();
+
+/**
+ * @return array<string, mixed>
+ */
+$loadProjectMeta = static function (int $assessmentId) use ($accessRepository): array {
+    $meta = $accessRepository->loadAccessMeta($assessmentId);
+    if ($meta === null) {
+        throw new RuntimeException('Assessment not found.');
+    }
+
+    return $meta;
+};
+
+/**
+ * @return array<string, mixed>
+ */
+$requireProjectView = static function (int $assessmentId) use ($loadProjectMeta, $projectAccess, $currentUser): array {
+    $meta = $loadProjectMeta($assessmentId);
+    if (!$projectAccess->canView($currentUser, $meta)) {
+        throw new AccessDeniedException(
+            'This project is locked. Ask the owner to grant access or unlock it.'
+        );
+    }
+
+    return $meta;
+};
+
+/**
+ * @return array<string, mixed>
+ */
+$requireProjectEdit = static function (int $assessmentId) use ($loadProjectMeta, $projectAccess, $currentUser): array {
+    $meta = $loadProjectMeta($assessmentId);
+    if (!$projectAccess->canEdit($currentUser, $meta)) {
+        throw new AccessDeniedException(
+            'You do not have permission to edit this project. Ask the owner to grant edit access.'
+        );
+    }
+
+    return $meta;
+};
+
+/**
+ * @return array<string, mixed>
+ */
+$requireProjectManage = static function (int $assessmentId) use ($loadProjectMeta, $projectAccess, $currentUser): array {
+    $meta = $loadProjectMeta($assessmentId);
+    if (!$projectAccess->canManage($currentUser, $meta)) {
+        throw new AccessDeniedException(
+            'Only the project owner can manage access, share links, or delete this project.'
+        );
+    }
+
+    return $meta;
+};
+
+$jsonError = static function (Throwable $exception): void {
+    http_response_code($exception instanceof AccessDeniedException ? 403 : 400);
+    echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+};
 
 $error = '';
 $flash = '';
@@ -171,6 +235,14 @@ $assessmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
 if (($_GET['action'] ?? '') === 'view_project_picture') {
     $pictureId = filter_input(INPUT_GET, 'picture_id', FILTER_VALIDATE_INT) ?: 0;
     $targetId = filter_input(INPUT_GET, 'assessment_id', FILTER_VALIDATE_INT) ?: 0;
+    try {
+        $requireProjectView((int) $targetId);
+    } catch (Throwable $exception) {
+        http_response_code($exception instanceof AccessDeniedException ? 403 : 404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo $exception instanceof AccessDeniedException ? $exception->getMessage() : 'Picture not found.';
+        exit;
+    }
     $picture = $projectPicturesRepository->findForView((int) $pictureId, (int) $targetId);
     if ($picture === null) {
         http_response_code(404);
@@ -208,6 +280,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Invalid response payload.');
             }
+
+            $requireProjectEdit($targetId);
 
             if ($postedAction === 'save_item_responses_bulk') {
                 $rawKeys = $_POST['item_keys'] ?? '[]';
@@ -314,8 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ],
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -331,6 +404,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Open a saved assessment before changing register rows.');
             }
+
+            $requireProjectEdit($targetId);
 
             if ($postedAction === 'add_assessment_item') {
                 $item = $repository->addManualItem($targetId, [
@@ -387,8 +462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'item_key' => $itemKey,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -415,6 +489,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Open a saved assessment before saving diagrams.');
             }
 
+            $requireProjectEdit($targetId);
+
             if (!$projectMermaidRepository->replaceForAssessment($targetId, $diagrams)) {
                 throw new RuntimeException('Unable to save diagrams.');
             }
@@ -425,8 +501,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'diagrams' => $saved,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -453,6 +528,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Open a saved assessment before saving links.');
             }
 
+            $requireProjectEdit($targetId);
+
             if (!$projectLinksRepository->replaceForAssessment($targetId, $links)) {
                 throw new RuntimeException('Unable to save links.');
             }
@@ -463,8 +540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'links' => $saved,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -480,6 +556,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Open a saved assessment before uploading pictures.');
             }
+
+            $requireProjectEdit($targetId);
 
             if (!isset($_FILES['picture']) || !is_array($_FILES['picture'])) {
                 throw new RuntimeException('Choose a picture to upload.');
@@ -508,8 +586,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'count' => $projectPicturesRepository->countForAssessment($targetId),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -536,6 +613,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Open a saved assessment before saving picture titles.');
             }
 
+            $requireProjectEdit($targetId);
+
             if (!$projectPicturesRepository->updateTitlesForAssessment($targetId, $titles)) {
                 throw new RuntimeException('Unable to save picture titles.');
             }
@@ -545,8 +624,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'pictures' => $projectPicturesRepository->listForAssessment($targetId),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -564,6 +642,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invalid picture delete request.');
             }
 
+            $requireProjectEdit($targetId);
+
             if (!$projectPicturesRepository->deleteOne($pictureId, $targetId)) {
                 throw new RuntimeException('Unable to delete that picture.');
             }
@@ -573,8 +653,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'count' => $projectPicturesRepository->countForAssessment($targetId),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -609,6 +688,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invalid exception status payload.');
             }
 
+            $requireProjectEdit($targetId);
+
             if (!$findingStatusRepository->upsert($targetId, $findingId, $status, $comment, $links)) {
                 throw new RuntimeException('Unable to save exception status.');
             }
@@ -637,8 +718,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'gates' => $gate,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -654,6 +734,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Open a saved assessment before changing exceptions.');
             }
+
+            $requireProjectEdit($targetId);
 
             if ($postedAction === 'add_finding') {
                 $finding = $repository->addFinding($targetId, [
@@ -723,8 +805,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'open_findings' => (int) ($gate['residual']['open_findings'] ?? 0),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -746,6 +827,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Open a saved assessment before saving the final evaluation.');
             }
+
+            $requireProjectEdit($targetId);
 
             if ($readyToGolive) {
                 $record = $repository->findById($targetId);
@@ -832,8 +915,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'gates' => $gate,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -855,6 +937,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Open a saved assessment to load history.');
             }
+
+            $requireProjectView($targetId);
+
             if (
                 $entityType !== AssessmentChangeLogRepository::ENTITY_ITEM_RESPONSE
                 && $entityType !== AssessmentChangeLogRepository::ENTITY_FINAL_EVALUATION
@@ -880,8 +965,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'total_pages' => $result['total_pages'],
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -897,6 +981,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 throw new RuntimeException('Open a saved assessment before saving the executive summary.');
             }
+
+            $requireProjectEdit($targetId);
 
             $verdict = (string) ($_POST['executive_verdict'] ?? '');
             $summary = (string) ($_POST['executive_summary'] ?? '');
@@ -940,8 +1026,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ],
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+            $jsonError($exception);
         }
         exit;
     }
@@ -953,9 +1038,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
-            if ($targetId <= 0 || $repository->findById($targetId) === null) {
+            if ($targetId <= 0) {
                 throw new RuntimeException('Assessment not found.');
             }
+            $requireProjectManage($targetId);
 
             if ($postedAction === 'create_share_link') {
                 $created = $projectShareRepository->create($targetId, $currentUser);
@@ -1058,6 +1144,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invalid assessment selected for deletion.');
             }
 
+            $requireProjectManage($deleteId);
+
             $deletedRecord = $repository->findById($deleteId);
             if ($deletedRecord === null) {
                 throw new RuntimeException('Assessment not found.');
@@ -1086,6 +1174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invalid assessment selected.');
             }
 
+            $requireProjectManage($keepId);
+
             $keepRecord = $repository->findById($keepId);
             if ($keepRecord === null) {
                 throw new RuntimeException('Assessment not found.');
@@ -1094,6 +1184,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $solutionName = $keepRecord['assessment']->getMetadata('solution_name');
             $removed = $repository->deleteOlderVersions($solutionName, $keepId);
             header('Location: index.php?view=1&id=' . $keepId . '&deleted_older=' . $removed);
+            exit;
+        }
+
+        if ($action === 'lock_project' || $action === 'unlock_project') {
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Assessment not found.');
+            }
+            $requireProjectManage($targetId);
+            $accessRepository->setLocked($targetId, $action === 'lock_project');
+            header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=access&access=1');
+            exit;
+        }
+
+        if ($action === 'grant_editor') {
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $editorUserId = filter_var($_POST['editor_user_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Assessment not found.');
+            }
+            $requireProjectManage($targetId);
+            $accessRepository->grantEditor($targetId, $editorUserId, (int) ($currentUser['id'] ?? 0));
+            header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=access&access=1');
+            exit;
+        }
+
+        if ($action === 'revoke_editor') {
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $editorUserId = filter_var($_POST['editor_user_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            if ($targetId <= 0) {
+                throw new RuntimeException('Assessment not found.');
+            }
+            $requireProjectManage($targetId);
+            $accessRepository->revokeEditor($targetId, $editorUserId);
+            header('Location: index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=access&access=1');
             exit;
         }
 
@@ -1160,8 +1285,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
                     $assessment = $parser->parse($destination);
-                    $savedId = $repository->save($assessment, $destination, $originalName, $actor);
-                    $priorVersion = $repository->findPreviousVersion($assessment->getMetadata('solution_name'), $savedId);
+                    $solutionName = trim((string) $assessment->getMetadata('solution_name'));
+                    $latestExisting = $solutionName !== '' ? $repository->findLatestBySolutionName($solutionName) : null;
+                    $saveOwner = $actor;
+                    $copyAccessFromId = 0;
+                    if ($latestExisting !== null) {
+                        $latestId = (int) ($latestExisting['id'] ?? 0);
+                        $requireProjectEdit($latestId);
+                        $ownerUserId = (int) ($latestExisting['owner_user_id'] ?? 0);
+                        $ownerUsername = trim((string) ($latestExisting['owner_username'] ?? ''));
+                        $ownerDisplayName = trim((string) ($latestExisting['owner_display_name'] ?? ''));
+                        $ownerAuthSource = trim((string) ($latestExisting['owner_auth_source'] ?? ''));
+                        if ($ownerUserId > 0 || $ownerUsername !== '') {
+                            $saveOwner = [
+                                'user_id' => $ownerUserId,
+                                'username' => $ownerUsername,
+                                'display_name' => $ownerDisplayName,
+                                'auth_source' => $ownerAuthSource,
+                            ];
+                        }
+                        $copyAccessFromId = $latestId;
+                    }
+
+                    $savedId = $repository->save($assessment, $destination, $originalName, $saveOwner);
+                    if ($copyAccessFromId > 0) {
+                        $accessRepository->copyAccessFrom($copyAccessFromId, $savedId);
+                    }
+                    $priorVersion = $repository->findPreviousVersion($solutionName, $savedId);
                     if ($priorVersion !== null) {
                         $findingStatusRepository->copyMissingFromAssessment((int) $priorVersion['id'], $savedId);
                     }
@@ -1246,15 +1396,8 @@ if (isset($_GET['deleted_older'])) {
         : $removedCount . ' older versions deleted. Current version kept.';
 }
 
-if (isset($_GET['shared']) && $flash === '') {
-    $flash = 'Share settings updated.';
-}
-
-if (isset($_GET['emailed']) && $flash === '') {
-    $emailedCount = max(1, (int) $_GET['emailed']);
-    $flash = $emailedCount === 1
-        ? 'Share link emailed to 1 recipient.'
-        : 'Share link emailed to ' . $emailedCount . ' recipients.';
+if (isset($_GET['access']) && $flash === '') {
+    $flash = 'Project access settings updated.';
 }
 
 $smtpSettingsForUi = new SmtpSettings($settings, $crypto);
@@ -1266,11 +1409,41 @@ if (isset($_SESSION['fresh_share_url'])) {
     unset($_SESSION['fresh_share_url']);
 }
 
+$accessDeniedHtml = '';
+
 if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
     if ($assessmentId > 0) {
+        $accessMeta = $accessRepository->loadAccessMeta($assessmentId);
         $record = $repository->findById($assessmentId);
-        if ($record === null) {
+        if ($accessMeta === null || $record === null) {
             $error = 'Assessment not found.';
+        } elseif (!$projectAccess->canView($currentUser, $accessMeta)) {
+            $ownerLabel = Actor::labelFromRow($accessMeta, 'owner');
+            if ($ownerLabel === '') {
+                $ownerLabel = 'the project owner';
+            }
+            $solutionLabel = trim((string) ($accessMeta['solution_name'] ?? ''));
+            if ($solutionLabel === '') {
+                $solutionLabel = 'This project';
+            }
+            ob_start();
+            ?>
+            <div class="shell access-denied-shell">
+                <section class="upload-card access-denied-card">
+                    <div class="card-heading">
+                        <div>
+                            <div class="eyebrow">Locked project</div>
+                            <h2><?= htmlspecialchars($solutionLabel, ENT_QUOTES, 'UTF-8') ?></h2>
+                        </div>
+                        <span class="project-lock-badge" title="Only the owner, editors, and admins can open this project">🔒 Locked</span>
+                    </div>
+                    <p>This project is locked. You can see it in Find projects, but only the owner, people they invite as editors, and administrators can open it.</p>
+                    <p>Ask <strong><?= htmlspecialchars($ownerLabel, ENT_QUOTES, 'UTF-8') ?></strong> to unlock it or grant you edit access.</p>
+                    <p><a class="button button-primary" href="index.php#find-projects">← Back to Find projects</a></p>
+                </section>
+            </div>
+            <?php
+            $accessDeniedHtml = (string) ob_get_clean();
         } else {
             $assessment = $record['assessment'];
             $solutionName = $assessment->getMetadata('solution_name');
@@ -1305,6 +1478,23 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $sharePointCatalogRepository->findMatchingProjectAnySource($solutionName),
                 ''
             );
+            $canEditProject = $projectAccess->canEdit($currentUser, $accessMeta);
+            $isOwnerProject = $projectAccess->isOwner($currentUser, $accessMeta);
+            $projectEditors = $isOwnerProject ? $accessRepository->listEditors($assessmentId) : [];
+            $eligibleEditors = [];
+            if ($isOwnerProject) {
+                $editorIds = array_column($projectEditors, 'user_id');
+                foreach ($auth->users()->listApprovedActive() as $candidate) {
+                    $candidateId = (int) ($candidate['id'] ?? 0);
+                    if ($candidateId <= 0 || $candidateId === (int) ($currentUser['id'] ?? 0)) {
+                        continue;
+                    }
+                    if (in_array($candidateId, $editorIds, true)) {
+                        continue;
+                    }
+                    $eligibleEditors[] = $candidate;
+                }
+            }
             $renderer = new DashboardRenderer();
             $dashboardHtml = $renderer->render(
                 $assessment,
@@ -1324,13 +1514,17 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $evaluationHistory,
                 $evaluatorDefaults,
                 $projectPictures,
-                false,
+                !$canEditProject,
                 '',
                 $shareLinks,
                 $freshShareUrl,
                 $sharePointCatalog,
                 $smtpEnabledForUi,
-                $viewerIsAdmin
+                $viewerIsAdmin,
+                $isOwnerProject,
+                $projectAccess->isLocked($accessMeta),
+                $projectEditors,
+                $eligibleEditors
             );
         }
     } elseif (isset($_SESSION['assessment'])) {
@@ -1410,8 +1604,12 @@ if ($dashboardHtml !== '') {
 }
 
 $totalProjects = $repository->countAll();
+$currentUserId = (int) ($currentUser['id'] ?? 0);
 
-$renderProjectDelete = static function (array $project): void {
+$renderProjectDelete = static function (array $project) use ($currentUserId): void {
+    if ($currentUserId <= 0 || (int) ($project['owner_user_id'] ?? 0) !== $currentUserId) {
+        return;
+    }
     ?>
     <form method="post" class="inline-form project-delete-form" onsubmit="return confirm('Delete this saved version permanently?');">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string) $_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
@@ -1427,6 +1625,15 @@ $renderProjectDelete = static function (array $project): void {
             </svg>
         </button>
     </form>
+    <?php
+};
+
+$renderProjectLockBadge = static function (array $project): void {
+    if (((int) ($project['is_locked'] ?? 0)) !== 1) {
+        return;
+    }
+    ?>
+    <span class="project-lock-badge" title="Locked: only the owner, editors, and admins can open details">🔒 Locked</span>
     <?php
 };
 ?>
@@ -1504,6 +1711,10 @@ $renderProjectDelete = static function (array $project): void {
                 <div class="alert alert-success"><?= htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') ?></div>
             <?php endif; ?>
 
+            <?php if ($accessDeniedHtml !== ''): ?>
+                <?= $accessDeniedHtml ?>
+            <?php endif; ?>
+
             <?php $homeTab = 'find'; require __DIR__ . '/includes/home-section-tabs.php'; ?>
 
             <section class="upload-card search-card" id="find-projects">
@@ -1560,7 +1771,7 @@ $renderProjectDelete = static function (array $project): void {
                             <div class="project-item project-item-row is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
                                 <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
                                     <div class="project-item-main">
-                                        <strong><?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <strong><?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?><?php $renderProjectLockBadge($project); ?></strong>
                                         <span class="project-item-vendor"><?= htmlspecialchars((string) $project['vendor'], ENT_QUOTES, 'UTF-8') ?></span>
                                         <span class="project-item-id">#<?= (int) $project['id'] ?></span>
                                         <span class="project-item-owner is-<?= htmlspecialchars($ownerStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($ownerStatus['title'], ENT_QUOTES, 'UTF-8') ?>">Owner · <?= htmlspecialchars($ownerStatus['label'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -1667,6 +1878,7 @@ $renderProjectDelete = static function (array $project): void {
                                                 <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
                                                     <?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?>
                                                 </a>
+                                                <?php $renderProjectLockBadge($project); ?>
                                             </td>
                                             <td><?= htmlspecialchars((string) ($project['vendor'] !== '' ? $project['vendor'] : '—'), ENT_QUOTES, 'UTF-8') ?></td>
                                             <td>

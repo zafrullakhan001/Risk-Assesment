@@ -60,7 +60,21 @@ final class Database
         self::ensureColumn($pdo, 'assessments', 'owner_username', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessments', 'owner_display_name', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessments', 'owner_auth_source', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'assessments', 'is_locked', 'INTEGER NOT NULL DEFAULT 0');
         self::backfillMissingProjectOwners($pdo);
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS assessment_editors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                granted_by_user_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                UNIQUE (assessment_id, user_id),
+                FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_editors_assessment_id ON assessment_editors (assessment_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_assessment_editors_user_id ON assessment_editors (user_id)');
         self::ensureColumn($pdo, 'assessment_items', 'item_type', "TEXT NOT NULL DEFAULT 'architecture'");
         self::ensureColumn($pdo, 'assessment_items', 'review_question', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'assessment_items', 'source_reference', "TEXT NOT NULL DEFAULT ''");

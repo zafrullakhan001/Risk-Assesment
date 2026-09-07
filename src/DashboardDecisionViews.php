@@ -230,7 +230,11 @@ final class DashboardDecisionViews
         ?string $freshShareUrl = null,
         bool $isAdaptive = false,
         bool $smtpEnabled = false,
-        bool $viewerIsAdmin = false
+        bool $viewerIsAdmin = false,
+        bool $isOwner = false,
+        bool $isLocked = false,
+        array $projectEditors = [],
+        array $eligibleEditors = []
     ): string {
         $findings = $insights['findings'] ?? [];
         $owners = $insights['owners'] ?? [];
@@ -400,7 +404,10 @@ final class DashboardDecisionViews
                 <button type="button" class="action-tab action-tab-versions" role="tab" aria-selected="false" data-action-tab="versions" data-tooltip="Compare assessment versions and manage uploaded workbook history.">
                     🗂️ Versions <em><?= count($versions) ?></em>
                 </button>
-                <?php if (!$readOnly && $currentId > 0): ?>
+                <?php if ($isOwner && !$readOnly && $currentId > 0): ?>
+                    <button type="button" class="action-tab action-tab-access" role="tab" aria-selected="false" data-action-tab="access" data-tooltip="Lock the project and grant edit access to specific people.">
+                        🔐 Access
+                    </button>
                     <button type="button" class="action-tab action-tab-share" role="tab" aria-selected="false" data-action-tab="share" data-tooltip="Create a public read-only link anyone can open without signing in.">
                         🔗 Share
                     </button>
@@ -720,10 +727,13 @@ final class DashboardDecisionViews
             </div>
 
             <div class="action-panel" data-action-panel="versions" hidden>
-                <?= $this->renderVersionsSection($versions, $comparison, $currentId, $csrfToken, $readOnly) ?>
+                <?= $this->renderVersionsSection($versions, $comparison, $currentId, $csrfToken, $readOnly, $isOwner) ?>
             </div>
 
-            <?php if (!$readOnly && $currentId > 0): ?>
+            <?php if ($isOwner && !$readOnly && $currentId > 0): ?>
+                <div class="action-panel" data-action-panel="access" hidden>
+                    <?= $this->renderAccessSection($currentId, $csrfToken, $isLocked, $projectEditors, $eligibleEditors) ?>
+                </div>
                 <div class="action-panel" data-action-panel="share" hidden>
                     <?= $this->renderShareSection($currentId, $csrfToken, $shareLinks, $freshShareUrl, $smtpEnabled, $viewerIsAdmin) ?>
                 </div>
@@ -1125,8 +1135,9 @@ final class DashboardDecisionViews
      * @param list<array<string, mixed>> $versions
      * @param array<string, mixed> $comparison
      */
-    private function renderVersionsSection(array $versions, array $comparison, int $currentId, string $csrfToken, bool $readOnly = false): string
+    private function renderVersionsSection(array $versions, array $comparison, int $currentId, string $csrfToken, bool $readOnly = false, bool $isOwner = false): string
     {
+        $canDelete = !$readOnly && $isOwner && $csrfToken !== '';
         ob_start();
         ?>
         <section class="table-card table-card-uplift chart-card-tone-versions" id="version-history">
@@ -1151,7 +1162,7 @@ final class DashboardDecisionViews
                     }
                 }
                 ?>
-                <?php if (!$readOnly && $csrfToken !== '' && $olderCount > 0 && $currentId > 0): ?>
+                <?php if ($canDelete && $olderCount > 0 && $currentId > 0): ?>
                     <div class="version-bulk">
                         <p>Drop every older upload for this project and keep the version you have open.</p>
                         <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Delete <?= (int) $olderCount ?> older version<?= $olderCount === 1 ? '' : 's' ?> permanently? The current version (#<?= (int) $currentId ?>) will be kept.');">
@@ -1183,7 +1194,7 @@ final class DashboardDecisionViews
                                 <?php if (!$readOnly && $versionId !== $currentId): ?>
                                     <a class="button ghost" href="index.php?view=1&amp;id=<?= $versionId ?>">Open</a>
                                 <?php endif; ?>
-                                <?php if (!$readOnly && $csrfToken !== ''): ?>
+                                <?php if ($canDelete): ?>
                                     <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Delete version #<?= $versionId ?> permanently?');">
                                         <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
                                         <input type="hidden" name="action" value="delete_assessment">
@@ -1244,6 +1255,119 @@ final class DashboardDecisionViews
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
+        </section>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<array{user_id: int, username: string, display_name: string, email: string, label: string, created_at: string}> $projectEditors
+     * @param list<array<string, mixed>> $eligibleEditors
+     */
+    private function renderAccessSection(
+        int $assessmentId,
+        string $csrfToken,
+        bool $isLocked,
+        array $projectEditors,
+        array $eligibleEditors
+    ): string {
+        ob_start();
+        ?>
+        <section class="table-card table-card-uplift project-access-card" id="project-access-panel">
+            <div class="card-heading card-heading-uplift">
+                <div class="card-heading-with-icon">
+                    <span class="card-icon" aria-hidden="true">🔐</span>
+                    <div>
+                        <div class="eyebrow">Ownership</div>
+                        <h3>Project access</h3>
+                    </div>
+                </div>
+                <span class="result-count result-count-badge"><?= $isLocked ? 'Locked' : 'Open to view' ?></span>
+            </div>
+            <p class="panel-help">You own this project. Everyone signed in can see it in Find projects. Editing requires your permission. Locking keeps the project listed, but only you, editors you invite, and administrators can open the details.</p>
+
+            <div class="project-access-lock">
+                <div>
+                    <strong><?= $isLocked ? '🔒 Project is locked' : '🔓 Project is unlocked' ?></strong>
+                    <p><?= $isLocked
+                        ? 'People without access still see it in the list, but cannot open the dashboard.'
+                        : 'Anyone signed in can open and view this project. Only you and invited editors can edit.' ?></p>
+                </div>
+                <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
+                    <form method="post" action="index.php" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                        <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                        <input type="hidden" name="action" value="<?= $isLocked ? 'unlock_project' : 'lock_project' ?>">
+                        <button type="submit" class="button <?= $isLocked ? 'button-primary' : 'ghost-light' ?>">
+                            <?= $isLocked ? 'Unlock project' : 'Lock project' ?>
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </div>
+
+            <div class="project-access-editors">
+                <div class="card-heading" style="padding-top: 4px;">
+                    <div>
+                        <div class="eyebrow">Editors</div>
+                        <h3>People who can edit</h3>
+                    </div>
+                    <span class="result-count result-count-badge"><?= count($projectEditors) ?></span>
+                </div>
+                <p class="panel-help">Editors can change responses, resources, and upload new versions. They cannot lock the project, manage editors, create public share links, or delete versions.</p>
+
+                <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
+                    <form method="post" action="index.php" class="project-access-grant-form">
+                        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                        <input type="hidden" name="action" value="grant_editor">
+                        <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                        <label>
+                            <span>Grant edit access</span>
+                            <select name="editor_user_id" required<?= $eligibleEditors === [] ? ' disabled' : '' ?>>
+                                <option value=""><?= $eligibleEditors === [] ? 'No other approved users available' : 'Choose a user…' ?></option>
+                                <?php foreach ($eligibleEditors as $user): ?>
+                                    <?php
+                                    $userId = (int) ($user['id'] ?? 0);
+                                    $label = \RiskAssessment\Actor::formatLabel(
+                                        trim((string) ($user['display_name'] ?? '')),
+                                        trim((string) ($user['username'] ?? '')),
+                                        trim((string) ($user['auth_source'] ?? ''))
+                                    );
+                                    ?>
+                                    <option value="<?= $userId ?>"><?= $this->e($label) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <button type="submit" class="button button-primary"<?= $eligibleEditors === [] ? ' disabled' : '' ?>>Add editor</button>
+                    </form>
+                <?php endif; ?>
+
+                <?php if ($projectEditors === []): ?>
+                    <p class="empty-panel">No editors yet. Only you can edit this project.</p>
+                <?php else: ?>
+                    <ul class="project-access-editor-list">
+                        <?php foreach ($projectEditors as $editor): ?>
+                            <li>
+                                <div>
+                                    <strong><?= $this->e((string) ($editor['label'] ?? '')) ?></strong>
+                                    <?php if (trim((string) ($editor['email'] ?? '')) !== ''): ?>
+                                        <span><?= $this->e((string) $editor['email']) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if ($csrfToken !== '' && $assessmentId > 0): ?>
+                                    <form method="post" action="index.php" class="inline-form" onsubmit="return confirm('Remove edit access for this user?');">
+                                        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+                                        <input type="hidden" name="action" value="revoke_editor">
+                                        <input type="hidden" name="assessment_id" value="<?= (int) $assessmentId ?>">
+                                        <input type="hidden" name="editor_user_id" value="<?= (int) ($editor['user_id'] ?? 0) ?>">
+                                        <button type="submit" class="button ghost-light">Remove</button>
+                                    </form>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
         </section>
         <?php
 

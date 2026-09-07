@@ -533,6 +533,18 @@ final class AssessmentRepository
         return $statement->fetchAll();
     }
 
+    /**
+     * Latest saved version for a solution name (any owner), or null when none exists.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findLatestBySolutionName(string $solutionName): ?array
+    {
+        $versions = $this->listVersionsBySolutionName($solutionName, 1);
+
+        return $versions[0] ?? null;
+    }
+
     public function deleteById(int $id): bool
     {
         if ($id <= 0) {
@@ -630,7 +642,7 @@ final class AssessmentRepository
     {
         return 'a.id, a.solution_name, a.vendor, a.assessment_date, a.uploaded_at, a.original_filename,
                 LOWER(COALESCE(json_extract(a.workbook_json, \'$.format\'), \'classic\')) AS workbook_format,
-                a.owner_user_id, a.owner_username, a.owner_display_name, a.owner_auth_source,
+                a.owner_user_id, a.owner_username, a.owner_display_name, a.owner_auth_source, a.is_locked,
                 e.ready_to_golive, e.evaluator_name, e.updated_at AS evaluation_updated_at';
     }
 

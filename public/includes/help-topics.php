@@ -100,6 +100,7 @@ HTML,
 <li>Go-live: <code>ready</code>, <code>not ready</code>, or <code>no final</code>.</li>
 </ul>
 <p>Use <strong>Show filters</strong> to narrow columns, then switch <strong>Cards</strong>, <strong>Table</strong>, or <strong>Strip</strong>. Change rows per page and sort from the table header. Click a project name to open its dashboard.</p>
+<p>The person who first creates a project owns it. Everyone signed in can see projects in the list. Editing requires the owner’s permission. If a project shows <strong>Locked</strong>, only the owner, invited editors, and administrators can open it — other people still see it listed.</p>
 HTML,
                 ],
                 [
@@ -111,7 +112,7 @@ HTML,
 <li><strong>Classic Risk Register</strong> (matured) — Architecture sheet (metadata in early rows, checks from the header row), Due Diligence Extension, JSON Due Diligence Summary, governance, and scoring legend.</li>
 <li><strong>Adaptive Architecture</strong> — classify → route → material findings: Question Router, material findings, due diligence evidence, classification, and related sheets.</li>
 </ul>
-<p>A new upload for the same solution name is stored as another version. Open the latest from Find projects, then use Actions → Versions to compare or remove older copies.</p>
+<p>A new upload for the same solution name is stored as another version and keeps the original owner, lock setting, and editors. You need edit access on that project to upload another version. Open the latest from Find projects, then use Actions → Versions to compare or remove older copies.</p>
 <p>Need a blank file to fill in? Download one from the <a href="templates.php">Template library</a>.</p>
 HTML,
                 ],
@@ -124,9 +125,9 @@ HTML,
 <ul>
 <li>See the version list and open an older copy.</li>
 <li>Compare this upload with the previous one.</li>
-<li>Delete this assessment, or delete older versions and keep the current one.</li>
+<li>If you own the project: delete this assessment, or delete older versions and keep the current one.</li>
 </ul>
-<p>Deleting a project from Find projects removes that saved workbook from the register. It does not change SharePoint.</p>
+<p>Deleting a project from Find projects (owner only) removes that saved workbook from the register. It does not change SharePoint.</p>
 HTML,
                 ],
             ],
@@ -158,7 +159,7 @@ HTML,
 <li><strong>Question Router</strong> (adaptive) — selected, conditional, and excluded scenarios by module.</li>
 <li><strong>Architecture checks</strong> or <strong>Material findings</strong> — control status, risk levels, and the register. Adaptive files show Gap / Risk / Decision Required rows here; the router keeps the full catalog.</li>
 <li><strong>Due diligence</strong> — evidence and control-attestation items.</li>
-<li><strong>Actions</strong> — responses, exceptions, Sign-off, versions, and share.</li>
+<li><strong>Actions</strong> — responses, exceptions, Sign-off, versions, access (owner), and share (owner).</li>
 <li><strong>Diagram &amp; links</strong> — Mermaid diagrams, pictures, and project URLs.</li>
 <li><strong>Governance summary</strong> — classification, exceptions, ADRs, or JSON diligence fields when the workbook has them.</li>
 <li><strong>Scoring legend</strong> — status meanings, risk guidance, and evidence checklist.</li>
@@ -183,7 +184,8 @@ HTML,
 <li><strong>Exceptions</strong> — accepted exceptions, mitigations, owners, and timelines. On the register, ✏️ adds comments and up to 5 ServiceNow links.</li>
 <li><strong>Sign-off</strong> — Final evaluation form: evaluator name, notes, and ready-to-go-live. Go-live gates summarize what still blocks a clean sign-off. Sign-off history is kept.</li>
 <li><strong>Versions</strong> — compare and manage uploads of this solution.</li>
-<li><strong>Share</strong> — create or revoke a read-only public link (shown once when created).</li>
+<li><strong>Access</strong> — owners lock or unlock the project and invite editors who can change it.</li>
+<li><strong>Share</strong> — owners create or revoke a read-only public link (shown once when created).</li>
 </ul>
 HTML,
                 ],
@@ -329,7 +331,7 @@ HTML,
                     'id' => 'share-assessment',
                     'title' => 'Share an assessment',
                     'html' => <<<'HTML'
-<p>From an open project, open <strong>Actions → Share</strong>. Create a public read-only link. You can copy the URL again anytime while the link is active.</p>
+<p>From an open project, open <strong>Actions → Share</strong> (project owners only). Create a public read-only link. You can copy the URL again anytime while the link is active.</p>
 <ul>
 <li>Anyone with the link can open the dashboard without signing in.</li>
 <li>They cannot change responses, upload versions, or create new shares.</li>

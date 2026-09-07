@@ -8204,6 +8204,122 @@ html.is-compact .site-footer {
     color: var(--primary);
     border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
 }
+
+.project-lock-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.4rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    font-style: normal;
+    vertical-align: middle;
+    background: color-mix(in srgb, #b45309 16%, transparent);
+    color: #92400e;
+    border: 1px solid color-mix(in srgb, #b45309 30%, transparent);
+    white-space: nowrap;
+}
+
+html[data-theme="dark"] .project-lock-badge {
+    background: color-mix(in srgb, #fbbf24 18%, transparent);
+    color: #fde68a;
+    border-color: color-mix(in srgb, #fbbf24 35%, transparent);
+}
+
+.project-table-name .project-lock-badge {
+    margin-left: 0.5rem;
+}
+
+.access-denied-card {
+    margin-bottom: 1.25rem;
+}
+
+.access-denied-card .card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.project-access-banner.alert-info,
+.alert-info {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+    color: var(--text);
+}
+
+.project-access-card .project-access-lock {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 0 12px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.project-access-card .project-access-lock p {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.project-access-editors {
+    padding: 4px 0 12px;
+}
+
+.project-access-grant-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    padding: 0 12px 12px;
+}
+
+.project-access-grant-form label {
+    display: grid;
+    gap: 0.35rem;
+    flex: 1 1 240px;
+    min-width: 200px;
+}
+
+.project-access-grant-form select {
+    width: 100%;
+    min-height: 2.4rem;
+}
+
+.project-access-editor-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 12px;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.project-access-editor-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.project-access-editor-list li strong {
+    display: block;
+}
+
+.project-access-editor-list li span {
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
 .brand-static { text-decoration: none; color: inherit; cursor: default; }
 .hero-actions .button.is-disabled {
     opacity: 0.7;

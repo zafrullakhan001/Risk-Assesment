@@ -81,7 +81,11 @@ final class DashboardRenderer
         ?string $freshShareUrl = null,
         ?array $sharePointCatalog = null,
         bool $smtpEnabled = false,
-        bool $viewerIsAdmin = false
+        bool $viewerIsAdmin = false,
+        bool $isOwner = false,
+        bool $isLocked = false,
+        array $projectEditors = [],
+        array $eligibleEditors = []
     ): string {
         $metadata = $assessment->metadata;
         $summary = $assessment->summary;
@@ -89,6 +93,8 @@ final class DashboardRenderer
         $dueItems = $assessment->dueDiligenceItems;
         $workbook = $assessment->workbook;
         $isAdaptive = ($workbook['format'] ?? '') === 'adaptive';
+        $isPublicShare = $readOnly && $shareToken !== '';
+        $signedInViewOnly = $readOnly && !$isPublicShare;
         if ($isAdaptive) {
             $items = $this->enrichAdaptiveItems($items, $workbook['material_findings'] ?? []);
         }
@@ -150,6 +156,12 @@ final class DashboardRenderer
         if ($readOnly) {
             $bodyClasses[] = 'is-readonly-share';
         }
+        if ($signedInViewOnly) {
+            $bodyClasses[] = 'is-readonly-signed-in';
+        }
+        if ($isLocked) {
+            $bodyClasses[] = 'is-project-locked';
+        }
 
         ob_start();
         ?>
@@ -158,8 +170,8 @@ final class DashboardRenderer
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $this->e($solutionName) ?><?= $readOnly ? ' (shared)' : '' ?> · <?= $this->e($branding->brandTitle()) ?></title>
-    <?php if ($readOnly): ?>
+    <title><?= $this->e($solutionName) ?><?= $isPublicShare ? ' (shared)' : ($signedInViewOnly ? ' (view only)' : '') ?> · <?= $this->e($branding->brandTitle()) ?></title>
+    <?php if ($isPublicShare): ?>
         <meta name="robots" content="noindex, nofollow">
     <?php endif; ?>
     <?php require dirname(__DIR__) . '/public/includes/theme-head.php'; ?>
@@ -179,7 +191,7 @@ final class DashboardRenderer
 >
     <div class="shell">
         <header class="topbar topbar-uplift">
-            <?php if ($readOnly): ?>
+            <?php if ($isPublicShare): ?>
                 <div class="brand brand-link brand-static" title="Shared read-only view">
                     <?= $branding->renderMark() ?>
                     <div class="brand-text">
@@ -197,9 +209,15 @@ final class DashboardRenderer
                 </a>
             <?php endif; ?>
             <div class="topbar-actions">
-                <?php if ($readOnly): ?>
+                <?php if ($isPublicShare): ?>
                     <span class="share-readonly-pill" title="Anyone with this link can view this assessment">🔒 Read-only share</span>
                 <?php else: ?>
+                    <?php if ($signedInViewOnly): ?>
+                        <span class="share-readonly-pill" title="Only the owner can grant edit access">👁 View only</span>
+                    <?php endif; ?>
+                    <?php if ($isLocked): ?>
+                        <span class="project-lock-badge" title="This project is locked">🔒 Locked</span>
+                    <?php endif; ?>
                     <a class="button ghost home-link" href="index.php#find-projects">← Find projects</a>
                     <?php require dirname(__DIR__) . '/public/includes/updates-nav.php'; ?>
                 <?php endif; ?>
@@ -214,6 +232,11 @@ final class DashboardRenderer
         <main>
             <?php if ($flash !== ''): ?>
                 <div class="alert alert-success desk-flash"><?= $this->e($flash) ?></div>
+            <?php endif; ?>
+            <?php if ($signedInViewOnly): ?>
+                <div class="alert alert-info desk-flash project-access-banner">
+                    You can view this project. Only the owner can grant edit access.
+                </div>
             <?php endif; ?>
             <section class="hero hero-compact">
                 <div class="hero-main">
@@ -375,7 +398,7 @@ final class DashboardRenderer
             <?php endif; ?>
 
             <div class="dash-panel dash-panel-theme-actions" data-panel="actions" hidden>
-                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl, $isAdaptive, $smtpEnabled, $viewerIsAdmin) ?>
+                <?= $decisionViews->renderActionsPanel($insights, $comparison, $versions, $assessmentId, $effectiveCsrf, $actionableItems, $evaluation, $goliveGates, $evaluationHistory, $evaluatorDefaults, $readOnly, $shareLinks, $freshShareUrl, $isAdaptive, $smtpEnabled, $viewerIsAdmin, $isOwner, $isLocked, $projectEditors, $eligibleEditors) ?>
             </div>
 
             <div class="dash-panel dash-panel-theme-project" data-panel="project" hidden>

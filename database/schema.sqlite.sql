@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS assessments (
     owner_username TEXT NOT NULL DEFAULT '',
     owner_display_name TEXT NOT NULL DEFAULT '',
     owner_auth_source TEXT NOT NULL DEFAULT '',
+    is_locked INTEGER NOT NULL DEFAULT 0,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -208,6 +209,19 @@ CREATE TABLE IF NOT EXISTS assessment_share_links (
 
 CREATE INDEX IF NOT EXISTS idx_assessment_share_links_assessment_id ON assessment_share_links (assessment_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_share_links_token_hash ON assessment_share_links (token_hash);
+
+CREATE TABLE IF NOT EXISTS assessment_editors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assessment_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    granted_by_user_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (assessment_id, user_id),
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_editors_assessment_id ON assessment_editors (assessment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_editors_user_id ON assessment_editors (user_id);
 
 CREATE TABLE IF NOT EXISTS catalog_share_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

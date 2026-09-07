@@ -162,6 +162,34 @@ final class UserRepository
         return ['WHERE (' . implode(' OR ', $conditions) . ')', $params];
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listApprovedActive(int $limit = 500): array
+    {
+        $limit = max(1, min(1000, $limit));
+        $statement = $this->pdo->prepare(
+            'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
+                    auth_source, display_name, notes, last_login, created_at,
+                    created_by_user_id, created_by_username
+             FROM users
+             WHERE is_approved = 1 AND is_disabled = 0
+             ORDER BY username COLLATE NOCASE ASC
+             LIMIT :limit'
+        );
+        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $statement->execute();
+
+        $users = [];
+        foreach ($statement->fetchAll() as $row) {
+            if (is_array($row)) {
+                $users[] = $this->normalize($row);
+            }
+        }
+
+        return $users;
+    }
+
     public function count(): int
     {
         $value = $this->pdo->query('SELECT COUNT(*) FROM users');
