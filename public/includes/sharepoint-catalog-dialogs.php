@@ -85,6 +85,10 @@ declare(strict_types=1);
                             </label>
                             <button type="button" class="button button-primary sp-dialog-search-run" id="sharepoint-project-dialog-search-run" title="Run search (Enter)">Search</button>
                         </div>
+                        <div class="sharepoint-dialog-saved-searches" id="sharepoint-project-dialog-saved" hidden>
+                            <span class="sharepoint-recent-label" title="Live Find query and saved searches from the main catalog">📌 Saved</span>
+                            <div class="sharepoint-recent-chips" id="sharepoint-project-dialog-saved-chips" role="list" aria-label="Saved searches"></div>
+                        </div>
                         <p class="sp-dialog-search-pending-hint" id="sharepoint-project-dialog-search-pending" hidden>Press Enter or Search to apply</p>
                         <div class="sharepoint-dialog-search-controls" id="sharepoint-project-dialog-search-controls">
                             <div class="sp-search-toggle-group sp-dialog-word-mode" role="group" aria-label="Match spaced words with AND or OR" hidden>
@@ -214,7 +218,11 @@ declare(strict_types=1);
                             </div>
                             <button type="button" class="sp-search-toggle sp-search-fuzzy sp-dialog-fuzzy" title="Match similar-sounding words and common misspellings" aria-pressed="false">Fuzzy</button>
                         </div>
-                        <p class="panel-help sharepoint-compare-filter-hint">Each panel has its own search and extension filters.</p>
+                        <div class="sharepoint-dialog-saved-searches" id="sharepoint-compare-dialog-saved" hidden>
+                            <span class="sharepoint-recent-label" title="Live Find query and saved searches from the main catalog. Click to fill every panel.">📌 Saved</span>
+                            <div class="sharepoint-recent-chips" id="sharepoint-compare-dialog-saved-chips" role="list" aria-label="Saved searches"></div>
+                        </div>
+                        <p class="panel-help sharepoint-compare-filter-hint">Each panel has its own search and extension filters. Saved searches apply to every panel.</p>
                         <div class="sharepoint-compare-hidden-bar" id="sharepoint-compare-hidden-bar" hidden>
                             <span class="sharepoint-compare-hidden-label" id="sharepoint-compare-hidden-label">0 hidden</span>
                             <div class="sharepoint-compare-hidden-chips" id="sharepoint-compare-hidden-chips" role="list"></div>

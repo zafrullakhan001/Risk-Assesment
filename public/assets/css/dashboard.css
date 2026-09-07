@@ -12727,6 +12727,36 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-compare-search-field-wrap .sp-dialog-search-pending-hint {
     grid-column: 1 / -1;
 }
+.sharepoint-dialog-saved-searches {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.28rem 0.4rem;
+    min-width: 0;
+}
+.sharepoint-dialog-saved-searches[hidden],
+.sharepoint-dialog-saved-searches.is-hidden {
+    display: none !important;
+}
+.sharepoint-dialog-saved-searches .sharepoint-recent-chips {
+    flex: 1 1 auto;
+}
+.sharepoint-dialog-saved-searches .sharepoint-recent-chip-wrap {
+    max-width: 12rem;
+}
+.sharepoint-dialog-saved-searches .sharepoint-recent-chip {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.72rem;
+}
+.sharepoint-compare-search-field-wrap .sharepoint-dialog-saved-searches {
+    grid-column: 1 / -1;
+}
+.sharepoint-compare-dialog:not(.is-compact-chrome) .sharepoint-dialog-saved-searches--panel {
+    display: none !important;
+}
+.sharepoint-compare-dialog.is-compact-chrome #sharepoint-compare-dialog-saved {
+    display: none !important;
+}
 .sharepoint-dialog-search-chips {
     display: flex;
     flex-wrap: wrap;
@@ -12814,6 +12844,9 @@ html.sp-workspace-scroll-lock body {
     flex: 0 0 auto;
     margin: 0;
 }
+.sharepoint-compare-dialog:not(.is-compact-chrome) #sharepoint-compare-dialog-saved {
+    flex: 1 1 100%;
+}
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-filter-hint {
     display: none;
 }
@@ -12876,6 +12909,10 @@ html.sp-workspace-scroll-lock body {
 }
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-panel-filters {
     display: contents;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-search-field-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
 }
 .sharepoint-compare-dialog.is-compact-chrome .sharepoint-compare-search-field {
     flex: 1 1 150px;
@@ -13246,6 +13283,17 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-search-row {
     flex: 1 1 220px;
     min-width: 0;
+}
+.sharepoint-project-dialog.is-compact-chrome .sharepoint-dialog-saved-searches {
+    flex: 1 1 100%;
+    margin: 0;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-saved-searches--panel {
+    margin: 0;
+}
+.sharepoint-compare-dialog.is-compact-chrome .sharepoint-dialog-saved-searches--panel .sharepoint-recent-chip {
+    padding: 0.14rem 0.48rem;
+    font-size: 0.68rem;
 }
 .sharepoint-project-dialog.is-compact-chrome .sp-dialog-search-run {
     padding: 0.2rem 0.65rem;

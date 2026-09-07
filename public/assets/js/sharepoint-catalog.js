@@ -2192,6 +2192,134 @@
     return syncUi;
   };
 
+  const catalogSavedStorageKey = () => {
+    const root = document.getElementById('sharepoint-search');
+    return root?.getAttribute('data-public') === '1'
+      ? 'riskregister_sp_public_search_saved'
+      : 'riskregister_sp_search_saved';
+  };
+
+  const readCatalogSavedSearches = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(catalogSavedStorageKey()) || '[]');
+      if (!Array.isArray(raw)) return [];
+      return raw.filter((item) => item && typeof item === 'object' && String(item.name || '').trim());
+    } catch {
+      return [];
+    }
+  };
+
+  const savedSearchDialogQuery = (item) => {
+    if (!item || typeof item !== 'object') return '';
+    const snap = item.state && typeof item.state === 'object' ? item.state : {};
+    return [snap.query || item.query, snap.refine]
+      .map((part) => String(part || '').trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  };
+
+  const currentCatalogDialogQuery = () => {
+    const fromApi = window.RiskRegisterSharePoint?.getCatalogDialogQuery;
+    if (typeof fromApi === 'function') {
+      return String(fromApi() || '').trim();
+    }
+    const live = document.getElementById('sharepoint-search-input');
+    const refine = document.getElementById('sharepoint-refine-input');
+    return [live?.value, refine?.value]
+      .map((part) => String(part || '').trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  };
+
+  const dialogPresetPainters = [];
+  const registerDialogPresetPainter = (paint) => {
+    if (typeof paint !== 'function') return;
+    dialogPresetPainters.push(paint);
+    paint();
+  };
+  const paintDialogSavedPresets = () => {
+    dialogPresetPainters.forEach((paint) => {
+      try {
+        paint();
+      } catch {
+        /* ignore */
+      }
+    });
+  };
+
+  const bindDialogSavedPresets = (root, options = {}) => {
+    const chipsEl = typeof root === 'string' ? document.getElementById(root) : root;
+    const wrap = chipsEl?.closest('.sharepoint-dialog-saved-searches') || chipsEl;
+    if (!chipsEl) return () => {};
+
+    const getActiveQuery = typeof options.getActiveQuery === 'function' ? options.getActiveQuery : () => '';
+    const onApply = typeof options.onApply === 'function' ? options.onApply : () => {};
+
+    const paint = () => {
+      const current = currentCatalogDialogQuery();
+      const active = String(getActiveQuery() || '').trim();
+      const items = readCatalogSavedSearches().filter((item) => savedSearchDialogQuery(item));
+      const chips = [];
+      if (current) {
+        const currentActive = current === active;
+        chips.push(
+          `<span class="sharepoint-recent-chip-wrap${currentActive ? ' is-active' : ''}" role="listitem">
+            <button type="button" class="sharepoint-recent-chip" data-dialog-saved-id="__current__" title="Use the live Find query from the main search: ${escapeHtml(current)}">Current</button>
+          </span>`
+        );
+      }
+      items.forEach((item) => {
+        const query = savedSearchDialogQuery(item);
+        const isDash = item.kind === 'dashboard';
+        const label = `${isDash ? '📊 ' : ''}${item.name}`;
+        const isActive = query === active;
+        chips.push(
+          `<span class="sharepoint-recent-chip-wrap${isActive ? ' is-active' : ''}${isDash ? ' is-dashboard-snap' : ''}" role="listitem">
+            <button type="button" class="sharepoint-recent-chip${isDash ? ' sp-saved-dash-chip' : ''}" data-dialog-saved-id="${escapeHtml(String(item.id))}" title="${escapeHtml(query)}">${escapeHtml(label)}</button>
+          </span>`
+        );
+      });
+      if (!chips.length) {
+        if (wrap) {
+          wrap.hidden = true;
+          wrap.classList.add('is-hidden');
+        }
+        chipsEl.innerHTML = '';
+        return;
+      }
+      if (wrap) {
+        wrap.hidden = false;
+        wrap.classList.remove('is-hidden');
+      }
+      chipsEl.innerHTML = chips.join('');
+    };
+
+    if (!chipsEl.dataset.dialogPresetsBound) {
+      chipsEl.dataset.dialogPresetsBound = '1';
+      chipsEl.addEventListener('click', (event) => {
+        const chip = event.target.closest('[data-dialog-saved-id]');
+        if (!chip || !chipsEl.contains(chip)) return;
+        event.preventDefault();
+        const id = chip.getAttribute('data-dialog-saved-id') || '';
+        let query = '';
+        if (id === '__current__') {
+          query = currentCatalogDialogQuery();
+        } else {
+          const item = readCatalogSavedSearches().find((entry) => String(entry.id) === String(id));
+          query = savedSearchDialogQuery(item);
+        }
+        onApply(query);
+        paintDialogSavedPresets();
+      });
+      registerDialogPresetPainter(paint);
+    } else {
+      paint();
+    }
+    return paint;
+  };
+
   const formatSearchModeBits = (query, prefs) => {
     const bits = [];
     const parsed = parseDialogQuery(query);
@@ -3096,6 +3224,7 @@
       committedQuery = searchInput?.value || '';
       syncPendingSearchHint();
       applyFilter();
+      paintDialogSavedPresets();
     };
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyFilter);
@@ -3116,6 +3245,15 @@
       commitDialogSearch();
     });
     searchRun?.addEventListener('click', () => commitDialogSearch());
+    bindDialogSavedPresets('sharepoint-project-dialog-saved-chips', {
+      getActiveQuery: () => committedQuery,
+      onApply: (query) => {
+        if (searchInput) searchInput.value = query;
+        committedQuery = query;
+        syncPendingSearchHint();
+        applyFilter();
+      },
+    });
     kindSelect?.addEventListener('change', applyFilter);
     extSelect?.addEventListener('change', () => {
       selectedExts.clear();
@@ -3133,6 +3271,7 @@
       syncExtSelectFromChips();
       syncPendingSearchHint();
       applyFilter();
+      paintDialogSavedPresets();
       searchInput?.focus();
     });
     searchWrap?.querySelectorAll('.sp-view-btn[data-layout]').forEach((btn) => {
@@ -3511,9 +3650,10 @@
       sortKey = 'name';
       sortDir = 'asc';
       syncHeaderSort();
-      committedQuery = String(initialQuery || '').trim();
+      committedQuery = String(initialQuery || '').trim() || currentCatalogDialogQuery();
       if (searchInput) searchInput.value = committedQuery;
       syncPendingSearchHint();
+      paintDialogSavedPresets();
       if (kindSelect) kindSelect.value = 'all';
       if (extSelect) extSelect.value = '';
       if (searchWrap) searchWrap.hidden = true;
@@ -4644,7 +4784,46 @@
       filtersBySide[side].query = sideEls[side].searchInput?.value || '';
       syncComparePendingHint(side);
       applyCompareFilter();
+      paintDialogSavedPresets();
     };
+
+    const applyQueryToCompareSides = (query, sides = SIDE_IDS) => {
+      const next = String(query || '');
+      sides.forEach((side) => {
+        if (!sideEls[side]) return;
+        filtersBySide[side] = filtersBySide[side] || emptySideFilter();
+        filtersBySide[side].query = next;
+        if (sideEls[side].searchInput) sideEls[side].searchInput.value = next;
+        syncComparePendingHint(side);
+      });
+    };
+
+    bindDialogSavedPresets('sharepoint-compare-dialog-saved-chips', {
+      getActiveQuery: () =>
+        activeSides.map((side) => String(filtersBySide[side]?.query || '').trim()).find((query) => query) ||
+        String(filtersBySide.left?.query || ''),
+      onApply: (query) => {
+        applyQueryToCompareSides(query, activeSides.length ? activeSides : SIDE_IDS);
+        applyCompareFilter();
+      },
+    });
+
+    SIDE_IDS.forEach((side) => {
+      const fieldWrap = sideEls[side].searchWrap;
+      if (!fieldWrap || fieldWrap.querySelector('[data-compare-saved-chips]')) return;
+      const row = document.createElement('div');
+      row.className = 'sharepoint-dialog-saved-searches sharepoint-dialog-saved-searches--panel';
+      row.hidden = true;
+      row.innerHTML = `<div class="sharepoint-recent-chips" data-compare-saved-chips="${side}" role="list" aria-label="Saved searches"></div>`;
+      fieldWrap.insertBefore(row, fieldWrap.firstChild);
+      bindDialogSavedPresets(row.querySelector('[data-compare-saved-chips]'), {
+        getActiveQuery: () => String(filtersBySide[side]?.query || ''),
+        onApply: (query) => {
+          applyQueryToCompareSides(query, activeSides.length ? activeSides : SIDE_IDS);
+          applyCompareFilter();
+        },
+      });
+    });
 
     syncSearchModes = bindDialogSearchModes(searchWrap, applyCompareFilter);
 
@@ -4695,6 +4874,7 @@
       sideEls[side].clearBtn?.addEventListener('click', () => {
         resetSideFilter(side);
         applyCompareFilter();
+        paintDialogSavedPresets();
         sideEls[side].searchInput?.focus();
       });
       sideEls[side].filters?.querySelectorAll('.sp-dialog-chip[data-ext]').forEach((chip) => {
@@ -4812,6 +4992,8 @@
         sideEls[side].actions.innerHTML = '';
         sideEls[side].rows.innerHTML = emptyRowHtml('⏳ Loading…');
       });
+      applyQueryToCompareSides(currentCatalogDialogQuery());
+      paintDialogSavedPresets();
 
       activeSides.forEach((side, index) => {
         sideEls[side].title.textContent = list[index].projectName || `Folder ${index + 1}`;
@@ -6632,32 +6814,35 @@
   let savedPaintedKey = '';
 
   const renderSavedSearches = () => {
-    if (!savedRoot || !savedChips) return;
     const items = readSavedSearches();
-    const paintKey = items.map((item) => `${item.id}:${item.name}:${item.kind || ''}`).join('\u0001');
-    if (paintKey === savedPaintedKey) return;
-    savedPaintedKey = paintKey;
-    if (!items.length) {
-      savedRoot.hidden = true;
-      savedRoot.classList.add('is-hidden');
-      savedChips.innerHTML = '';
-      return;
-    }
-    savedRoot.hidden = false;
-    savedRoot.classList.remove('is-hidden');
-    savedChips.innerHTML = items
-      .map((item) => {
-        const isDash = item.kind === 'dashboard';
-        const label = `${isDash ? '📊 ' : ''}${item.name}`;
-        const title = isDash
-          ? `Dashboard snapshot: ${item.query || item.name}`
-          : item.query || item.name;
-        return `<span class="sharepoint-recent-chip-wrap${isDash ? ' is-dashboard-snap' : ''}" role="listitem">
+    if (savedRoot && savedChips) {
+      const paintKey = items.map((item) => `${item.id}:${item.name}:${item.kind || ''}`).join('\u0001');
+      if (paintKey !== savedPaintedKey) {
+        savedPaintedKey = paintKey;
+        if (!items.length) {
+          savedRoot.hidden = true;
+          savedRoot.classList.add('is-hidden');
+          savedChips.innerHTML = '';
+        } else {
+          savedRoot.hidden = false;
+          savedRoot.classList.remove('is-hidden');
+          savedChips.innerHTML = items
+            .map((item) => {
+              const isDash = item.kind === 'dashboard';
+              const label = `${isDash ? '📊 ' : ''}${item.name}`;
+              const title = isDash
+                ? `Dashboard snapshot: ${item.query || item.name}`
+                : item.query || item.name;
+              return `<span class="sharepoint-recent-chip-wrap${isDash ? ' is-dashboard-snap' : ''}" role="listitem">
           <button type="button" class="sharepoint-recent-chip${isDash ? ' sp-saved-dash-chip' : ''}" data-saved-id="${escapeHtml(String(item.id))}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>
           <button type="button" class="sharepoint-recent-remove" data-saved-remove="${escapeHtml(String(item.id))}" title="Remove saved search" aria-label="Remove saved search">×</button>
         </span>`;
-      })
-      .join('');
+            })
+            .join('');
+        }
+      }
+    }
+    paintDialogSavedPresets();
   };
 
   const applySavedSearch = (id) => {
@@ -6741,6 +6926,11 @@
       savedPaintedKey = '';
       renderSavedSearches();
     },
+    getCatalogDialogQuery: () =>
+      [state.query, state.refine]
+        .map((part) => String(part || '').trim())
+        .filter(Boolean)
+        .join(' '),
   });
 
   const populatePersonFilter = () => {
