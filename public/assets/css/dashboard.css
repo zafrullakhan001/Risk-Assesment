@@ -12791,7 +12791,8 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-compare-dialog[data-hidden-cols~="modified_by"] [data-col="modified_by"],
 .sharepoint-compare-dialog[data-hidden-cols~="created_by"] [data-col="created_by"],
 .sharepoint-compare-dialog[data-hidden-cols~="diff"] [data-col="diff"],
-.sharepoint-compare-dialog[data-hidden-cols~="actions"] [data-col="actions"] {
+.sharepoint-compare-dialog[data-hidden-cols~="actions"] [data-col="actions"],
+.sharepoint-compare-dialog[data-hidden-cols~="archive"] [data-col="archive"] {
     display: none;
 }
 .sharepoint-project-dialog[data-hidden-cols~="type"] [data-col="type"],
@@ -12800,7 +12801,8 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-project-dialog[data-hidden-cols~="created"] [data-col="created"],
 .sharepoint-project-dialog[data-hidden-cols~="modified_by"] [data-col="modified_by"],
 .sharepoint-project-dialog[data-hidden-cols~="created_by"] [data-col="created_by"],
-.sharepoint-project-dialog[data-hidden-cols~="actions"] [data-col="actions"] {
+.sharepoint-project-dialog[data-hidden-cols~="actions"] [data-col="actions"],
+.sharepoint-project-dialog[data-hidden-cols~="archive"] [data-col="archive"] {
     display: none;
 }
 .sp-compare-columns-picker {
@@ -13100,7 +13102,8 @@ html.sp-workspace-scroll-lock body {
     gap: 0.25rem;
     padding-left: calc(var(--sp-depth, 0) * 1.1rem);
 }
-.sharepoint-dialog-table [data-col="actions"] {
+.sharepoint-dialog-table [data-col="actions"],
+.sharepoint-dialog-table [data-col="archive"] {
     width: 1%;
     white-space: nowrap;
     vertical-align: middle;

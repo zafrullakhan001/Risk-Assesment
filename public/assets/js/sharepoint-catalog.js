@@ -1161,9 +1161,9 @@
     catalogDensity: 'riskregister_sp_catalog_density',
   };
 
-  const COMPARE_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'diff', 'actions'];
+  const COMPARE_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'diff', 'actions', 'archive'];
   const COMPARE_DEFAULT_HIDDEN_COLS = ['size', 'modified_by'];
-  const PROJECT_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'actions'];
+  const PROJECT_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'actions', 'archive'];
   const PROJECT_DEFAULT_HIDDEN_COLS = [];
 
   const readHiddenCols = (storageKey, allowed, fallback) => {
@@ -2276,10 +2276,19 @@
     const link = url
       ? `<a class="sp-file-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${nameInner}</a>`
       : `<span class="sp-file-link sp-file-link--static">${nameInner}</span>`;
+    const archiveMark = item?.archived ? archivedBadgeHtml() : '';
+    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${archiveMark}</div>`;
+  };
+
+  const itemArchiveBtnHtml = (item, ctx = {}) => {
+    const name = String(item?.name || '');
+    const path = String(item?.relative_path || '');
+    const projectName = String(ctx.projectName || item?.project_name || '').trim();
+    const sourceKey = String(ctx.sourceKey || item?.source_key || '').trim();
     const inherited = !!item?.archived && !item?.archived_direct;
     const archiveScope = String(item?.archive_scope || '');
-    const isRoot = isRootProjectFolder(item, item?.project_name || '');
-    const archiveBtn = archiveToggleHtml({
+    const isRoot = isRootProjectFolder(item, projectName);
+    return archiveToggleHtml({
       archived: isRoot ? !!item?.archived : !!item?.archived_direct,
       disabled: !isRoot && inherited,
       title: isRoot
@@ -2299,10 +2308,10 @@
       attrs: {
         'data-archive-scope': isRoot ? 'project' : 'item',
         'data-archive-path': path || name,
+        'data-source-key': sourceKey,
+        'data-project-name': projectName,
       },
     });
-    const archiveMark = item?.archived ? archivedBadgeHtml() : '';
-    return `<div class="sp-tree-cell" style="--sp-depth:${depth}">${treeToggle}${link}${archiveBtn}${archiveMark}</div>`;
   };
 
   const itemActionsHtml = (item, qrMeta = {}, tagEdit = null) => {
@@ -2417,6 +2426,9 @@
 
   const dialogActionsCellHtml = (item, qrMeta = {}, tagEdit = null) =>
     `<td data-col="actions">${itemActionsHtml(item, qrMeta, tagEdit)}</td>`;
+
+  const dialogArchiveCellHtml = (item, ctx = {}) =>
+    `<td data-col="archive">${itemArchiveBtnHtml(item, ctx)}</td>`;
 
   /* ---- Project detail dialog ---- */
   const initDialog = () => {
@@ -2567,6 +2579,11 @@
       catalog: currentCatalogTitle || '',
     });
 
+    const projectArchiveCtx = () => ({
+      sourceKey: currentSourceKey || '',
+      projectName: currentName || '',
+    });
+
     const projectTagEdit = () => ({
       canEdit: dialogCanEditTags && catalogCanEditTags(),
       allTags: dialogAllTags,
@@ -2574,6 +2591,7 @@
 
     const renderTreeRows = (nodes, depth, acc) => {
       const qrMeta = projectQrMeta();
+      const archiveCtx = projectArchiveCtx();
       nodes.forEach((node) => {
         const path = node.path;
         const isFolder = isFolderItem(node.item);
@@ -2585,6 +2603,7 @@
         acc.push(`<tr class="sp-dialog-row${isFolder ? ' sp-dialog-row--folder' : ''}${node.item?.archived ? ' is-archived' : ''}${node.selfMatch === false && hasKids ? ' sp-tree-ancestor' : ''}" data-tree-path="${escapeHtml(path)}" data-tree-depth="${depth}">
           ${dialogItemCellsHtml(node.item, depth, toggle)}
           ${dialogActionsCellHtml(node.item, qrMeta, projectTagEdit())}
+          ${dialogArchiveCellHtml(node.item, archiveCtx)}
         </tr>`);
         if (isOpen) renderTreeRows(node.children, depth + 1, acc);
       });
@@ -2654,6 +2673,7 @@
               return `<tr class="sp-dialog-row${isFolderItem(item) ? ' sp-dialog-row--folder' : ''}${item?.archived ? ' is-archived' : ''}">
                 ${dialogItemCellsHtml(item, 0, '')}
                 ${dialogActionsCellHtml(item, projectQrMeta(), projectTagEdit())}
+                ${dialogArchiveCellHtml(item, projectArchiveCtx())}
               </tr>`;
             })
             .join('');
@@ -3016,12 +3036,14 @@
           if (btn.disabled) return;
           const scope = btn.getAttribute('data-archive-scope') || 'item';
           const path = btn.getAttribute('data-archive-path') || '';
+          const sourceKey = btn.getAttribute('data-source-key') || currentSourceKey;
+          const projectName = btn.getAttribute('data-project-name') || currentName;
           const nextArchived = btn.getAttribute('data-archived') !== '1';
           try {
             await postArchive({
               scope,
-              sourceKey: currentSourceKey,
-              projectName: currentName,
+              sourceKey,
+              projectName,
               relativePath: scope === 'item' ? path : '',
               archived: nextArchived,
             });
@@ -3293,11 +3315,17 @@
     const compareRowExtrasHtml = (item, side, diff, tone, qrMeta = {}) => {
       const key = itemKey(item);
       const name = String(item?.name || '').trim() || key;
+      const project = projectsBySide[side] || {};
+      const archiveCtx = {
+        sourceKey: String(project.source_key || qrMeta.sourceKey || '').trim(),
+        projectName: String(project.project_name || '').trim(),
+      };
       return `<td data-col="diff"><span class="sp-diff-pill sp-diff-pill--${tone}">${diffLabelFor(diff, side)}</span></td>
         <td data-col="hide" class="sp-compare-hide-cell">
           <button type="button" class="sp-compare-hide-btn" data-hide-key="${escapeHtml(key)}" data-hide-label="${escapeHtml(name)}" title="Hide from compare" aria-label="Hide ${escapeHtml(name)} from compare">👁‍🗨</button>
         </td>
-        ${dialogActionsCellHtml(item, qrMeta)}`;
+        ${dialogActionsCellHtml(item, qrMeta)}
+        ${dialogArchiveCellHtml(item, archiveCtx)}`;
     };
 
     const syncCompareHeaderSort = () => {
@@ -3552,7 +3580,41 @@
 
       bindCopyLinkButtons(rowsEl);
       bindQrButtons(rowsEl);
+      bindCompareItemArchiveButtons(rowsEl);
       return { shared, only, shown, query, ext };
+    };
+
+    const bindCompareItemArchiveButtons = (root) => {
+      if (!catalogCanArchive() || !root) return;
+      root.querySelectorAll('.sp-archive-item-btn').forEach((btn) => {
+        btn.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.disabled) return;
+          const scope = btn.getAttribute('data-archive-scope') || 'item';
+          const path = btn.getAttribute('data-archive-path') || '';
+          const sourceKey = btn.getAttribute('data-source-key') || '';
+          const projectName = btn.getAttribute('data-project-name') || '';
+          const nextArchived = btn.getAttribute('data-archived') !== '1';
+          if (!sourceKey || !projectName) return;
+          try {
+            await postArchive({
+              scope,
+              sourceKey,
+              projectName,
+              relativePath: scope === 'item' ? path : '',
+              archived: nextArchived,
+            });
+            const picks = currentComparePicks();
+            if (picks.length) {
+              await fetchAndApplyCompare(picks, { fresh: true });
+            }
+            if (typeof loadIndex === 'function') loadIndex();
+          } catch (error) {
+            window.alert(error.message || 'Unable to update archive.');
+          }
+        });
+      });
     };
 
     const fillSide = (side, project, stats) => {
