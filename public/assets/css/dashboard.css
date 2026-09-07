@@ -7020,6 +7020,26 @@ html.is-compact .site-footer {
     padding: 0 4px 4px;
 }
 
+.maint-snap-search {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    margin-bottom: 14px;
+}
+
+.maint-snap-search-field {
+    flex: 1 1 220px;
+    margin: 0;
+}
+
+.maint-snap-search-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
 .maint-snap-pager {
     display: flex;
     flex-wrap: wrap;
@@ -9854,6 +9874,9 @@ body.is-public-catalog-share .topbar-actions {
 }
 .sharepoint-catalog-body {
     padding-top: 0.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
 }
 .sharepoint-catalog-shell[open] .sharepoint-sources-collapse-hint::before,
 .sharepoint-catalog-table-shell[open] .sharepoint-sources-collapse-hint::before {
@@ -9875,6 +9898,64 @@ body.is-public-catalog-share .topbar-actions {
     display: block;
 }
 
+/* Three-band catalog search chrome */
+#sharepoint-search .sp-search-band--identity {
+    margin: 0;
+}
+#sharepoint-search .sp-search-band--scope.sharepoint-search-scopes {
+    margin: 0;
+}
+#sharepoint-search .sp-search-band--find {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--surface-2, #f8fafc) 92%, transparent);
+    min-width: 0;
+}
+#sharepoint-search .sp-search-find-primary,
+#sharepoint-search .sp-search-find-filters,
+#sharepoint-search .sp-search-find-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+    min-width: 0;
+    width: 100%;
+}
+#sharepoint-search .sp-search-find-primary .sharepoint-search-find-row {
+    width: 100%;
+}
+#sharepoint-search .sp-search-find-filters .sharepoint-search-controls,
+#sharepoint-search .sp-search-find-filters .sharepoint-search-advanced {
+    width: 100%;
+    margin-top: 0;
+}
+#sharepoint-search .sp-search-find-status .sharepoint-saved-searches,
+#sharepoint-search .sp-search-find-status .sharepoint-recent-searches,
+#sharepoint-search .sp-search-find-status .sharepoint-search-stats,
+#sharepoint-search .sp-search-find-status .sharepoint-catalog-meta {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+#sharepoint-search .sharepoint-search-scopes-label,
+#sharepoint-search .sp-search-cluster-label,
+#sharepoint-search .sharepoint-recent-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 700;
+}
+#sharepoint-search .sharepoint-live-search-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0;
+    width: 100%;
+}
+
 /* Compact catalog search card: hide help copy and tighten spacing */
 #sharepoint-search.upload-card,
 #sharepoint-search.search-card {
@@ -9886,15 +9967,26 @@ body.is-public-catalog-share .topbar-actions {
 }
 #sharepoint-search.is-compact-chrome,
 #sharepoint-search[data-catalog-density="compact"] {
-    padding: 0.65rem 0.9rem 0.7rem;
+    padding: 0.55rem 0.8rem 0.6rem;
     margin-top: 0.55rem;
+}
+#sharepoint-search.is-compact-chrome .sharepoint-catalog-body {
+    gap: 0.35rem;
+    padding-top: 0;
+}
+#sharepoint-search.is-compact-chrome .sp-search-band--find {
+    gap: 0.3rem;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0.55rem;
+}
+#sharepoint-search.is-compact-chrome .sp-search-find-primary,
+#sharepoint-search.is-compact-chrome .sp-search-find-filters,
+#sharepoint-search.is-compact-chrome .sp-search-find-status {
+    gap: 0.28rem 0.4rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-head {
     align-items: center;
     gap: 0.35rem 0.85rem;
-}
-#sharepoint-search.is-compact-chrome .sharepoint-catalog-body {
-    padding-top: 0;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-intro h2,
 #sharepoint-search.is-compact-chrome #sharepoint-search-heading {
@@ -9908,7 +10000,7 @@ body.is-public-catalog-share .topbar-actions {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.35rem 0.65rem;
-    margin: 0.3rem 0 0.1rem;
+    margin: 0;
     padding: 0.3rem 0.55rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-scopes-head {
@@ -9916,7 +10008,7 @@ body.is-public-catalog-share .topbar-actions {
     gap: 0.3rem 0.45rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-scopes-label {
-    display: none;
+    font-size: 0.72rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-scopes-head .button {
     min-height: 1.7rem;
@@ -9939,8 +10031,8 @@ body.is-public-catalog-share .topbar-actions {
     height: 0.82rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-live-search-form {
-    gap: 6px;
-    margin-top: 0.2rem;
+    gap: 0.3rem;
+    margin-top: 0;
 }
 #sharepoint-search.is-compact-chrome .search-wrap {
     height: 34px;
@@ -9959,7 +10051,7 @@ body.is-public-catalog-share .topbar-actions {
     font-size: 0.72rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-controls {
-    margin-top: 0.3rem;
+    margin-top: 0;
     gap: 0.35rem;
 }
 #sharepoint-search.is-compact-chrome .sp-search-cluster {
@@ -9967,23 +10059,39 @@ body.is-public-catalog-share .topbar-actions {
     gap: 0.25rem;
 }
 #sharepoint-search.is-compact-chrome .sp-search-cluster-label {
-    font-size: 0.62rem;
+    font-size: 0.68rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-search-advanced {
-    margin-top: 0.28rem;
+    margin-top: 0;
     gap: 0.35rem 0.45rem;
     padding: 0.35rem 0.4rem;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-recent-searches,
 #sharepoint-search.is-compact-chrome .sharepoint-saved-searches,
 #sharepoint-search.is-compact-chrome .sharepoint-search-stats {
-    margin-top: 0.28rem;
+    margin-top: 0;
 }
 #sharepoint-search.is-compact-chrome .sharepoint-catalog-meta {
-    margin-top: 0.3rem;
+    margin-top: 0;
     margin-bottom: 0;
     font-size: 0.78rem;
 }
+
+/* Comfort: more breathing room, keep intro + hints */
+#sharepoint-search:not(.is-compact-chrome) .sharepoint-catalog-body {
+    gap: 0.7rem;
+}
+#sharepoint-search:not(.is-compact-chrome) .sp-search-band--find {
+    gap: 0.55rem;
+    padding: 0.7rem 0.8rem;
+}
+#sharepoint-search:not(.is-compact-chrome) .sharepoint-search-scopes {
+    padding: 0.75rem 0.9rem;
+}
+#sharepoint-search:not(.is-compact-chrome) .sharepoint-search-intro p {
+    display: block;
+}
+
 .sharepoint-catalog-solo-page #sharepoint-search.is-compact-chrome,
 .sharepoint-catalog-solo-page .search-card,
 .sharepoint-catalog-solo-page .sharepoint-table-card {

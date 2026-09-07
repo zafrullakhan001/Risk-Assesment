@@ -173,17 +173,32 @@ if (!empty($_SESSION['admin_audit_pending']) && is_array($_SESSION['admin_audit_
 }
 
 $status = $maintenance->status();
-$snapshots = $maintenance->listSnapshots();
+$allSnapshots = $maintenance->listSnapshots();
+$snapshotQuery = trim((string) ($_GET['snap_q'] ?? ''));
+$snapshots = $allSnapshots;
+if ($snapshotQuery !== '') {
+    $needle = mb_strtolower($snapshotQuery);
+    $snapshots = array_values(array_filter(
+        $allSnapshots,
+        static function (array $snap) use ($needle): bool {
+            $hay = mb_strtolower((string) ($snap['filename'] ?? '') . ' ' . (string) ($snap['label'] ?? ''));
+
+            return str_contains($hay, $needle);
+        }
+    ));
+}
+$snapshotTotalAll = count($allSnapshots);
 $snapshotTotal = count($snapshots);
 $snapshotPerPage = 5;
 $snapshotPage = max(1, (int) ($_GET['snap_page'] ?? 1));
-$snapshotPages = max(1, (int) ceil($snapshotTotal / $snapshotPerPage));
+$snapshotPages = max(1, (int) ceil(max($snapshotTotal, 1) / $snapshotPerPage));
 if ($snapshotPage > $snapshotPages) {
     $snapshotPage = $snapshotPages;
 }
 $snapshotOffset = ($snapshotPage - 1) * $snapshotPerPage;
 $snapshotsPage = array_slice($snapshots, $snapshotOffset, $snapshotPerPage);
-$snapshotsOpen = isset($_GET['snap_page']) || $snapshotTotal === 0;
+$snapshotsOpen = isset($_GET['snap_page']) || isset($_GET['snap_q']) || $snapshotTotalAll === 0;
+$snapQuerySuffix = $snapshotQuery !== '' ? '&snap_q=' . rawurlencode($snapshotQuery) : '';
 $freelistHot = (int) $status['freelistCount'] > 100;
 $sqliteHealth = SqliteHealthcheck::run($pdo, (string) ($dbConfig['path'] ?? ''), false);
 $healthOk = !empty($sqliteHealth['critical_ok']);
@@ -381,15 +396,49 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <span class="maint-emoji" aria-hidden="true">🗂️</span>
                         Snapshots
                     </span>
-                    <span class="maint-pill"><?= (int) $snapshotTotal ?> saved<?= $snapshotTotal > $snapshotPerPage ? ' · page ' . (int) $snapshotPage . '/' . (int) $snapshotPages : '' ?></span>
+                    <span class="maint-pill">
+                        <?php if ($snapshotQuery !== ''): ?>
+                            <?= (int) $snapshotTotal ?> match<?= $snapshotTotal === 1 ? '' : 'es' ?>
+                            · <?= (int) $snapshotTotalAll ?> total
+                        <?php else: ?>
+                            <?= (int) $snapshotTotalAll ?> saved
+                        <?php endif; ?>
+                        <?php if ($snapshotTotal > $snapshotPerPage): ?>
+                            · page <?= (int) $snapshotPage ?>/<?= (int) $snapshotPages ?>
+                        <?php endif; ?>
+                    </span>
                 </summary>
                 <div class="maint-snap-body">
-                <?php if ($snapshots === []): ?>
+                <?php if ($snapshotTotalAll === 0): ?>
                     <div class="maint-empty">
                         <span class="maint-empty-icon" aria-hidden="true">📭</span>
                         <p>No snapshots yet. Create one above before you need a restore.</p>
                     </div>
                 <?php else: ?>
+                    <form method="get" class="maint-snap-search" action="maintenance.php#snapshots" role="search">
+                        <label class="file-input maint-snap-search-field">
+                            <span>🔎 Search label or file name</span>
+                            <input
+                                type="search"
+                                name="snap_q"
+                                value="<?= e($snapshotQuery) ?>"
+                                placeholder="e.g. pre_restore, sharepoint, snapshot_2026"
+                                autocomplete="off"
+                            >
+                        </label>
+                        <div class="maint-snap-search-actions">
+                            <button type="submit" class="button maint-btn">Search</button>
+                            <?php if ($snapshotQuery !== ''): ?>
+                                <a class="button ghost maint-btn" href="maintenance.php#snapshots">Clear</a>
+                            <?php endif; ?>
+                        </div>
+                    </form>
+                    <?php if ($snapshots === []): ?>
+                        <div class="maint-empty">
+                            <span class="maint-empty-icon" aria-hidden="true">🔍</span>
+                            <p>No snapshots match <strong><?= e($snapshotQuery) ?></strong>.</p>
+                        </div>
+                    <?php else: ?>
                     <div class="maint-snap-list">
                         <?php foreach ($snapshotsPage as $snap): ?>
                             <article class="maint-snap-row">
@@ -446,24 +495,25 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <nav class="maint-snap-pager" aria-label="Snapshot pages">
                             <span class="maint-snap-pager-info">
                                 Showing <?= (int) ($snapshotOffset + 1) ?>–<?= (int) min($snapshotOffset + $snapshotPerPage, $snapshotTotal) ?>
-                                of <?= (int) $snapshotTotal ?>
+                                of <?= (int) $snapshotTotal ?><?= $snapshotQuery !== '' ? ' matching' : '' ?>
                             </span>
                             <div class="maint-snap-pager-links">
                                 <?php if ($snapshotPage > 1): ?>
-                                    <a class="button ghost maint-btn" href="?snap_page=<?= (int) ($snapshotPage - 1) ?>#snapshots">← Prev</a>
+                                    <a class="button ghost maint-btn" href="?snap_page=<?= (int) ($snapshotPage - 1) . e($snapQuerySuffix) ?>#snapshots">← Prev</a>
                                 <?php endif; ?>
                                 <?php for ($p = 1; $p <= $snapshotPages; $p++): ?>
                                     <?php if ($p === $snapshotPage): ?>
                                         <span class="maint-snap-page is-current" aria-current="page"><?= $p ?></span>
                                     <?php else: ?>
-                                        <a class="maint-snap-page" href="?snap_page=<?= $p ?>#snapshots"><?= $p ?></a>
+                                        <a class="maint-snap-page" href="?snap_page=<?= $p . e($snapQuerySuffix) ?>#snapshots"><?= $p ?></a>
                                     <?php endif; ?>
                                 <?php endfor; ?>
                                 <?php if ($snapshotPage < $snapshotPages): ?>
-                                    <a class="button ghost maint-btn" href="?snap_page=<?= (int) ($snapshotPage + 1) ?>#snapshots">Next →</a>
+                                    <a class="button ghost maint-btn" href="?snap_page=<?= (int) ($snapshotPage + 1) . e($snapQuerySuffix) ?>#snapshots">Next →</a>
                                 <?php endif; ?>
                             </div>
                         </nav>
+                    <?php endif; ?>
                     <?php endif; ?>
                 <?php endif; ?>
                 </div>

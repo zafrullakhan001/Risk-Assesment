@@ -99,7 +99,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
          data-last-synced="<?= e($activeLastSynced) ?>"
          data-last-status="<?= e($activeLastStatus) ?>">
     <details class="sharepoint-catalog-shell" id="sharepoint-catalog-shell" open>
-        <summary class="sharepoint-search-head sharepoint-catalog-summary">
+        <summary class="sharepoint-search-head sharepoint-catalog-summary sp-search-band sp-search-band--identity">
             <div class="sharepoint-search-intro">
                 <h2 id="sharepoint-search-heading">🔎 <?= e($activeTitle) ?></h2>
                 <p><?= $searchIntroHtml ?></p>
@@ -123,7 +123,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
         </summary>
         <div class="sharepoint-catalog-body">
             <?php if (count($allSources) > 1): ?>
-                <div class="sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
+                <section class="sp-search-band sp-search-band--scope sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
                     <div class="sharepoint-search-scopes-head">
                         <span class="sharepoint-search-scopes-label">Search in</span>
                         <button type="button" class="button ghost sharepoint-scopes-all" id="sharepoint-scopes-all">All catalogs</button>
@@ -153,9 +153,10 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                     <?php if (!$searchCardPublic): ?>
                         <p class="panel-help sharepoint-scopes-hint">Select more than one catalog to compare — results show where a project is found and where it is missing.</p>
                     <?php endif; ?>
-                </div>
+                </section>
             <?php endif; ?>
 
+            <section class="sp-search-band sp-search-band--find" aria-label="Find and filters">
             <form method="get" class="search-form sharepoint-live-search-form" action="<?= e($searchFormAction) ?>" id="sharepoint-search-form" role="search">
                 <?php if ($searchCardPublic): ?>
                     <input type="hidden" name="t" value="<?= e($searchShareToken) ?>">
@@ -165,6 +166,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                     <input type="hidden" name="view" value="catalog">
                 <?php endif; ?>
 
+                <div class="sp-search-find-primary">
                 <div class="sharepoint-search-find-row">
                     <div class="sharepoint-search-find-stack">
                         <div class="search-wrap search-wrap-wide sharepoint-search-main">
@@ -198,10 +200,12 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <span class="sp-adv-toggle-arrow" aria-hidden="true">▾</span>
                     </button>
                 </div>
+                </div>
 
+                <div class="sp-search-find-filters">
                 <div class="sharepoint-search-controls" id="sharepoint-search-controls" hidden>
                     <div class="sp-search-cluster sp-search-cluster--mode" id="sharepoint-match-cluster" role="group" aria-label="Match style" hidden>
-                        <span class="sp-search-cluster-label" title="How words are matched">⚙️ Match</span>
+                        <span class="sp-search-cluster-label" title="How words are matched">Match</span>
                         <div class="sp-search-toggle-group" role="group" aria-label="Match spaced words with AND or OR" id="sharepoint-word-mode" hidden>
                             <button type="button" class="sp-search-toggle is-active" data-word-mode="and" title="AND — every word must appear somewhere in the project" aria-pressed="true">AND</button>
                             <button type="button" class="sp-search-toggle" data-word-mode="or" title="OR — match if any word appears" aria-pressed="false">OR</button>
@@ -209,7 +213,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                     </div>
 
                     <div class="sp-search-cluster sp-search-cluster--types" role="group" aria-label="File type filters">
-                        <span class="sp-search-cluster-label" title="Keep projects that include these kinds of files">📎 Types</span>
+                        <span class="sp-search-cluster-label" title="Keep projects that include these kinds of files">Types</span>
                         <div class="sharepoint-type-chips" id="sharepoint-type-chips" role="group" aria-label="File type filters">
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--pdf" data-type-chip="pdf" title="Has at least one PDF file" aria-pressed="false">📕 PDF</button>
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--visio" data-type-chip="visio" title="Has Visio diagrams (.vsdx / .vsd)" aria-pressed="false">📐 Visio</button>
@@ -218,7 +222,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                     </div>
 
                     <div class="sp-search-cluster sp-search-cluster--refine">
-                        <span class="sp-search-cluster-label" title="Second pass: keep only results that also match this text">🔍 Refine</span>
+                        <span class="sp-search-cluster-label" title="Second pass: keep only results that also match this text">Refine</span>
                         <div class="sp-refine-wrap">
                             <input type="search" id="sharepoint-refine-input" placeholder="Narrow current results…" autocomplete="off" aria-label="Search within current results" title="Refine — search again inside the projects already matched (same operators work here)">
                             <button type="button" class="sp-refine-clear is-hidden" id="sharepoint-refine-clear" title="Clear refine filter" aria-label="Clear refine search">✕</button>
@@ -228,7 +232,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
 
                 <div class="sharepoint-search-advanced is-collapsed" id="sharepoint-search-advanced" hidden>
                     <div class="sp-search-cluster sp-search-cluster--scope" role="group" aria-label="Where to search">
-                        <span class="sp-search-cluster-label" title="Limit which fields the Find box searches">🎯 Scope</span>
+                        <span class="sp-search-cluster-label" title="Limit which fields the Find box searches">Scope</span>
                         <div class="sp-search-toggle-group sp-match-scope-group" role="group" aria-label="Match scope" id="sharepoint-match-scope">
                             <button type="button" class="sp-search-toggle is-active" data-match-scope="all" title="Search everywhere: project names, nested files, and people" aria-pressed="true">🌐 All</button>
                             <button type="button" class="sp-search-toggle" data-match-scope="names" title="Names only — project folder and catalog titles" aria-pressed="false">📁 Names</button>
@@ -306,8 +310,10 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <button type="button" class="button ghost sp-adv-export" id="sharepoint-export-csv" title="Download all matching projects as a CSV (full filtered set, not just this page)">⬇️ Export CSV</button>
                     </div>
                 </div>
+                </div>
             </form>
 
+            <div class="sp-search-find-status">
             <div class="sharepoint-saved-searches is-hidden" id="sharepoint-saved-searches" hidden>
                 <span class="sharepoint-recent-label" title="Pinned searches you saved on this browser">📌 Saved</span>
                 <div class="sharepoint-recent-chips" id="sharepoint-saved-chips" role="list" aria-label="Saved searches"></div>
@@ -327,6 +333,8 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                     (<?= e($activeLastStatus !== '' ? $activeLastStatus : 'unknown') ?>)
                 <?php endif; ?>
             </p>
+            </div>
+            </section>
         </div>
     </details>
 </section>
