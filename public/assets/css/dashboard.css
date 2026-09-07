@@ -9943,7 +9943,8 @@ body.is-public-catalog-share .topbar-actions {
 .sharepoint-catalog-page .sharepoint-sources-shell:not([open]) .sharepoint-folders-view-toggle,
 .sharepoint-catalog-page .sharepoint-catalog-shell:not([open]) .sharepoint-catalog-view-toggle,
 .sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sp-view-toggle,
-.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) #sharepoint-filters-toggle {
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) #sharepoint-filters-toggle,
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) #sharepoint-list-columns-picker {
     display: none;
 }
 .sharepoint-catalog-page .sharepoint-admin-shell[open] .sharepoint-admin-shell-hint::before {
@@ -11661,6 +11662,7 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"
     justify-content: space-between;
     gap: 0.65rem 1rem;
     margin-bottom: 0.65rem;
+    overflow: visible;
 }
 .sharepoint-table-toolbar-tools {
     display: flex;
@@ -12117,6 +12119,9 @@ html.sp-workspace-scroll-lock body {
     overflow: auto;
     overscroll-behavior: contain;
 }
+.sp-workspace-dialog .sharepoint-compare-panels {
+    overflow: hidden;
+}
 .sp-workspace-dialog .sharepoint-compare-table-wrap {
     max-height: none;
     height: 100%;
@@ -12159,13 +12164,73 @@ html.sp-workspace-scroll-lock body {
     gap: 0.45rem;
 }
 .sharepoint-compare-panels {
+    position: relative;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: var(--sp-compare-cols, minmax(0, 1fr) minmax(0, 1fr));
     gap: 0.85rem;
     min-height: 0;
 }
 .sharepoint-compare-panels[data-panel-count="3"] {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: var(--sp-compare-cols, minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr));
+}
+.sharepoint-compare-splitters {
+    position: absolute;
+    inset: 0;
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 6;
+}
+.sharepoint-compare-splitter {
+    position: absolute;
+    top: 0.4rem;
+    bottom: 0.4rem;
+    width: 14px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    transform: translateX(-50%);
+    pointer-events: auto;
+    cursor: col-resize;
+    touch-action: none;
+    appearance: none;
+}
+.sharepoint-compare-splitter-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 3px;
+    transform: translateX(-50%);
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--accent, #0f766e) 55%, var(--border, #e2e8f0));
+    box-shadow: 0 0 0 1px color-mix(in srgb, #fff 55%, transparent);
+    opacity: 0.85;
+    transition: width 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+}
+.sharepoint-compare-splitter:hover .sharepoint-compare-splitter-bar,
+.sharepoint-compare-splitter:focus-visible .sharepoint-compare-splitter-bar,
+.sharepoint-compare-splitter.is-active .sharepoint-compare-splitter-bar {
+    width: 5px;
+    opacity: 1;
+    background: var(--accent, #0f766e);
+}
+.sharepoint-compare-splitter:focus-visible {
+    outline: none;
+}
+.sharepoint-compare-splitter:focus-visible .sharepoint-compare-splitter-bar {
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, #fff 55%, transparent),
+        0 0 0 3px color-mix(in srgb, var(--accent, #0f766e) 28%, transparent);
+}
+.sharepoint-compare-panels.is-pane-splitting {
+    user-select: none;
+    cursor: col-resize;
+}
+.sharepoint-compare-panels.is-pane-splitting .sharepoint-compare-panel {
+    pointer-events: none;
 }
 .sharepoint-compare-panel {
     display: grid;
@@ -12444,6 +12509,10 @@ html.sp-workspace-scroll-lock body {
     .sharepoint-compare-panels,
     .sharepoint-compare-panels[data-panel-count="3"] {
         grid-template-columns: 1fr;
+        gap: 0.85rem;
+    }
+    .sharepoint-compare-splitters {
+        display: none;
     }
 }
 
@@ -12805,9 +12874,28 @@ html.sp-workspace-scroll-lock body {
 .sharepoint-project-dialog[data-hidden-cols~="archive"] [data-col="archive"] {
     display: none;
 }
+#sharepoint-table-card[data-hidden-cols~="match"] [data-col="match"],
+#sharepoint-table-card[data-hidden-cols~="items"] [data-col="items"],
+#sharepoint-table-card[data-hidden-cols~="modified"] [data-col="modified"],
+#sharepoint-table-card[data-hidden-cols~="modified_by"] [data-col="modified_by"],
+#sharepoint-table-card[data-hidden-cols~="created_by"] [data-col="created_by"],
+#sharepoint-table-card[data-hidden-cols~="actions"] [data-col="actions"] {
+    display: none;
+}
 .sp-compare-columns-picker {
     position: relative;
     display: inline-block;
+}
+#sharepoint-list-columns-picker {
+    flex-shrink: 0;
+    z-index: 20;
+}
+#sharepoint-list-columns-picker .sp-compare-columns-menu {
+    z-index: 40;
+    min-width: 12.5rem;
+}
+#sharepoint-list-columns-menu[hidden] {
+    display: none;
 }
 .sp-compare-columns-picker > summary {
     list-style: none;

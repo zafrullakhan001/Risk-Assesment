@@ -1958,6 +1958,7 @@ $soloPageClass = $ownerSolo
                             <button type="button" class="sp-view-btn is-active" data-list-density="compact" title="Shrink rows to a single line" aria-pressed="true">Compact</button>
                         </div>
                         <button type="button" class="sp-view-btn is-active" id="sharepoint-filters-toggle" title="Show or hide column filters" aria-controls="sharepoint-table-filters" aria-pressed="true">Filters</button>
+                        <?php require __DIR__ . '/includes/sharepoint-list-columns-picker.php'; ?>
                         <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
                             <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
                             <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>

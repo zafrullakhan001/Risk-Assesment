@@ -1158,6 +1158,7 @@
     compareColumns: 'riskregister_sp_compare_columns',
     projectColumns: 'riskregister_sp_project_columns',
     listDensity: 'riskregister_sp_list_density',
+    listColumns: 'riskregister_sp_list_columns',
     catalogDensity: 'riskregister_sp_catalog_density',
   };
 
@@ -1165,6 +1166,9 @@
   const COMPARE_DEFAULT_HIDDEN_COLS = ['size', 'modified_by'];
   const PROJECT_TOGGLE_COLS = ['type', 'size', 'modified', 'created', 'modified_by', 'created_by', 'actions', 'archive'];
   const PROJECT_DEFAULT_HIDDEN_COLS = [];
+  const LIST_TOGGLE_COLS = ['match', 'items', 'modified', 'modified_by', 'created_by', 'actions'];
+  const LIST_DEFAULT_HIDDEN_COLS = [];
+  const LIST_FIXED_COL_COUNT = 2;
 
   const readHiddenCols = (storageKey, allowed, fallback) => {
     try {
@@ -1195,6 +1199,84 @@
     readHiddenCols(SEARCH_PREF.projectColumns, PROJECT_TOGGLE_COLS, PROJECT_DEFAULT_HIDDEN_COLS);
 
   const writeProjectHiddenCols = (hidden) => writeHiddenCols(SEARCH_PREF.projectColumns, hidden);
+
+  const readListHiddenCols = () =>
+    readHiddenCols(SEARCH_PREF.listColumns, LIST_TOGGLE_COLS, LIST_DEFAULT_HIDDEN_COLS);
+
+  const writeListHiddenCols = (hidden) => writeHiddenCols(SEARCH_PREF.listColumns, hidden);
+
+  /** @type {Set<string>} */
+  let listHiddenCols = readListHiddenCols();
+
+  const listVisibleColspan = () => {
+    let count = LIST_FIXED_COL_COUNT;
+    LIST_TOGGLE_COLS.forEach((col) => {
+      if (!listHiddenCols.has(col)) count += 1;
+    });
+    return Math.max(count, LIST_FIXED_COL_COUNT);
+  };
+
+  const applyListHiddenCols = () => {
+    const card = document.getElementById('sharepoint-table-card');
+    card?.setAttribute('data-hidden-cols', [...listHiddenCols].join(' '));
+    document.getElementById('sharepoint-list-columns-picker')?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+      const col = input.getAttribute('data-col-toggle') || '';
+      input.checked = !listHiddenCols.has(col);
+    });
+    const span = listVisibleColspan();
+    document.querySelectorAll('#sharepoint-projects-tbody .sharepoint-empty-row td').forEach((cell) => {
+      cell.colSpan = span;
+    });
+  };
+
+  const bindListColumnsPicker = () => {
+    const picker = document.getElementById('sharepoint-list-columns-picker');
+    const toggle = document.getElementById('sharepoint-list-columns-toggle');
+    const menu = document.getElementById('sharepoint-list-columns-menu');
+    if (!picker || !toggle || !menu || picker.dataset.columnsBound === '1') return;
+    picker.dataset.columnsBound = '1';
+
+    const setPickerOpen = (open) => {
+      menu.hidden = !open;
+      toggle.classList.toggle('is-active', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setPickerOpen(menu.hidden);
+    });
+    picker.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+    picker.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const col = input.getAttribute('data-col-toggle') || '';
+        if (!LIST_TOGGLE_COLS.includes(col)) return;
+        if (input.checked) listHiddenCols.delete(col);
+        else listHiddenCols.add(col);
+        writeListHiddenCols(listHiddenCols);
+        applyListHiddenCols();
+      });
+    });
+    picker.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+    document.addEventListener('click', (event) => {
+      if (menu.hidden) return;
+      if (picker.contains(event.target)) return;
+      setPickerOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setPickerOpen(false);
+    });
+    document.getElementById('sharepoint-catalog-table-shell')?.addEventListener('toggle', () => {
+      const shell = document.getElementById('sharepoint-catalog-table-shell');
+      if (shell && !shell.open) setPickerOpen(false);
+    });
+    applyListHiddenCols();
+  };
 
   const readDialogDensity = () => {
     try {
@@ -3229,6 +3311,12 @@
     let hiddenItemLabels = new Map();
     /** @type {Set<string>} */
     let hiddenCols = readCompareHiddenCols();
+    const COMPARE_PANE_WIDTHS_KEY = 'riskregister_sp_compare_pane_widths';
+    const MIN_COMPARE_PANE_PX = 200;
+    /** @type {number[]} */
+    let comparePaneFractions = [];
+    let comparePaneSplit = null;
+    let comparePanePersistTimer = 0;
 
     const columnsPicker = document.getElementById('sharepoint-compare-columns-picker');
     const hiddenBar = document.getElementById('sharepoint-compare-hidden-bar');
@@ -3654,12 +3742,237 @@
       }
     };
 
+    const comparePanesStacked = () => window.matchMedia('(max-width: 1100px)').matches;
+
+    const visibleComparePanels = () =>
+      activeSides.map((side) => sideEls[side]?.panel).filter((panel) => panel && !panel.hidden);
+
+    const defaultComparePaneFractions = (count) => Array.from({ length: Math.max(2, count) }, () => 1);
+
+    const readComparePaneFractions = (count) => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(COMPARE_PANE_WIDTHS_KEY) || 'null');
+        const list = raw && typeof raw === 'object' ? raw[String(count)] : null;
+        if (
+          Array.isArray(list) &&
+          list.length === count &&
+          list.every((value) => Number(value) > 0)
+        ) {
+          return list.map((value) => Number(value));
+        }
+      } catch {
+        /* ignore */
+      }
+      return defaultComparePaneFractions(count);
+    };
+
+    const persistComparePaneFractions = () => {
+      if (comparePaneFractions.length < 2) return;
+      try {
+        const raw = JSON.parse(localStorage.getItem(COMPARE_PANE_WIDTHS_KEY) || '{}') || {};
+        const next = raw && typeof raw === 'object' ? raw : {};
+        next[String(comparePaneFractions.length)] = comparePaneFractions.map((value) =>
+          Number(Number(value).toFixed(4))
+        );
+        localStorage.setItem(COMPARE_PANE_WIDTHS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const scheduleComparePanePersist = () => {
+      window.clearTimeout(comparePanePersistTimer);
+      comparePanePersistTimer = window.setTimeout(persistComparePaneFractions, 160);
+    };
+
+    const applyComparePaneFractions = () => {
+      if (!panelsEl) return;
+      if (comparePanesStacked() || activeSides.length < 2 || comparePaneFractions.length < 2) {
+        panelsEl.style.removeProperty('--sp-compare-cols');
+        return;
+      }
+      const cols = comparePaneFractions
+        .map((value) => `minmax(0, ${Number(value) > 0 ? Number(value) : 1}fr)`)
+        .join(' ');
+      panelsEl.style.setProperty('--sp-compare-cols', cols);
+    };
+
+    const layoutCompareSplitters = () => {
+      if (!panelsEl) return;
+      const splitters = Array.from(panelsEl.querySelectorAll('.sharepoint-compare-splitter'));
+      const stacked = comparePanesStacked();
+      const visible = visibleComparePanels();
+      const hostRect = panelsEl.getBoundingClientRect();
+      splitters.forEach((splitter, index) => {
+        const show = !stacked && visible.length >= 2 && index < visible.length - 1;
+        splitter.hidden = !show;
+        splitter.tabIndex = show ? 0 : -1;
+        if (!show) return;
+        const leftRect = visible[index].getBoundingClientRect();
+        const rightRect = visible[index + 1].getBoundingClientRect();
+        const x = (leftRect.right + rightRect.left) / 2 - hostRect.left + panelsEl.scrollLeft;
+        splitter.style.left = `${Math.round(x)}px`;
+        const total = comparePaneFractions.reduce((sum, value) => sum + value, 0) || 1;
+        const leftShare = Math.round(((comparePaneFractions[index] || 1) / total) * 100);
+        splitter.setAttribute('aria-valuenow', String(leftShare));
+        splitter.setAttribute(
+          'aria-label',
+          visible.length === 2
+            ? 'Resize compare panels'
+            : `Resize panel ${index + 1} and panel ${index + 2}`
+        );
+      });
+    };
+
+    const ensureComparePaneFractions = ({ reload = false } = {}) => {
+      const count = Math.max(2, activeSides.length);
+      if (reload || comparePaneFractions.length !== count) {
+        comparePaneFractions = readComparePaneFractions(count);
+      }
+      applyComparePaneFractions();
+      window.requestAnimationFrame(layoutCompareSplitters);
+    };
+
+    const comparePaneContentWidth = () => {
+      if (!panelsEl) return 1;
+      const styles = window.getComputedStyle(panelsEl);
+      const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
+      const count = Math.max(2, activeSides.length);
+      return Math.max(1, panelsEl.clientWidth - gap * Math.max(0, count - 1));
+    };
+
+    const comparePaneWidthsFromFractions = (fractions = comparePaneFractions) => {
+      const total = fractions.reduce((sum, value) => sum + Number(value), 0) || 1;
+      const width = comparePaneContentWidth();
+      return fractions.map((value) => (Number(value) / total) * width);
+    };
+
+    const setComparePaneWidths = (widths) => {
+      const total = widths.reduce((sum, value) => sum + Math.max(0, Number(value)), 0) || 1;
+      comparePaneFractions = widths.map((value) => Math.max(0.01, Number(value) / total));
+      applyComparePaneFractions();
+      layoutCompareSplitters();
+      scheduleComparePanePersist();
+    };
+
+    const resizeComparePanePair = (index, deltaPx, startWidths = null) => {
+      const widths = (startWidths || comparePaneWidthsFromFractions()).slice();
+      if (index < 0 || index >= widths.length - 1) return;
+      let left = widths[index] + deltaPx;
+      let right = widths[index + 1] - deltaPx;
+      if (left < MIN_COMPARE_PANE_PX) {
+        right -= MIN_COMPARE_PANE_PX - left;
+        left = MIN_COMPARE_PANE_PX;
+      }
+      if (right < MIN_COMPARE_PANE_PX) {
+        left -= MIN_COMPARE_PANE_PX - right;
+        right = MIN_COMPARE_PANE_PX;
+      }
+      if (left < MIN_COMPARE_PANE_PX || right < MIN_COMPARE_PANE_PX) return;
+      widths[index] = left;
+      widths[index + 1] = right;
+      setComparePaneWidths(widths);
+    };
+
+    const resetComparePaneFractions = () => {
+      comparePaneFractions = defaultComparePaneFractions(Math.max(2, activeSides.length));
+      applyComparePaneFractions();
+      layoutCompareSplitters();
+      persistComparePaneFractions();
+    };
+
+    const endComparePaneSplit = (event) => {
+      if (!comparePaneSplit) return;
+      if (event && event.pointerId !== comparePaneSplit.pointerId) return;
+      const splitter = comparePaneSplit.splitter;
+      comparePaneSplit = null;
+      panelsEl?.classList.remove('is-pane-splitting');
+      splitter?.classList.remove('is-active');
+      persistComparePaneFractions();
+      try {
+        splitter?.releasePointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const bindComparePaneSplitters = () => {
+      if (!panelsEl || panelsEl.dataset.splitBound === '1') return;
+      panelsEl.dataset.splitBound = '1';
+      panelsEl.querySelectorAll('.sharepoint-compare-splitter').forEach((splitter) => {
+        splitter.addEventListener('pointerdown', (event) => {
+          if (event.button !== 0 || comparePanesStacked() || activeSides.length < 2) return;
+          event.preventDefault();
+          event.stopPropagation();
+          comparePaneSplit = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            index: Number(splitter.getAttribute('data-split-index') || '0') || 0,
+            startWidths: comparePaneWidthsFromFractions(),
+            splitter,
+          };
+          panelsEl.classList.add('is-pane-splitting');
+          splitter.classList.add('is-active');
+          try {
+            splitter.setPointerCapture(event.pointerId);
+          } catch {
+            /* ignore */
+          }
+        });
+        splitter.addEventListener('pointermove', (event) => {
+          if (!comparePaneSplit || event.pointerId !== comparePaneSplit.pointerId) return;
+          resizeComparePanePair(
+            comparePaneSplit.index,
+            event.clientX - comparePaneSplit.startX,
+            comparePaneSplit.startWidths
+          );
+        });
+        splitter.addEventListener('pointerup', endComparePaneSplit);
+        splitter.addEventListener('pointercancel', endComparePaneSplit);
+        splitter.addEventListener('dblclick', (event) => {
+          event.preventDefault();
+          resetComparePaneFractions();
+        });
+        splitter.addEventListener('keydown', (event) => {
+          if (comparePanesStacked() || activeSides.length < 2) return;
+          const index = Number(splitter.getAttribute('data-split-index') || '0') || 0;
+          const step = event.shiftKey ? 72 : 28;
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            resizeComparePanePair(index, -step);
+          } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            resizeComparePanePair(index, step);
+          } else if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            resetComparePaneFractions();
+          }
+        });
+      });
+
+      if (typeof ResizeObserver === 'function') {
+        const paneResizeObserver = new ResizeObserver(() => {
+          if (!dialog.open) return;
+          applyComparePaneFractions();
+          layoutCompareSplitters();
+        });
+        paneResizeObserver.observe(panelsEl);
+        paneResizeObserver.observe(dialog);
+      }
+      window.addEventListener('resize', () => {
+        if (!dialog.open) return;
+        applyComparePaneFractions();
+        layoutCompareSplitters();
+      });
+    };
+
     const syncPanelVisibility = () => {
       SIDE_IDS.forEach((side) => {
         const active = activeSides.includes(side);
         if (sideEls[side].panel) sideEls[side].panel.hidden = !active;
       });
       if (panelsEl) panelsEl.setAttribute('data-panel-count', String(activeSides.length));
+      ensureComparePaneFractions();
       if (legendEl) {
         legendEl.querySelector('.sp-diff-pill--mid')?.toggleAttribute('hidden', !activeSides.includes('mid'));
         legendEl.querySelector('.sp-diff-pill--shared')?.toggleAttribute(
@@ -3901,6 +4214,7 @@
         .finally(() => {
           refreshCompareSummary();
           swapAnimating = false;
+          layoutCompareSplitters();
         });
     };
 
@@ -4089,6 +4403,10 @@
       dialog.showModal();
       dialog.__spPrepareWorkspace?.();
       playWorkspaceDialogEnter(dialog);
+      window.requestAnimationFrame(() => {
+        ensureComparePaneFractions();
+        layoutCompareSplitters();
+      });
 
       compareBusy = true;
       setDialogRefreshBusy(refreshBtn, true);
@@ -4145,6 +4463,11 @@
     });
 
     closeBtn?.addEventListener('click', () => dialog.close());
+    bindComparePaneSplitters();
+    dialog.addEventListener('close', () => {
+      endComparePaneSplit();
+      persistComparePaneFractions();
+    });
 
     return openCompare;
   };
@@ -4156,6 +4479,7 @@
   });
 
   bindListDensityToggle();
+  bindListColumnsPicker();
   bindCatalogDensityToggle();
   bindCatalogColorToggle();
 
@@ -6055,7 +6379,7 @@
     renderSavedSearches();
 
     if (pageRows.length === 0) {
-      tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="8">${
+      tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="${listVisibleColspan()}">${
         state.loadingIndex
           ? '⏳ Loading live search index…'
           : state.projects.length === 0
@@ -6311,7 +6635,7 @@
     if (!keys.length) return;
     state.loadingIndex = true;
     state.ready = false;
-    tbody.innerHTML = '<tr class="sharepoint-empty-row"><td colspan="8">⏳ Loading live search index…</td></tr>';
+    tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="${listVisibleColspan()}">⏳ Loading live search index…</td></tr>`;
     syncActiveCatalogChrome();
 
     const extra =
@@ -6350,7 +6674,7 @@
       })
       .catch((error) => {
         state.loadingIndex = false;
-        tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="8">${escapeHtml(error.message || 'Search index failed.')} Showing server results — refresh to retry live search.</td></tr>`;
+        tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="${listVisibleColspan()}">${escapeHtml(error.message || 'Search index failed.')} Showing server results — refresh to retry live search.</td></tr>`;
         bindRowEvents();
       });
   };

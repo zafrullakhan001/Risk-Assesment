@@ -252,7 +252,7 @@ HTML,
 <li><strong>Comfort / Compact / Table</strong> change how folder cards look. Compact leaves more room for search.</li>
 <li>You can open folders, the catalog, or Owners in a <strong>new tab</strong> or a <strong>separate window</strong>.</li>
 <li>The section board lets you <strong>reorder panels</strong> (folders, catalog share, owners, owners share, search, projects, admin). Use Reset section order to restore the default.</li>
-<li>On the project table, select <strong>2–3 folders</strong> and open <strong>Compare selected</strong> for a side-by-side view. Use the Columns picker to show or hide fields (including Copy, QR, tags, and Archive).</li>
+<li>On the project table, use <strong>Columns</strong> to show or hide Match, Items, dates, people, and action buttons. Select <strong>2–3 folders</strong> and open <strong>Compare selected</strong> for a side-by-side view. Folder and compare dialogs have their own Columns pickers (Copy, QR, tags, and Archive).</li>
 <li>Each project row has a <strong>QR</strong> button so you can scan the SharePoint folder URL on a phone (print or copy from the dialog).</li>
 </ul>
 <p>Administrators add folder URLs, sync listings, and manage settings. Signed-in users can browse and search the catalogs they are allowed to see.</p>

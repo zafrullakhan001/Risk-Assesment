@@ -420,6 +420,14 @@ declare(strict_types=1);
                                 </table>
                             </div>
                         </section>
+                        <div class="sharepoint-compare-splitters" id="sharepoint-compare-splitters">
+                            <button type="button" class="sharepoint-compare-splitter" data-split-index="0" role="separator" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" aria-label="Resize compare panels" title="Drag to resize panels">
+                                <span class="sharepoint-compare-splitter-bar" aria-hidden="true"></span>
+                            </button>
+                            <button type="button" class="sharepoint-compare-splitter" data-split-index="1" role="separator" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" aria-label="Resize compare panels" title="Drag to resize panels" hidden>
+                                <span class="sharepoint-compare-splitter-bar" aria-hidden="true"></span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </dialog>
