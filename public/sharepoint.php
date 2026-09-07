@@ -1428,18 +1428,23 @@ $soloPageClass = $ownerSolo
                         $srcTitle = (string) ($src['title'] ?? $srcKey);
                         $srcFolderPath = (string) ($src['folder_path'] ?? '');
                         $srcSite = (string) (($src['site_host'] ?? '') . ($src['site_path'] ?? ''));
+                        $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
+                        $srcToneHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                         ?>
-                        <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
+                        <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>" data-catalog-tone="<?= e($srcTone) ?>" style="--catalog-tone: <?= e($srcToneHex) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
                             <div class="sharepoint-source-card-head">
                                 <h3>
                                     <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                     <span class="sharepoint-source-card-title"><?= e($srcTitle) ?></span>
                                 </h3>
-                                <?php if ($srcArchived): ?>
-                                    <span class="sharepoint-source-badge sharepoint-archive-badge">Archived</span>
-                                <?php elseif ($isActiveCard): ?>
-                                    <span class="sharepoint-source-badge">Active</span>
-                                <?php endif; ?>
+                                <div class="sharepoint-source-card-tools">
+                                    <?php require __DIR__ . '/includes/sharepoint-source-color-btn.php'; ?>
+                                    <?php if ($srcArchived): ?>
+                                        <span class="sharepoint-source-badge sharepoint-archive-badge">Archived</span>
+                                    <?php elseif ($isActiveCard): ?>
+                                        <span class="sharepoint-source-badge">Active</span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                             <p class="sharepoint-source-meta">
                                 <span><?= e($srcFolderPath) ?></span>
@@ -1560,12 +1565,15 @@ $soloPageClass = $ownerSolo
                                 $srcTitle = (string) ($src['title'] ?? $srcKey);
                                 $srcFolderPath = (string) ($src['folder_path'] ?? '');
                                 $srcSite = (string) (($src['site_host'] ?? '') . ($src['site_path'] ?? ''));
+                                $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
+                                $srcToneHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                                 ?>
-                                <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
+                                <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>" data-catalog-tone="<?= e($srcTone) ?>" style="--catalog-tone: <?= e($srcToneHex) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
                                     <td>
                                         <div class="sharepoint-source-table-title">
                                             <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                             <strong><?= e($srcTitle) ?></strong>
+                                            <?php require __DIR__ . '/includes/sharepoint-source-color-btn.php'; ?>
                                             <?php if ($srcArchived): ?>
                                                 <span class="sharepoint-source-badge sharepoint-archive-badge">Archived</span>
                                             <?php elseif ($isActiveCard): ?>
@@ -2529,19 +2537,7 @@ $soloPageClass = $ownerSolo
             </div>
             <?php endif; ?>
         </main>
-        <div class="sharepoint-catalog-color-pop" id="sharepoint-catalog-color-pop" hidden role="dialog" aria-label="Choose catalog color">
-            <p class="sharepoint-catalog-color-pop-kicker" id="sharepoint-catalog-color-pop-title">Catalog color</p>
-            <div class="sharepoint-catalog-color-presets" role="list">
-                <?php foreach ($catalogColorPresets as $hex => $name): ?>
-                    <button type="button" class="sharepoint-catalog-color-preset" data-hex="<?= e($hex) ?>" title="<?= e($name) ?>" aria-label="<?= e($name) ?>" style="background: <?= e($hex) ?>"></button>
-                <?php endforeach; ?>
-            </div>
-            <label class="sharepoint-catalog-color-custom">
-                <span>Custom</span>
-                <input type="color" id="sharepoint-catalog-color-native" value="#0f766e" aria-label="Custom catalog color">
-            </label>
-            <button type="button" class="sharepoint-catalog-color-reset-one" id="sharepoint-catalog-color-reset-one">Reset this catalog</button>
-        </div>
+        <?php require __DIR__ . '/includes/sharepoint-catalog-color-pop.php'; ?>
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>

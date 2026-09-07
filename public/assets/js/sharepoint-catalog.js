@@ -105,6 +105,28 @@
     });
   };
 
+  const contrastInk = (hex) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return '#0c1524';
+    const y = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+    return y > 160 ? '#0c1524' : '#f8fafc';
+  };
+
+  const normalizeColorEntry = (value) => {
+    if (typeof value === 'string') {
+      const bg = normalizeHex(value);
+      return bg ? { bg } : null;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const bg = normalizeHex(value.bg);
+    const text = normalizeHex(value.text);
+    if (!bg && !text) return null;
+    const out = {};
+    if (bg) out.bg = bg;
+    if (text) out.text = text;
+    return out;
+  };
+
   const cssEscapeValue = (value) => {
     const text = String(value || '');
     if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(text);
@@ -113,7 +135,16 @@
 
   const defaultHexForKey = (key) => CATALOG_TONE_HEX[catalogToneByKey[key] || 'slate'] || '#475569';
 
-  const hexForSource = (key) => catalogCustomColors[key] || defaultHexForKey(key);
+  const customEntryFor = (key) => catalogCustomColors[String(key || '').trim()] || null;
+
+  const hexForSource = (key) => customEntryFor(key)?.bg || defaultHexForKey(key);
+
+  const textForSource = (key) => {
+    const custom = customEntryFor(key);
+    if (custom?.text) return custom.text;
+    if (custom?.bg) return contrastInk(custom.bg);
+    return inkFromHex(defaultHexForKey(key));
+  };
 
   const readCustomCatalogColors = () => {
     try {
@@ -121,8 +152,8 @@
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
       const out = {};
       Object.entries(raw).forEach(([key, value]) => {
-        const hex = normalizeHex(value);
-        if (key && hex) out[String(key)] = hex;
+        const entry = normalizeColorEntry(value);
+        if (key && entry) out[String(key)] = entry;
       });
       return out;
     } catch {
@@ -148,19 +179,26 @@
 
   const paintCatalogColorStyles = () => {
     const keys = new Set([...Object.keys(catalogToneByKey), ...Object.keys(catalogCustomColors)]);
-    document.querySelectorAll('.sharepoint-scope-chip[data-source-key], .sharepoint-scope-color-btn[data-source-key]').forEach((el) => {
+    document.querySelectorAll('.sharepoint-scope-chip[data-source-key], .sharepoint-scope-color-btn[data-source-key], .sharepoint-card-color-btn[data-source-key], .sharepoint-source-card[data-source-key], .sharepoint-source-row[data-source-key]').forEach((el) => {
       const key = el.getAttribute('data-source-key') || '';
       if (key) keys.add(key);
     });
     const rules = [];
     keys.forEach((key) => {
-      if (!catalogCustomColors[key]) return;
-      const hex = catalogCustomColors[key];
-      const ink = inkFromHex(hex);
+      const hex = hexForSource(key);
+      const ink = textForSource(key);
       const sel = `[data-source-key="${cssEscapeValue(key)}"]`;
+      const custom = customEntryFor(key);
       rules.push(
-        `html[data-catalog-colors="distinct"] .sharepoint-scope-chip${sel}, html[data-catalog-colors="distinct"] .sp-catalog-badge${sel}, html[data-catalog-colors="distinct"] .sharepoint-scope-color-btn${sel} { --catalog-tone: ${hex}; --catalog-tone-ink: ${ink}; }`
+        `html[data-catalog-colors="distinct"] .sharepoint-scope-chip${sel}, html[data-catalog-colors="distinct"] .sp-catalog-badge${sel}, html[data-catalog-colors="distinct"] .sharepoint-scope-color-btn${sel}, html[data-catalog-colors="distinct"] .sharepoint-source-card${sel}, html[data-catalog-colors="distinct"] .sharepoint-source-row${sel} { --catalog-tone: ${hex}; --catalog-tone-ink: ${ink}; }`
       );
+      if (custom?.bg || custom?.text) {
+        const bg = custom.bg || hex;
+        const text = custom.text || contrastInk(bg);
+        rules.push(
+          `.sharepoint-source-card${sel}[data-card-colors="1"], .sharepoint-source-row${sel}[data-card-colors="1"] { --sp-card-bg: ${bg}; --sp-card-ink: ${text}; --catalog-tone: ${bg}; --catalog-tone-ink: ${text}; }`
+        );
+      }
     });
     let styleEl = document.getElementById('sharepoint-catalog-color-vars');
     if (!styleEl) {
@@ -169,19 +207,49 @@
       document.head.appendChild(styleEl);
     }
     styleEl.textContent = rules.join('\n');
-    document.querySelectorAll('.sharepoint-scope-color-btn[data-source-key]').forEach((btn) => {
+    document.querySelectorAll('.sharepoint-scope-color-btn[data-source-key], .sharepoint-card-color-btn[data-source-key]').forEach((btn) => {
       const key = btn.getAttribute('data-source-key') || '';
       if (!key) return;
-      btn.style.setProperty('--catalog-tone', hexForSource(key));
+      const bg = hexForSource(key);
+      const ink = textForSource(key);
+      btn.style.setProperty('--catalog-tone', bg);
+      btn.style.setProperty('--sp-card-bg', bg);
+      btn.style.setProperty('--sp-card-ink', ink);
+      btn.classList.toggle('is-custom', Boolean(customEntryFor(key)));
+    });
+    document.querySelectorAll('.sharepoint-source-card[data-source-key], .sharepoint-source-row[data-source-key]').forEach((el) => {
+      const key = el.getAttribute('data-source-key') || '';
+      if (!key) return;
+      const custom = customEntryFor(key);
+      const bg = hexForSource(key);
+      const ink = textForSource(key);
+      el.style.setProperty('--catalog-tone', bg);
+      el.style.setProperty('--catalog-tone-ink', ink);
+      if (custom?.bg || custom?.text) {
+        el.setAttribute('data-card-colors', '1');
+        if (custom.bg) el.style.setProperty('--sp-card-bg', custom.bg);
+        else el.style.removeProperty('--sp-card-bg');
+        el.style.setProperty('--sp-card-ink', custom.text || contrastInk(custom.bg || bg));
+      } else {
+        el.removeAttribute('data-card-colors');
+        el.style.removeProperty('--sp-card-bg');
+        el.style.removeProperty('--sp-card-ink');
+      }
     });
     syncCatalogColorResetButtons();
   };
 
-  const setCatalogCustomColor = (key, hex) => {
+  const setCatalogCustomColor = (key, hex, target = 'bg') => {
     const sourceKey = String(key || '').trim();
     const next = normalizeHex(hex);
     if (!sourceKey || !next) return;
-    catalogCustomColors[sourceKey] = next;
+    const current = { ...(customEntryFor(sourceKey) || {}) };
+    if (target === 'text') {
+      current.text = next;
+    } else {
+      current.bg = next;
+    }
+    catalogCustomColors[sourceKey] = current;
     saveCustomCatalogColors();
     paintCatalogColorStyles();
   };
@@ -206,7 +274,7 @@
     const pop = catalogColorPop();
     if (pop) pop.hidden = true;
     catalogColorPopKey = '';
-    document.querySelectorAll('.sharepoint-scope-color-btn[aria-expanded="true"]').forEach((btn) => {
+    document.querySelectorAll('.sharepoint-scope-color-btn[aria-expanded="true"], .sharepoint-card-color-btn[aria-expanded="true"]').forEach((btn) => {
       btn.setAttribute('aria-expanded', 'false');
     });
     catalogColorPopAnchor = null;
@@ -218,7 +286,7 @@
     pop.hidden = false;
     const rect = anchor.getBoundingClientRect();
     const width = pop.offsetWidth || 232;
-    const height = pop.offsetHeight || 220;
+    const height = pop.offsetHeight || 360;
     const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left));
     let top = rect.bottom + 8;
     if (top + height > window.innerHeight - 8) {
@@ -228,24 +296,35 @@
     pop.style.top = `${top}px`;
   };
 
+  const syncCatalogColorPopSelection = (pop, bgHex, textHex) => {
+    const bg = normalizeHex(bgHex);
+    const text = normalizeHex(textHex);
+    pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
+      const target = btn.getAttribute('data-color-target') || 'bg';
+      const hex = normalizeHex(btn.getAttribute('data-hex'));
+      btn.classList.toggle('is-selected', target === 'text' ? hex === text : hex === bg);
+    });
+    const nativeBg = document.getElementById('sharepoint-catalog-color-native');
+    const nativeText = document.getElementById('sharepoint-catalog-text-native');
+    if (nativeBg && bg) nativeBg.value = bg;
+    if (nativeText && text) nativeText.value = text;
+  };
+
   const openCatalogColorPop = (anchor) => {
     const key = String(anchor?.getAttribute('data-source-key') || '').trim();
     const pop = catalogColorPop();
     if (!key || !pop) return;
     const chip = anchor.closest('.sharepoint-scope-chip');
+    const card = anchor.closest('.sharepoint-source-card, .sharepoint-source-row');
     const title =
       chip?.querySelector('.sharepoint-scope-chip-main span')?.textContent?.trim() ||
+      card?.querySelector('.sharepoint-source-card-title, strong')?.textContent?.trim() ||
       catalogToneByKey[key] ||
       'Catalog';
     const titleEl = document.getElementById('sharepoint-catalog-color-pop-title');
     if (titleEl) titleEl.textContent = title;
-    const native = document.getElementById('sharepoint-catalog-color-native');
-    const hex = hexForSource(key);
-    if (native) native.value = hex;
-    pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
-      btn.classList.toggle('is-selected', normalizeHex(btn.getAttribute('data-hex')) === hex);
-    });
-    document.querySelectorAll('.sharepoint-scope-color-btn').forEach((btn) => {
+    syncCatalogColorPopSelection(pop, hexForSource(key), textForSource(key));
+    document.querySelectorAll('.sharepoint-scope-color-btn, .sharepoint-card-color-btn').forEach((btn) => {
       btn.setAttribute('aria-expanded', btn === anchor ? 'true' : 'false');
     });
     catalogColorPopKey = key;
@@ -282,7 +361,9 @@
     } catch {
       /* ignore */
     }
-    if (!enabled) closeCatalogColorPop();
+    if (!enabled && catalogColorPopAnchor?.classList.contains('sharepoint-scope-color-btn')) {
+      closeCatalogColorPop();
+    }
     paintCatalogColorStyles();
     return enabled;
   };
@@ -305,20 +386,22 @@
         closeCatalogColorPop();
       });
     });
-    document.querySelectorAll('.sharepoint-scope-color-btn').forEach((btn) => {
+    const bindColorAnchor = (btn, { requireDistinct = false } = {}) => {
       if (btn.dataset.colorBound === '1') return;
       btn.dataset.colorBound = '1';
       btn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (document.documentElement.getAttribute('data-catalog-colors') !== 'distinct') return;
+        if (requireDistinct && document.documentElement.getAttribute('data-catalog-colors') !== 'distinct') return;
         if (catalogColorPopKey === btn.getAttribute('data-source-key') && catalogColorPop() && !catalogColorPop().hidden) {
           closeCatalogColorPop();
           return;
         }
         openCatalogColorPop(btn);
       });
-    });
+    };
+    document.querySelectorAll('.sharepoint-scope-color-btn').forEach((btn) => bindColorAnchor(btn, { requireDistinct: true }));
+    document.querySelectorAll('.sharepoint-card-color-btn').forEach((btn) => bindColorAnchor(btn));
     const pop = catalogColorPop();
     if (pop && pop.dataset.colorBound !== '1') {
       pop.dataset.colorBound = '1';
@@ -326,17 +409,22 @@
       pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
         btn.addEventListener('click', () => {
           if (!catalogColorPopKey) return;
-          setCatalogCustomColor(catalogColorPopKey, btn.getAttribute('data-hex'));
-          openCatalogColorPop(catalogColorPopAnchor || btn);
+          const target = btn.getAttribute('data-color-target') || 'bg';
+          setCatalogCustomColor(catalogColorPopKey, btn.getAttribute('data-hex'), target);
+          if (catalogColorPopAnchor) openCatalogColorPop(catalogColorPopAnchor);
         });
       });
-      const native = document.getElementById('sharepoint-catalog-color-native');
-      native?.addEventListener('input', () => {
+      const nativeBg = document.getElementById('sharepoint-catalog-color-native');
+      nativeBg?.addEventListener('input', () => {
         if (!catalogColorPopKey) return;
-        setCatalogCustomColor(catalogColorPopKey, native.value);
-        pop.querySelectorAll('.sharepoint-catalog-color-preset').forEach((btn) => {
-          btn.classList.toggle('is-selected', normalizeHex(btn.getAttribute('data-hex')) === normalizeHex(native.value));
-        });
+        setCatalogCustomColor(catalogColorPopKey, nativeBg.value, 'bg');
+        syncCatalogColorPopSelection(pop, nativeBg.value, textForSource(catalogColorPopKey));
+      });
+      const nativeText = document.getElementById('sharepoint-catalog-text-native');
+      nativeText?.addEventListener('input', () => {
+        if (!catalogColorPopKey) return;
+        setCatalogCustomColor(catalogColorPopKey, nativeText.value, 'text');
+        syncCatalogColorPopSelection(pop, hexForSource(catalogColorPopKey), nativeText.value);
       });
       document.getElementById('sharepoint-catalog-color-reset-one')?.addEventListener('click', () => {
         if (!catalogColorPopKey) return;
@@ -345,7 +433,11 @@
       });
       document.addEventListener('click', (event) => {
         if (!pop || pop.hidden) return;
-        if (event.target.closest('.sharepoint-scope-color-btn') || event.target.closest('#sharepoint-catalog-color-pop')) {
+        if (
+          event.target.closest('.sharepoint-scope-color-btn') ||
+          event.target.closest('.sharepoint-card-color-btn') ||
+          event.target.closest('#sharepoint-catalog-color-pop')
+        ) {
           return;
         }
         closeCatalogColorPop();
@@ -4760,6 +4852,7 @@
       card.classList.toggle('is-active', isActive);
       let badge = card.querySelector('.sharepoint-source-badge');
       const badgeHost =
+        card.querySelector('.sharepoint-source-card-tools') ||
         card.querySelector('.sharepoint-source-card-head') ||
         card.querySelector('.sharepoint-source-table-title');
       if (isActive) {

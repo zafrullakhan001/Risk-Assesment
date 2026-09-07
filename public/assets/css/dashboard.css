@@ -10011,6 +10011,63 @@ body.is-public-catalog-share .topbar-actions {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.sharepoint-source-card-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+}
+.sharepoint-card-color-btn {
+    appearance: none;
+    width: 1.15rem;
+    height: 1.15rem;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--sp-card-bg, var(--catalog-tone, #0f766e)) 55%, #fff);
+    border-radius: 6px;
+    background:
+        linear-gradient(
+            135deg,
+            var(--sp-card-bg, var(--catalog-tone, #0f766e)) 50%,
+            var(--sp-card-ink, #f8fafc) 50%
+        );
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.sharepoint-card-color-btn:hover,
+.sharepoint-card-color-btn[aria-expanded="true"],
+.sharepoint-card-color-btn.is-custom {
+    outline: 2px solid color-mix(in srgb, var(--catalog-tone, #0f766e) 45%, transparent);
+    outline-offset: 1px;
+}
+.sharepoint-source-card[data-card-colors="1"],
+.sharepoint-source-card[data-card-colors="1"].is-active,
+.sharepoint-source-row[data-card-colors="1"],
+.sharepoint-source-row[data-card-colors="1"].is-active,
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-card-colors="1"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-card-colors="1"].is-active,
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"].is-active {
+    background: var(--sp-card-bg, color-mix(in srgb, var(--catalog-tone, #0f766e) 16%, var(--surface, #fff)));
+    color: var(--sp-card-ink, var(--catalog-tone-ink, var(--ink, #0c1524)));
+    border-color: color-mix(in srgb, var(--sp-card-bg, var(--catalog-tone, #0f766e)) 52%, var(--border, #e2e8f0));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sp-card-bg, var(--catalog-tone, #0f766e)) 22%, transparent);
+}
+.sharepoint-source-card[data-card-colors="1"] .sharepoint-source-card-head h3,
+.sharepoint-source-card[data-card-colors="1"] .sharepoint-source-card-title,
+.sharepoint-source-card[data-card-colors="1"] .sharepoint-source-badge,
+.sharepoint-source-row[data-card-colors="1"] strong,
+.sharepoint-source-row[data-card-colors="1"] .sharepoint-source-badge {
+    color: var(--sp-card-ink, inherit);
+}
+.sharepoint-source-card[data-card-colors="1"] .sharepoint-source-meta,
+.sharepoint-source-card[data-card-colors="1"] .sharepoint-source-stats,
+.sharepoint-source-row[data-card-colors="1"] .sharepoint-source-table-site,
+.sharepoint-source-row[data-card-colors="1"] .sharepoint-source-table-path,
+.sharepoint-source-row[data-card-colors="1"] .sharepoint-source-table-status,
+.sharepoint-source-row[data-card-colors="1"] .sharepoint-source-table-muted {
+    color: color-mix(in srgb, var(--sp-card-ink, var(--ink, #0c1524)) 76%, transparent);
+}
 .sharepoint-source-badge {
     font-size: 0.72rem;
     font-weight: 700;
@@ -10744,6 +10801,12 @@ body.is-public-catalog-share .topbar-actions {
     padding: 0.55rem 0.75rem;
 }
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-card-head { grid-area: head; }
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-card-tools { gap: 0.3rem; }
+.sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-card-color-btn {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 5px;
+}
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-meta { grid-area: meta; font-size: 0.78rem; }
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-stats { grid-area: stats; margin: 0; white-space: nowrap; }
 .sharepoint-sources-panel[data-folders-view="compact"] .sharepoint-source-actions { grid-area: actions; justify-content: flex-end; }
@@ -13528,7 +13591,7 @@ html:not([data-catalog-colors="distinct"]) .sharepoint-scopes-color-reset {
 .sharepoint-catalog-color-pop {
     position: fixed;
     z-index: 80;
-    width: 232px;
+    width: 248px;
     padding: 0.7rem 0.75rem 0.65rem;
     border: 1px solid var(--border, #e2e8f0);
     border-radius: 12px;
@@ -13539,17 +13602,28 @@ html:not([data-catalog-colors="distinct"]) .sharepoint-scopes-color-reset {
     display: none !important;
 }
 .sharepoint-catalog-color-pop-kicker {
-    margin: 0 0 0.5rem;
+    margin: 0 0 0.45rem;
     font-size: 0.78rem;
     font-weight: 700;
     color: var(--ink, #0c1524);
     line-height: 1.3;
 }
+.sharepoint-catalog-color-section-label {
+    margin: 0.15rem 0 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #64748b);
+}
 .sharepoint-catalog-color-presets {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0.35rem;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.45rem;
+}
+.sharepoint-catalog-text-presets .sharepoint-catalog-color-preset {
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18);
 }
 .sharepoint-catalog-color-preset {
     appearance: none;
@@ -13607,7 +13681,9 @@ html:not([data-catalog-colors="distinct"]) .sharepoint-scopes-color-reset {
     color: var(--accent, #0f766e);
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone] {
     border-color: color-mix(in srgb, var(--catalog-tone) 42%, var(--border, #e2e8f0));
     color: var(--catalog-tone-ink, var(--catalog-tone));
     background: color-mix(in srgb, var(--catalog-tone) 12%, var(--surface, #fff));
@@ -13618,41 +13694,70 @@ html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone].i
     color: var(--catalog-tone-ink, var(--catalog-tone));
     font-weight: 600;
 }
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone].is-active,
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone].is-active {
+    border-color: color-mix(in srgb, var(--catalog-tone) 58%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--catalog-tone) 28%, transparent);
+    background: color-mix(in srgb, var(--catalog-tone) 16%, var(--surface, #fff));
+}
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone] .sharepoint-source-card-head h3,
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone] .sharepoint-source-card-title,
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone] .sharepoint-source-badge {
+    color: var(--catalog-tone-ink, var(--catalog-tone));
+}
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone] .sharepoint-source-meta,
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone] .sharepoint-source-stats {
+    color: color-mix(in srgb, var(--catalog-tone-ink, var(--catalog-tone)) 78%, transparent);
+}
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone] input {
     accent-color: var(--catalog-tone);
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="public"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="public"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="public"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="public"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="public"] {
     --catalog-tone: #0f766e;
     --catalog-tone-ink: #115e59;
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="private"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="private"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="private"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="private"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="private"] {
     --catalog-tone: #e11d48;
     --catalog-tone-ink: #9f1239;
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="dump"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="dump"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="dump"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="dump"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="dump"] {
     --catalog-tone: #d97706;
     --catalog-tone-ink: #92400e;
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="violet"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="violet"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="violet"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="violet"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="violet"] {
     --catalog-tone: #7c3aed;
     --catalog-tone-ink: #5b21b6;
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="sky"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="sky"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="sky"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="sky"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="sky"] {
     --catalog-tone: #0284c7;
     --catalog-tone-ink: #075985;
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="lime"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="lime"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="lime"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="lime"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="lime"] {
     --catalog-tone: #65a30d;
     --catalog-tone-ink: #3f6212;
 }
 html[data-catalog-colors="distinct"] .sharepoint-scope-chip[data-catalog-tone="slate"],
-html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"] {
+html[data-catalog-colors="distinct"] .sp-catalog-badge[data-catalog-tone="slate"],
+html[data-catalog-colors="distinct"] .sharepoint-source-card[data-catalog-tone="slate"],
+html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="slate"] {
     --catalog-tone: #475569;
     --catalog-tone-ink: #334155;
 }
