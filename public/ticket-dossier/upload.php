@@ -40,7 +40,11 @@ if (!empty($_FILES['files']) && is_array($_FILES['files']['name'] ?? null)) {
 }
 
 try {
-    $result = ProjectImporter::import($uploads, $optionalTitle !== '' ? $optionalTitle : null);
+    $result = ProjectImporter::import(
+        $uploads,
+        $optionalTitle !== '' ? $optionalTitle : null,
+        is_array($currentUser) ? $currentUser : null
+    );
     $msg = 'Project created successfully.';
     if ($result['warnings'] !== []) {
         $msg .= ' ' . implode(' ', $result['warnings']);

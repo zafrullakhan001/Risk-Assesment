@@ -147,6 +147,68 @@ function nowUtc(): string
     return gmdate('Y-m-d H:i:s');
 }
 
+/**
+ * Snapshot of the signed-in user who created a Ticket Dossier project.
+ *
+ * @param array<string, mixed>|null $user
+ * @return array{
+ *   owner_user_id: int|null,
+ *   owner_username: string,
+ *   owner_display_name: string,
+ *   owner_auth_source: string
+ * }
+ */
+function projectOwnerFromUser(?array $user): array
+{
+    if ($user === null) {
+        return [
+            'owner_user_id' => null,
+            'owner_username' => '',
+            'owner_display_name' => '',
+            'owner_auth_source' => '',
+        ];
+    }
+
+    $actor = \RiskAssessment\Actor::fromUser($user);
+
+    return [
+        'owner_user_id' => $actor['user_id'] > 0 ? $actor['user_id'] : null,
+        'owner_username' => $actor['username'],
+        'owner_display_name' => $actor['display_name'],
+        'owner_auth_source' => $actor['auth_source'],
+    ];
+}
+
+/**
+ * Short owner name for lists and chips (display name, else username).
+ *
+ * @param array<string, mixed> $project
+ */
+function projectOwnerName(array $project): string
+{
+    $display = trim((string) ($project['owner_display_name'] ?? ''));
+    if ($display !== '') {
+        return $display;
+    }
+
+    return trim((string) ($project['owner_username'] ?? ''));
+}
+
+/**
+ * Full attribution title for tooltips.
+ *
+ * @param array<string, mixed> $project
+ */
+function projectOwnerTitle(array $project): string
+{
+    $label = \RiskAssessment\Actor::labelFromRow($project, 'owner');
+    if ($label === '') {
+        return '';
+    }
+
+    return 'Project owner (created by): ' . $label;
+}
+
 function kindLabel(string $kind): string
 {
     return match ($kind) {

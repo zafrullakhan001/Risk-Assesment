@@ -23,6 +23,14 @@ if (!is_array($sources)) {
 $files = ProjectRepository::filesFor($id);
 $sections = availableSections($parsed);
 $overview = is_array($parsed['overview'] ?? null) ? $parsed['overview'] : [];
+$ownerName = projectOwnerName($project);
+$ownerTitle = projectOwnerTitle($project);
+$currentOwnerUserId = (int) ($project['owner_user_id'] ?? 0);
+$ownerUsers = [];
+if (isset($users) && $users instanceof \RiskAssessment\Repositories\UserRepository) {
+    $ownerUsers = $users->listApprovedActive();
+}
+$editDetailsOpen = $ownerName === '' || isset($_GET['edit']);
 $flash = flashTake();
 $token = csrfToken();
 $cssV = cssVersion();
@@ -117,8 +125,12 @@ $ribbon = [
                     <?php if (!empty($overview['description'])): ?>
                         <p><?= e(strlen((string) $overview['description']) > 420 ? substr((string) $overview['description'], 0, 417) . '…' : (string) $overview['description']) ?></p>
                     <?php endif; ?>
+                    <p class="hero-edit">
+                        <a class="button ghost button-small" href="#edit-details">✏️ Edit details</a>
+                    </p>
                 </div>
                 <div class="hero-chips">
+                    <span class="pill teal"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>>👤 Owner: <?= e($ownerName !== '' ? $ownerName : 'Unknown') ?></span>
                     <?php if ($project['vendor']): ?>
                         <span class="pill gray">🏢 <?= e((string) $project['vendor']) ?></span>
                     <?php endif; ?>
@@ -142,6 +154,57 @@ $ribbon = [
                 <?= e($flash['message']) ?>
             </div>
         <?php endif; ?>
+
+        <details class="upload-card" id="edit-details"<?= $editDetailsOpen ? ' open' : '' ?>>
+            <summary class="upload-card-summary">
+                <h2>✏️ Edit project details</h2>
+            </summary>
+            <p class="context-note">Change the project name, vendor, or owner if something was missed or needs a clearer label. Ticket numbers still come from the uploaded files.</p>
+            <form class="details-form" action="edit.php" method="post">
+                <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
+                <input type="hidden" name="project_id" value="<?= (int) $id ?>">
+                <div class="details-form-grid">
+                    <label class="field field-span-2">
+                        <span>Project name</span>
+                        <input type="text" name="title" maxlength="200" required value="<?= e((string) $project['title']) ?>" placeholder="Name this dossier">
+                    </label>
+                    <label class="field">
+                        <span>Vendor <em>(optional)</em></span>
+                        <input type="text" name="vendor" maxlength="200" value="<?= e((string) ($project['vendor'] ?? '')) ?>" placeholder="Vendor name">
+                    </label>
+                    <label class="field">
+                        <span>Owner name</span>
+                        <input type="text" name="owner_name" id="owner-name" maxlength="200" value="<?= e($ownerName) ?>" placeholder="Who owns this dossier?">
+                    </label>
+                    <label class="field field-span-2">
+                        <span>Owner account <em>(optional)</em></span>
+                        <select name="owner_user_id" id="owner-user-id">
+                            <option value="0"<?= $currentOwnerUserId <= 0 ? ' selected' : '' ?>>Keep current account / not linked</option>
+                            <?php foreach ($ownerUsers as $ownerUser): ?>
+                                <?php
+                                $uid = (int) ($ownerUser['id'] ?? 0);
+                                $display = trim((string) ($ownerUser['display_name'] ?? ''));
+                                $uname = trim((string) ($ownerUser['username'] ?? ''));
+                                $optionLabel = \RiskAssessment\Actor::formatLabel(
+                                    $display,
+                                    $uname,
+                                    (string) ($ownerUser['auth_source'] ?? '')
+                                );
+                                $optionName = $display !== '' ? $display : $uname;
+                                ?>
+                                <option
+                                    value="<?= $uid ?>"
+                                    data-display-name="<?= e($optionName) ?>"
+                                    <?= $uid === $currentOwnerUserId ? ' selected' : '' ?>
+                                ><?= e($optionLabel) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small>Pick an app user to link the owner, or type a name above if they are not in the list.</small>
+                    </label>
+                </div>
+                <button type="submit" class="button button-primary">💾 Save details</button>
+            </form>
+        </details>
 
         <div class="global-search" id="global-search">
             <div class="search-input-wrap">
@@ -229,6 +292,7 @@ $ribbon = [
                 <article class="overview-card meta-card">
                     <h3>🔑 Key facts</h3>
                     <dl class="kv">
+                        <div><dt>Owner</dt><dd><span class="kv-value"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></span></dd></div>
                         <div><dt>Vendor</dt><dd><span class="kv-value"><?= e((string) ($overview['vendor'] ?: ($project['vendor'] ?: '—'))) ?></span></dd></div>
                         <div><dt>Demand</dt><dd><span class="kv-value"><?= e((string) ($project['demand_number'] ?: '—')) ?></span><?= $project['demand_state'] ? ' <span class="pill teal">' . e((string) $project['demand_state']) . '</span>' : '' ?></dd></div>
                         <div><dt>Story</dt><dd><span class="kv-value"><?= e((string) ($project['story_number'] ?: '—')) ?></span><?= $project['story_state'] ? ' <span class="pill amber">' . e((string) $project['story_state']) . '</span>' : '' ?></dd></div>

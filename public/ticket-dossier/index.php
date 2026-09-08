@@ -29,7 +29,7 @@ $searchPerPage = PaginationPreference::resolve(
     10,
     $allowedPerPage
 );
-$allowedSorts = ['id', 'project', 'vendor', 'demand', 'story', 'task', 'ddr', 'updated'];
+$allowedSorts = ['id', 'project', 'vendor', 'owner', 'demand', 'story', 'task', 'ddr', 'updated'];
 $searchSort = strtolower(trim((string) ($_GET['sort'] ?? 'updated')));
 if (!in_array($searchSort, $allowedSorts, true)) {
     $searchSort = 'updated';
@@ -39,6 +39,7 @@ $searchFilters = [
     'id' => trim((string) ($_GET['f_id'] ?? '')),
     'project' => trim((string) ($_GET['f_project'] ?? '')),
     'vendor' => trim((string) ($_GET['f_vendor'] ?? '')),
+    'owner' => trim((string) ($_GET['f_owner'] ?? '')),
     'demand' => trim((string) ($_GET['f_demand'] ?? '')),
     'story' => trim((string) ($_GET['f_story'] ?? '')),
     'task' => trim((string) ($_GET['f_task'] ?? '')),
@@ -280,7 +281,7 @@ $projectSourcesMeta = static function (array $project): array {
                         type="search"
                         name="q"
                         value="<?= e($searchQuery) ?>"
-                        placeholder="Title, vendor, demand, story, task, DDR…"
+                        placeholder="Title, vendor, owner, demand, story, task, DDR…"
                         aria-label="Search projects"
                     >
                 </div>
@@ -321,6 +322,8 @@ $projectSourcesMeta = static function (array $project): array {
                         $meta = $projectSourcesMeta($project);
                         $sources = $meta['sources'];
                         $presentCount = $meta['present'];
+                        $ownerName = projectOwnerName($project);
+                        $ownerTitle = projectOwnerTitle($project);
                         ?>
                         <article class="project-card project-item">
                             <div class="card-top">
@@ -328,6 +331,10 @@ $projectSourcesMeta = static function (array $project): array {
                                 <?php if ($project['vendor']): ?>
                                     <p class="vendor"><span aria-hidden="true">🏢</span> <?= e((string) $project['vendor']) ?></p>
                                 <?php endif; ?>
+                                <p class="vendor owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>>
+                                    <span aria-hidden="true">👤</span>
+                                    <?= e($ownerName !== '' ? $ownerName : 'Unknown owner') ?>
+                                </p>
                             </div>
                             <div class="chip-row">
                                 <?php foreach (['demand' => 'demand_number', 'story' => 'story_number', 'task' => 'task_number', 'ddr' => 'ddr_number'] as $kind => $col): ?>
@@ -384,6 +391,9 @@ $projectSourcesMeta = static function (array $project): array {
                                     <th scope="col" class="<?= e($sortClass('vendor')) ?>" aria-sort="<?= e($sortAria('vendor')) ?>">
                                         <a class="project-sort-link" href="<?= e($sortHeaderUrl('vendor')) ?>">Vendor</a>
                                     </th>
+                                    <th scope="col" class="<?= e($sortClass('owner')) ?>" aria-sort="<?= e($sortAria('owner')) ?>">
+                                        <a class="project-sort-link" href="<?= e($sortHeaderUrl('owner')) ?>">Owner</a>
+                                    </th>
                                     <th scope="col" class="<?= e($sortClass('demand')) ?>" aria-sort="<?= e($sortAria('demand')) ?>">
                                         <a class="project-sort-link" href="<?= e($sortHeaderUrl('demand')) ?>">Demand</a>
                                     </th>
@@ -405,6 +415,7 @@ $projectSourcesMeta = static function (array $project): array {
                                     <th scope="col"><input type="search" name="f_id" value="<?= e($searchFilters['id']) ?>" placeholder="#" aria-label="Filter by ID"></th>
                                     <th scope="col"><input type="search" name="f_project" value="<?= e($searchFilters['project']) ?>" placeholder="Filter…" aria-label="Filter by project"></th>
                                     <th scope="col"><input type="search" name="f_vendor" value="<?= e($searchFilters['vendor']) ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
+                                    <th scope="col"><input type="search" name="f_owner" value="<?= e($searchFilters['owner']) ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
                                     <th scope="col"><input type="search" name="f_demand" value="<?= e($searchFilters['demand']) ?>" placeholder="Filter…" aria-label="Filter by demand"></th>
                                     <th scope="col"><input type="search" name="f_story" value="<?= e($searchFilters['story']) ?>" placeholder="Filter…" aria-label="Filter by story"></th>
                                     <th scope="col"><input type="search" name="f_task" value="<?= e($searchFilters['task']) ?>" placeholder="Filter…" aria-label="Filter by task"></th>
@@ -417,6 +428,7 @@ $projectSourcesMeta = static function (array $project): array {
                                                 'f_id' => null,
                                                 'f_project' => null,
                                                 'f_vendor' => null,
+                                                'f_owner' => null,
                                                 'f_demand' => null,
                                                 'f_story' => null,
                                                 'f_task' => null,
@@ -431,16 +443,21 @@ $projectSourcesMeta = static function (array $project): array {
                             <tbody>
                                 <?php if ($projects === []): ?>
                                     <tr class="project-table-empty">
-                                        <td colspan="9">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
+                                        <td colspan="10">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
                                     </tr>
                                 <?php endif; ?>
                                 <?php foreach ($projects as $project): ?>
+                                    <?php
+                                    $ownerName = projectOwnerName($project);
+                                    $ownerTitle = projectOwnerTitle($project);
+                                    ?>
                                     <tr>
                                         <td class="project-table-id">#<?= (int) $project['id'] ?></td>
                                         <td class="project-table-name">
                                             <a href="project.php?id=<?= (int) $project['id'] ?>"><?= e((string) $project['title']) ?></a>
                                         </td>
                                         <td><?= e((string) (($project['vendor'] ?? '') !== '' ? $project['vendor'] : '—')) ?></td>
+                                        <td class="project-table-owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></td>
                                         <td class="project-table-ticket"><?= e((string) (($project['demand_number'] ?? '') !== '' ? $project['demand_number'] : '—')) ?></td>
                                         <td class="project-table-ticket"><?= e((string) (($project['story_number'] ?? '') !== '' ? $project['story_number'] : '—')) ?></td>
                                         <td class="project-table-ticket"><?= e((string) (($project['task_number'] ?? '') !== '' ? $project['task_number'] : '—')) ?></td>

@@ -125,10 +125,19 @@ function initSchema(PDO $pdo): void
             ddr_state TEXT,
             sources_json TEXT NOT NULL DEFAULT "{}",
             parsed_json TEXT NOT NULL DEFAULT "{}",
+            owner_user_id INTEGER,
+            owner_username TEXT NOT NULL DEFAULT \'\',
+            owner_display_name TEXT NOT NULL DEFAULT \'\',
+            owner_auth_source TEXT NOT NULL DEFAULT \'\',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )'
     );
+
+    ensureTicketDossierColumn($pdo, 'projects', 'owner_user_id', 'INTEGER');
+    ensureTicketDossierColumn($pdo, 'projects', 'owner_username', "TEXT NOT NULL DEFAULT ''");
+    ensureTicketDossierColumn($pdo, 'projects', 'owner_display_name', "TEXT NOT NULL DEFAULT ''");
+    ensureTicketDossierColumn($pdo, 'projects', 'owner_auth_source', "TEXT NOT NULL DEFAULT ''");
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS project_files (
@@ -147,4 +156,28 @@ function initSchema(PDO $pdo): void
         'CREATE INDEX IF NOT EXISTS idx_project_files_project
          ON project_files(project_id)'
     );
+}
+
+function ensureTicketDossierColumn(PDO $pdo, string $table, string $column, string $definition): void
+{
+    $allowedTables = ['projects' => true];
+    $allowedColumns = [
+        'owner_user_id' => true,
+        'owner_username' => true,
+        'owner_display_name' => true,
+        'owner_auth_source' => true,
+    ];
+    if (!isset($allowedTables[$table], $allowedColumns[$column])) {
+        return;
+    }
+
+    $statement = $pdo->query('PRAGMA table_info(' . $table . ')');
+    $columns = $statement === false ? [] : $statement->fetchAll();
+    foreach ($columns as $info) {
+        if (($info['name'] ?? '') === $column) {
+            return;
+        }
+    }
+
+    $pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
 }

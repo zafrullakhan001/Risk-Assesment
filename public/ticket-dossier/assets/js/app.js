@@ -557,4 +557,22 @@
             searchObserver.observe(searchSentinel);
         }
     }
+
+    var editDetails = document.getElementById('edit-details');
+    if (editDetails) {
+        if (window.location.hash === '#edit-details') {
+            editDetails.open = true;
+        }
+        var ownerSelect = document.getElementById('owner-user-id');
+        var ownerNameInput = document.getElementById('owner-name');
+        if (ownerSelect && ownerNameInput) {
+            ownerSelect.addEventListener('change', function () {
+                var option = ownerSelect.options[ownerSelect.selectedIndex];
+                var name = option ? (option.getAttribute('data-display-name') || '') : '';
+                if (name !== '') {
+                    ownerNameInput.value = name;
+                }
+            });
+        }
+    }
 })();

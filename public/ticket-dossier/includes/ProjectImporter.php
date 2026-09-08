@@ -7,7 +7,7 @@ final class ProjectImporter
      * Auto-import sample files once on a fresh install.
      * Never re-seeds after the user deletes all projects (that looked like delete failing).
      */
-    public static function seedSampleIfEmpty(): void
+    public static function seedSampleIfEmpty(?array $currentUser = null): void
     {
         $flagPath = TD_DATABASE_DIR . '/.td_sample_seeded';
         if (is_file($flagPath)) {
@@ -56,7 +56,7 @@ final class ProjectImporter
 
         try {
             if ($files !== []) {
-                self::import($files, null);
+                self::import($files, null, $currentUser);
             }
         } catch (Throwable $e) {
             // Seeding must never break the app.
@@ -69,9 +69,10 @@ final class ProjectImporter
 
     /**
      * @param list<array{tmp_name: string, name: string, size?: int, error?: int, is_local?: bool, forced_kind?: string}> $uploads
+     * @param array<string, mixed>|null $ownerUser Signed-in user who created the dossier
      * @return array{project_id: int, warnings: list<string>}
      */
-    public static function import(array $uploads, ?string $optionalTitle): array
+    public static function import(array $uploads, ?string $optionalTitle, ?array $ownerUser = null): array
     {
         if ($uploads === []) {
             throw new InvalidArgumentException('Please upload at least one ServiceNow file (DDR JSON, demand, story, or task PDF).');
@@ -200,6 +201,7 @@ final class ProjectImporter
             'business_case' => $meta['_overview_business_case'],
         ];
 
+        $owner = projectOwnerFromUser($ownerUser);
         $projectId = ProjectRepository::create([
             'title' => $meta['title'],
             'vendor' => $meta['vendor'],
@@ -213,6 +215,10 @@ final class ProjectImporter
             'ddr_state' => $meta['ddr_state'],
             'sources' => $sources,
             'parsed' => $parsed,
+            'owner_user_id' => $owner['owner_user_id'],
+            'owner_username' => $owner['owner_username'],
+            'owner_display_name' => $owner['owner_display_name'],
+            'owner_auth_source' => $owner['owner_auth_source'],
         ], []);
 
         $storageDir = TD_STORAGE_DIR . '/' . $projectId;

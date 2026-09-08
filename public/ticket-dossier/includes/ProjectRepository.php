@@ -99,6 +99,8 @@ final class ProjectRepository
                 'IFNULL(ddr_state, \'\') LIKE :q',
                 'IFNULL(updated_at, \'\') LIKE :q',
                 'IFNULL(created_at, \'\') LIKE :q',
+                'IFNULL(owner_username, \'\') LIKE :q',
+                'IFNULL(owner_display_name, \'\') LIKE :q',
             ];
             $params[':q'] = $like;
 
@@ -118,6 +120,7 @@ final class ProjectRepository
             'story' => 'IFNULL(story_number, \'\') LIKE :f_story',
             'task' => 'IFNULL(task_number, \'\') LIKE :f_task',
             'ddr' => 'IFNULL(ddr_number, \'\') LIKE :f_ddr',
+            'owner' => "(IFNULL(owner_display_name, '') LIKE :f_owner OR IFNULL(owner_username, '') LIKE :f_owner)",
             'updated' => 'IFNULL(updated_at, \'\') LIKE :f_updated',
         ];
 
@@ -149,6 +152,7 @@ final class ProjectRepository
             'story' => 'LOWER(IFNULL(story_number, \'\'))',
             'task' => 'LOWER(IFNULL(task_number, \'\'))',
             'ddr' => 'LOWER(IFNULL(ddr_number, \'\'))',
+            'owner' => "LOWER(COALESCE(NULLIF(owner_display_name, ''), NULLIF(owner_username, ''), ''))",
             'updated' => 'datetime(updated_at)',
         ];
 
@@ -212,7 +216,11 @@ final class ProjectRepository
      *   task_state: string,
      *   ddr_state: string,
      *   sources: array<string, bool>,
-     *   parsed: array<string, mixed>
+     *   parsed: array<string, mixed>,
+     *   owner_user_id?: int|null,
+     *   owner_username?: string,
+     *   owner_display_name?: string,
+     *   owner_auth_source?: string
      * } $data
      * @param list<array{kind: string, original_name: string, stored_name: string, size_bytes: int}> $files
      */
@@ -228,14 +236,20 @@ final class ProjectRepository
                     title, vendor,
                     demand_number, story_number, task_number, ddr_number,
                     demand_state, story_state, task_state, ddr_state,
-                    sources_json, parsed_json, created_at, updated_at
+                    sources_json, parsed_json,
+                    owner_user_id, owner_username, owner_display_name, owner_auth_source,
+                    created_at, updated_at
                 ) VALUES (
                     :title, :vendor,
                     :demand_number, :story_number, :task_number, :ddr_number,
                     :demand_state, :story_state, :task_state, :ddr_state,
-                    :sources_json, :parsed_json, :created_at, :updated_at
+                    :sources_json, :parsed_json,
+                    :owner_user_id, :owner_username, :owner_display_name, :owner_auth_source,
+                    :created_at, :updated_at
                 )'
             );
+
+            $ownerUserId = (int) ($data['owner_user_id'] ?? 0);
 
             $stmt->execute([
                 ':title' => $data['title'],
@@ -250,6 +264,10 @@ final class ProjectRepository
                 ':ddr_state' => $data['ddr_state'],
                 ':sources_json' => json_encode($data['sources'], JSON_UNESCAPED_UNICODE) ?: '{}',
                 ':parsed_json' => json_encode($data['parsed'], JSON_UNESCAPED_UNICODE) ?: '{}',
+                ':owner_user_id' => $ownerUserId > 0 ? $ownerUserId : null,
+                ':owner_username' => (string) ($data['owner_username'] ?? ''),
+                ':owner_display_name' => (string) ($data['owner_display_name'] ?? ''),
+                ':owner_auth_source' => (string) ($data['owner_auth_source'] ?? ''),
                 ':created_at' => $now,
                 ':updated_at' => $now,
             ]);
@@ -399,6 +417,93 @@ final class ProjectRepository
             $file['stored_name'],
             $file['size_bytes'],
             nowUtc(),
+        ]);
+    }
+
+    /**
+     * Update title, vendor, and owner without replacing source files.
+     *
+     * @param array{
+     *   title: string,
+     *   vendor?: string,
+     *   owner_user_id?: int|null,
+     *   owner_username?: string,
+     *   owner_display_name?: string,
+     *   owner_auth_source?: string
+     * } $details
+     */
+    public static function updateDetails(int $id, array $details): void
+    {
+        if ($id <= 0) {
+            throw new InvalidArgumentException('Invalid project.');
+        }
+
+        $project = self::find($id);
+        if ($project === null) {
+            throw new InvalidArgumentException('Project not found.');
+        }
+
+        $title = trim((string) ($details['title'] ?? ''));
+        if ($title === '') {
+            throw new InvalidArgumentException('Project name is required.');
+        }
+        if (strlen($title) > 200) {
+            $title = substr($title, 0, 200);
+        }
+
+        $vendor = array_key_exists('vendor', $details)
+            ? trim((string) $details['vendor'])
+            : (string) ($project['vendor'] ?? '');
+        if (strlen($vendor) > 200) {
+            $vendor = substr($vendor, 0, 200);
+        }
+
+        $ownerUserId = array_key_exists('owner_user_id', $details)
+            ? (int) ($details['owner_user_id'] ?? 0)
+            : (int) ($project['owner_user_id'] ?? 0);
+        $ownerUsername = array_key_exists('owner_username', $details)
+            ? (string) $details['owner_username']
+            : (string) ($project['owner_username'] ?? '');
+        $ownerDisplayName = array_key_exists('owner_display_name', $details)
+            ? (string) $details['owner_display_name']
+            : (string) ($project['owner_display_name'] ?? '');
+        $ownerAuthSource = array_key_exists('owner_auth_source', $details)
+            ? (string) $details['owner_auth_source']
+            : (string) ($project['owner_auth_source'] ?? '');
+
+        $parsed = json_decode((string) ($project['parsed_json'] ?? ''), true);
+        if (!is_array($parsed)) {
+            $parsed = [];
+        }
+        if (!isset($parsed['overview']) || !is_array($parsed['overview'])) {
+            $parsed['overview'] = [];
+        }
+        $parsed['overview']['title'] = $title;
+        $parsed['overview']['vendor'] = $vendor;
+
+        $stmt = getDb()->prepare(
+            'UPDATE projects SET
+                title = :title,
+                vendor = :vendor,
+                owner_user_id = :owner_user_id,
+                owner_username = :owner_username,
+                owner_display_name = :owner_display_name,
+                owner_auth_source = :owner_auth_source,
+                parsed_json = :parsed_json,
+                updated_at = :updated_at
+             WHERE id = :id'
+        );
+
+        $stmt->execute([
+            ':title' => $title,
+            ':vendor' => $vendor,
+            ':owner_user_id' => $ownerUserId > 0 ? $ownerUserId : null,
+            ':owner_username' => $ownerUsername,
+            ':owner_display_name' => $ownerDisplayName,
+            ':owner_auth_source' => $ownerAuthSource,
+            ':parsed_json' => json_encode($parsed, JSON_UNESCAPED_UNICODE) ?: '{}',
+            ':updated_at' => nowUtc(),
+            ':id' => $id,
         ]);
     }
 

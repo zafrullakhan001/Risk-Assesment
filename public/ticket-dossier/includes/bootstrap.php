@@ -34,4 +34,4 @@ if (!is_dir(TD_STORAGE_DIR)) {
 getDb();
 
 // Seed the sample LogTag packet on first empty database.
-ProjectImporter::seedSampleIfEmpty();
+ProjectImporter::seedSampleIfEmpty(is_array($currentUser) ? $currentUser : null);

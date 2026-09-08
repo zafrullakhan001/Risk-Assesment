@@ -294,10 +294,11 @@ HTML,
                     'id' => 'dossier-list',
                     'title' => 'Find dossier projects',
                     'html' => <<<'HTML'
-<p>The <a href="ticket-dossier/#find-projects">Projects</a> list on Ticket Dossier searches title, vendor, demand, story, task, and DDR numbers. Leave the box blank to browse everything.</p>
+<p>The <a href="ticket-dossier/#find-projects">Projects</a> list on Ticket Dossier searches title, vendor, owner, demand, story, task, and DDR numbers. Leave the box blank to browse everything.</p>
 <ul>
 <li>Switch <strong>Cards</strong>, <strong>Table</strong>, or <strong>Strip</strong>. The choice is stored in this browser.</li>
-<li>Use <strong>Show filters</strong> to narrow ID, project, vendor, ticket numbers, or updated date. Sort from the table headers.</li>
+<li>Use <strong>Show filters</strong> to narrow ID, project, vendor, owner, ticket numbers, or updated date. Sort from the table headers.</li>
+<li>The <strong>Owner</strong> column is the signed-in user who created the dossier. You can change the name or linked account from <strong>Edit details</strong> on the dossier.</li>
 <li>Change rows per page (10, 25, 50, or 100). Source pills show which of the four files are present (for example 3/4 sources).</li>
 <li>Open a row to read the dossier. Incomplete rows also have <strong>Complete</strong>. <strong>Delete</strong> removes that dossier and its stored files (it does not change ServiceNow or the assessment register).</li>
 </ul>
@@ -309,7 +310,7 @@ HTML,
                     'html' => <<<'HTML'
 <p>An open dossier shows a Demand → Story → Task → DDR ribbon (present or not uploaded), then only the chapters that have data:</p>
 <ul>
-<li><strong>Overview</strong> — description, business case (from demand), vendor, and ticket numbers / states.</li>
+<li><strong>Overview</strong> — owner (who created the dossier), description, business case (from demand), vendor, and ticket numbers / states. Use <strong>Edit details</strong> to change the project name, vendor, or owner if something was missed.</li>
 <li><strong>Demand / Story / Task</strong> — parsed fields, related records, and long text such as description or business case.</li>
 <li><strong>Due Diligence</strong> — DDR fields from the JSON export.</li>
 <li><strong>Vendor</strong> — third-party fields when the DDR includes them.</li>
