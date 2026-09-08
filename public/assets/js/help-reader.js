@@ -72,17 +72,73 @@
         }
         fontMenu.hidden = true;
         fontTrigger.setAttribute('aria-expanded', 'false');
+        if (fontPicker) {
+            fontPicker.classList.remove('is-open');
+            if (fontMenu.parentElement !== fontPicker) {
+                fontPicker.appendChild(fontMenu);
+            }
+        }
+        toolbar.classList.remove('is-font-menu-open');
+        fontMenu.style.position = '';
+        fontMenu.style.top = '';
+        fontMenu.style.left = '';
+        fontMenu.style.right = '';
+        fontMenu.style.bottom = '';
+        fontMenu.style.width = '';
+        fontMenu.style.maxHeight = '';
+        fontMenu.style.zIndex = '';
+    };
+
+    const positionFontMenu = () => {
+        if (!fontMenu || !fontTrigger || fontMenu.hidden) {
+            return;
+        }
+        const rect = fontTrigger.getBoundingClientRect();
+        const gutter = 8;
+        const width = Math.max(rect.width, 256);
+        const left = Math.min(
+            Math.max(gutter, rect.left),
+            Math.max(gutter, window.innerWidth - width - gutter)
+        );
+        const spaceBelow = window.innerHeight - rect.bottom - gutter;
+        const spaceAbove = rect.top - gutter;
+        const maxPanel = Math.min(window.innerHeight * 0.72, 28 * 16);
+        const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+        const maxHeight = Math.max(160, Math.min(maxPanel, openUp ? spaceAbove : spaceBelow));
+
+        fontMenu.style.position = 'fixed';
+        fontMenu.style.left = `${Math.round(left)}px`;
+        fontMenu.style.width = `${Math.round(width)}px`;
+        fontMenu.style.zIndex = '80';
+        fontMenu.style.right = 'auto';
+        if (openUp) {
+            fontMenu.style.top = 'auto';
+            fontMenu.style.bottom = `${Math.round(window.innerHeight - rect.top + 4)}px`;
+        } else {
+            fontMenu.style.bottom = 'auto';
+            fontMenu.style.top = `${Math.round(rect.bottom + 4)}px`;
+        }
+        fontMenu.style.maxHeight = `${Math.round(maxHeight)}px`;
     };
 
     const openFontMenu = () => {
         if (!fontMenu || !fontTrigger) {
             return;
         }
+        document.body.appendChild(fontMenu);
         fontMenu.hidden = false;
         fontTrigger.setAttribute('aria-expanded', 'true');
+        if (fontPicker) {
+            fontPicker.classList.add('is-open');
+        }
+        toolbar.classList.add('is-font-menu-open');
+        positionFontMenu();
         const selected = fontMenu.querySelector('[aria-selected="true"]');
         if (selected && typeof selected.focus === 'function') {
             selected.focus();
+            try {
+                selected.scrollIntoView({ block: 'nearest' });
+            } catch (e) { /* ignore */ }
         }
     };
 
@@ -174,9 +230,15 @@
             if (!fontPicker || fontMenu.hidden) {
                 return;
             }
-            if (!fontPicker.contains(event.target)) {
-                closeFontMenu();
+            const target = event.target;
+            if (
+                !(target instanceof Node)
+                || fontPicker.contains(target)
+                || fontMenu.contains(target)
+            ) {
+                return;
             }
+            closeFontMenu();
         });
 
         document.addEventListener('keydown', (event) => {
@@ -184,6 +246,9 @@
                 closeFontMenu();
             }
         });
+
+        window.addEventListener('resize', positionFontMenu);
+        window.addEventListener('scroll', positionFontMenu, true);
     } else if (fontSelect) {
         fontSelect.addEventListener('change', () => {
             applyFont(fontSelect.value || 'app');

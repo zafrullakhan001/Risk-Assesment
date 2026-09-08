@@ -18306,6 +18306,10 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
 }
 .help-font-picker {
     position: relative;
+    z-index: 1;
+}
+.help-font-picker.is-open {
+    z-index: 8;
 }
 .help-font-select-native {
     position: absolute;
@@ -18335,12 +18339,13 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
 }
 .help-font-picker-menu {
     position: absolute;
-    z-index: 40;
+    z-index: 80;
     top: calc(100% + 4px);
     left: 0;
     min-width: max(100%, 16rem);
-    max-height: min(22rem, 60vh);
+    max-height: min(28rem, 72vh);
     overflow: auto;
+    overscroll-behavior: contain;
     padding: 0.35rem;
     border-radius: var(--radius-sm, 8px);
     border: 1px solid var(--line-strong, #b7c4d2);
@@ -18584,6 +18589,7 @@ html[data-help-font="impact"] .help-article-body,
     gap: 0.85rem;
     min-width: 0;
     width: 100%;
+    overflow: visible;
 }
 .help-reader-toolbar,
 .help-detail > .help-article {
@@ -18591,7 +18597,11 @@ html[data-help-font="impact"] .help-article-body,
     max-width: none;
     box-sizing: border-box;
 }
-.help-reader-toolbar {
+.help-reader-toolbar,
+.help-reader-toolbar.upload-card {
+    overflow: visible;
+    position: relative;
+    z-index: 6;
     padding: 0.75rem 1rem;
     display: grid;
     gap: 0;
@@ -18600,6 +18610,9 @@ html[data-help-font="impact"] .help-article-body,
         linear-gradient(135deg,
             color-mix(in srgb, var(--primary, #0e7490) 8%, var(--card, #fff)),
             var(--card, #fff) 55%);
+}
+.help-reader-toolbar.is-font-menu-open {
+    z-index: 20;
 }
 .help-reader-row {
     display: flex;
