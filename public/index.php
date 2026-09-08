@@ -1698,7 +1698,7 @@ $renderProjectDelete = static function (array $project) use ($currentUserId, $vi
         return;
     }
     ?>
-    <form method="post" class="inline-form project-delete-form" onsubmit="return confirm('Delete this saved version permanently?');">
+    <form method="post" action="index.php" class="inline-form project-delete-form" onsubmit="return confirm('Delete this saved version permanently?');">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string) $_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
         <input type="hidden" name="action" value="delete_assessment">
         <input type="hidden" name="assessment_id" value="<?= (int) $project['id'] ?>">
@@ -1882,7 +1882,8 @@ $renderProjectLockBadge = static function (array $project): void {
                         <?php endforeach; ?>
                     </div>
                     <div class="project-table-wrap table-scroll" id="project-table-wrap">
-                        <form method="get" class="project-table-filter-form" action="index.php#find-projects">
+                        <?php /* Filter form must not wrap delete forms — nested <form> is invalid and browsers POST as a GET reload. */ ?>
+                        <form method="get" class="project-table-filter-form" id="project-table-filter-form" action="index.php#find-projects">
                             <?php if ($searchQuery !== ''): ?>
                                 <input type="hidden" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
                             <?php endif; ?>
@@ -1891,105 +1892,105 @@ $renderProjectLockBadge = static function (array $project): void {
                             <?php endif; ?>
                             <input type="hidden" name="sort" value="<?= htmlspecialchars($searchSort, ENT_QUOTES, 'UTF-8') ?>">
                             <input type="hidden" name="dir" value="<?= htmlspecialchars($searchDir, ENT_QUOTES, 'UTF-8') ?>">
-                            <table class="project-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('id'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('id'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('id'), ENT_QUOTES, 'UTF-8') ?>">ID</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('project'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('project'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('project'), ENT_QUOTES, 'UTF-8') ?>">Project</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('vendor'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('vendor'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('vendor'), ENT_QUOTES, 'UTF-8') ?>">Vendor</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('template'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('template'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('template'), ENT_QUOTES, 'UTF-8') ?>">Template</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('owner'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('owner'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('owner'), ENT_QUOTES, 'UTF-8') ?>">Owner</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('status'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('status'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('status'), ENT_QUOTES, 'UTF-8') ?>">Status</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('assessed'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('assessed'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('assessed'), ENT_QUOTES, 'UTF-8') ?>">Assessed</a>
-                                        </th>
-                                        <th scope="col" class="<?= htmlspecialchars($sortClass('uploaded'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('uploaded'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('uploaded'), ENT_QUOTES, 'UTF-8') ?>">Uploaded</a>
-                                        </th>
-                                        <th scope="col"><span class="visually-hidden">Actions</span></th>
-                                    </tr>
-                                    <tr class="project-table-filters<?= $activeFilters === [] ? ' is-collapsed' : '' ?>" id="project-table-filters"<?= $activeFilters === [] ? ' hidden' : '' ?>>
-                                        <th scope="col"><input type="search" name="f_id" value="<?= htmlspecialchars($searchFilters['id'], ENT_QUOTES, 'UTF-8') ?>" placeholder="#" aria-label="Filter by ID"></th>
-                                        <th scope="col"><input type="search" name="f_project" value="<?= htmlspecialchars($searchFilters['project'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by project"></th>
-                                        <th scope="col"><input type="search" name="f_vendor" value="<?= htmlspecialchars($searchFilters['vendor'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
-                                        <th scope="col"><input type="search" name="f_template" value="<?= htmlspecialchars($searchFilters['template'], ENT_QUOTES, 'UTF-8') ?>" placeholder="adaptive / matured" aria-label="Filter by template"></th>
-                                        <th scope="col"><input type="search" name="f_owner" value="<?= htmlspecialchars($searchFilters['owner'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
-                                        <th scope="col"><input type="search" name="f_status" value="<?= htmlspecialchars($searchFilters['status'], ENT_QUOTES, 'UTF-8') ?>" placeholder="ready / no final" aria-label="Filter by status"></th>
-                                        <th scope="col"><input type="search" name="f_assessed" value="<?= htmlspecialchars($searchFilters['assessed'], ENT_QUOTES, 'UTF-8') ?>" placeholder="YYYY-MM-DD" aria-label="Filter by assessed date"></th>
-                                        <th scope="col"><input type="search" name="f_uploaded" value="<?= htmlspecialchars($searchFilters['uploaded'], ENT_QUOTES, 'UTF-8') ?>" placeholder="YYYY-MM-DD" aria-label="Filter by uploaded date"></th>
-                                        <th scope="col" class="project-table-filter-actions">
-                                            <button type="submit" class="button ghost project-filter-apply">Filter</button>
-                                            <?php if ($activeFilters !== []): ?>
-                                                <a class="button ghost project-filter-clear" href="<?= htmlspecialchars($projectListUrl([
-                                                    'f_project' => null,
-                                                    'f_vendor' => null,
-                                                    'f_id' => null,
-                                                    'f_template' => null,
-                                                    'f_owner' => null,
-                                                    'f_status' => null,
-                                                    'f_assessed' => null,
-                                                    'f_uploaded' => null,
-                                                    'page' => 1,
-                                                ]), ENT_QUOTES, 'UTF-8') ?>">Clear</a>
-                                            <?php endif; ?>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($searchResults === []): ?>
-                                        <tr class="project-table-empty">
-                                            <td colspan="9">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
-                                        </tr>
-                                    <?php endif; ?>
-                                    <?php foreach ($searchResults as $project): ?>
-                                        <?php
-                                        $goliveStatus = AssessmentRepository::goliveCardStatus($project);
-                                        $templateStatus = AssessmentRepository::templateCardStatus($project);
-                                        $ownerStatus = AssessmentRepository::ownerCardStatus($project);
-                                        $assessedLabel = AssessmentDate::display((string) ($project['assessment_date'] ?? ''));
-                                        ?>
-                                        <tr class="is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
-                                            <td class="project-table-id">#<?= (int) $project['id'] ?></td>
-                                            <td class="project-table-name">
-                                                <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
-                                                    <?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?>
-                                                </a>
-                                                <?php $renderProjectLockBadge($project); ?>
-                                            </td>
-                                            <td><?= htmlspecialchars((string) ($project['vendor'] !== '' ? $project['vendor'] : '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td>
-                                                <em class="project-template is-<?= htmlspecialchars($templateStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($templateStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
-                                                    <?= htmlspecialchars($templateStatus['label'], ENT_QUOTES, 'UTF-8') ?>
-                                                </em>
-                                            </td>
-                                            <td class="project-table-owner" title="<?= htmlspecialchars($ownerStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
-                                                <?= htmlspecialchars($ownerStatus['label'], ENT_QUOTES, 'UTF-8') ?>
-                                            </td>
-                                            <td>
-                                                <em class="project-status is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($goliveStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
-                                                    <?= htmlspecialchars($goliveStatus['label'], ENT_QUOTES, 'UTF-8') ?>
-                                                </em>
-                                            </td>
-                                            <td class="project-table-date"><?= htmlspecialchars($assessedLabel, ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td class="project-table-date"><?= htmlspecialchars((string) $project['uploaded_at'], ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td class="project-table-actions"><?php $renderProjectDelete($project); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
                         </form>
+                        <table class="project-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('id'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('id'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('id'), ENT_QUOTES, 'UTF-8') ?>">ID</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('project'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('project'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('project'), ENT_QUOTES, 'UTF-8') ?>">Project</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('vendor'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('vendor'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('vendor'), ENT_QUOTES, 'UTF-8') ?>">Vendor</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('template'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('template'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('template'), ENT_QUOTES, 'UTF-8') ?>">Template</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('owner'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('owner'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('owner'), ENT_QUOTES, 'UTF-8') ?>">Owner</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('status'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('status'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('status'), ENT_QUOTES, 'UTF-8') ?>">Status</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('assessed'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('assessed'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('assessed'), ENT_QUOTES, 'UTF-8') ?>">Assessed</a>
+                                    </th>
+                                    <th scope="col" class="<?= htmlspecialchars($sortClass('uploaded'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('uploaded'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('uploaded'), ENT_QUOTES, 'UTF-8') ?>">Uploaded</a>
+                                    </th>
+                                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                                </tr>
+                                <tr class="project-table-filters<?= $activeFilters === [] ? ' is-collapsed' : '' ?>" id="project-table-filters"<?= $activeFilters === [] ? ' hidden' : '' ?>>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_id" value="<?= htmlspecialchars($searchFilters['id'], ENT_QUOTES, 'UTF-8') ?>" placeholder="#" aria-label="Filter by ID"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_project" value="<?= htmlspecialchars($searchFilters['project'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by project"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_vendor" value="<?= htmlspecialchars($searchFilters['vendor'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_template" value="<?= htmlspecialchars($searchFilters['template'], ENT_QUOTES, 'UTF-8') ?>" placeholder="adaptive / matured" aria-label="Filter by template"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_owner" value="<?= htmlspecialchars($searchFilters['owner'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_status" value="<?= htmlspecialchars($searchFilters['status'], ENT_QUOTES, 'UTF-8') ?>" placeholder="ready / no final" aria-label="Filter by status"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_assessed" value="<?= htmlspecialchars($searchFilters['assessed'], ENT_QUOTES, 'UTF-8') ?>" placeholder="YYYY-MM-DD" aria-label="Filter by assessed date"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_uploaded" value="<?= htmlspecialchars($searchFilters['uploaded'], ENT_QUOTES, 'UTF-8') ?>" placeholder="YYYY-MM-DD" aria-label="Filter by uploaded date"></th>
+                                    <th scope="col" class="project-table-filter-actions">
+                                        <button type="submit" form="project-table-filter-form" class="button ghost project-filter-apply">Filter</button>
+                                        <?php if ($activeFilters !== []): ?>
+                                            <a class="button ghost project-filter-clear" href="<?= htmlspecialchars($projectListUrl([
+                                                'f_project' => null,
+                                                'f_vendor' => null,
+                                                'f_id' => null,
+                                                'f_template' => null,
+                                                'f_owner' => null,
+                                                'f_status' => null,
+                                                'f_assessed' => null,
+                                                'f_uploaded' => null,
+                                                'page' => 1,
+                                            ]), ENT_QUOTES, 'UTF-8') ?>">Clear</a>
+                                        <?php endif; ?>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if ($searchResults === []): ?>
+                                    <tr class="project-table-empty">
+                                        <td colspan="9">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
+                                    </tr>
+                                <?php endif; ?>
+                                <?php foreach ($searchResults as $project): ?>
+                                    <?php
+                                    $goliveStatus = AssessmentRepository::goliveCardStatus($project);
+                                    $templateStatus = AssessmentRepository::templateCardStatus($project);
+                                    $ownerStatus = AssessmentRepository::ownerCardStatus($project);
+                                    $assessedLabel = AssessmentDate::display((string) ($project['assessment_date'] ?? ''));
+                                    ?>
+                                    <tr class="is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <td class="project-table-id">#<?= (int) $project['id'] ?></td>
+                                        <td class="project-table-name">
+                                            <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">
+                                                <?= htmlspecialchars((string) $project['solution_name'], ENT_QUOTES, 'UTF-8') ?>
+                                            </a>
+                                            <?php $renderProjectLockBadge($project); ?>
+                                        </td>
+                                        <td><?= htmlspecialchars((string) ($project['vendor'] !== '' ? $project['vendor'] : '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td>
+                                            <em class="project-template is-<?= htmlspecialchars($templateStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($templateStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= htmlspecialchars($templateStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                            </em>
+                                        </td>
+                                        <td class="project-table-owner" title="<?= htmlspecialchars($ownerStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= htmlspecialchars($ownerStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td>
+                                            <em class="project-status is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($goliveStatus['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= htmlspecialchars($goliveStatus['label'], ENT_QUOTES, 'UTF-8') ?>
+                                            </em>
+                                        </td>
+                                        <td class="project-table-date"><?= htmlspecialchars($assessedLabel, ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="project-table-date"><?= htmlspecialchars((string) $project['uploaded_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="project-table-actions"><?php $renderProjectDelete($project); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                     <?php if ($searchTotal > 0): ?>
                     <nav class="pagination" aria-label="Project list pages">
