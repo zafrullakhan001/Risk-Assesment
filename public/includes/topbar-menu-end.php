@@ -18,8 +18,8 @@ $topbarMenuJs = $topbarMenuJs ?? (dirname(__DIR__) . '/assets/js/topbar-menu.js'
             <div class="topbar-menu-section topbar-menu-toolbar">
                 <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🧰</span> Toolbar</p>
                 <div class="topbar-menu-mode-toggle theme-controls" role="group" aria-label="Header layout">
-                    <button type="button" class="theme-btn topbar-nav-mode-btn" data-nav-set="menu" aria-pressed="false">☰ Compact menu</button>
-                    <button type="button" class="theme-btn topbar-nav-mode-btn" data-nav-set="bar" aria-pressed="false">▦ Show all buttons</button>
+                    <button type="button" class="theme-btn topbar-nav-mode-btn" data-nav-set="menu" aria-pressed="false" title="Collapse header links into this compact dropdown menu">☰ Compact menu</button>
+                    <button type="button" class="theme-btn topbar-nav-mode-btn" data-nav-set="bar" aria-pressed="false" title="Show every header control as separate buttons again">▦ Show all buttons</button>
                 </div>
             </div>
         </div>

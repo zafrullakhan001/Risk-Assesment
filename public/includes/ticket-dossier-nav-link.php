@@ -16,6 +16,6 @@ $ticketDossierNavUrl = $ticketDossierNavUrl ?? ($ticketDossierNavPrefix . 'ticke
     data-menu-tone="butter"
     data-menu-group="ticket"
     href="<?= e($ticketDossierNavUrl) ?>"
-    title="ServiceNow ticket dossier viewer"
+    title="Open Ticket Dossier to build and read ServiceNow Demand, Story, Task, and DDR packets"
     <?= $ticketDossierSolo ? ' aria-current="page"' : '' ?>
 ><span class="topbar-menu-emoji" aria-hidden="true">🎫</span>Ticket Dossier</a>

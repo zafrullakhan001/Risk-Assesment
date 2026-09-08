@@ -19,7 +19,7 @@ $navPrefix = $navAuth->publicPrefix();
                     class="topbar-menu-account-card"
                     data-menu-tone="lilac"
                     href="<?= e($navPrefix) ?>admin/index.php"
-                    title="Users, branding, LDAP, and GitHub updates"
+                    title="Open Admin to manage users, branding, authentication, email, SQLite, and app updates"
                 >
                     <span class="topbar-menu-account-art" aria-hidden="true">
                         <svg viewBox="0 0 48 48" width="36" height="36" focusable="false">
@@ -35,7 +35,7 @@ $navPrefix = $navAuth->publicPrefix();
             <?php endif; ?>
             <form method="post" action="<?= e($navPrefix) ?>logout.php" class="topbar-menu-account-form">
                 <?= csrf_field() ?>
-                <button type="submit" class="topbar-menu-account-card is-signout" data-menu-tone="coral" title="Sign out of this session">
+                <button type="submit" class="topbar-menu-account-card is-signout" data-menu-tone="coral" title="Sign out and end your session on this device">
                     <span class="topbar-menu-account-art" aria-hidden="true">
                         <svg viewBox="0 0 48 48" width="36" height="36" focusable="false">
                             <rect x="4" y="4" width="40" height="40" rx="14" fill="currentColor" opacity="0.14"/>
@@ -57,7 +57,7 @@ $navPrefix = $navAuth->publicPrefix();
                 class="topbar-menu-account-card"
                 data-menu-tone="mint"
                 href="<?= e($navPrefix) ?>login.php"
-                title="Sign in"
+                title="Sign in to access risk assessments, SharePoint, catalogs, and Ticket Dossier"
             >
                 <span class="topbar-menu-account-art" aria-hidden="true">
                     <svg viewBox="0 0 48 48" width="36" height="36" focusable="false">

@@ -165,7 +165,7 @@ $ownerLabel = Actor::formatLabel(
             </a>
             <div class="topbar-actions">
                 <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
-                <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+                <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="index.php#find-projects" title="Search and open saved risk assessments by name, vendor, owner, and more"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
             </div>

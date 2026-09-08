@@ -23,7 +23,7 @@ if ($navUser === null) {
         data-menu-tone="rose"
         data-menu-group="help"
         href="<?= e($navPrefix) ?>help.php"
-        title="Help and About"
+        title="Open Help &amp; About for guides on assessments, SharePoint, Ticket Dossier, and admin tools"
         <?= $navOnHelp ? ' aria-current="page"' : '' ?>
     ><span class="topbar-menu-emoji" aria-hidden="true">❓</span>Help &amp; About</a>
 </div>

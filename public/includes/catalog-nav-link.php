@@ -15,6 +15,6 @@ $catalogNavUrl = $catalogNavUrl ?? 'sharepoint.php?view=catalog&source=default&m
     data-menu-tone="aqua"
     data-menu-group="sharepoint"
     href="<?= e($catalogNavUrl) ?>"
-    title="Open catalogs (default source, OR mode, 100 per page)"
+    title="Search architecture project catalogs across SharePoint sources"
     <?= $catalogSolo ? ' aria-current="page"' : '' ?>
 ><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>catalogs</a>
