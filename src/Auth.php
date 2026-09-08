@@ -392,7 +392,9 @@ final class Auth
     {
         $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
 
-        return str_contains($script, '/admin/') ? '../' : '';
+        return (str_contains($script, '/admin/') || str_contains($script, '/ticket-dossier/'))
+            ? '../'
+            : '';
     }
 
     public function safeNext(string $next): string
@@ -405,7 +407,7 @@ final class Auth
             return 'index.php';
         }
         // Use ~ delimiter: the pattern allows "#" in the query/hash part.
-        if (preg_match('~^(?:admin/)?[A-Za-z0-9._-]+\.php(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) !== 1) {
+        if (preg_match('~^(?:admin/|ticket-dossier/)?[A-Za-z0-9._-]+\.php(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) !== 1) {
             return 'index.php';
         }
 
@@ -487,6 +489,7 @@ final class Auth
     {
         $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
         $inAdmin = str_contains($script, '/admin/');
+        $inTicketDossier = str_contains($script, '/ticket-dossier/');
         $file = basename($script);
         // Directory URLs (/RiskRegister/, /public/, /admin/) leave REQUEST_URI without a .php
         // basename; SCRIPT_NAME always names the front controller being executed.
@@ -495,6 +498,8 @@ final class Auth
         }
         if ($inAdmin) {
             $file = 'admin/' . $file;
+        } elseif ($inTicketDossier) {
+            $file = 'ticket-dossier/' . $file;
         }
 
         $query = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY);

@@ -1507,6 +1507,7 @@ $soloPageClass = $ownerSolo
                 <a class="button ghost home-link" href="templates.php">📚 Templates</a>
                 <a class="button ghost home-link<?= !$panelSolo ? ' is-active' : '' ?>" href="sharepoint.php?source=<?= e($activeSourceKey) ?>"<?= !$panelSolo ? ' aria-current="page"' : '' ?>>📁 SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
+                <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
                 <a class="button ghost home-link<?= $ownerSolo ? ' is-active' : '' ?>" href="<?= e($ownerDashUrl) ?>"<?= $ownerSolo ? ' aria-current="page"' : '' ?>>👤 Owners</a>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/theme-controls.php'; ?>

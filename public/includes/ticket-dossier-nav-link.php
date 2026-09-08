@@ -1,0 +1,19 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Ticket Dossier topbar shortcut (relative URL — host/path independent).
+ * Optional: set $ticketDossierSolo = true on dossier pages for active state.
+ * Optional: set $ticketDossierNavPrefix (e.g. '' from public/, unused on dossier pages that link to index).
+ */
+$ticketDossierSolo = $ticketDossierSolo ?? false;
+$ticketDossierNavPrefix = $ticketDossierNavPrefix ?? '';
+$ticketDossierNavUrl = $ticketDossierNavUrl ?? ($ticketDossierNavPrefix . 'ticket-dossier/');
+?>
+<a
+    class="button ghost home-link<?= $ticketDossierSolo ? ' is-active' : '' ?>"
+    href="<?= e($ticketDossierNavUrl) ?>"
+    title="ServiceNow ticket dossier viewer"
+    <?= $ticketDossierSolo ? ' aria-current="page"' : '' ?>
+>🎫 Ticket Dossier</a>

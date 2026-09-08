@@ -3,7 +3,8 @@
     "description": "Architecture Risk Assessment Excel to HTML Dashboard",
     "require": {
         "php": ">=8.0",
-        "phpoffice/phpspreadsheet": "^2.0"
+        "phpoffice/phpspreadsheet": "^2.0",
+        "smalot/pdfparser": "^2.0"
     },
     "autoload": {
         "psr-4": {
