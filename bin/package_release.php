@@ -133,6 +133,15 @@ foreach ($iterator as $file) {
     if ($parts[0] === 'database' && isset($parts[1]) && $parts[1] === 'snapshots' && ($parts[2] ?? '') !== '.gitkeep') {
         continue;
     }
+    // Keep Ticket Dossier runtime DB/files off the release (same idea as uploads/).
+    if ($parts[0] === 'database' && ($parts[1] ?? '') === 'ticket-dossier-storage') {
+        continue;
+    }
+    if ($parts[0] === 'public' && ($parts[1] ?? '') === 'ticket-dossier' && in_array($parts[2] ?? '', ['data', 'storage'], true)) {
+        if (!in_array(basename($relativeUnix), ['.htaccess', '.gitignore', '.gitkeep'], true)) {
+            continue;
+        }
+    }
     if ($parts[0] === 'uploads' && isset($parts[1]) && !in_array($parts[1], ['.gitkeep', '.htaccess'], true) && count($parts) > 1) {
         continue;
     }
