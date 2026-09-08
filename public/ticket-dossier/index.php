@@ -168,8 +168,9 @@ $projectSourcesMeta = static function (array $project): array {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ticket Dossier — Architecture Risk</title>
+    <title>Ticket Dossier · <?= e($branding->documentTitle()) ?></title>
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
+    <?php require dirname(__DIR__) . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/app.css?v=<?= e($cssV) ?>">
@@ -193,10 +194,10 @@ $projectSourcesMeta = static function (array $project): array {
 <body>
 <div class="shell">
     <header class="topbar topbar-uplift">
-        <a class="brand brand-link" href="index.php#find-projects">
-            <?= brandMarkSvg() ?>
+        <a class="brand brand-link" href="../index.php#find-projects">
+            <?php require dirname(__DIR__) . '/includes/brand-mark.php'; ?>
             <div class="brand-text">
-                <div class="brand-title">Architecture Risk</div>
+                <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
                 <h1>Ticket Dossier</h1>
             </div>
         </a>
@@ -510,6 +511,7 @@ $projectSourcesMeta = static function (array $project): array {
             <?php endif; ?>
         </section>
     </main>
+    <?php require dirname(__DIR__) . '/includes/site-footer.php'; ?>
 </div>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/project-list.js?v=<?= e($jsV) ?>"></script>

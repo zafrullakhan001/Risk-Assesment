@@ -1,22 +1,16 @@
 <?php
+
 declare(strict_types=1);
 
 /**
- * Shared chrome matching RiskRegister (Architecture Risk) branding.
+ * Shared layout helpers for Ticket Dossier (brand chrome comes from RiskRegister Branding).
  */
+
+use RiskAssessment\Branding;
 
 function brandMarkSvg(): string
 {
-    return <<<'SVG'
-<span class="brand-mark" aria-hidden="true">
-<svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" role="img">
-  <rect width="56" height="56" rx="12" fill="var(--primary-soft)"/>
-  <rect x="4" y="4" width="48" height="48" rx="10" fill="var(--card)" stroke="var(--primary)" stroke-width="1.5"/>
-  <path d="M18 36V22.5L28 16l10 6.5V36h-7.5V28h-5v8H18z" fill="var(--primary)"/>
-  <circle cx="28" cy="24" r="2.2" fill="var(--hero-accent, #67e8f9)"/>
-</svg>
-</span>
-SVG;
+    return Branding::current()->renderMark();
 }
 
 function cssVersion(): string

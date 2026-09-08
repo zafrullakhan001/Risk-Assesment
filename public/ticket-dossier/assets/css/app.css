@@ -237,10 +237,29 @@ a.brand-link:hover h1 { color: var(--primary); }
     height: var(--brand-mark-size);
     flex-shrink: 0;
 }
-.brand-mark svg {
+.brand-mark svg,
+.brand-mark img {
     width: var(--brand-mark-size);
     height: var(--brand-mark-size);
     display: block;
+}
+.brand-mark-image {
+    overflow: hidden;
+    border-radius: 12px;
+}
+.brand-mark-image img {
+    object-fit: contain;
+}
+
+.site-footer {
+    margin-top: 18px;
+    padding: 12px 4px 4px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+.site-footer p {
+    margin: 0;
 }
 
 .brand-text {

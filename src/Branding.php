@@ -438,7 +438,9 @@ final class Branding
     {
         $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
 
-        return str_contains($script, '/admin/') ? '../' : '';
+        return (str_contains($script, '/admin/') || str_contains($script, '/ticket-dossier/'))
+            ? '../'
+            : '';
     }
 
     private function mimeForExtension(string $extension): string
