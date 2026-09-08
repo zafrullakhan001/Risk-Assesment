@@ -41,8 +41,12 @@ $adminTitle = 'Admin';
 $adminTab = 'home';
 $adminEyebrow = 'Control room';
 $adminHeading = 'Install <em>administration</em>';
-$adminIntro = 'User access, branding, email (SMTP), local/LDAP sign-in, SQLite backups, and GitHub updates live here.';
+$adminIntro = 'User access, which apps are on, branding, email (SMTP), local/LDAP sign-in, SQLite backups, and GitHub updates live here.';
 $smtpEnabled = $settings->get('smtp_enabled', '0') === '1';
+$appModules = \RiskAssessment\AppModules::instance();
+$riskAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::RISK);
+$sharepointAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::SHAREPOINT);
+$ticketAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::TICKET);
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
             <section class="admin-grid">
@@ -52,6 +56,15 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     <?php if ($pending > 0): ?>
                         <strong class="token-needed"><?= (int) $pending ?> pending approval</strong>
                     <?php endif; ?>
+                </a>
+                <a class="upload-card admin-tile" href="apps.php">
+                    <h2>Apps</h2>
+                    <p>Turn Risk Register, SharePoint, and Ticket Dossier on or off for signed-in users.</p>
+                    <div class="auth-source-row">
+                        <span class="auth-badge <?= $riskAppOn ? 'is-local' : 'is-off' ?>">Risk <?= $riskAppOn ? 'on' : 'off' ?></span>
+                        <span class="auth-badge <?= $sharepointAppOn ? 'is-local' : 'is-off' ?>">SharePoint <?= $sharepointAppOn ? 'on' : 'off' ?></span>
+                        <span class="auth-badge <?= $ticketAppOn ? 'is-local' : 'is-off' ?>">Ticket <?= $ticketAppOn ? 'on' : 'off' ?></span>
+                    </div>
                 </a>
                 <a class="upload-card admin-tile" href="authentication.php">
                     <h2>Authentication</h2>

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
 
 /**
@@ -9,10 +10,15 @@ use RiskAssessment\Auth;
  * Uses Auth::publicPrefix() so admin/ and ticket-dossier/ resolve correctly.
  */
 $appNavPrefix = Auth::instance()->publicPrefix();
+$appNavUser = $currentUser ?? Auth::instance()->currentUser();
+$appNavModules = AppModules::instance();
+$canNavRisk = $appNavModules->canAccess(is_array($appNavUser) ? $appNavUser : null, AppModules::RISK);
+$canNavSharePoint = $appNavModules->canAccess(is_array($appNavUser) ? $appNavUser : null, AppModules::SHAREPOINT);
 $catalogNavUrl = $appNavPrefix . 'sharepoint.php?view=catalog&source=default&mode=or&per=100';
 $ownersNavUrl = $appNavPrefix . 'sharepoint.php?view=owners';
 $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
 ?>
+<?php if ($canNavRisk): ?>
 <a
     class="button ghost home-link"
     data-menu-group="risk"
@@ -34,6 +40,8 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     href="<?= e($appNavPrefix) ?>templates.php"
     title="Browse and manage assessment workbook templates"
 ><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
+<?php endif; ?>
+<?php if ($canNavSharePoint): ?>
 <a
     class="button ghost home-link"
     data-menu-group="sharepoint"
@@ -43,4 +51,5 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
 ><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
 <?php require __DIR__ . '/catalog-nav-link.php'; ?>
 <?php require __DIR__ . '/owners-nav-link.php'; ?>
+<?php endif; ?>
 <?php require __DIR__ . '/ticket-dossier-nav-link.php'; ?>

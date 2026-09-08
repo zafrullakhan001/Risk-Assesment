@@ -7,6 +7,8 @@ $adminTab = $adminTab ?? 'home';
 $adminEyebrow = $adminEyebrow ?? 'Administration';
 $adminHeading = $adminHeading ?? $adminTitle;
 $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
+$adminHomeHref = '../' . \RiskAssessment\AppModules::instance()->homeUrl($currentUser ?? null);
+$adminHomeHash = str_starts_with($adminHomeHref, '../index.php') ? '#find-projects' : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -23,7 +25,7 @@ $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
 <body>
     <div class="shell upload-page admin-page">
         <header class="topbar topbar-uplift">
-            <a class="brand brand-link" href="../index.php#find-projects" title="Find projects by name">
+            <a class="brand brand-link" href="<?= e($adminHomeHref . $adminHomeHash) ?>" title="Return to home">
                 <?php require dirname(__DIR__) . '/includes/brand-mark.php'; ?>
                 <div class="brand-text">
                     <div class="brand-title"><?= e(\RiskAssessment\Branding::current()->brandTitle()) ?></div>

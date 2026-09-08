@@ -2,11 +2,18 @@
 
 declare(strict_types=1);
 
+use RiskAssessment\AppModules;
+use RiskAssessment\Auth;
+
 /**
  * Ticket Dossier topbar shortcut (relative URL — host/path independent).
  * Optional: set $ticketDossierSolo = true on dossier pages for active state.
  * Optional: set $ticketDossierNavPrefix (e.g. '' from public/, unused on dossier pages that link to index).
  */
+$ticketNavUser = $currentUser ?? Auth::instance()->currentUser();
+if (!AppModules::instance()->canAccess(is_array($ticketNavUser) ? $ticketNavUser : null, AppModules::TICKET)) {
+    return;
+}
 $ticketDossierSolo = $ticketDossierSolo ?? false;
 $ticketDossierNavPrefix = $ticketDossierNavPrefix ?? '';
 $ticketDossierNavUrl = $ticketDossierNavUrl ?? ($ticketDossierNavPrefix . 'ticket-dossier/');

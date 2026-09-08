@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
+use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
 
+$appModules = AppModules::instance();
+
 if ($auth->currentUser() !== null && !$auth->needsSetup()) {
-    header('Location: index.php');
+    header('Location: ' . $appModules->homeUrl($auth->currentUser()));
     exit;
 }
 
 $error = '';
 $flash = '';
 $mode = (string) ($_GET['mode'] ?? 'login');
-$next = $auth->safeNext((string) ($_GET['next'] ?? $_POST['next'] ?? 'index.php'));
+$requestedNext = (string) ($_GET['next'] ?? $_POST['next'] ?? 'index.php');
+$next = $auth->safeNext($requestedNext);
 $ldapServers = $auth->ldap()->servers();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,14 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = 'Registration received. An administrator must approve the account before you can sign in.';
             $mode = 'login';
         } elseif ($action === 'login') {
-            $auth->login(
+            $user = $auth->login(
                 (string) ($_POST['username'] ?? ''),
                 (string) ($_POST['password'] ?? ''),
                 (string) ($_POST['auth_method'] ?? Auth::METHOD_AUTO),
                 !empty($_POST['remember_me']),
                 (int) ($_POST['ldap_server_index'] ?? 0)
             );
-            header('Location: ' . $next);
+            header('Location: ' . $appModules->resolveNext($requestedNext, $user));
             exit;
         } else {
             throw new RuntimeException('Unknown action.');

@@ -1009,6 +1009,7 @@
 
   const catalogCsrfToken = () =>
     document.getElementById('sharepoint-search')?.getAttribute('data-csrf') ||
+    document.getElementById('sharepoint-sources')?.getAttribute('data-csrf') ||
     document.getElementById('sharepoint-msal-sync')?.getAttribute('data-csrf') ||
     '';
 
@@ -1018,8 +1019,49 @@
   const catalogCanArchive = () =>
     document.getElementById('sharepoint-search')?.getAttribute('data-can-archive') === '1';
 
+  const catalogIsPublic = () =>
+    document.getElementById('sharepoint-search')?.getAttribute('data-public') === '1';
+
+  const catalogCanFavorite = () => !catalogIsPublic() && !!catalogCsrfToken();
+
   const catalogShowArchived = () =>
     document.getElementById('sharepoint-search')?.getAttribute('data-show-archived') === '1';
+
+  const favoriteToggleHtml = ({
+    favorited = false,
+    title = '',
+    extraClass = '',
+    attrs = {},
+  } = {}) => {
+    if (!catalogCanFavorite()) return '';
+    const isOn = !!favorited;
+    const label = isOn ? 'Remove from favorites' : 'Add to favorites';
+    const icon = isOn ? '★' : '☆';
+    const attrHtml = Object.entries(attrs || {})
+      .map(([key, value]) => ` ${key}="${escapeHtml(String(value ?? ''))}"`)
+      .join('');
+    return `<button type="button" class="sp-favorite-btn ${extraClass}${isOn ? ' is-on' : ''}" data-favorited="${isOn ? '1' : '0'}" title="${escapeHtml(title || label)}" aria-label="${escapeHtml(label)}" aria-pressed="${isOn ? 'true' : 'false'}"${attrHtml} onclick="event.stopPropagation()">${icon}</button>`;
+  };
+
+  const postFavorite = async ({ scope, sourceKey, projectName = '', favorited }) =>
+    postCatalogAction('set_favorite', {
+      scope,
+      source_key: sourceKey,
+      project_name: projectName || '',
+      favorited: favorited ? '1' : '0',
+    });
+
+  const applyFavoriteButtonState = (btn, favorited) => {
+    if (!btn) return;
+    const isOn = !!favorited;
+    btn.classList.toggle('is-on', isOn);
+    btn.setAttribute('data-favorited', isOn ? '1' : '0');
+    btn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+    const label = isOn ? 'Remove from favorites' : 'Add to favorites';
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+    btn.textContent = isOn ? '★' : '☆';
+  };
 
   const archiveToggleHtml = ({
     archived = false,
@@ -3489,8 +3531,19 @@
           'data-project-name': project.project_name || name,
         },
       });
+      const favoriteProjectBtn = favoriteToggleHtml({
+        favorited: !!project.favorited,
+        title: project.favorited ? 'Remove from favorites' : 'Add to favorites',
+        extraClass: 'sp-favorite-project-btn',
+        attrs: {
+          'data-scope': 'project',
+          'data-source-key': project.source_key || currentSourceKey,
+          'data-project-name': project.project_name || name,
+        },
+      });
       if (project.folder_url) {
         actionsEl.innerHTML = `<div class="sp-dialog-folder-actions">
+            ${favoriteProjectBtn}
             <a class="button button-primary btn-accent-violet-solid sp-open-folder-btn" href="${escapeHtml(project.folder_url)}" target="_blank" rel="noopener noreferrer" title="Open project folder in SharePoint">🔗 Open</a>
             <button type="button" class="button ghost-light sp-copy-link-btn sp-project-copy-btn" data-copy-url="${escapeHtml(project.folder_url)}" data-label="📋" title="Copy folder link" aria-label="Copy folder link">📋</button>
             ${qrButtonHtml(project.folder_url, project.project_name || name, projectQrMeta())}
@@ -3499,10 +3552,32 @@
         bindCopyLinkButtons(actionsEl);
         bindQrButtons(actionsEl);
       } else {
-        actionsEl.innerHTML = archiveProjectBtn
-          ? `<div class="sp-dialog-folder-actions">${archiveProjectBtn}</div>`
+        const alone = [favoriteProjectBtn, archiveProjectBtn].filter(Boolean).join('');
+        actionsEl.innerHTML = alone
+          ? `<div class="sp-dialog-folder-actions">${alone}</div>`
           : '';
       }
+      actionsEl.querySelectorAll('.sp-favorite-project-btn').forEach((btn) => {
+        btn.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.disabled) return;
+          const nextFavorited = btn.getAttribute('data-favorited') !== '1';
+          try {
+            await postFavorite({
+              scope: 'project',
+              sourceKey: currentSourceKey,
+              projectName: currentName,
+              favorited: nextFavorited,
+            });
+            if (project) project.favorited = nextFavorited;
+            applyFavoriteButtonState(btn, nextFavorited);
+            if (typeof loadIndex === 'function') loadIndex();
+          } catch (error) {
+            window.alert(error.message || 'Unable to update favorite.');
+          }
+        });
+      });
       actionsEl.querySelectorAll('.sp-archive-project-btn').forEach((btn) => {
         btn.addEventListener('click', async (event) => {
           event.preventDefault();
@@ -5148,6 +5223,7 @@
     listFilters: 'riskregister_sp_list_filters_open',
     advancedOpen: publicShare ? 'riskregister_sp_public_search_advanced' : 'riskregister_sp_search_advanced',
     archived: 'riskregister_sp_search_archived',
+    favorites: 'riskregister_sp_search_favorites',
   };
   const RECENT_MAX = 10;
   const RECENT_MIN_LEN = 2;
@@ -5195,6 +5271,7 @@
   const typeChipsRoot = document.getElementById('sharepoint-type-chips');
   const fuzzyToggle = document.getElementById('sharepoint-fuzzy-toggle');
   const deepToggle = document.getElementById('sharepoint-deep-toggle');
+  const favoritesToggle = document.getElementById('sharepoint-favorites-toggle');
   const archivedToggle = document.getElementById('sharepoint-archived-toggle');
   const suggestToggle = document.getElementById('sharepoint-suggest-toggle');
   const refineInput = document.getElementById('sharepoint-refine-input');
@@ -5354,6 +5431,14 @@
     fuzzy: urlSearchState.fuzzy,
     deep: urlSearchState.deep,
     showArchived: catalogCanArchive() && !!urlSearchState.archived,
+    showFavorites: (() => {
+      if (publicShare || !favoritesToggle) return false;
+      try {
+        return localStorage.getItem(STORAGE.favorites) === '1';
+      } catch {
+        return false;
+      }
+    })(),
     suggestEnabled: (() => {
       try {
         return localStorage.getItem(STORAGE.suggest) === '1';
@@ -6114,6 +6199,38 @@
     });
     bindCopyLinkButtons(tbody);
     bindQrButtons(tbody);
+    tbody.querySelectorAll('.sp-favorite-project-btn').forEach((btn) => {
+      btn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (btn.disabled) return;
+        const sourceKey = btn.getAttribute('data-source-key') || state.sourceKey;
+        const projectName = btn.getAttribute('data-project-name') || '';
+        const nextFavorited = btn.getAttribute('data-favorited') !== '1';
+        try {
+          await postFavorite({
+            scope: 'project',
+            sourceKey,
+            projectName,
+            favorited: nextFavorited,
+          });
+          const listProject = state.projects.find(
+            (row) =>
+              String(row.project_name || '') === projectName &&
+              String(row.source_key || '') === sourceKey
+          );
+          if (listProject) listProject.favorited = nextFavorited;
+          applyFavoriteButtonState(btn, nextFavorited);
+          const row = btn.closest('.sharepoint-project-row');
+          row?.classList.toggle('is-favorite', nextFavorited);
+          if (state.showFavorites && !nextFavorited) {
+            applySearch({ resetPage: false });
+          }
+        } catch (error) {
+          window.alert(error.message || 'Unable to update favorite.');
+        }
+      });
+    });
     tbody.querySelectorAll('.sp-archive-project-btn').forEach((btn) => {
       btn.addEventListener('click', async (event) => {
         event.preventDefault();
@@ -6503,6 +6620,10 @@
       results = results.filter((row) => !row.project?.archived);
     }
 
+    if (state.showFavorites) {
+      results = results.filter((row) => !!row.project?.favorited);
+    }
+
     results = results.filter((row) => projectPassesQueryFilters(row.project, parsed));
     results = results.filter((row) => projectPassesPresence(row.project, presence));
 
@@ -6567,6 +6688,10 @@
     if (deepToggle) {
       deepToggle.classList.toggle('is-active', state.deep);
       deepToggle.setAttribute('aria-pressed', state.deep ? 'true' : 'false');
+    }
+    if (favoritesToggle) {
+      favoritesToggle.classList.toggle('is-active', state.showFavorites);
+      favoritesToggle.setAttribute('aria-pressed', state.showFavorites ? 'true' : 'false');
     }
     if (archivedToggle) {
       archivedToggle.classList.toggle('is-active', state.showArchived);
@@ -7207,7 +7332,7 @@
       }
     }
 
-    resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() || advancedFiltersActive() ? ' · filtered' : ''}`;
+    resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() || advancedFiltersActive() || state.showFavorites ? ' · filtered' : ''}`;
     renderMeta(total);
     renderStats(rows);
     renderPagination(total);
@@ -7224,6 +7349,10 @@
             ? '📁 No catalog items yet.'
             : !state.showArchived && state.projects.every((project) => project.archived)
               ? '📦 All matching projects are archived. Turn on <strong>Show archived</strong> to restore them.'
+            : state.showFavorites && !state.projects.some((project) => project.favorited)
+              ? '★ No favorite projects yet. Star a project to pin it here.'
+            : state.showFavorites && !rows.length
+              ? '★ No favorites match the current search or filters.'
             : listFiltersActive() || advancedFiltersActive()
               ? 'No projects match these filters. Clear filters or try another search.'
               : searching
@@ -7247,7 +7376,7 @@
         const hitSet = searching && useDeep ? deepHits : null;
         const openQuery = '';
         const extra = `${hitSet ? deepHitsHtml(hitSet) : ''}${coverageHtml(project, presence)}`;
-        return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}${project.archived ? ' is-archived' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
+        return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}${project.archived ? ' is-archived' : ''}${project.favorited ? ' is-favorite' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
           <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
             <label class="sharepoint-row-select">
               <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(name)} for compare">
@@ -7263,8 +7392,18 @@
           <td class="sp-meta-cell" data-col="created_by">${personCellHtml(person, '🙋')}</td>
           <td class="sharepoint-project-actions" data-col="actions">
             ${
-              folderUrl || catalogCanArchive()
+              folderUrl || catalogCanArchive() || catalogCanFavorite()
                 ? `<div class="sharepoint-project-action-group">
+                    ${favoriteToggleHtml({
+                      favorited: !!project.favorited,
+                      title: project.favorited ? 'Remove from favorites' : 'Add to favorites',
+                      extraClass: 'sp-favorite-project-btn',
+                      attrs: {
+                        'data-scope': 'project',
+                        'data-source-key': sourceKey,
+                        'data-project-name': name,
+                      },
+                    })}
                     ${
                       folderUrl
                         ? `<a class="button ghost-light sharepoint-open-sp" href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" title="Open in SharePoint" onclick="event.stopPropagation()">🔗</a>
@@ -7688,6 +7827,16 @@
     applySearch();
   });
 
+  favoritesToggle?.addEventListener('click', () => {
+    state.showFavorites = !state.showFavorites;
+    try {
+      localStorage.setItem(STORAGE.favorites, state.showFavorites ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    applySearch({ resetPage: true });
+  });
+
   archivedToggle?.addEventListener('click', () => {
     state.showArchived = !state.showArchived;
     try {
@@ -8048,6 +8197,7 @@
 
 (() => {
   const VIEW_KEY = 'ra-sp-folders-view';
+  const FAV_KEY = 'ra-sp-folders-fav';
   const ADMIN_KEY = 'ra-sp-admin-open';
   const ADD_KEY = 'ra-sp-add-folder-open';
   const FOLDERS_KEY = 'ra-sp-folders-open';
@@ -8060,6 +8210,8 @@
   const grid = document.getElementById('sharepoint-sources-grid');
   const tableWrap = document.getElementById('sharepoint-sources-table-wrap');
   const toggle = panel?.querySelector('.sharepoint-folders-view-toggle');
+  const favToggle = document.getElementById('sharepoint-folders-fav-toggle');
+  const favEmpty = document.getElementById('sharepoint-folders-fav-empty');
   const foldersSolo = panel?.getAttribute('data-solo') === '1';
 
   const foldersPageUrl = () => {
@@ -8068,6 +8220,81 @@
     url.hash = '';
     url.searchParams.set('view', 'folders');
     return url.toString();
+  };
+
+  const foldersCsrf = () => panel?.getAttribute('data-csrf') || '';
+
+  const applySourceFavoriteUi = (sourceKey, favorited) => {
+    document
+      .querySelectorAll(`.sharepoint-source-card[data-source-key="${CSS.escape(sourceKey)}"], .sharepoint-source-row[data-source-key="${CSS.escape(sourceKey)}"]`)
+      .forEach((el) => {
+        el.classList.toggle('is-favorite', favorited);
+        el.setAttribute('data-favorited', favorited ? '1' : '0');
+      });
+    document
+      .querySelectorAll(`.sp-favorite-btn[data-scope="source"][data-source-key="${CSS.escape(sourceKey)}"]`)
+      .forEach((btn) => {
+        btn.classList.toggle('is-on', favorited);
+        btn.setAttribute('data-favorited', favorited ? '1' : '0');
+        btn.setAttribute('aria-pressed', favorited ? 'true' : 'false');
+        const label = favorited ? 'Remove from favorites' : 'Add to favorites';
+        btn.setAttribute('title', label);
+        btn.setAttribute('aria-label', label);
+        btn.textContent = favorited ? '★' : '☆';
+      });
+  };
+
+  const applyFoldersFavFilter = (showFav) => {
+    if (!panel) return;
+    panel.setAttribute('data-folders-fav', showFav ? '1' : '0');
+    favToggle?.classList.toggle('is-active', showFav);
+    favToggle?.setAttribute('aria-pressed', showFav ? 'true' : 'false');
+    panel.querySelectorAll('.sharepoint-source-card[data-source-key], .sharepoint-source-row[data-source-key]').forEach((el) => {
+      const isFav = el.getAttribute('data-favorited') === '1';
+      const hide = showFav && !isFav;
+      el.hidden = hide;
+      el.classList.toggle('is-fav-hidden', hide);
+    });
+    // Cards and rows are duplicates of the same sources — count unique keys.
+    const visibleKeys = new Set();
+    panel.querySelectorAll('.sharepoint-source-card[data-source-key]:not([hidden])').forEach((el) => {
+      visibleKeys.add(el.getAttribute('data-source-key') || '');
+    });
+    const empty = showFav && visibleKeys.size === 0;
+    if (favEmpty) {
+      favEmpty.hidden = !empty;
+      favEmpty.classList.toggle('is-hidden', !empty);
+    }
+    try {
+      localStorage.setItem(FAV_KEY, showFav ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const postSourceFavorite = async (sourceKey, favorited) => {
+    const body = new URLSearchParams();
+    body.set('csrf_token', foldersCsrf());
+    body.set('action', 'set_favorite');
+    body.set('ajax', '1');
+    body.set('scope', 'source');
+    body.set('source_key', sourceKey);
+    body.set('project_name', '');
+    body.set('favorited', favorited ? '1' : '0');
+    const response = await fetch('sharepoint.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
+      body: body.toString(),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || 'Unable to update favorite.');
+    }
+    return payload;
   };
 
   panel?.querySelectorAll('[data-no-toggle]').forEach((el) => {
@@ -8121,6 +8348,44 @@
     }
   })();
   applyFoldersView(savedView);
+
+  const savedFav = (() => {
+    try {
+      return localStorage.getItem(FAV_KEY) === '1';
+    } catch {
+      return false;
+    }
+  })();
+  applyFoldersFavFilter(savedFav);
+
+  favToggle?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const next = favToggle.getAttribute('aria-pressed') !== 'true';
+    applyFoldersFavFilter(next);
+  });
+
+  panel?.addEventListener('click', async (event) => {
+    const btn = event.target.closest('.sp-favorite-btn[data-scope="source"]');
+    if (!btn || !panel.contains(btn)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (btn.disabled) return;
+    const sourceKey = btn.getAttribute('data-source-key') || '';
+    if (!sourceKey) return;
+    const nextFavorited = btn.getAttribute('data-favorited') !== '1';
+    btn.disabled = true;
+    try {
+      await postSourceFavorite(sourceKey, nextFavorited);
+      applySourceFavoriteUi(sourceKey, nextFavorited);
+      const showingFav = panel.getAttribute('data-folders-fav') === '1';
+      if (showingFav) applyFoldersFavFilter(true);
+    } catch (error) {
+      window.alert(error.message || 'Unable to update favorite.');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   toggle?.addEventListener('click', (event) => {
     event.preventDefault();

@@ -9,6 +9,7 @@ require_once dirname(__DIR__, 2) . '/bootstrap.php';
 
 /** @var \RiskAssessment\Auth $auth */
 $currentUser = $auth->requireAuth();
+\RiskAssessment\AppModules::instance()->require(\RiskAssessment\AppModules::TICKET, $currentUser);
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/security.php';

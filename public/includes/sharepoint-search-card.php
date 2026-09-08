@@ -78,7 +78,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
          data-solo="<?= $catalogSolo ? '1' : '0' ?>"
          data-can-edit-tags="<?= !empty($isAdmin) && empty($searchCardPublic) ? '1' : '0' ?>"
          data-can-archive="<?= !empty($isAdmin) && empty($searchCardPublic) ? '1' : '0' ?>"
-         <?php if (!empty($isAdmin) && empty($searchCardPublic)): ?>
+         <?php if (empty($searchCardPublic)): ?>
          data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
          <?php endif; ?>
          <?php if ($searchCardPublic): ?>
@@ -191,6 +191,9 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <button type="button" class="sp-search-toggle sp-search-suggest-toggle" id="sharepoint-suggest-toggle" title="Suggestions — show the search dropdown with project, file, people, and operator hints while typing" aria-pressed="false">▾ Suggest</button>
                         <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Fuzzy — tolerate typos and similar-sounding words (e.g. Encore ≈ Encor)" aria-pressed="false">✨ Fuzzy</button>
                         <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Deep files — also search nested file and folder names/paths inside each project (not file contents)" aria-pressed="true">📂 Deep files</button>
+                        <?php if (empty($searchCardPublic)): ?>
+                            <button type="button" class="sp-search-toggle sp-search-favorites" id="sharepoint-favorites-toggle" title="Favorites — show only project folders you starred" aria-pressed="false">★ Fav</button>
+                        <?php endif; ?>
                         <?php if (!empty($isAdmin) && empty($searchCardPublic)): ?>
                             <button type="button" class="sp-search-toggle sp-search-archived" id="sharepoint-archived-toggle" title="Show archived — include catalogs, projects, and files you hid from the dashboard so you can restore them" aria-pressed="false">📦 Show archived</button>
                         <?php endif; ?>

@@ -11,6 +11,7 @@ use RiskAssessment\Repositories\UserNotificationRepository;
 use RiskAssessment\Mail\SmtpSettings;
 
 $currentUser = $auth->requireAuth();
+\RiskAssessment\AppModules::instance()->require(\RiskAssessment\AppModules::RISK, $currentUser);
 $accessRepository = new AssessmentAccessRepository($pdo);
 $currentUserId = (int) ($currentUser['id'] ?? 0);
 

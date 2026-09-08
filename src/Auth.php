@@ -419,18 +419,38 @@ final class Auth
             : '';
     }
 
-    public function safeNext(string $next): string
+    /**
+     * Sanitize a relative post-login redirect.
+     * When the path is invalid and a user is known, fall back to their first allowed app.
+     *
+     * @param array<string, mixed>|null $user
+     */
+    public function safeNext(string $next, ?array $user = null): string
     {
+        $fallback = 'index.php';
+        if ($user !== null) {
+            $fallback = AppModules::instance()->homeUrl($user);
+        } else {
+            $current = $this->currentUser();
+            if ($current !== null) {
+                $fallback = AppModules::instance()->homeUrl($current);
+            }
+        }
+
         $next = trim($next);
         if ($next === '' || str_starts_with($next, 'http') || str_starts_with($next, '//') || str_contains($next, '\\')) {
-            return 'index.php';
+            return $fallback;
         }
         if ($next[0] === '/') {
-            return 'index.php';
+            return $fallback;
         }
         // Use ~ delimiter: the pattern allows "#" in the query/hash part.
+        // Also allow ticket-dossier/ directory index without a .php file.
+        if (preg_match('~^(?:ticket-dossier/?)(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) === 1) {
+            return $next === 'ticket-dossier' ? 'ticket-dossier/' : $next;
+        }
         if (preg_match('~^(?:admin/|ticket-dossier/)?[A-Za-z0-9._-]+\.php(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) !== 1) {
-            return 'index.php';
+            return $fallback;
         }
 
         return $next;

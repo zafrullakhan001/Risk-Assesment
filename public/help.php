@@ -134,7 +134,11 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
 <body>
     <div class="shell upload-page help-page">
         <header class="topbar topbar-uplift">
-            <a class="brand brand-link" href="index.php#find-projects" title="Find projects by name">
+            <?php
+            $helpHomeUrl = \RiskAssessment\AppModules::instance()->homeUrl($currentUser);
+            $helpHomeHref = $helpHomeUrl === 'index.php' ? 'index.php#find-projects' : $helpHomeUrl;
+            ?>
+            <a class="brand brand-link" href="<?= e($helpHomeHref) ?>" title="Return to home">
                 <?php require __DIR__ . '/includes/brand-mark.php'; ?>
                 <div class="brand-text">
                     <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
@@ -143,12 +147,21 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
             </a>
             <div class="topbar-actions">
                 <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
+                <?php
+                $menuApps = \RiskAssessment\AppModules::instance();
+                $menuCanRisk = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::RISK);
+                $menuCanSharePoint = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::SHAREPOINT);
+                ?>
+                <?php if ($menuCanRisk): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="index.php#find-projects" title="Search and open saved risk assessments by name, vendor, owner, and more"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="mint" href="index.php#upload" title="Upload an Architecture Risk Assessment workbook (.xlsx) to generate a dashboard"><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
+                <?php endif; ?>
+                <?php if ($menuCanSharePoint): ?>
                 <a class="button ghost home-link" data-menu-group="sharepoint" data-menu-tone="peach" href="sharepoint.php" title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/owners-nav-link.php'; ?>
+                <?php endif; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
 
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>

@@ -385,3 +385,18 @@ CREATE INDEX IF NOT EXISTS idx_sp_archives_source_scope
     ON sharepoint_archives (source_key, scope);
 CREATE INDEX IF NOT EXISTS idx_sp_archives_source_project
     ON sharepoint_archives (source_key, project_name);
+
+CREATE TABLE IF NOT EXISTS user_catalog_favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'project',
+    source_key TEXT NOT NULL DEFAULT '',
+    project_name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, scope, source_key, project_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_catalog_favorites_user
+    ON user_catalog_favorites (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_catalog_favorites_source
+    ON user_catalog_favorites (source_key);

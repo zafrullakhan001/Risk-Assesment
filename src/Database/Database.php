@@ -448,7 +448,27 @@ final class Database
             'CREATE INDEX IF NOT EXISTS idx_sp_archives_source_project
              ON sharepoint_archives (source_key, project_name)'
         );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS user_catalog_favorites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                scope TEXT NOT NULL DEFAULT \'project\',
+                source_key TEXT NOT NULL DEFAULT \'\',
+                project_name TEXT NOT NULL DEFAULT \'\',
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                UNIQUE (user_id, scope, source_key, project_name)
+            )'
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_user_catalog_favorites_user
+             ON user_catalog_favorites (user_id)'
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_user_catalog_favorites_source
+             ON user_catalog_favorites (source_key)'
+        );
         self::seedAuthSettings($pdo);
+        self::seedAppModuleSettings($pdo);
         self::seedSharePointSettings($pdo);
         self::seedDefaultSharePointSource($pdo);
         self::seedDefaultAdmin($pdo);
@@ -580,6 +600,17 @@ final class Database
             'ldap_auto_update_users' => '1',
             'ldap_auto_approve' => '1',
             'ldap_servers' => '[]',
+        ];
+
+        self::seedSettingsDefaults($pdo, $defaults);
+    }
+
+    private static function seedAppModuleSettings(PDO $pdo): void
+    {
+        $defaults = [
+            'app_risk_register_enabled' => '1',
+            'app_sharepoint_enabled' => '1',
+            'app_ticket_dossier_enabled' => '1',
         ];
 
         self::seedSettingsDefaults($pdo, $defaults);

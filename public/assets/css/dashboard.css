@@ -18240,6 +18240,81 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
     border-style: dashed;
 }
 
+/* Per-user catalog favorites */
+.sp-favorite-btn {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, #ca8a04 22%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #facc15 8%, transparent);
+    color: #a16207;
+    min-height: 1.85rem;
+    min-width: 1.85rem;
+    padding: 0 0.35rem;
+    border-radius: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.sp-favorite-btn:hover {
+    background: color-mix(in srgb, #facc15 18%, transparent);
+    border-color: color-mix(in srgb, #ca8a04 40%, var(--border, #e2e8f0));
+}
+.sp-favorite-btn.is-on,
+.sp-favorite-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, #eab308 22%, transparent);
+    border-color: color-mix(in srgb, #ca8a04 45%, var(--border, #e2e8f0));
+    color: #854d0e;
+}
+.sp-favorite-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+.sharepoint-source-card.is-favorite,
+.sharepoint-source-row.is-favorite {
+    box-shadow: inset 3px 0 0 #eab308;
+}
+.sharepoint-project-row.is-favorite td:first-child {
+    box-shadow: inset 3px 0 0 #eab308;
+}
+.sharepoint-folders-fav-toggle.is-active,
+.sharepoint-folders-fav-toggle[aria-pressed="true"],
+.sp-search-favorites.is-active,
+.sp-search-favorites[aria-pressed="true"] {
+    background: color-mix(in srgb, #eab308 18%, transparent);
+    color: #854d0e;
+    border-color: color-mix(in srgb, #ca8a04 35%, transparent);
+}
+.sharepoint-folders-fav-empty {
+    margin: 0.35rem 0 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border: 1px dashed color-mix(in srgb, #ca8a04 35%, var(--border, #e2e8f0));
+    border-radius: 0.55rem;
+    background: color-mix(in srgb, #facc15 8%, transparent);
+    color: #854d0e;
+    font-size: 0.9rem;
+}
+.sharepoint-folders-fav-empty.is-hidden,
+.sharepoint-folders-fav-empty[hidden] {
+    display: none !important;
+}
+.sharepoint-source-card[hidden],
+.sharepoint-source-row[hidden],
+.sharepoint-source-card.is-fav-hidden,
+.sharepoint-source-row.is-fav-hidden {
+    display: none !important;
+}
+.sharepoint-sources-panel[data-folders-view="compact"] .sp-favorite-btn {
+    min-height: 1.55rem;
+    min-width: 1.55rem;
+    font-size: 0.85rem;
+}
+.sp-dialog-folder-actions .sp-favorite-btn {
+    align-self: center;
+}
+
 /* Help & About: hero copy uses the full banner width */
 .help-page .hero-head {
     display: grid;

@@ -140,6 +140,8 @@ final class SharePointSourceRepository
             throw new RuntimeException('Keep at least one SharePoint source.');
         }
         $catalog->replaceForSource((string) $source['source_key'], []);
+        $favorites = new SharePointFavoriteRepository($this->pdo);
+        $favorites->deleteForSource((string) $source['source_key']);
         $delete = $this->pdo->prepare('DELETE FROM sharepoint_sources WHERE source_key = :k');
         $delete->execute([':k' => $source['source_key']]);
     }

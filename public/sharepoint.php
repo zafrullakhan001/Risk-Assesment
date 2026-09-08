@@ -12,6 +12,7 @@ use RiskAssessment\PaginationPreference;
 use RiskAssessment\Repositories\CatalogShareRepository;
 use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
+use RiskAssessment\Repositories\SharePointFavoriteRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\SharePoint\SharePointBrowserSync;
@@ -25,6 +26,7 @@ $sourcesRepo = new SharePointSourceRepository($pdo);
 $catalogShareRepository = new CatalogShareRepository($pdo, $crypto);
 $searchTags = new SharePointSearchTagRepository($pdo);
 $archives = new SharePointArchiveRepository($pdo);
+$favorites = new SharePointFavoriteRepository($pdo);
 $graph = new SharePointGraphClient($settings, $crypto, $catalog);
 $importer = new SharePointListingImporter($catalog, $settings);
 $browserSync = new SharePointBrowserSync($sourcesRepo);
@@ -144,6 +146,7 @@ if ($actionParam === 'browser_sync_import' && ($_SERVER['REQUEST_METHOD'] ?? '')
 }
 
 $currentUser = $auth->requireAuth();
+\RiskAssessment\AppModules::instance()->require(\RiskAssessment\AppModules::SHAREPOINT, $currentUser);
 $isAdmin = !empty($currentUser['is_admin']);
 
 $error = '';
@@ -172,6 +175,8 @@ $archiveIndex = $archives->indexForSources(array_values(array_filter(array_map(
     $allSources
 ))));
 $archivedSourceKeys = $archiveIndex['sources'];
+$favoriteIndex = $favorites->indexForUser((int) ($currentUser['id'] ?? 0));
+$favoriteSourceKeys = $favoriteIndex['sources'];
 if (!$isAdmin && isset($archivedSourceKeys[$activeSourceKey])) {
     foreach ($allSources as $src) {
         $key = (string) ($src['source_key'] ?? '');
@@ -240,6 +245,8 @@ if ($actionParam === 'project_detail') {
         echo json_encode(['ok' => false, 'error' => 'Project not found.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
+    $favoriteIndex = $favorites->indexForUser((int) ($currentUser['id'] ?? 0));
+    $detail = $favorites->attachToProjectDetail($detail, $detail['source_key'], $favoriteIndex);
     echo json_encode([
         'ok' => true,
         'project' => $detail,
@@ -312,6 +319,8 @@ if ($actionParam === 'search_index') {
     if (!$isAdmin) {
         $index = $archives->excludeArchivedFromSearchIndex($index);
     }
+    $favoriteIndex = $favorites->indexForUser((int) ($currentUser['id'] ?? 0));
+    $index = $favorites->attachToSearchIndex($index, $favoriteIndex);
     $itemCountTotal = 0;
     $metaSources = [];
     foreach ($indexSources as $srcMeta) {
@@ -390,11 +399,54 @@ if ($actionParam === 'owner_stats') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         require_valid_csrf();
+        $action = (string) ($_POST['action'] ?? '');
+
+        // Per-user favorites — available to any signed-in user (not admin-only).
+        if ($action === 'set_favorite') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $favSource = trim((string) ($_POST['source_key'] ?? $activeSourceKey));
+            $favScope = trim((string) ($_POST['scope'] ?? 'project'));
+            $favProject = trim((string) ($_POST['project_name'] ?? ''));
+            $rawFavorited = $_POST['favorited'] ?? '1';
+            $favorited = $rawFavorited === true
+                || $rawFavorited === 1
+                || $rawFavorited === '1'
+                || strtolower((string) $rawFavorited) === 'true';
+            if ($sourcesRepo->findByKey($favSource) === null) {
+                throw new RuntimeException('SharePoint folder not found.');
+            }
+            if ($favScope === SharePointFavoriteRepository::SCOPE_PROJECT
+                || strtolower($favScope) === 'project') {
+                if ($favProject === '') {
+                    throw new RuntimeException('Project name is required.');
+                }
+                $projectCheck = $catalog->getProject($favProject, $favSource);
+                if ($projectCheck === null) {
+                    throw new RuntimeException('Project not found.');
+                }
+            }
+            $result = $favorites->setFavorite(
+                (int) $currentUser['id'],
+                $favScope,
+                $favSource,
+                $favorited,
+                $favProject
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = $favorited ? 'Added to favorites.' : 'Removed from favorites.';
+            header('Location: sharepoint.php?source=' . rawurlencode($activeSourceKey) . '#sharepoint-sources');
+            exit;
+        }
+
         if (!$isAdmin) {
             throw new RuntimeException('Only administrators can manage the SharePoint catalog.');
         }
 
-        $action = (string) ($_POST['action'] ?? '');
         if ($action === 'add_source') {
             $created = $sourcesRepo->createFromUrl(
                 (string) ($_POST['title'] ?? ''),
@@ -1054,7 +1106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'prepare_browser_sync' || $action === 'delegated_sync'
             || $action === 'create_search_tag' || $action === 'delete_search_tag'
             || $action === 'save_project_tags' || $action === 'save_item_tags'
-            || $action === 'set_archive') {
+            || $action === 'set_archive' || $action === 'set_favorite') {
             $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
                 || (string) ($_POST['ajax'] ?? '') === '1'
                 || $action === 'prepare_browser_sync'
@@ -1503,15 +1555,24 @@ $soloPageClass = $ownerSolo
             </a>
             <div class="topbar-actions">
                 <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
+                <?php
+                $menuApps = \RiskAssessment\AppModules::instance();
+                $menuCanRisk = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::RISK);
+                $menuCanSharePoint = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::SHAREPOINT);
+                ?>
+                <?php if ($menuCanRisk): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="index.php#find-projects" title="Search and open saved risk assessments by name, vendor, owner, and more"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="mint" href="index.php#upload" title="Upload an Architecture Risk Assessment workbook (.xlsx) to generate a dashboard"><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
+                <?php endif; ?>
+                <?php if ($menuCanSharePoint): ?>
                 <a class="button ghost home-link<?= !$panelSolo ? ' is-active' : '' ?>" data-menu-group="sharepoint" data-menu-tone="peach" href="sharepoint.php?source=<?= e($activeSourceKey) ?>"<?= !$panelSolo ? ' aria-current="page"' : '' ?> title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
                 <?php
                 $ownersNavUrl = $ownerDashUrl;
                 require __DIR__ . '/includes/owners-nav-link.php';
                 ?>
+                <?php endif; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
 
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
@@ -1564,12 +1625,12 @@ $soloPageClass = $ownerSolo
             <?php endif; ?>
 
             <?php if (!$catalogSolo): ?>
-            <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-sp-section="folders" data-folders-view="compact" data-solo="<?= $foldersSolo ? '1' : '0' ?>">
+            <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-sp-section="folders" data-folders-view="compact" data-solo="<?= $foldersSolo ? '1' : '0' ?>" data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>">
                 <details class="sharepoint-sources-shell" id="sharepoint-sources-shell" open>
                     <summary class="card-heading sharepoint-sources-heading sharepoint-sources-summary">
                         <div>
                             <h2>📁 SharePoint folders</h2>
-                            <p class="panel-help">Each folder has its own catalog and search. Use <strong>Sync</strong> for one-click Microsoft login (MFA in popup), or Console sync as a fallback.</p>
+                            <p class="panel-help">Each folder has its own catalog and search. Use <strong>Sync</strong> for one-click Microsoft login (MFA in popup), or Console sync as a fallback. Star folders you use often, then filter with <strong>Fav</strong>.</p>
                         </div>
                         <div class="sharepoint-sources-summary-tools" data-no-toggle onclick="event.stopPropagation()">
                             <?php require __DIR__ . '/includes/sharepoint-section-move.php'; ?>
@@ -1578,6 +1639,7 @@ $soloPageClass = $ownerSolo
                                 <button type="button" class="sp-view-btn is-active" data-folders-view="compact" aria-pressed="true" title="Shrink the folder panel so catalog search has more room">Compact</button>
                                 <button type="button" class="sp-view-btn" data-folders-view="table" aria-pressed="false" title="Table view">Table</button>
                             </div>
+                            <button type="button" class="sp-view-btn sharepoint-folders-fav-toggle" id="sharepoint-folders-fav-toggle" title="Show only folders you starred" aria-pressed="false">★ Fav</button>
                             <?php if ($foldersSolo): ?>
                                 <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← SharePoint</a>
                             <?php else: ?>
@@ -1588,6 +1650,7 @@ $soloPageClass = $ownerSolo
                         </div>
                     </summary>
                     <div class="sharepoint-sources-body">
+                <p class="sharepoint-folders-fav-empty is-hidden" id="sharepoint-folders-fav-empty" hidden>No favorite folders yet. Star a folder card to pin it here.</p>
                 <div class="sharepoint-sources-grid" id="sharepoint-sources-grid">
                     <?php foreach ($allSources as $src): ?>
                         <?php
@@ -1597,6 +1660,7 @@ $soloPageClass = $ownerSolo
                             continue;
                         }
                         $isActiveCard = $srcKey === $activeSourceKey;
+                        $srcFavorited = isset($favoriteSourceKeys[$srcKey]);
                         $srcCount = (int) ($sourceCounts[$srcKey] ?? 0);
                         $srcSynced = (string) ($src['last_synced_at'] ?? '');
                         $srcStatus = (string) ($src['last_sync_status'] ?? '');
@@ -1607,13 +1671,14 @@ $soloPageClass = $ownerSolo
                         $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
                         $srcToneHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                         ?>
-                        <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>" data-catalog-tone="<?= e($srcTone) ?>" style="--catalog-tone: <?= e($srcToneHex) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
+                        <article class="sharepoint-source-card<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?><?= $srcFavorited ? ' is-favorite' : '' ?>" data-source-key="<?= e($srcKey) ?>" data-catalog-tone="<?= e($srcTone) ?>" data-favorited="<?= $srcFavorited ? '1' : '0' ?>" style="--catalog-tone: <?= e($srcToneHex) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
                             <div class="sharepoint-source-card-head">
                                 <h3>
                                     <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                     <span class="sharepoint-source-card-title"><?= e($srcTitle) ?></span>
                                 </h3>
                                 <div class="sharepoint-source-card-tools">
+                                    <button type="button" class="sp-favorite-btn<?= $srcFavorited ? ' is-on' : '' ?>" data-scope="source" data-source-key="<?= e($srcKey) ?>" data-favorited="<?= $srcFavorited ? '1' : '0' ?>" title="<?= $srcFavorited ? 'Remove from favorites' : 'Add to favorites' ?>" aria-label="<?= $srcFavorited ? 'Remove from favorites' : 'Add to favorites' ?>" aria-pressed="<?= $srcFavorited ? 'true' : 'false' ?>"><?= $srcFavorited ? '★' : '☆' ?></button>
                                     <?php require __DIR__ . '/includes/sharepoint-source-color-btn.php'; ?>
                                     <?php if ($srcArchived): ?>
                                         <span class="sharepoint-source-badge sharepoint-archive-badge">Archived</span>
@@ -1734,6 +1799,7 @@ $soloPageClass = $ownerSolo
                                     continue;
                                 }
                                 $isActiveCard = $srcKey === $activeSourceKey;
+                                $srcFavorited = isset($favoriteSourceKeys[$srcKey]);
                                 $srcCount = (int) ($sourceCounts[$srcKey] ?? 0);
                                 $srcSynced = (string) ($src['last_synced_at'] ?? '');
                                 $srcStatus = (string) ($src['last_sync_status'] ?? '');
@@ -1744,9 +1810,10 @@ $soloPageClass = $ownerSolo
                                 $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
                                 $srcToneHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                                 ?>
-                                <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?>" data-source-key="<?= e($srcKey) ?>" data-catalog-tone="<?= e($srcTone) ?>" style="--catalog-tone: <?= e($srcToneHex) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
+                                <tr class="sharepoint-source-row<?= $isActiveCard ? ' is-active' : '' ?><?= $srcArchived ? ' is-archived' : '' ?><?= $srcFavorited ? ' is-favorite' : '' ?>" data-source-key="<?= e($srcKey) ?>" data-catalog-tone="<?= e($srcTone) ?>" data-favorited="<?= $srcFavorited ? '1' : '0' ?>" style="--catalog-tone: <?= e($srcToneHex) ?>"<?= $srcArchived ? ' data-archived="1"' : '' ?>>
                                     <td>
                                         <div class="sharepoint-source-table-title">
+                                            <button type="button" class="sp-favorite-btn<?= $srcFavorited ? ' is-on' : '' ?>" data-scope="source" data-source-key="<?= e($srcKey) ?>" data-favorited="<?= $srcFavorited ? '1' : '0' ?>" title="<?= $srcFavorited ? 'Remove from favorites' : 'Add to favorites' ?>" aria-label="<?= $srcFavorited ? 'Remove from favorites' : 'Add to favorites' ?>" aria-pressed="<?= $srcFavorited ? 'true' : 'false' ?>"><?= $srcFavorited ? '★' : '☆' ?></button>
                                             <span class="sp-card-emoji" data-tone="folder" aria-hidden="true">📂</span>
                                             <strong><?= e($srcTitle) ?></strong>
                                             <?php require __DIR__ . '/includes/sharepoint-source-color-btn.php'; ?>
