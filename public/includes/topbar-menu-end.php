@@ -10,7 +10,6 @@ $topbarMenuJs = $topbarMenuJs ?? (dirname(__DIR__) . '/assets/js/topbar-menu.js'
 ?>
                 </div>
             </div>
-            <?php require __DIR__ . '/auth-nav-help.php'; ?>
             <div class="topbar-menu-section topbar-menu-appearance">
                 <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🎨</span> Appearance</p>
                 <?php require __DIR__ . '/theme-controls.php'; ?>

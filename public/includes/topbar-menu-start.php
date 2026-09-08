@@ -26,7 +26,10 @@ $topbarMenuJs = dirname(__DIR__) . '/assets/js/topbar-menu.js';
     <div class="topbar-menu-panel" id="topbar-menu-panel" hidden role="menu" aria-labelledby="topbar-menu-heading">
         <div class="topbar-menu-panel-head">
             <h3 id="topbar-menu-heading"><span class="topbar-menu-emoji" aria-hidden="true">✨</span> Menu</h3>
-            <button type="button" class="update-bell-close" id="topbar-menu-close" aria-label="Close menu">×</button>
+            <div class="topbar-menu-panel-actions">
+                <?php require __DIR__ . '/auth-nav-help.php'; ?>
+                <button type="button" class="update-bell-close" id="topbar-menu-close" aria-label="Close menu">×</button>
+            </div>
         </div>
         <div class="topbar-menu-body">
             <?php require __DIR__ . '/auth-nav-account.php'; ?>

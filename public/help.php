@@ -23,7 +23,20 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
     <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Lexend:wght@400;500;600;700&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
+    <script>
+    (function () {
+        try {
+            var font = localStorage.getItem('ra-help-font') || 'app';
+            var allowed = ['app', 'serif', 'clear', 'lexend', 'rounded'];
+            if (allowed.indexOf(font) === -1) {
+                font = 'app';
+            }
+            document.documentElement.setAttribute('data-help-font', font);
+        } catch (e) { /* ignore */ }
+    })();
+    </script>
 </head>
 <body>
     <div class="shell upload-page help-page">
@@ -42,7 +55,9 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
                 <a class="button ghost home-link" data-menu-group="sharepoint" data-menu-tone="peach" href="sharepoint.php" title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
+                <?php require __DIR__ . '/includes/owners-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
+
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
                 <div class="updated"><?= (int) $helpCount ?> topic<?= $helpCount === 1 ? '' : 's' ?></div>
@@ -56,7 +71,7 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
                         <div class="hero-intro">
                             <div class="eyebrow">Help &amp; About</div>
                             <h2>How this <em>register</em> works</h2>
-                            <p>Pick a topic on the left. The right pane explains assessments, Ticket Dossier, SharePoint, and the rest of the app — with links into each screen.</p>
+                            <p>Pick a topic on the left. The right pane explains assessments, Ticket Dossier, SharePoint, and the rest of the app — with links into each screen. Choose a reading font and use Read aloud when you want the browser to speak the topic.</p>
                         </div>
                         <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $helpCount, 'help topics'); ?>
                     </div>
@@ -87,6 +102,33 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
                 </nav>
 
                 <div class="help-detail" id="help-detail">
+                    <div class="help-reader-toolbar upload-card" id="help-reader-toolbar" role="region" aria-label="Reading options">
+                        <div class="help-reader-row">
+                            <div class="theme-controls help-font-controls" aria-label="Help reading font">
+                                <span class="theme-controls-label">Font</span>
+                                <button type="button" class="theme-btn" data-help-font-set="app" title="App — Source Sans 3, matches the rest of the register" aria-pressed="false">App</button>
+                                <button type="button" class="theme-btn" data-help-font-set="serif" title="Serif — Source Serif 4 for long-form reading" aria-pressed="false">Serif</button>
+                                <button type="button" class="theme-btn" data-help-font-set="clear" title="Clear — Atkinson Hyperlegible for high legibility" aria-pressed="false">Clear</button>
+                                <button type="button" class="theme-btn" data-help-font-set="lexend" title="Lexend — easier word decoding" aria-pressed="false">Lexend</button>
+                                <button type="button" class="theme-btn" data-help-font-set="rounded" title="Rounded — Nunito, softer and friendlier" aria-pressed="false">Rounded</button>
+                            </div>
+                        </div>
+                        <div class="help-reader-row help-reader-speak">
+                            <label class="help-voice-label" for="help-voice-select">
+                                <span class="theme-controls-label">Voice</span>
+                                <select id="help-voice-select" class="help-voice-select" aria-describedby="help-reader-status">
+                                    <option value="">Loading voices…</option>
+                                </select>
+                            </label>
+                            <div class="help-reader-actions" role="group" aria-label="Read aloud">
+                                <button type="button" class="button ghost help-reader-btn" id="help-reader-play" title="Read the current topic aloud">Play</button>
+                                <button type="button" class="button ghost help-reader-btn" id="help-reader-pause" title="Pause or resume reading" disabled>Pause</button>
+                                <button type="button" class="button ghost help-reader-btn" id="help-reader-stop" title="Stop reading" disabled>Stop</button>
+                            </div>
+                            <p class="help-reader-status" id="help-reader-status" aria-live="polite"></p>
+                        </div>
+                    </div>
+
                     <?php foreach ($helpTopics as $topic): ?>
                         <?php $isFirst = $topic['id'] === $helpFirstId; ?>
                         <article
@@ -109,5 +151,6 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
     </div>
     <script src="assets/js/theme.js?v=<?= filemtime(__DIR__ . '/assets/js/theme.js') ?>"></script>
     <script src="assets/js/help.js?v=<?= filemtime(__DIR__ . '/assets/js/help.js') ?>"></script>
+    <script src="assets/js/help-reader.js?v=<?= filemtime(__DIR__ . '/assets/js/help-reader.js') ?>"></script>
 </body>
 </html>

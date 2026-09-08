@@ -1824,7 +1824,9 @@ $renderProjectLockBadge = static function (array $project): void {
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
                 <a class="button ghost home-link" data-menu-group="sharepoint" data-menu-tone="peach" href="sharepoint.php" title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
+                <?php require __DIR__ . '/includes/owners-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
+
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
                 <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>

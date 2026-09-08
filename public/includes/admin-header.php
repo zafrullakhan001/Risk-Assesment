@@ -32,7 +32,7 @@ $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
             </a>
             <div class="topbar-actions">
                 <?php require dirname(__DIR__) . '/includes/topbar-menu-start.php'; ?>
-                <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="../index.php#find-projects" title="Search and open saved risk assessments by name, vendor, owner, and more"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+                <?php require dirname(__DIR__) . '/includes/app-nav-links.php'; ?>
                 <?php require dirname(__DIR__) . '/includes/updates-nav.php'; ?>
                 <?php require dirname(__DIR__) . '/includes/topbar-menu-end.php'; ?>
             </div>

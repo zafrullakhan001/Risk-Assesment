@@ -234,7 +234,7 @@
                 if (!(target instanceof Element)) {
                     return;
                 }
-                if (target.closest('a.home-link, a.topbar-menu-account-card')) {
+                if (target.closest('a.home-link, a.topbar-menu-account-card, a.topbar-menu-help-icon')) {
                     closeMenu(menuRoot);
                 }
             });

@@ -89,7 +89,12 @@ HTML,
 <li><strong>Auto</strong> — pick a layout size from the window width.</li>
 <li><strong>S through XXL</strong> — lock a compact or wide layout. S and M tighten spacing (compact mode).</li>
 </ul>
-<p>Help, SharePoint, and Ticket Dossier use the same tokens, so every signed-in page follows the theme you already chose.</p>
+<p>On <a href="help.php">Help &amp; About</a>, a reading toolbar adds page-only options (also stored in this browser):</p>
+<ul>
+<li><strong>Font</strong> — App, Serif, Clear, Lexend, or Rounded for the topic list and article.</li>
+<li><strong>Read aloud</strong> — Play, Pause, and Stop use the browser’s speech synthesis with up to four US English male and four US English female voices installed on your device.</li>
+</ul>
+<p>Help, SharePoint, and Ticket Dossier use the same theme tokens, so every signed-in page follows the theme you already chose. Font and Read aloud apply only on Help &amp; About.</p>
 HTML,
                 ],
             ],

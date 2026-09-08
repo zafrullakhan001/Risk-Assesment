@@ -1508,8 +1508,12 @@ $soloPageClass = $ownerSolo
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
                 <a class="button ghost home-link<?= !$panelSolo ? ' is-active' : '' ?>" data-menu-group="sharepoint" data-menu-tone="peach" href="sharepoint.php?source=<?= e($activeSourceKey) ?>"<?= !$panelSolo ? ' aria-current="page"' : '' ?> title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
+                <?php
+                $ownersNavUrl = $ownerDashUrl;
+                require __DIR__ . '/includes/owners-nav-link.php';
+                ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
-                <a class="button ghost home-link<?= $ownerSolo ? ' is-active' : '' ?>" data-menu-group="sharepoint" data-menu-tone="sky" href="<?= e($ownerDashUrl) ?>"<?= $ownerSolo ? ' aria-current="page"' : '' ?> title="View SharePoint project owners and ownership cards"><span class="topbar-menu-emoji" aria-hidden="true">👤</span>Owners</a>
+
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
                 <div class="updated template-count-chip"><?= (int) $projectCount ?> project<?= $projectCount === 1 ? '' : 's' ?></div>

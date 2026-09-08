@@ -5,7 +5,7 @@ declare(strict_types=1);
 use RiskAssessment\Auth;
 
 /**
- * Help link pinned at the bottom of the topbar menu (before Appearance).
+ * Compact Help control for the topbar menu header (and full bar mode).
  */
 $navAuth = $navAuth ?? Auth::instance();
 $navUser = $navUser ?? $navAuth->currentUser();
@@ -17,13 +17,10 @@ if ($navUser === null) {
     return;
 }
 ?>
-<div class="topbar-menu-section topbar-menu-help">
-    <a
-        class="button ghost home-link topbar-menu-item topbar-menu-help-link<?= $navOnHelp ? ' is-active' : '' ?>"
-        data-menu-tone="rose"
-        data-menu-group="help"
-        href="<?= e($navPrefix) ?>help.php"
-        title="Open Help &amp; About for guides on assessments, SharePoint, Ticket Dossier, and admin tools"
-        <?= $navOnHelp ? ' aria-current="page"' : '' ?>
-    ><span class="topbar-menu-emoji" aria-hidden="true">❓</span>Help &amp; About</a>
-</div>
+<a
+    class="topbar-menu-help-icon<?= $navOnHelp ? ' is-active' : '' ?>"
+    href="<?= e($navPrefix) ?>help.php"
+    title="Open Help &amp; About for guides on assessments, SharePoint, Ticket Dossier, and admin tools"
+    aria-label="Help and About"
+    <?= $navOnHelp ? ' aria-current="page"' : '' ?>
+>?</a>
