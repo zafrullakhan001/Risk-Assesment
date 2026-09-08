@@ -12,7 +12,8 @@ $catalogNavUrl = $catalogNavUrl ?? 'sharepoint.php?view=catalog&source=default&m
 ?>
 <a
     class="button ghost home-link<?= $catalogSolo ? ' is-active' : '' ?>"
+    data-menu-tone="aqua"
     href="<?= e($catalogNavUrl) ?>"
     title="Open catalogs (default source, OR mode, 100 per page)"
     <?= $catalogSolo ? ' aria-current="page"' : '' ?>
->🔎 catalogs</a>
+><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>catalogs</a>

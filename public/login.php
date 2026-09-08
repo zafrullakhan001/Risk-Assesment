@@ -90,7 +90,8 @@ $ldapOn = $auth->ldapEnabled();
                 </div>
             </div>
             <div class="topbar-actions">
-                <?php require __DIR__ . '/includes/theme-controls.php'; ?>
+                <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
+                <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
             </div>
         </header>
 

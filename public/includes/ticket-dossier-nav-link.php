@@ -13,7 +13,8 @@ $ticketDossierNavUrl = $ticketDossierNavUrl ?? ($ticketDossierNavPrefix . 'ticke
 ?>
 <a
     class="button ghost home-link<?= $ticketDossierSolo ? ' is-active' : '' ?>"
+    data-menu-tone="butter"
     href="<?= e($ticketDossierNavUrl) ?>"
     title="ServiceNow ticket dossier viewer"
     <?= $ticketDossierSolo ? ' aria-current="page"' : '' ?>
->🎫 Ticket Dossier</a>
+><span class="topbar-menu-emoji" aria-hidden="true">🎫</span>Ticket Dossier</a>

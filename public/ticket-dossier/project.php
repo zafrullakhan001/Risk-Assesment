@@ -90,13 +90,20 @@ $ribbon = [
             </div>
         </a>
         <div class="topbar-actions">
-            <a class="button ghost home-link" href="index.php">← All projects</a>
+            <?php
+            ob_start();
+            ?>
+            <a class="button ghost home-link" data-menu-tone="sky" href="index.php"><span class="topbar-menu-emoji" aria-hidden="true">📋</span>All projects</a>
             <a
                 class="button button-primary home-link"
+                data-menu-tone="mint"
                 href="export.php?id=<?= (int) $id ?>"
                 title="Download the complete dossier as JSON for AI analysis"
-            >⬇️ Export JSON</a>
-            <?php require __DIR__ . '/includes/app-nav.php'; ?>
+            ><span class="topbar-menu-emoji" aria-hidden="true">⬇️</span>Export JSON</a>
+            <?php
+            $topbarMenuExtraBefore = ob_get_clean();
+            require __DIR__ . '/includes/app-nav.php';
+            ?>
         </div>
     </header>
 

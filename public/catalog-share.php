@@ -327,9 +327,10 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
             </div>
             <div class="topbar-actions">
                 <span class="share-readonly-pill" title="Public catalog cards only — sign-in is not required">🔓 Public catalog</span>
-                <?php require __DIR__ . '/includes/theme-controls.php'; ?>
+                <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
+                <a class="button ghost home-link" data-menu-tone="mint" href="login.php"><span class="topbar-menu-emoji" aria-hidden="true">🔑</span>Sign in</a>
+                <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
                 <div class="updated template-count-chip"><?= (int) $projectCount ?> project<?= $projectCount === 1 ? '' : 's' ?></div>
-                <a class="button ghost home-link" href="login.php">Sign in</a>
             </div>
         </header>
 

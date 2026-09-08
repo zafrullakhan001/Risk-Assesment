@@ -1818,14 +1818,15 @@ $renderProjectLockBadge = static function (array $project): void {
                 </div>
             </a>
             <div class="topbar-actions">
-                <a class="button ghost home-link" href="#find-projects">Find by name</a>
-                <a class="button ghost home-link" href="#upload">Upload</a>
-                <a class="button ghost home-link" href="templates.php">📚 Templates</a>
-                <a class="button ghost home-link" href="sharepoint.php">📁 SharePoint</a>
+                <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
+                <a class="button ghost home-link" data-menu-tone="sky" href="#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find by name</a>
+                <a class="button ghost home-link" data-menu-tone="mint" href="#upload"><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
+                <a class="button ghost home-link" data-menu-tone="lavender" href="templates.php"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
+                <a class="button ghost home-link" data-menu-tone="peach" href="sharepoint.php"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
-                <?php require __DIR__ . '/includes/theme-controls.php'; ?>
+                <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
                 <div class="updated"><?= (int) $totalProjects ?> saved project<?= $totalProjects === 1 ? '' : 's' ?></div>
             </div>
         </header>

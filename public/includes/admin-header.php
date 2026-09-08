@@ -31,9 +31,10 @@ $adminIntro = $adminIntro ?? 'Manage this Risk Assessment install.';
                 </div>
             </a>
             <div class="topbar-actions">
-                <a class="button ghost home-link" href="../index.php#find-projects">← Find projects</a>
-                <?php require dirname(__DIR__) . '/includes/auth-nav.php'; ?>
-                <?php require dirname(__DIR__) . '/includes/theme-controls.php'; ?>
+                <?php require dirname(__DIR__) . '/includes/topbar-menu-start.php'; ?>
+                <a class="button ghost home-link" data-menu-tone="sky" href="../index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+                <?php require dirname(__DIR__) . '/includes/updates-nav.php'; ?>
+                <?php require dirname(__DIR__) . '/includes/topbar-menu-end.php'; ?>
             </div>
         </header>
         <main>

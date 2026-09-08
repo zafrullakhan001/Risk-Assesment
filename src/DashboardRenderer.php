@@ -211,6 +211,8 @@ final class DashboardRenderer
             <div class="topbar-actions">
                 <?php if ($isPublicShare): ?>
                     <span class="share-readonly-pill" title="Anyone with this link can view this assessment">🔒 Read-only share</span>
+                    <?php require dirname(__DIR__) . '/public/includes/topbar-menu-start.php'; ?>
+                    <?php require dirname(__DIR__) . '/public/includes/topbar-menu-end.php'; ?>
                 <?php else: ?>
                     <?php if ($signedInViewOnly): ?>
                         <span class="share-readonly-pill" title="Only the owner can grant edit access">👁 View only</span>
@@ -218,10 +220,11 @@ final class DashboardRenderer
                     <?php if ($isLocked): ?>
                         <span class="project-lock-badge" title="This project is locked">🔒 Locked</span>
                     <?php endif; ?>
-                    <a class="button ghost home-link" href="index.php#find-projects">← Find projects</a>
+                    <?php require dirname(__DIR__) . '/public/includes/topbar-menu-start.php'; ?>
+                    <a class="button ghost home-link" data-menu-tone="sky" href="index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
                     <?php require dirname(__DIR__) . '/public/includes/updates-nav.php'; ?>
+                    <?php require dirname(__DIR__) . '/public/includes/topbar-menu-end.php'; ?>
                 <?php endif; ?>
-                <?php require dirname(__DIR__) . '/public/includes/theme-controls.php'; ?>
                 <div class="updated">
                     <span class="live-dot"></span>
                     <span>Assessment date <?= $this->e($assessmentDate) ?></span>

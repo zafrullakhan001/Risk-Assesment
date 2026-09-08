@@ -215,6 +215,294 @@ html[data-size="xxl"] {
     justify-content: flex-end;
 }
 
+html[data-nav-mode="menu"] .topbar-actions {
+    flex-wrap: nowrap;
+}
+
+.topbar-menu {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.topbar-menu-emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.7em;
+    height: 1.7em;
+    margin-right: 0.45em;
+    border-radius: 9px;
+    font-size: 0.95em;
+    line-height: 1;
+    background: color-mix(in srgb, var(--menu-tone, var(--primary)) 18%, #fff);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--menu-tone, var(--primary)) 22%, transparent);
+}
+
+[data-theme="indigo"] .topbar-menu-emoji {
+    background: color-mix(in srgb, var(--menu-tone, var(--primary)) 28%, var(--card));
+}
+
+.topbar-menu-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 85;
+    width: min(340px, calc(100vw - 24px));
+    max-height: min(78vh, 640px);
+    overflow: auto;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow);
+}
+
+html[data-nav-mode="menu"] .topbar-menu-panel {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+    transform-origin: top right;
+    pointer-events: none;
+    transition:
+        opacity 0.22s ease,
+        transform 0.22s ease;
+}
+
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.topbar-menu-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.topbar-menu-panel-head h3 {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    font-size: 15px;
+}
+
+.topbar-menu-body {
+    display: grid;
+    gap: 14px;
+}
+
+.topbar-menu-section-label {
+    margin: 0 0 8px;
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.topbar-menu-section-label .topbar-menu-emoji {
+    width: 1.5em;
+    height: 1.5em;
+    margin-right: 0.4em;
+    font-size: 0.85em;
+    background: color-mix(in srgb, var(--primary) 14%, var(--card));
+}
+
+.topbar-menu-nav-items {
+    display: grid;
+    gap: 6px;
+}
+
+.topbar-menu-nav-items:empty {
+    display: none;
+}
+
+.topbar-menu-nav:has(.topbar-menu-nav-items:empty) {
+    display: none;
+}
+
+[data-menu-tone="sky"] { --menu-tone: #38bdf8; }
+[data-menu-tone="mint"] { --menu-tone: #34d399; }
+[data-menu-tone="lavender"] { --menu-tone: #a78bfa; }
+[data-menu-tone="peach"] { --menu-tone: #fb923c; }
+[data-menu-tone="aqua"] { --menu-tone: #22d3ee; }
+[data-menu-tone="butter"] { --menu-tone: #fbbf24; }
+[data-menu-tone="rose"] { --menu-tone: #fb7185; }
+[data-menu-tone="lilac"] { --menu-tone: #c084fc; }
+[data-menu-tone="coral"] { --menu-tone: #f87171; }
+
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .button.ghost,
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .inline-form .button.ghost {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    border-color: color-mix(in srgb, var(--menu-tone, var(--primary)) 24%, var(--line));
+    background: color-mix(in srgb, var(--menu-tone, var(--primary)) 12%, var(--card));
+    color: var(--ink);
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .button.ghost:hover,
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .inline-form .button.ghost:hover,
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .button.ghost:focus-visible,
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .inline-form .button.ghost:focus-visible {
+    background: color-mix(in srgb, var(--menu-tone, var(--primary)) 22%, var(--card));
+    border-color: color-mix(in srgb, var(--menu-tone, var(--primary)) 40%, var(--line));
+    transform: translateX(2px);
+}
+
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .button.ghost.is-active,
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .button.ghost[aria-current="page"] {
+    background: color-mix(in srgb, var(--menu-tone, var(--primary)) 28%, var(--card));
+    border-color: color-mix(in srgb, var(--menu-tone, var(--primary)) 48%, var(--line));
+    font-weight: 600;
+}
+
+html[data-nav-mode="menu"] .topbar-menu-nav-items > .inline-form {
+    display: block;
+    margin: 0;
+}
+
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *,
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-appearance,
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-toolbar {
+    animation: topbar-menu-item-in 0.28s ease both;
+}
+
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(1) { animation-delay: 0.02s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(2) { animation-delay: 0.04s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(3) { animation-delay: 0.06s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(4) { animation-delay: 0.08s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(5) { animation-delay: 0.1s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(6) { animation-delay: 0.12s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(7) { animation-delay: 0.14s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(8) { animation-delay: 0.16s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(9) { animation-delay: 0.18s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *:nth-child(n+10) { animation-delay: 0.2s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-appearance { animation-delay: 0.14s; }
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-toolbar { animation-delay: 0.18s; }
+
+@keyframes topbar-menu-item-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-nav-mode="menu"] .topbar-menu-panel,
+    html[data-nav-mode="menu"] .topbar-menu-nav-items > .button.ghost,
+    html[data-nav-mode="menu"] .topbar-menu-nav-items > .inline-form .button.ghost {
+        transition: none;
+    }
+
+    html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *,
+    html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-appearance,
+    html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-toolbar {
+        animation: none;
+    }
+}
+
+html[data-nav-mode="menu"] .topbar-menu-appearance .display-controls {
+    display: grid;
+    gap: 8px;
+    justify-content: stretch;
+}
+
+html[data-nav-mode="menu"] .topbar-menu-appearance .theme-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+html[data-nav-mode="menu"] .topbar-menu-mode-toggle {
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+html[data-nav-mode="menu"] .topbar-actions > .updated,
+html[data-nav-mode="menu"] .topbar-actions > .template-count-chip {
+    flex: 0 1 auto;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+    html[data-nav-mode="menu"] .topbar-actions > .updated,
+    html[data-nav-mode="menu"] .topbar-actions > .template-count-chip {
+        display: none;
+    }
+}
+
+/* Full button bar: flatten the menu wrappers back into the topbar row */
+html[data-nav-mode="bar"] .topbar-menu,
+html[data-nav-mode="bar"] .topbar-menu-panel,
+html[data-nav-mode="bar"] .topbar-menu-body,
+html[data-nav-mode="bar"] .topbar-menu-section,
+html[data-nav-mode="bar"] .topbar-menu-nav-items {
+    display: contents;
+}
+
+/* Override [hidden] before JS runs so bar mode does not flash empty */
+html[data-nav-mode="bar"] .topbar-menu-panel[hidden] {
+    display: contents !important;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-btn,
+html[data-nav-mode="bar"] .topbar-menu-panel-head,
+html[data-nav-mode="bar"] .topbar-menu-section-label {
+    display: none !important;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-emoji {
+    margin-right: 0.35em;
+    width: auto;
+    height: auto;
+    background: transparent;
+    box-shadow: none;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-panel {
+    position: static;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+    transition: none;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-toolbar {
+    display: inline-flex;
+    align-items: center;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-mode-toggle {
+    display: inline-flex;
+}
+
 .brand {
     display: flex;
     flex-direction: row;
@@ -4184,6 +4472,7 @@ body.is-presentation .toolbar,
 body.is-presentation .dash-tabs,
 body.is-presentation .display-controls,
 body.is-presentation .theme-controls,
+body.is-presentation .topbar-menu,
 body.is-presentation .exec-actions,
 body.is-presentation .exec-edit-btn,
 body.is-presentation .exec-summary-editor,
@@ -5666,6 +5955,7 @@ body.is-presentation .print-only-block { display: block; }
 
 @media print {
     .update-bell,
+    .topbar-menu,
     .update-toast-host,
     .app-toast-host {
         display: none !important;
