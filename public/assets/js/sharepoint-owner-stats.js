@@ -227,6 +227,24 @@
   );
 
   const readSavedScopes = () => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSources = params.get('osources');
+    if (urlSources === 'all') {
+      const all = availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
+      if (all.length) return all;
+    } else if (urlSources) {
+      const fromUrl = urlSources
+        .split(',')
+        .map((key) => key.trim())
+        .filter((key) => titleByKey[key]);
+      if (fromUrl.length) return fromUrl;
+    }
+
+    const urlSource = (params.get('source') || root.getAttribute('data-active-source') || '').trim();
+    if (publicShare && urlSource && titleByKey[urlSource]) {
+      return [urlSource];
+    }
+
     try {
       const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       if (Array.isArray(raw) && raw.length) {
@@ -236,6 +254,12 @@
     } catch {
       /* ignore */
     }
+
+    if (publicShare && urlSource) return [urlSource];
+    const checks = scopesRoot
+      ? Array.from(scopesRoot.querySelectorAll('.sp-owner-scope-check:checked')).map((el) => el.value)
+      : [];
+    if (checks.length) return checks;
     return availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
   };
 
@@ -280,9 +304,15 @@
     if (chip) state.chip = chip;
     if (params.get('oheat') === '1') state.heatAll = true;
     const sources = params.get('osources');
-    if (sources) {
+    if (sources === 'all') {
+      const all = availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
+      if (all.length) state.sourceKeys = all;
+    } else if (sources) {
       const keys = sources.split(',').map((key) => key.trim()).filter((key) => titleByKey[key]);
       if (keys.length) state.sourceKeys = keys;
+    } else if (publicShare) {
+      const urlSource = (params.get('source') || root.getAttribute('data-active-source') || '').trim();
+      if (urlSource && titleByKey[urlSource]) state.sourceKeys = [urlSource];
     }
     const compare = params.get('ocompare');
     if (compare) {
@@ -307,7 +337,18 @@
     const allKeys = availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
     const sameSources =
       state.sourceKeys.length === allKeys.length && allKeys.every((key) => state.sourceKeys.includes(key));
-    setOrDel('osources', sameSources ? '' : state.sourceKeys.join(','));
+    if (sameSources && allKeys.length > 1) {
+      url.searchParams.set('osources', 'all');
+    } else if (state.sourceKeys.length > 1) {
+      url.searchParams.set('osources', state.sourceKeys.join(','));
+    } else {
+      url.searchParams.delete('osources');
+    }
+    if (publicShare && state.sourceKeys.length === 1) {
+      url.searchParams.set('source', state.sourceKeys[0]);
+    } else if (publicShare) {
+      url.searchParams.delete('source');
+    }
     setOrDel('ocompare', state.compareKeys.length >= 2 ? state.compareKeys.join(',') : '');
     const next = `${url.pathname}${url.search}${url.hash}`;
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -330,6 +371,7 @@
     const selected = state.sourceKeys.length;
     const countEl = document.getElementById('sp-owner-scopes-count');
     const allBtn = document.getElementById('sp-owner-scopes-all');
+    const activeBtn = document.getElementById('sp-owner-scopes-active');
     if (countEl) {
       countEl.textContent = total ? `${selected} of ${total}` : '0';
     }
@@ -338,6 +380,11 @@
       allBtn.classList.toggle('is-active', allOn);
       allBtn.disabled = allOn;
       allBtn.textContent = allOn ? 'All selected' : 'Select all';
+    }
+    if (activeBtn) {
+      const oneOn = selected === 1;
+      activeBtn.classList.toggle('is-active', oneOn);
+      activeBtn.disabled = oneOn;
     }
   };
 
@@ -1527,11 +1574,18 @@
   };
 
   const load = () => {
-    const keys = state.sourceKeys.length ? state.sourceKeys : availableSources.map((s) => s.source_key).filter(Boolean);
+    const fallbackKeys = publicShare
+      ? [(root.getAttribute('data-active-source') || '').trim()].filter((key) => titleByKey[key])
+      : availableSources.map((s) => String(s.source_key || '')).filter(Boolean);
+    const keys = state.sourceKeys.length ? state.sourceKeys : fallbackKeys;
     state.loading = true;
     state.error = '';
     render();
-    fetch(ownerApiUrl('owner_stats', { sources: keys.length ? keys.join(',') : 'all' }), {
+    const extra = {
+      source: keys[0] || '',
+      sources: keys.join(','),
+    };
+    fetch(ownerApiUrl('owner_stats', extra), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     })
@@ -1612,6 +1666,12 @@
 
   document.getElementById('sp-owner-scopes-all')?.addEventListener('click', () => {
     setSources(availableSources.map((src) => String(src.source_key || '')).filter(Boolean));
+  });
+
+  document.getElementById('sp-owner-scopes-active')?.addEventListener('click', () => {
+    const activeKey = (root.getAttribute('data-active-source') || '').trim();
+    const focus = state.sourceKeys.includes(activeKey) ? activeKey : state.sourceKeys[0] || activeKey;
+    setSources([focus].filter(Boolean));
   });
 
   const shell = document.getElementById('sharepoint-owner-dash-shell');

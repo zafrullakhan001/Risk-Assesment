@@ -17286,7 +17286,8 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
     background: color-mix(in srgb, var(--primary, #0e7490) 12%, var(--card, #fff));
     color: var(--primary, #0e7490);
 }
-.sp-od-scopes-all {
+.sp-od-scopes-all,
+.sp-od-scopes-active {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -17302,18 +17303,22 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
     cursor: pointer;
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
-.sp-od-scopes-all:hover:not(:disabled) {
+.sp-od-scopes-all:hover:not(:disabled),
+.sp-od-scopes-active:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary, #0e7490) 10%, var(--card, #fff));
 }
 .sp-od-scopes-all.is-active,
-.sp-od-scopes-all:disabled {
+.sp-od-scopes-all:disabled,
+.sp-od-scopes-active.is-active,
+.sp-od-scopes-active:disabled {
     background: color-mix(in srgb, var(--primary, #0e7490) 14%, var(--card, #fff));
     border-color: color-mix(in srgb, var(--primary, #0e7490) 38%, var(--line, #d0dae4));
     color: var(--primary-dark, #155e75);
     cursor: default;
     opacity: 1;
 }
-.sp-od-scopes-all:focus-visible {
+.sp-od-scopes-all:focus-visible,
+.sp-od-scopes-active:focus-visible {
     outline: 2px solid var(--primary, #0e7490);
     outline-offset: 2px;
 }

@@ -42,7 +42,13 @@ foreach ($allSources as $src) {
 }
 
 $actionParam = (string) ($_GET['action'] ?? '');
-$activeSource = $allSources[0];
+$requestedSourceKey = trim((string) ($_GET['source'] ?? ''));
+$activeSource = $requestedSourceKey !== '' && isset($allowedKeys[$requestedSourceKey])
+    ? ($sourcesRepo->findByKey($requestedSourceKey) ?? null)
+    : null;
+if ($activeSource === null) {
+    $activeSource = $allSources[0];
+}
 $activeSourceKey = (string) ($activeSource['source_key'] ?? '');
 
 if ($actionParam === 'owner_stats') {
@@ -50,15 +56,20 @@ if ($actionParam === 'owner_stats') {
     header('Cache-Control: private, max-age=30');
 
     $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $fallbackKey = trim((string) ($_GET['source'] ?? $activeSourceKey));
     $wantedKeys = [];
-    if ($sourcesParam === 'all' || $sourcesParam === '') {
+    // Missing sources = the checked catalog only. Use sources=all or a key list for more.
+    if ($sourcesParam === 'all') {
         $wantedKeys = array_keys($allowedKeys);
-    } else {
+    } elseif ($sourcesParam !== '') {
         foreach (array_map('trim', explode(',', $sourcesParam)) as $key) {
             if ($key !== '' && isset($allowedKeys[$key])) {
                 $wantedKeys[] = $key;
             }
         }
+    }
+    if ($wantedKeys === [] && $fallbackKey !== '' && isset($allowedKeys[$fallbackKey])) {
+        $wantedKeys = [$fallbackKey];
     }
 
     $sourceTitles = [];
@@ -252,9 +263,10 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                                     <span class="sp-od-scopes-label">
                                         <span aria-hidden="true">📁</span>
                                         Folders
-                                        <b class="sp-od-scopes-count" id="sp-owner-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
+                                        <b class="sp-od-scopes-count" id="sp-owner-scopes-count"><?= count($allSources) > 0 ? '1 of ' . count($allSources) : '0' ?></b>
                                     </span>
-                                    <button type="button" class="sp-od-scopes-all is-active" id="sp-owner-scopes-all" disabled>All selected</button>
+                                    <button type="button" class="sp-od-scopes-all" id="sp-owner-scopes-all">Select all</button>
+                                    <button type="button" class="sp-od-scopes-active is-active" id="sp-owner-scopes-active" disabled>This catalog only</button>
                                 </div>
                                 <div class="sp-od-scopes-list">
                                     <?php foreach ($allSources as $src): ?>
@@ -263,10 +275,11 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                                         $srcTitle = (string) ($src['title'] ?? $srcKey);
                                         $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
                                         $srcHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
+                                        $srcChecked = $srcKey === $activeSourceKey;
                                         ?>
-                                        <div class="sharepoint-scope-chip is-active" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>">
+                                        <div class="sharepoint-scope-chip<?= $srcChecked ? ' is-active' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>">
                                             <label class="sharepoint-scope-chip-main">
-                                                <input type="checkbox" class="sp-owner-scope-check" value="<?= e($srcKey) ?>" checked>
+                                                <input type="checkbox" class="sp-owner-scope-check" value="<?= e($srcKey) ?>"<?= $srcChecked ? ' checked' : '' ?>>
                                                 <span><?= e($srcTitle) ?></span>
                                             </label>
                                             <span class="sharepoint-scope-color-btn" data-source-key="<?= e($srcKey) ?>" style="--catalog-tone: <?= e($srcHex) ?>" aria-hidden="true"></span>
