@@ -167,7 +167,7 @@ $ribbon = [
             <div class="overview-grid">
                 <article class="overview-card">
                     <h3>📝 Description</h3>
-                    <p><?= $overview['description'] !== '' ? nl2br(e((string) $overview['description'])) : '<span class="muted">No description available.</span>' ?></p>
+                    <p><?= !empty($overview['description']) ? nl2br(e((string) $overview['description'])) : '<span class="muted">No description available.</span>' ?></p>
                 </article>
                 <article class="overview-card">
                     <h3>💡 Business case</h3>

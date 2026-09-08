@@ -1,5 +1,77 @@
 <?php
+
 declare(strict_types=1);
+
+/**
+ * One-time move of Ticket Dossier SQLite + uploaded files into /database
+ * so the GitHub updater preserves them (same as risk_assessment.sqlite).
+ */
+function migrateTicketDossierDataIfNeeded(): void
+{
+    if (!is_dir(TD_DATABASE_DIR)) {
+        mkdir(TD_DATABASE_DIR, 0755, true);
+    }
+
+    if (!is_file(TD_SQLITE_PATH) && is_file(TD_LEGACY_SQLITE_PATH)) {
+        if (!@copy(TD_LEGACY_SQLITE_PATH, TD_SQLITE_PATH)) {
+            throw new RuntimeException('Unable to move Ticket Dossier database into /database.');
+        }
+        foreach (['-wal', '-shm', '-journal'] as $suffix) {
+            $side = TD_LEGACY_SQLITE_PATH . $suffix;
+            if (is_file($side)) {
+                @copy($side, TD_SQLITE_PATH . $suffix);
+            }
+        }
+    }
+
+    if (!is_dir(TD_STORAGE_DIR)) {
+        mkdir(TD_STORAGE_DIR, 0755, true);
+    }
+
+    if (!is_dir(TD_LEGACY_STORAGE_DIR)) {
+        return;
+    }
+
+    $legacyProjects = glob(TD_LEGACY_STORAGE_DIR . '/*', GLOB_ONLYDIR) ?: [];
+    foreach ($legacyProjects as $legacyDir) {
+        $name = basename($legacyDir);
+        if ($name === '' || $name === '.' || $name === '..') {
+            continue;
+        }
+        $dest = TD_STORAGE_DIR . '/' . $name;
+        if (is_dir($dest)) {
+            continue;
+        }
+        renameTicketDossierDirectory($legacyDir, $dest);
+    }
+}
+
+function renameTicketDossierDirectory(string $from, string $to): void
+{
+    if (@rename($from, $to)) {
+        return;
+    }
+
+    if (!mkdir($to, 0755, true) && !is_dir($to)) {
+        throw new RuntimeException('Unable to create Ticket Dossier storage folder.');
+    }
+
+    $items = scandir($from) ?: [];
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+        $src = $from . '/' . $item;
+        $dst = $to . '/' . $item;
+        if (is_dir($src)) {
+            renameTicketDossierDirectory($src, $dst);
+            continue;
+        }
+        if (!@copy($src, $dst)) {
+            throw new RuntimeException('Unable to copy Ticket Dossier file: ' . $item);
+        }
+    }
+}
 
 function getDb(): PDO
 {
@@ -9,8 +81,14 @@ function getDb(): PDO
         return $pdo;
     }
 
-    if (!is_dir(TD_DATA_DIR)) {
-        mkdir(TD_DATA_DIR, 0755, true);
+    migrateTicketDossierDataIfNeeded();
+
+    if (!is_dir(TD_DATABASE_DIR)) {
+        mkdir(TD_DATABASE_DIR, 0755, true);
+    }
+
+    if (!is_dir(TD_STORAGE_DIR)) {
+        mkdir(TD_STORAGE_DIR, 0755, true);
     }
 
     $pdo = new PDO('sqlite:' . TD_SQLITE_PATH, null, null, [
