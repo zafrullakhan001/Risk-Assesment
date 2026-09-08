@@ -54,6 +54,10 @@
         }
 
         const article = layout.querySelector('[data-help-article="' + nextId + '"]');
+        const savedFont = document.documentElement.getAttribute('data-help-font');
+        if (savedFont) {
+            layout.setAttribute('data-help-font', savedFont);
+        }
         if (article && options && options.scrollArticle) {
             article.scrollIntoView({ block: 'start', behavior: 'smooth' });
         }

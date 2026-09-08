@@ -18342,7 +18342,10 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
     z-index: 80;
     top: calc(100% + 4px);
     left: 0;
-    min-width: max(100%, 16rem);
+    min-width: 16rem;
+    width: 16rem;
+    max-width: 18rem;
+    box-sizing: border-box;
     max-height: min(28rem, 72vh);
     overflow: auto;
     overscroll-behavior: contain;
@@ -18364,7 +18367,9 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
 }
 .help-font-picker-option {
     display: block;
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     margin: 0;
     padding: 0.45rem 0.65rem;
     border: 1px solid transparent;
@@ -18375,6 +18380,9 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
     font-size: 1rem;
     line-height: 1.35;
     cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .help-font-picker-option:hover,
 .help-font-picker-option:focus-visible {

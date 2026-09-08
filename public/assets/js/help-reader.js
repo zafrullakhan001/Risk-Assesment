@@ -85,6 +85,8 @@
         fontMenu.style.right = '';
         fontMenu.style.bottom = '';
         fontMenu.style.width = '';
+        fontMenu.style.minWidth = '';
+        fontMenu.style.maxWidth = '';
         fontMenu.style.maxHeight = '';
         fontMenu.style.zIndex = '';
     };
@@ -95,7 +97,7 @@
         }
         const rect = fontTrigger.getBoundingClientRect();
         const gutter = 8;
-        const width = Math.max(rect.width, 256);
+        const width = Math.min(Math.max(rect.width, 176), 288);
         const left = Math.min(
             Math.max(gutter, rect.left),
             Math.max(gutter, window.innerWidth - width - gutter)
@@ -109,6 +111,8 @@
         fontMenu.style.position = 'fixed';
         fontMenu.style.left = `${Math.round(left)}px`;
         fontMenu.style.width = `${Math.round(width)}px`;
+        fontMenu.style.minWidth = `${Math.round(width)}px`;
+        fontMenu.style.maxWidth = `${Math.round(width)}px`;
         fontMenu.style.zIndex = '80';
         fontMenu.style.right = 'auto';
         if (openUp) {
@@ -142,6 +146,39 @@
         }
     };
 
+    const persistFont = (font) => {
+        try {
+            localStorage.setItem(FONT_KEY, font);
+        } catch (e) { /* ignore */ }
+        try {
+            document.cookie = `${FONT_KEY}=${encodeURIComponent(font)}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch (e) { /* ignore */ }
+    };
+
+    const readCookie = (name) => {
+        try {
+            const parts = document.cookie.split(';');
+            for (let i = 0; i < parts.length; i += 1) {
+                const part = parts[i].trim();
+                if (part.indexOf(`${name}=`) === 0) {
+                    return decodeURIComponent(part.slice(name.length + 1));
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return '';
+    };
+
+    const readStoredFont = () => {
+        let stored = '';
+        try {
+            stored = localStorage.getItem(FONT_KEY) || '';
+        } catch (e) { /* ignore */ }
+        if (!stored) {
+            stored = readCookie(FONT_KEY);
+        }
+        return FONT_OPTIONS.includes(stored) ? stored : 'app';
+    };
+
     const applyFont = (font) => {
         const next = FONT_OPTIONS.includes(font) ? font : 'app';
         document.documentElement.setAttribute('data-help-font', next);
@@ -163,19 +200,10 @@
             fontTrigger.textContent = label;
             fontTrigger.style.fontFamily = stack;
         }
-        try {
-            localStorage.setItem(FONT_KEY, next);
-        } catch (e) { /* ignore */ }
+        persistFont(next);
     };
 
-    const savedFont = (() => {
-        try {
-            return localStorage.getItem(FONT_KEY) || 'app';
-        } catch (e) {
-            return 'app';
-        }
-    })();
-    applyFont(savedFont);
+    applyFont(readStoredFont());
 
     if (fontTrigger && fontMenu) {
         fontTrigger.addEventListener('click', () => {
@@ -187,7 +215,9 @@
         });
 
         fontOptions.forEach((option) => {
-            option.addEventListener('click', () => {
+            option.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 applyFont(option.getAttribute('data-help-font') || 'app');
                 closeFontMenu();
                 fontTrigger.focus();
@@ -728,6 +758,7 @@
                 setStatus('Stopped — topic changed.');
             }
             lastTopic = topicId;
+            applyFont(readStoredFont());
         }
     };
 

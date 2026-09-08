@@ -27,19 +27,107 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
     <script>
     (function () {
-        try {
-            var font = localStorage.getItem('ra-help-font') || 'app';
-            var allowed = [
-                'app', 'clear', 'lexend', 'rounded', 'figtree', 'arial', 'verdana', 'tahoma', 'trebuchet', 'impact',
-                'serif', 'literata', 'merriweather', 'times', 'georgia',
-                'courier',
-                'dancing', 'caveat', 'great-vibes', 'patrick', 'comic'
-            ];
+        var FONT_KEY = 'ra-help-font';
+        var allowed = [
+            'app', 'clear', 'lexend', 'rounded', 'figtree', 'arial', 'verdana', 'tahoma', 'trebuchet', 'impact',
+            'serif', 'literata', 'merriweather', 'times', 'georgia',
+            'courier',
+            'dancing', 'caveat', 'great-vibes', 'patrick', 'comic'
+        ];
+        var labels = {
+            app: 'App (Source Sans 3)',
+            clear: 'Clear (Atkinson)',
+            lexend: 'Lexend',
+            rounded: 'Rounded (Nunito)',
+            figtree: 'Figtree',
+            arial: 'Arial',
+            verdana: 'Verdana',
+            tahoma: 'Tahoma',
+            trebuchet: 'Trebuchet MS',
+            impact: 'Impact',
+            serif: 'Source Serif 4',
+            literata: 'Literata',
+            merriweather: 'Merriweather',
+            times: 'Times New Roman',
+            georgia: 'Georgia',
+            courier: 'Courier New',
+            dancing: 'Dancing Script',
+            caveat: 'Caveat',
+            'great-vibes': 'Great Vibes',
+            patrick: 'Patrick Hand',
+            comic: 'Comic Sans MS'
+        };
+        var stacks = {
+            app: '"Source Sans 3", sans-serif',
+            clear: '"Atkinson Hyperlegible", Tahoma, sans-serif',
+            lexend: 'Lexend, sans-serif',
+            rounded: 'Nunito, sans-serif',
+            figtree: 'Figtree, sans-serif',
+            arial: 'Arial, Helvetica, sans-serif',
+            verdana: 'Verdana, Geneva, sans-serif',
+            tahoma: 'Tahoma, "Segoe UI", sans-serif',
+            trebuchet: '"Trebuchet MS", "Segoe UI", sans-serif',
+            impact: 'Impact, Haettenschweiler, sans-serif',
+            serif: '"Source Serif 4", Georgia, serif',
+            literata: 'Literata, Georgia, serif',
+            merriweather: 'Merriweather, Georgia, serif',
+            times: '"Times New Roman", Times, serif',
+            georgia: 'Georgia, "Times New Roman", serif',
+            courier: '"Courier New", Courier, monospace',
+            dancing: '"Dancing Script", cursive',
+            caveat: 'Caveat, cursive',
+            'great-vibes': '"Great Vibes", cursive',
+            patrick: '"Patrick Hand", cursive',
+            comic: '"Comic Sans MS", cursive'
+        };
+        function readCookie(name) {
+            try {
+                var parts = document.cookie.split(';');
+                for (var i = 0; i < parts.length; i += 1) {
+                    var part = parts[i].replace(/^\s+/, '');
+                    if (part.indexOf(name + '=') === 0) {
+                        return decodeURIComponent(part.slice(name.length + 1));
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            return '';
+        }
+        function persist(font) {
+            try { localStorage.setItem(FONT_KEY, font); } catch (e) { /* ignore */ }
+            try {
+                document.cookie = FONT_KEY + '=' + encodeURIComponent(font)
+                    + '; path=/; max-age=31536000; SameSite=Lax';
+            } catch (e) { /* ignore */ }
+        }
+        function readFont() {
+            var font = '';
+            try { font = localStorage.getItem(FONT_KEY) || ''; } catch (e) { /* ignore */ }
+            if (!font) {
+                font = readCookie(FONT_KEY);
+            }
             if (allowed.indexOf(font) === -1) {
                 font = 'app';
             }
-            document.documentElement.setAttribute('data-help-font', font);
-        } catch (e) { /* ignore */ }
+            return font;
+        }
+        var font = readFont();
+        persist(font);
+        document.documentElement.setAttribute('data-help-font', font);
+        document.addEventListener('DOMContentLoaded', function () {
+            var layout = document.getElementById('help-layout');
+            var btn = document.getElementById('help-font-picker-trigger');
+            var sel = document.getElementById('help-font-select');
+            if (layout) {
+                layout.setAttribute('data-help-font', font);
+            }
+            if (btn) {
+                btn.textContent = labels[font] || labels.app;
+                btn.style.fontFamily = stacks[font] || stacks.app;
+            }
+            if (sel) {
+                sel.value = font;
+            }
+        });
     })();
     </script>
 </head>
