@@ -457,7 +457,7 @@ HTML,
 <li><strong>LDAP / Active Directory</strong> checks the password against the directory. Directory passwords are never stored here. Admins can enable auto-create / auto-update / auto-approve for directory sign-ins, and export or import LDAP settings.</li>
 <li>Administrators can search LDAP, open live <strong>LDAP details</strong> (status, groups, org fields — never passwords), add a user, or <strong>preview and import a directory group</strong> (all members or a selected subset).</li>
 </ul>
-<p>The default first admin is <code>admin</code> / <code>admin123</code>. Change that password under Admin → Overview before exposing the app on a network.</p>
+<p>The default first admin is <code>admin</code> / <code>admin123</code>. Change that password under Admin → Overview before exposing the app on a network. If that password is forgotten, see <a href="#forgot-superadmin-password">Forgot superadmin password</a>.</p>
 HTML,
                 ],
                 [
@@ -474,7 +474,33 @@ HTML,
 <li><strong>App updates</strong> — see <a href="#app-updates">App updates</a> for Releases, commits, and zip apply.</li>
 <li><strong>SharePoint</strong> — jump to catalog admin (Tenant ID, Client ID, sync, import).</li>
 </ul>
-<p>Only administrators can open these pages. SharePoint folder management, sync, import, purge, tags, and archive controls are admin-gated as well.</p>
+<p>Only administrators can open these pages. SharePoint folder management, sync, import, purge, tags, and archive controls are admin-gated as well. If you cannot sign in as superadmin, recover the password from the server with <a href="#forgot-superadmin-password">Forgot superadmin password</a> — there is no web reset form.</p>
+HTML,
+                ],
+                [
+                    'id' => 'forgot-superadmin-password',
+                    'title' => 'Forgot superadmin password',
+                    'html' => <<<'HTML'
+<p>The superadmin password cannot be reset from the browser once you are locked out. Use the background CLI script on the server that hosts this app. It is <code>bin/reset_admin_password.php</code> — not a page under <code>public/</code>.</p>
+<ol>
+<li>Open a terminal on the server (Command Prompt or PowerShell on Windows, SSH on Linux).</li>
+<li>Change to the application folder — the directory that contains <code>bin</code> and <code>public</code> (for example <code>C:\xampp\htdocs\RiskRegister</code>).</li>
+<li>Run PHP against the script. The one-argument form finds the current superadmin and sets a new password:</li>
+</ol>
+<p><code>php bin/reset_admin_password.php "YourNewPassword!1"</code></p>
+<p>On XAMPP Windows, if <code>php</code> is not on the PATH, use the PHP executable:</p>
+<p><code>C:\xampp\php\php.exe bin\reset_admin_password.php "YourNewPassword!1"</code></p>
+<p>To target a specific local username instead (creates that administrator if it does not exist):</p>
+<p><code>php bin/reset_admin_password.php admin "YourNewPassword!1"</code></p>
+<ul>
+<li>Quote the password if it contains <code>!</code>, spaces, or other shell special characters.</li>
+<li>The new password must be at least 8 characters, with one uppercase letter, one number, and one special character.</li>
+<li>The script prints the username to sign in with. Open the sign-in page, choose <strong>Local account</strong> (or Auto), and use that username plus the password you just set.</li>
+<li>After you are in, change the password again under <a href="admin/index.php">Admin → Overview</a>.</li>
+<li>LDAP accounts are not reset here — change those passwords in Active Directory. This script only updates local accounts.</li>
+<li>Do not copy the script into <code>public/</code> or open it in a browser.</li>
+</ul>
+<p>Print usage any time with <code>php bin/reset_admin_password.php --help</code>.</p>
 HTML,
                 ],
                 [

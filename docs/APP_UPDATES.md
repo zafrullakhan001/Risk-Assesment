@@ -67,7 +67,7 @@ Installed version is stored in `VERSION.json` and in updater settings.
 ## Security
 
 - The PAT is encrypted at rest (AES-256-GCM) in SQLite `app_settings`.
-- This page is limited to administrators. Forgot the admin password? Run `php bin/reset_admin_password.php admin YourNewPassword!1`.
+- This page is limited to administrators. Forgot the superadmin password? Run `php bin/reset_admin_password.php "YourNewPassword!1"` on the server (see Help → Forgot superadmin password).
 - Encryption key: `database/.encryption_key` (not in git). Keep it with the database if you copy the install.
 - Zip entries containing `..` are rejected.
 
@@ -82,4 +82,4 @@ Installed version is stored in `VERSION.json` and in updater settings.
 | PHP zip / curl missing | Enable `extension=zip` and `extension=curl` in `php.ini`, restart Apache |
 | Browser shows garbled characters during apply | The download was leaking into the page; keep this updater build and retry. Keep the tab open until it redirects. |
 | Update already in progress | Wait a few seconds and retry; delete `database/updater.lock` only if Apache was killed mid-update |
-| Forgot admin password | `php bin/reset_admin_password.php admin YourNewPassword!1` |
+| Forgot superadmin password | `php bin/reset_admin_password.php "YourNewPassword!1"` (CLI on the server, not a web page) |

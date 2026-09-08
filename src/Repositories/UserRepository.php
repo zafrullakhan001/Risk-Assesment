@@ -49,6 +49,24 @@ final class UserRepository
         return is_array($row) ? $this->normalize($row) : null;
     }
 
+    /** @return array<string, mixed>|null */
+    public function findSuperAdmin(): ?array
+    {
+        $statement = $this->pdo->query(
+            'SELECT ' . self::USER_SELECT . '
+             FROM users
+             WHERE is_superadmin = 1
+             ORDER BY id ASC
+             LIMIT 1'
+        );
+        if ($statement === false) {
+            return null;
+        }
+        $row = $statement->fetch();
+
+        return is_array($row) ? $this->normalize($row) : null;
+    }
+
     /** @return list<array<string, mixed>> */
     public function listAll(): array
     {

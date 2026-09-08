@@ -75,13 +75,27 @@ The old `updates.php` URL redirects here. Only administrators can open these pag
 
 ## Recovery
 
-If you are locked out of the last admin account:
+If you forgot the **superadmin** password (or are locked out of the last admin account), run the CLI script on the server. It is not a web page.
+
+Reset the current superadmin (creates local `admin` if none exists):
 
 ```text
-php bin/reset_admin_password.php admin YourNewPassword!1
+php bin/reset_admin_password.php "YourNewPassword!1"
 ```
 
-The script creates the user if needed, approves it, and grants admin.
+Or name a local username (creates that administrator if needed):
+
+```text
+php bin/reset_admin_password.php admin "YourNewPassword!1"
+```
+
+On XAMPP Windows, from the app folder:
+
+```text
+C:\xampp\php\php.exe bin\reset_admin_password.php "YourNewPassword!1"
+```
+
+The new password must be at least 8 characters, with one uppercase letter, one number, and one special character. The script prints the username to sign in with, approves the account, and restores admin (and superadmin when that is the bootstrap local `admin` or an existing superadmin). LDAP passwords are not changed here — reset those in the directory.
 
 ---
 
