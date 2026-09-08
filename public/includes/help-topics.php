@@ -18,15 +18,17 @@ function help_topic_groups(): array
                     'id' => 'about-app',
                     'title' => 'About this app',
                     'html' => <<<'HTML'
-<p>This is the <strong>Architecture Risk Assessment register</strong>: a local web app for turning Excel workbooks into an interactive dashboard, then keeping project folders, templates, and go-live decisions in one place.</p>
+<p>This is the <strong>Architecture Risk Assessment register</strong>: a local web app for turning Excel workbooks into an interactive dashboard, then keeping project folders, ServiceNow ticket packets, templates, and go-live decisions in one place.</p>
 <p>The on-screen name can be customized under Admin → Branding. The default brand is Architecture Risk / Assessment register. The installed release is recorded in <code>VERSION.json</code> (shown under Admin → App updates).</p>
 <ul>
 <li>Upload a matured Risk Register or Adaptive Architecture workbook (<code>.xlsx</code>).</li>
-<li>Search saved projects, compare versions, and record responses, exceptions, and a final go-live evaluation.</li>
+<li>Search saved assessments, compare versions, and record responses, exceptions, and a final go-live evaluation.</li>
+<li>Build a <strong>Ticket Dossier</strong> from ServiceNow Demand, Story, Task, and DDR exports (any subset is enough).</li>
 <li>Keep blank templates (workbook, AI prompt, guide images, Mermaid) — up to 15 slots by default.</li>
 <li>Index SharePoint project folders with live search, fuzzy matching, QR codes, owner insights, and public share links.</li>
+<li>Open a dedicated <strong>architecture project catalog(s)</strong> view from the top bar for a focused catalog search.</li>
 </ul>
-<p>The app runs on PHP 8+ with a SQLite database on this server. Uploaded workbooks stay in <code>uploads/</code>. App updates apply a GitHub Release zip (git is not required); the database, uploads, and branding stay in place.</p>
+<p>The app runs on PHP 8+ with SQLite on this server. Assessment workbooks stay in <code>uploads/</code>. Ticket Dossier files live under <code>database/ticket-dossier-storage/</code> with their own <code>ticketdetails.sqlite</code>. App updates apply a GitHub Release zip (git is not required); the database folder, uploads, and branding stay in place.</p>
 HTML,
                 ],
                 [
@@ -37,10 +39,11 @@ HTML,
 <ul>
 <li>Assessors upload a workbook, answer gaps and risks, and capture a final evaluation.</li>
 <li>Reviewers search a project by name, owner, or go-live status and open the dashboard.</li>
+<li>Engagement teams assemble a Ticket Dossier from ServiceNow PDFs and DDR JSON to read demand, story, task, vendor, and questionnaire answers in one place.</li>
 <li>Anyone with a public share link can view a read-only assessment, catalog, or owners board without signing in.</li>
 <li>Administrators manage users, LDAP, branding, SharePoint sync, SQLite backups, and app updates.</li>
 </ul>
-<p>You must sign in for Find, Upload, Templates, and SharePoint. Public links are the only unsigned-in views, and they never let recipients sync, edit folders, or change assessments.</p>
+<p>You must sign in for Find, Upload, Templates, SharePoint, architecture project catalog(s), and Ticket Dossier. Public links are the only unsigned-in views, and they never let recipients sync, edit folders, or change assessments. Ticket Dossier has no public share — it stays behind sign-in.</p>
 HTML,
                 ],
             ],
@@ -53,14 +56,20 @@ HTML,
                     'id' => 'home-tabs',
                     'title' => 'Home tabs',
                     'html' => <<<'HTML'
-<p>After you sign in, four work areas sit under the hero. Use the top bar or these tabs to move around:</p>
+<p>After you sign in, four work areas sit under the hero. Extra modules sit in the top bar.</p>
+<p>Home tabs:</p>
 <ul>
 <li><strong>Find projects</strong> — search and open saved assessments. Start here: <a href="index.php#find-projects">Find projects</a>.</li>
 <li><strong>Upload assessment</strong> — drop one or more <code>.xlsx</code> workbooks. Open <a href="index.php#upload">Upload</a>.</li>
 <li><strong>Template library</strong> — blank workbooks, AI prompts, and guides. Open <a href="templates.php">Templates</a>.</li>
 <li><strong>SharePoint catalog</strong> — searchable project folders from SharePoint. Open <a href="sharepoint.php">SharePoint</a>.</li>
 </ul>
-<p>Open a saved row on Find projects to enter that assessment’s dashboard (readiness score, registers, Actions, diagrams, and sharing).</p>
+<p>Top-bar shortcuts (every signed-in page):</p>
+<ul>
+<li><strong>architecture project catalog(s)</strong> — a focused catalog search (default source, OR mode, 100 per page). Open <a href="sharepoint.php?view=catalog&amp;source=default&amp;mode=or&amp;per=100">architecture project catalog(s)</a>.</li>
+<li><strong>Ticket Dossier</strong> — ServiceNow packet viewer. Open <a href="ticket-dossier/">Ticket Dossier</a>.</li>
+</ul>
+<p>Open a saved row on Find projects to enter that assessment’s dashboard (readiness score, registers, Actions, diagrams, and sharing). Open a Ticket Dossier row to read Demand / Story / Task / DDR chapters for that engagement.</p>
 HTML,
                 ],
             ],
@@ -80,7 +89,7 @@ HTML,
 <li><strong>Auto</strong> — pick a layout size from the window width.</li>
 <li><strong>S through XXL</strong> — lock a compact or wide layout. S and M tighten spacing (compact mode).</li>
 </ul>
-<p>Help uses the same tokens, so this two-pane page follows the theme you already chose.</p>
+<p>Help, SharePoint, and Ticket Dossier use the same tokens, so every signed-in page follows the theme you already chose.</p>
 HTML,
                 ],
             ],
@@ -244,6 +253,79 @@ HTML,
             ],
         ],
         [
+            'id' => 'ticket-dossier',
+            'label' => 'Ticket Dossier',
+            'topics' => [
+                [
+                    'id' => 'dossier-overview',
+                    'title' => 'What Ticket Dossier is',
+                    'html' => <<<'HTML'
+<p><a href="ticket-dossier/">Ticket Dossier</a> is a signed-in ServiceNow packet viewer. It turns Demand, Story, Task, and Due Diligence (DDR) exports into one readable dossier — without replacing the Excel assessment register.</p>
+<ul>
+<li>You can start with <strong>any subset</strong> of files. Missing chapters stay empty until you upload them later.</li>
+<li>Types are detected from <strong>file contents</strong> first, then from the filename (for example <code>dmn_demand.pdf</code>, <code>rm_story.pdf</code>, <code>sc_task.pdf</code>, <code>DDR_….json</code>).</li>
+<li>A fresh install can seed a sample packet once so you can explore the layout. Deleting every dossier does not re-seed it.</li>
+<li>Dossier data is stored separately from assessments: <code>database/ticketdetails.sqlite</code> and <code>database/ticket-dossier-storage/</code>. App updates keep that folder.</li>
+</ul>
+<p>Use the assessment dashboard for go-live scoring and workbook findings. Use Ticket Dossier to read the ServiceNow demand / story / task / DDR packet that sits alongside that work.</p>
+HTML,
+                ],
+                [
+                    'id' => 'dossier-upload',
+                    'title' => 'Upload and classify files',
+                    'html' => <<<'HTML'
+<p>Open <a href="ticket-dossier/">Ticket Dossier</a> and use <strong>New project</strong>. Drop or browse PDF and JSON files (up to 10 files, 15 MB each).</p>
+<ul>
+<li><strong>Demand</strong> — ServiceNow demand PDF (business case, description, related records).</li>
+<li><strong>Story</strong> — story / RM PDF.</li>
+<li><strong>Task</strong> — catalog task PDF.</li>
+<li><strong>DDR</strong> — Due Diligence JSON export (vendor, DDR fields, internal and external questionnaires).</li>
+</ul>
+<p>The dropzone classifies each file as you add it and shows whether it was recognized from contents or filename. Unrecognized files are skipped. An optional title can be left blank so the app names the dossier from the files.</p>
+<p>Click <strong>Create dossier</strong> when at least one recognized file is ready. On an existing dossier, open <strong>Complete this dossier</strong> (or <strong>Replace or refresh a source</strong>) to fill gaps or replace Demand, Story, Task, or DDR with a newer export.</p>
+HTML,
+                ],
+                [
+                    'id' => 'dossier-list',
+                    'title' => 'Find dossier projects',
+                    'html' => <<<'HTML'
+<p>The <a href="ticket-dossier/#find-projects">Projects</a> list on Ticket Dossier searches title, vendor, demand, story, task, and DDR numbers. Leave the box blank to browse everything.</p>
+<ul>
+<li>Switch <strong>Cards</strong>, <strong>Table</strong>, or <strong>Strip</strong>. The choice is stored in this browser.</li>
+<li>Use <strong>Show filters</strong> to narrow ID, project, vendor, ticket numbers, or updated date. Sort from the table headers.</li>
+<li>Change rows per page (10, 25, 50, or 100). Source pills show which of the four files are present (for example 3/4 sources).</li>
+<li>Open a row to read the dossier. Incomplete rows also have <strong>Complete</strong>. <strong>Delete</strong> removes that dossier and its stored files (it does not change ServiceNow or the assessment register).</li>
+</ul>
+HTML,
+                ],
+                [
+                    'id' => 'dossier-view',
+                    'title' => 'Read a dossier',
+                    'html' => <<<'HTML'
+<p>An open dossier shows a Demand → Story → Task → DDR ribbon (present or not uploaded), then only the chapters that have data:</p>
+<ul>
+<li><strong>Overview</strong> — description, business case (from demand), vendor, and ticket numbers / states.</li>
+<li><strong>Demand / Story / Task</strong> — parsed fields, related records, and long text such as description or business case.</li>
+<li><strong>Due Diligence</strong> — DDR fields from the JSON export.</li>
+<li><strong>Vendor</strong> — third-party fields when the DDR includes them.</li>
+<li><strong>Assessments</strong> — external and internal questionnaires, with progress, a question search, and an “Answered only” toggle.</li>
+<li><strong>Original files</strong> — download each stored PDF or JSON.</li>
+</ul>
+<p>Use the page search box to find a vendor, contact, number, state, or any on-screen text. <strong>Show all fields</strong> reveals empty values that are hidden by default. Jump between chapters with the section nav.</p>
+HTML,
+                ],
+                [
+                    'id' => 'dossier-export',
+                    'title' => 'Export JSON',
+                    'html' => <<<'HTML'
+<p>From an open dossier, <strong>Export JSON</strong> downloads a complete packet for offline or AI analysis. The file includes project metadata, which sources are present, the parsed dossier, and a file manifest (not the original PDF bytes).</p>
+<p>The download is named like <code>ticket-dossier-{id}-{title}.json</code> with format <code>architecture-risk.ticket-dossier.v1</code>. Original PDFs and JSON remain available under <strong>Original files</strong>.</p>
+<p>Ticket Dossier is not publicly shareable. Recipients need a signed-in account on this app. For a read-only assessment or catalog view, use the Share panels on the assessment dashboard or SharePoint instead.</p>
+HTML,
+                ],
+            ],
+        ],
+        [
             'id' => 'sharepoint',
             'label' => 'SharePoint',
             'topics' => [
@@ -251,7 +333,7 @@ HTML,
                     'id' => 'sharepoint-folders',
                     'title' => 'Folders and catalog layout',
                     'html' => <<<'HTML'
-<p>Open <a href="sharepoint.php">SharePoint catalog</a>. Each SharePoint folder is its own catalog and search index.</p>
+<p>Open <a href="sharepoint.php">SharePoint catalog</a>. Each SharePoint folder is its own catalog and search index. The top bar also has a dedicated <a href="sharepoint.php?view=catalog&amp;source=default&amp;mode=or&amp;per=100">architecture project catalog(s)</a> shortcut — a focused search view (default source, OR mode, 100 rows) without the folder-admin panels.</p>
 <ul>
 <li><strong>Comfort / Compact / Table</strong> change how folder cards look. Compact leaves more room for search.</li>
 <li>You can open folders, the catalog, or Owners in a <strong>new tab</strong> or a <strong>separate window</strong>.</li>
@@ -355,7 +437,7 @@ HTML,
 <li>There is a maximum number of active links. You can copy any active link again from the list. Revoke when finished.</li>
 <li>With SMTP enabled, each active copyable link has <strong>Email this link</strong> so you can send the public URL in a branded HTML email.</li>
 </ul>
-<p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. On the signed-in catalog, project rows also have <strong>QR</strong> so you can scan the SharePoint folder URL on a phone.</p>
+<p>Use an assessment share when someone needs the full dashboard; use a catalog or owners share when they only need to find folders or owners. Ticket Dossier has no public link. On the signed-in catalog, project rows also have <strong>QR</strong> so you can scan the SharePoint folder URL on a phone.</p>
 HTML,
                 ],
             ],
@@ -388,7 +470,7 @@ HTML,
 <li><strong>Authentication</strong> — turn local and LDAP on or off, registration toggle, LDAP auto-create / auto-update / auto-approve, configure directory servers, test the bind, export or import LDAP settings.</li>
 <li><strong>Branding</strong> — brand title, subtitle, browser title, hero text (with <code>*accent*</code> preview), logo, logo size, favicon, footer.</li>
 <li><strong>Email</strong> — see <a href="#email-smtp">Email (SMTP)</a> for Custom and Office 365 setup, test send, and emailing public links.</li>
-<li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore. Treat backup files as secrets if encryption is on.</li>
+<li><strong>SQLite</strong> — integrity check, VACUUM, ANALYZE, snapshots, restore of the main register database. Ticket Dossier uses a separate <code>ticketdetails.sqlite</code> under <code>database/</code> (not this admin page). Treat backup files as secrets if encryption is on.</li>
 <li><strong>App updates</strong> — see <a href="#app-updates">App updates</a> for Releases, commits, and zip apply.</li>
 <li><strong>SharePoint</strong> — jump to catalog admin (Tenant ID, Client ID, sync, import).</li>
 </ul>
@@ -413,7 +495,7 @@ HTML,
                     'id' => 'app-updates',
                     'title' => 'App updates',
                     'html' => <<<'HTML'
-<p>Administrators open <a href="admin/updates.php">Admin → App updates</a> to check GitHub and apply a newer build. <strong>Git is not required</strong> on the server. The database, <code>uploads/</code>, and custom branding stay in place.</p>
+<p>Administrators open <a href="admin/updates.php">Admin → App updates</a> to check GitHub and apply a newer build. <strong>Git is not required</strong> on the server. The database folder (including Ticket Dossier storage), <code>uploads/</code>, and custom branding stay in place.</p>
 <ul>
 <li>Save a GitHub personal access token when the badge says token needed (classic <code>repo</code> scope for private repos).</li>
 <li><strong>Check for updates</strong> lists newer <strong>GitHub Releases</strong>. If none are ahead, it also lists commits on the track branch (and the current git branch, when this folder is a checkout) after the installed version.</li>

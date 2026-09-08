@@ -13,6 +13,6 @@ $catalogNavUrl = $catalogNavUrl ?? 'sharepoint.php?view=catalog&source=default&m
 <a
     class="button ghost home-link<?= $catalogSolo ? ' is-active' : '' ?>"
     href="<?= e($catalogNavUrl) ?>"
-    title="Open architecture project catalog(s) (default source, OR mode, 100 per page)"
+    title="Open catalogs (default source, OR mode, 100 per page)"
     <?= $catalogSolo ? ' aria-current="page"' : '' ?>
->🔎 architecture project catalog(s)</a>
+>🔎 catalogs</a>

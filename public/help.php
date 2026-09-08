@@ -55,7 +55,7 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
                         <div class="hero-intro">
                             <div class="eyebrow">Help &amp; About</div>
                             <h2>How this <em>register</em> works</h2>
-                            <p>Pick a topic on the left. The right pane explains the feature and links into the app.</p>
+                            <p>Pick a topic on the left. The right pane explains assessments, Ticket Dossier, SharePoint, and the rest of the app — with links into each screen.</p>
                         </div>
                         <?php require __DIR__ . '/includes/hero-medallion.php'; renderHeroMedallion((int) $helpCount, 'help topics'); ?>
                     </div>
