@@ -93,9 +93,10 @@ $ribbon = [
             <?php
             ob_start();
             ?>
-            <a class="button ghost home-link" data-menu-tone="sky" href="index.php"><span class="topbar-menu-emoji" aria-hidden="true">📋</span>All projects</a>
+            <a class="button ghost home-link" data-menu-group="ticket" data-menu-tone="sky" href="index.php"><span class="topbar-menu-emoji" aria-hidden="true">📋</span>All projects</a>
             <a
                 class="button button-primary home-link"
+                data-menu-group="ticket"
                 data-menu-tone="mint"
                 href="export.php?id=<?= (int) $id ?>"
                 title="Download the complete dossier as JSON for AI analysis"

@@ -14,6 +14,7 @@ $ticketDossierNavUrl = $ticketDossierNavUrl ?? ($ticketDossierNavPrefix . 'ticke
 <a
     class="button ghost home-link<?= $ticketDossierSolo ? ' is-active' : '' ?>"
     data-menu-tone="butter"
+    data-menu-group="ticket"
     href="<?= e($ticketDossierNavUrl) ?>"
     title="ServiceNow ticket dossier viewer"
     <?= $ticketDossierSolo ? ' aria-current="page"' : '' ?>

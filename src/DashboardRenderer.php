@@ -221,7 +221,7 @@ final class DashboardRenderer
                         <span class="project-lock-badge" title="This project is locked">🔒 Locked</span>
                     <?php endif; ?>
                     <?php require dirname(__DIR__) . '/public/includes/topbar-menu-start.php'; ?>
-                    <a class="button ghost home-link" data-menu-tone="sky" href="index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+                    <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
                     <?php require dirname(__DIR__) . '/public/includes/updates-nav.php'; ?>
                     <?php require dirname(__DIR__) . '/public/includes/topbar-menu-end.php'; ?>
                 <?php endif; ?>

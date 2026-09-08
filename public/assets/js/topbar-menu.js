@@ -131,7 +131,66 @@
         }
     };
 
+    const organizeMenuGroups = (menuRoot) => {
+        const source = menuRoot.querySelector('[data-topbar-menu-source]');
+        if (!source || source.dataset.organized === '1') {
+            return;
+        }
+
+        const allowed = { risk: 1, sharepoint: 1, ticket: 1, misc: 1 };
+        const items = Array.from(source.children);
+        items.forEach((item) => {
+            if (!(item instanceof Element)) {
+                return;
+            }
+            let group = (item.getAttribute('data-menu-group') || '').trim();
+            if (!allowed[group]) {
+                const href = (item.getAttribute('href') || '').toLowerCase();
+                const text = (item.textContent || '').toLowerCase();
+                if (href.includes('ticket-dossier') || text.includes('ticket dossier') || text.includes('export json') || text.includes('all projects')) {
+                    group = 'ticket';
+                } else if (href.includes('sharepoint') || text.includes('catalog') || text.includes('owners')) {
+                    group = 'sharepoint';
+                } else if (
+                    href.includes('templates')
+                    || href.includes('#upload')
+                    || href.includes('#find-projects')
+                    || text.includes('find')
+                    || text.includes('upload')
+                    || text.includes('template')
+                ) {
+                    group = 'risk';
+                } else {
+                    group = 'misc';
+                }
+                item.setAttribute('data-menu-group', group);
+            }
+
+            const bucket = menuRoot.querySelector(`[data-menu-group-items="${group}"]`);
+            if (bucket) {
+                bucket.appendChild(item);
+            }
+        });
+
+        menuRoot.querySelectorAll('[data-menu-group-panel]').forEach((panel) => {
+            const group = panel.getAttribute('data-menu-group-panel') || '';
+            const bucket = menuRoot.querySelector(`[data-menu-group-items="${group}"]`);
+            const hasItems = !!(bucket && bucket.children.length > 0);
+            panel.hidden = !hasItems;
+        });
+
+        const sourceSection = source.closest('.topbar-menu-nav-source');
+        if (sourceSection) {
+            sourceSection.hidden = true;
+        }
+        source.dataset.organized = '1';
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.topbar-menu').forEach((menuRoot) => {
+            organizeMenuGroups(menuRoot);
+        });
+
         applyNavMode(getNavMode());
 
         document.querySelectorAll('[data-nav-set]').forEach((button) => {
@@ -175,7 +234,7 @@
                 if (!(target instanceof Element)) {
                     return;
                 }
-                if (target.closest('a.home-link')) {
+                if (target.closest('a.home-link, a.topbar-menu-account-card')) {
                     closeMenu(menuRoot);
                 }
             });

@@ -17,9 +17,9 @@ $topbarMenuExtraBefore = $topbarMenuExtraBefore ?? '';
 ?>
 <?php require dirname(__DIR__, 2) . '/includes/topbar-menu-start.php'; ?>
 <?= $topbarMenuExtraBefore ?>
-<a class="button ghost home-link" data-menu-tone="sky" href="<?= e($publicPrefix) ?>index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
-<a class="button ghost home-link" data-menu-tone="lavender" href="<?= e($publicPrefix) ?>templates.php"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
-<a class="button ghost home-link" data-menu-tone="peach" href="<?= e($publicPrefix) ?>sharepoint.php"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
+<a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" href="<?= e($publicPrefix) ?>index.php#find-projects"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+<a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" href="<?= e($publicPrefix) ?>templates.php"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
+<a class="button ghost home-link" data-menu-group="sharepoint" data-menu-tone="peach" href="<?= e($publicPrefix) ?>sharepoint.php"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
 <?php require dirname(__DIR__, 2) . '/includes/catalog-nav-link.php'; ?>
 <?php require dirname(__DIR__, 2) . '/includes/ticket-dossier-nav-link.php'; ?>
 <?php require dirname(__DIR__, 2) . '/includes/updates-nav.php'; ?>

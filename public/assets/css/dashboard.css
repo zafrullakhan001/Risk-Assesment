@@ -295,6 +295,87 @@ html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-panel {
     gap: 14px;
 }
 
+.topbar-menu-groups {
+    display: grid;
+    gap: 14px;
+}
+
+.topbar-menu-account-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+}
+
+.topbar-menu-account-form {
+    margin: 0;
+    display: block;
+}
+
+.topbar-menu-account-card {
+    --menu-tone: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--menu-tone) 28%, var(--line));
+    border-radius: 14px;
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--menu-tone) 18%, var(--card)) 0%,
+            color-mix(in srgb, var(--menu-tone) 8%, var(--card)) 100%
+        );
+    color: var(--ink);
+    text-decoration: none;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 55%, transparent) inset;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.topbar-menu-account-card:hover,
+.topbar-menu-account-card:focus-visible {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--menu-tone) 48%, var(--line));
+    box-shadow: var(--shadow);
+    outline: none;
+}
+
+.topbar-menu-account-art {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--menu-tone) 72%, var(--ink));
+}
+
+.topbar-menu-account-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.topbar-menu-account-title {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.topbar-menu-account-sub {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.25;
+}
+
+html[data-nav-mode="menu"] .topbar-menu-help-link {
+    width: 100%;
+    justify-content: flex-start;
+}
+
 .topbar-menu-section-label {
     margin: 0 0 8px;
     display: inline-flex;
@@ -373,6 +454,8 @@ html[data-nav-mode="menu"] .topbar-menu-nav-items > .inline-form {
 }
 
 html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *,
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-account,
+html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-help,
 html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-appearance,
 html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-toolbar {
     animation: topbar-menu-item-in 0.28s ease both;
@@ -410,6 +493,8 @@ html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-toolbar { animation
     }
 
     html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-nav-items > *,
+    html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-account,
+    html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-help,
     html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-appearance,
     html[data-nav-mode="menu"] .topbar-menu.is-open .topbar-menu-toolbar {
         animation: none;
@@ -454,7 +539,13 @@ html[data-nav-mode="bar"] .topbar-menu,
 html[data-nav-mode="bar"] .topbar-menu-panel,
 html[data-nav-mode="bar"] .topbar-menu-body,
 html[data-nav-mode="bar"] .topbar-menu-section,
-html[data-nav-mode="bar"] .topbar-menu-nav-items {
+html[data-nav-mode="bar"] .topbar-menu-groups,
+html[data-nav-mode="bar"] .topbar-menu-group:not([hidden]),
+html[data-nav-mode="bar"] .topbar-menu-nav-items,
+html[data-nav-mode="bar"] .topbar-menu-account,
+html[data-nav-mode="bar"] .topbar-menu-account-grid,
+html[data-nav-mode="bar"] .topbar-menu-account-form,
+html[data-nav-mode="bar"] .topbar-menu-help {
     display: contents;
 }
 
@@ -463,9 +554,15 @@ html[data-nav-mode="bar"] .topbar-menu-panel[hidden] {
     display: contents !important;
 }
 
+html[data-nav-mode="bar"] .topbar-menu-group[hidden],
+html[data-nav-mode="bar"] .topbar-menu-nav-source[hidden] {
+    display: none !important;
+}
+
 html[data-nav-mode="bar"] .topbar-menu-btn,
 html[data-nav-mode="bar"] .topbar-menu-panel-head,
-html[data-nav-mode="bar"] .topbar-menu-section-label {
+html[data-nav-mode="bar"] .topbar-menu-section-label,
+html[data-nav-mode="bar"] .topbar-menu-account-sub {
     display: none !important;
 }
 
@@ -475,6 +572,33 @@ html[data-nav-mode="bar"] .topbar-menu-emoji {
     height: auto;
     background: transparent;
     box-shadow: none;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-account-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: none;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-account-art {
+    width: 18px;
+    height: 18px;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-account-art svg {
+    width: 18px;
+    height: 18px;
+}
+
+html[data-nav-mode="bar"] .topbar-menu-account-title {
+    font-size: 12px;
+    font-weight: 600;
 }
 
 html[data-nav-mode="bar"] .topbar-menu-panel {

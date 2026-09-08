@@ -29,6 +29,24 @@ $topbarMenuJs = dirname(__DIR__) . '/assets/js/topbar-menu.js';
             <button type="button" class="update-bell-close" id="topbar-menu-close" aria-label="Close menu">×</button>
         </div>
         <div class="topbar-menu-body">
-            <div class="topbar-menu-section topbar-menu-nav">
-                <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🧭</span> Go to</p>
-                <div class="topbar-menu-nav-items">
+            <?php require __DIR__ . '/auth-nav-account.php'; ?>
+            <div class="topbar-menu-groups" data-topbar-menu-groups>
+                <div class="topbar-menu-section topbar-menu-group" data-menu-group-panel="risk" hidden>
+                    <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">📋</span> Risk Register</p>
+                    <div class="topbar-menu-nav-items" data-menu-group-items="risk"></div>
+                </div>
+                <div class="topbar-menu-section topbar-menu-group" data-menu-group-panel="sharepoint" hidden>
+                    <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">📁</span> SharePoint</p>
+                    <div class="topbar-menu-nav-items" data-menu-group-items="sharepoint"></div>
+                </div>
+                <div class="topbar-menu-section topbar-menu-group" data-menu-group-panel="ticket" hidden>
+                    <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🎫</span> Ticket Analysis</p>
+                    <div class="topbar-menu-nav-items" data-menu-group-items="ticket"></div>
+                </div>
+                <div class="topbar-menu-section topbar-menu-group" data-menu-group-panel="misc" hidden>
+                    <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🧩</span> Misc</p>
+                    <div class="topbar-menu-nav-items" data-menu-group-items="misc"></div>
+                </div>
+            </div>
+            <div class="topbar-menu-section topbar-menu-nav topbar-menu-nav-source">
+                <div class="topbar-menu-nav-items" data-topbar-menu-source>
