@@ -284,20 +284,142 @@ final class ProjectRepository
 
     public static function delete(int $id): void
     {
-        $files = self::filesFor($id);
+        if ($id <= 0) {
+            return;
+        }
+
         $dir = TD_STORAGE_DIR . '/' . $id;
+        $db = getDb();
 
-        $stmt = getDb()->prepare('DELETE FROM projects WHERE id = ?');
-        $stmt->execute([$id]);
+        $db->beginTransaction();
+        try {
+            $fileStmt = $db->prepare('DELETE FROM project_files WHERE project_id = ?');
+            $fileStmt->execute([$id]);
 
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file['stored_name'];
+            $stmt = $db->prepare('DELETE FROM projects WHERE id = ?');
+            $stmt->execute([$id]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+
+        self::removeStorageDirectory($dir);
+    }
+
+    /**
+     * Persist merged dossier fields after adding/replacing source files.
+     *
+     * @param array{
+     *   title: string,
+     *   vendor: string,
+     *   demand_number: string,
+     *   story_number: string,
+     *   task_number: string,
+     *   ddr_number: string,
+     *   demand_state: string,
+     *   story_state: string,
+     *   task_state: string,
+     *   ddr_state: string,
+     *   sources: array<string, bool>,
+     *   parsed: array<string, mixed>
+     * } $data
+     */
+    public static function updateParsed(int $id, array $data): void
+    {
+        $stmt = getDb()->prepare(
+            'UPDATE projects SET
+                title = :title,
+                vendor = :vendor,
+                demand_number = :demand_number,
+                story_number = :story_number,
+                task_number = :task_number,
+                ddr_number = :ddr_number,
+                demand_state = :demand_state,
+                story_state = :story_state,
+                task_state = :task_state,
+                ddr_state = :ddr_state,
+                sources_json = :sources_json,
+                parsed_json = :parsed_json,
+                updated_at = :updated_at
+             WHERE id = :id'
+        );
+
+        $stmt->execute([
+            ':title' => $data['title'],
+            ':vendor' => $data['vendor'],
+            ':demand_number' => $data['demand_number'],
+            ':story_number' => $data['story_number'],
+            ':task_number' => $data['task_number'],
+            ':ddr_number' => $data['ddr_number'],
+            ':demand_state' => $data['demand_state'],
+            ':story_state' => $data['story_state'],
+            ':task_state' => $data['task_state'],
+            ':ddr_state' => $data['ddr_state'],
+            ':sources_json' => json_encode($data['sources'], JSON_UNESCAPED_UNICODE) ?: '{}',
+            ':parsed_json' => json_encode($data['parsed'], JSON_UNESCAPED_UNICODE) ?: '{}',
+            ':updated_at' => nowUtc(),
+            ':id' => $id,
+        ]);
+    }
+
+    /**
+     * Replace any existing file row of the same kind, then insert the new file.
+     *
+     * @param array{kind: string, original_name: string, stored_name: string, size_bytes: int} $file
+     */
+    public static function replaceFileOfKind(int $projectId, array $file): void
+    {
+        $db = getDb();
+        $existing = $db->prepare(
+            'SELECT id, stored_name FROM project_files WHERE project_id = ? AND kind = ?'
+        );
+        $existing->execute([$projectId, $file['kind']]);
+        $rows = $existing->fetchAll() ?: [];
+
+        $dir = TD_STORAGE_DIR . '/' . $projectId;
+        foreach ($rows as $row) {
+            $path = $dir . '/' . $row['stored_name'];
             if (is_file($path)) {
                 @unlink($path);
             }
+            $del = $db->prepare('DELETE FROM project_files WHERE id = ? AND project_id = ?');
+            $del->execute([(int) $row['id'], $projectId]);
         }
-        if (is_dir($dir)) {
-            @rmdir($dir);
+
+        $ins = $db->prepare(
+            'INSERT INTO project_files (project_id, kind, original_name, stored_name, size_bytes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $ins->execute([
+            $projectId,
+            $file['kind'],
+            $file['original_name'],
+            $file['stored_name'],
+            $file['size_bytes'],
+            nowUtc(),
+        ]);
+    }
+
+    private static function removeStorageDirectory(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
         }
+
+        $items = scandir($dir) ?: [];
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+            $path = $dir . DIRECTORY_SEPARATOR . $item;
+            if (is_dir($path)) {
+                self::removeStorageDirectory($path);
+                continue;
+            }
+            @unlink($path);
+        }
+        @rmdir($dir);
     }
 }

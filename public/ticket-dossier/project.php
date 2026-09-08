@@ -24,8 +24,16 @@ $files = ProjectRepository::filesFor($id);
 $sections = availableSections($parsed);
 $overview = is_array($parsed['overview'] ?? null) ? $parsed['overview'] : [];
 $flash = flashTake();
+$token = csrfToken();
 $cssV = cssVersion();
 $jsV = jsVersion();
+
+$missingKinds = [];
+foreach (TD_SOURCE_KINDS as $kind) {
+    if (empty($sources[$kind])) {
+        $missingKinds[] = $kind;
+    }
+}
 
 $ribbon = [
     [
@@ -155,6 +163,39 @@ $ribbon = [
                 </div>
             <?php endforeach; ?>
         </nav>
+
+        <section class="upload-card" id="complete-dossier">
+            <h2><?= $missingKinds === [] ? '✏️ Replace or refresh a source' : '🧩 Complete this dossier' ?></h2>
+            <?php if ($missingKinds !== []): ?>
+                <p class="context-note">
+                    Missing:
+                    <?php foreach ($missingKinds as $i => $kind): ?>
+                        <span class="source-pill off"><?= kindEmoji($kind) ?> <?= e(kindLabel($kind)) ?></span><?= $i < count($missingKinds) - 1 ? ' ' : '' ?>
+                    <?php endforeach; ?>
+                    — upload the file(s) below to fill the gaps. Replacing an existing source is also supported.
+                </p>
+            <?php else: ?>
+                <p class="context-note">All four sources are present. Upload again to replace Demand, Story, Task, or DDR with a newer export.</p>
+            <?php endif; ?>
+            <form class="upload-form" id="upload-form" action="update.php" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" id="csrf-token" value="<?= e($token) ?>">
+                <input type="hidden" name="project_id" value="<?= (int) $id ?>">
+
+                <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop ServiceNow export files here">
+                    <input type="file" id="file-input" name="files[]" accept=".pdf,.json,application/pdf,application/json" multiple hidden>
+                    <div class="dropzone-inner">
+                        <div class="dropzone-icon" aria-hidden="true">📂</div>
+                        <p class="dropzone-title">Drag &amp; drop missing files here</p>
+                        <p class="dropzone-hint">or <button type="button" class="linkish" id="browse-files">browse</button> · PDF / JSON · up to 10 files</p>
+                    </div>
+                </div>
+
+                <div id="detect-status" class="detect-status hidden" aria-live="polite"></div>
+                <ul id="file-preview" class="file-preview" aria-live="polite"></ul>
+
+                <button type="submit" class="button button-primary" id="submit-upload" disabled>✨ Update dossier</button>
+            </form>
+        </section>
 
         <nav class="section-nav" aria-label="Sections" id="section-nav">
             <?php foreach ($sections as $section): ?>

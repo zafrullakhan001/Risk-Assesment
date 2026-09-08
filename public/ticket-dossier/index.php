@@ -10,8 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     }
     $deleteId = (int) $_POST['delete_id'];
     if ($deleteId > 0) {
-        ProjectRepository::delete($deleteId);
-        flashSet('success', 'Project deleted.');
+        try {
+            ProjectRepository::delete($deleteId);
+            flashSet('success', 'Project deleted.');
+        } catch (Throwable $e) {
+            flashSet('error', 'Could not delete project: ' . $e->getMessage());
+        }
     }
     redirect('index.php#find-projects');
 }
@@ -343,6 +347,9 @@ $projectSourcesMeta = static function (array $project): array {
                                 <span>🗓️ Updated <?= e((string) $project['updated_at']) ?> UTC · <?= $presentCount ?>/4 sources</span>
                                 <div class="card-actions">
                                     <a class="button button-primary button-small" href="project.php?id=<?= (int) $project['id'] ?>">Open →</a>
+                                    <?php if ($presentCount < 4): ?>
+                                        <a class="button ghost button-small" href="project.php?id=<?= (int) $project['id'] ?>#complete-dossier">🧩 Complete</a>
+                                    <?php endif; ?>
                                     <form method="post" onsubmit="return confirm('Delete this project?');">
                                         <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
                                         <input type="hidden" name="delete_id" value="<?= (int) $project['id'] ?>">

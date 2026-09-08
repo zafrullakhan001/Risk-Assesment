@@ -4,11 +4,18 @@ declare(strict_types=1);
 final class ProjectImporter
 {
     /**
-     * Auto-import the sample files sitting in the project root when DB is empty.
+     * Auto-import sample files once on a fresh install.
+     * Never re-seeds after the user deletes all projects (that looked like delete failing).
      */
     public static function seedSampleIfEmpty(): void
     {
+        $flagPath = TD_DATABASE_DIR . '/.td_sample_seeded';
+        if (is_file($flagPath)) {
+            return;
+        }
+
         if (ProjectRepository::count() > 0) {
+            @file_put_contents($flagPath, gmdate('c') . "\n");
             return;
         }
 
@@ -47,15 +54,16 @@ final class ProjectImporter
             }
         }
 
-        if ($files === []) {
-            return;
-        }
-
         try {
-            self::import($files, null);
+            if ($files !== []) {
+                self::import($files, null);
+            }
         } catch (Throwable $e) {
             // Seeding must never break the app.
             error_log('TicketDetails seed failed: ' . $e->getMessage());
+        } finally {
+            // Always mark so an empty DB after delete stays empty.
+            @file_put_contents($flagPath, gmdate('c') . "\n");
         }
     }
 
@@ -267,11 +275,239 @@ final class ProjectImporter
     }
 
     /**
+     * Merge newly uploaded ServiceNow files into an existing dossier (fill gaps / replace kinds).
+     *
+     * @param list<array{tmp_name: string, name: string, size?: int, error?: int, is_local?: bool, forced_kind?: string}> $uploads
+     * @return array{project_id: int, warnings: list<string>, added: list<string>}
+     */
+    public static function mergeIntoProject(int $projectId, array $uploads): array
+    {
+        if ($projectId <= 0) {
+            throw new InvalidArgumentException('Invalid project.');
+        }
+
+        $project = ProjectRepository::find($projectId);
+        if ($project === null) {
+            throw new InvalidArgumentException('Project not found.');
+        }
+
+        if ($uploads === []) {
+            throw new InvalidArgumentException('Please upload at least one ServiceNow file to add.');
+        }
+
+        if (count($uploads) > TD_MAX_FILES_PER_UPLOAD) {
+            throw new InvalidArgumentException('Too many files. Upload up to ' . TD_MAX_FILES_PER_UPLOAD . ' at a time.');
+        }
+
+        $classified = self::classifyUploads($uploads);
+        $warnings = $classified['warnings'];
+        $filesByKind = $classified['files'];
+
+        if ($filesByKind === []) {
+            throw new InvalidArgumentException('No recognized ServiceNow files found.');
+        }
+
+        $parsed = json_decode((string) ($project['parsed_json'] ?? ''), true);
+        if (!is_array($parsed)) {
+            $parsed = [];
+        }
+        $parsed = array_merge([
+            'demand' => null,
+            'story' => null,
+            'task' => null,
+            'ddr' => null,
+            'vendor' => null,
+            'assessments' => ['external' => [], 'internal' => []],
+            'overview' => [
+                'description' => '',
+                'business_case' => '',
+                'title' => '',
+                'vendor' => '',
+            ],
+        ], $parsed);
+
+        $sources = json_decode((string) ($project['sources_json'] ?? ''), true);
+        if (!is_array($sources)) {
+            $sources = [];
+        }
+        foreach (TD_SOURCE_KINDS as $kind) {
+            $sources[$kind] = !empty($sources[$kind]);
+        }
+
+        $added = [];
+        $parsedFilesMeta = [];
+
+        foreach ($filesByKind as $kind => $file) {
+            try {
+                if ($kind === 'ddr') {
+                    $ddr = DdrJsonParser::parse($file['tmp_name']);
+                    $parsed['ddr'] = [
+                        'number' => $ddr['number'],
+                        'state' => $ddr['state'],
+                        'title' => $ddr['title'],
+                        'description' => $ddr['description'],
+                        'fields' => $ddr['fields'],
+                        'metadata' => $ddr['metadata'],
+                        'export_meta' => $ddr['export_meta'],
+                    ];
+                    $parsed['vendor'] = $ddr['vendor'];
+                    $parsed['assessments'] = $ddr['assessments'];
+                    $sources['ddr'] = true;
+                } else {
+                    $section = ServicenowPdfParser::parse($file['tmp_name'], $kind);
+                    $parsed[$kind] = $section;
+                    $sources[$kind] = true;
+                }
+                $parsedFilesMeta[$kind] = $file;
+                $added[] = kindLabel($kind);
+            } catch (Throwable $e) {
+                throw new RuntimeException('Failed to parse ' . $file['name'] . ': ' . $e->getMessage(), 0, $e);
+            }
+        }
+
+        $meta = self::deriveProjectMeta($parsed, (string) $project['title']);
+        // Keep an explicit user title if they set one that isn't the generic fallback.
+        $keepTitle = trim((string) $project['title']);
+        if ($keepTitle !== '' && $keepTitle !== 'Untitled Project') {
+            $meta['title'] = $keepTitle;
+        }
+        $parsed['overview'] = [
+            'title' => $meta['title'],
+            'vendor' => $meta['vendor'] !== '' ? $meta['vendor'] : (string) ($parsed['overview']['vendor'] ?? ''),
+            'description' => $meta['_overview_description'] !== ''
+                ? $meta['_overview_description']
+                : (string) ($parsed['overview']['description'] ?? ''),
+            'business_case' => $meta['_overview_business_case'] !== ''
+                ? $meta['_overview_business_case']
+                : (string) ($parsed['overview']['business_case'] ?? ''),
+        ];
+        if ($meta['vendor'] === '' && !empty($project['vendor'])) {
+            $meta['vendor'] = (string) $project['vendor'];
+            $parsed['overview']['vendor'] = $meta['vendor'];
+        }
+
+        $storageDir = TD_STORAGE_DIR . '/' . $projectId;
+        if (!is_dir($storageDir) && !mkdir($storageDir, 0755, true) && !is_dir($storageDir)) {
+            throw new RuntimeException('Could not create storage directory.');
+        }
+
+        foreach ($parsedFilesMeta as $kind => $file) {
+            $ext = extensionOf($file['name']);
+            $storedName = $kind . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+            $dest = $storageDir . '/' . $storedName;
+
+            if (!empty($file['is_local'])) {
+                if (!copy($file['tmp_name'], $dest)) {
+                    throw new RuntimeException('Could not copy ' . $file['name']);
+                }
+            } else {
+                if (!move_uploaded_file($file['tmp_name'], $dest)) {
+                    throw new RuntimeException('Could not store ' . $file['name']);
+                }
+            }
+
+            ProjectRepository::replaceFileOfKind($projectId, [
+                'kind' => $kind,
+                'original_name' => $file['name'],
+                'stored_name' => $storedName,
+                'size_bytes' => (int) $file['size'],
+            ]);
+        }
+
+        ProjectRepository::updateParsed($projectId, [
+            'title' => $meta['title'],
+            'vendor' => $meta['vendor'],
+            'demand_number' => $meta['demand_number'],
+            'story_number' => $meta['story_number'],
+            'task_number' => $meta['task_number'],
+            'ddr_number' => $meta['ddr_number'],
+            'demand_state' => $meta['demand_state'],
+            'story_state' => $meta['story_state'],
+            'task_state' => $meta['task_state'],
+            'ddr_state' => $meta['ddr_state'],
+            'sources' => $sources,
+            'parsed' => $parsed,
+        ]);
+
+        return [
+            'project_id' => $projectId,
+            'warnings' => $warnings,
+            'added' => $added,
+        ];
+    }
+
+    /**
+     * @param list<array{tmp_name: string, name: string, size?: int, error?: int, is_local?: bool, forced_kind?: string}> $uploads
+     * @return array{files: array<string, array{tmp_name: string, name: string, size: int, is_local: bool}>, warnings: list<string>}
+     */
+    private static function classifyUploads(array $uploads): array
+    {
+        $classified = [];
+        $warnings = [];
+
+        foreach ($uploads as $upload) {
+            $error = (int) ($upload['error'] ?? UPLOAD_ERR_OK);
+            if ($error !== UPLOAD_ERR_OK) {
+                throw new InvalidArgumentException('Upload failed for ' . safeBasename((string) $upload['name']) . '.');
+            }
+
+            $tmp = (string) $upload['tmp_name'];
+            $name = safeBasename((string) $upload['name']);
+            $isLocal = !empty($upload['is_local']);
+
+            if (!$isLocal && !is_uploaded_file($tmp)) {
+                throw new InvalidArgumentException('Invalid upload for ' . $name . '.');
+            }
+            if (!is_readable($tmp)) {
+                throw new InvalidArgumentException('Cannot read file ' . $name . '.');
+            }
+
+            $size = (int) ($upload['size'] ?? filesize($tmp) ?: 0);
+            if ($size <= 0 || $size > TD_MAX_UPLOAD_BYTES) {
+                throw new InvalidArgumentException($name . ' exceeds the allowed size.');
+            }
+
+            $ext = extensionOf($name);
+            if (!in_array($ext, TD_ALLOWED_EXTENSIONS, true)) {
+                throw new InvalidArgumentException($name . ' is not an allowed type (pdf/json only).');
+            }
+
+            if (!$isLocal && !isAllowedUpload($name, $tmp)) {
+                throw new InvalidArgumentException($name . ' failed security checks.');
+            }
+
+            $kind = isset($upload['forced_kind']) && in_array($upload['forced_kind'], TD_SOURCE_KINDS, true)
+                ? (string) $upload['forced_kind']
+                : FileClassifier::classify($tmp, $name);
+
+            if ($kind === null) {
+                throw new InvalidArgumentException(
+                    $name . ' was not recognized. Use DDR JSON or demand/story/task ServiceNow PDF exports.'
+                );
+            }
+
+            if (isset($classified[$kind])) {
+                $warnings[] = 'Multiple ' . kindLabel($kind) . ' files provided; using ' . $name . '.';
+            }
+
+            $classified[$kind] = [
+                'tmp_name' => $tmp,
+                'name' => $name,
+                'size' => $size,
+                'is_local' => $isLocal,
+            ];
+        }
+
+        return ['files' => $classified, 'warnings' => $warnings];
+    }
+
+    /**
      * @param array<string, mixed> $parsed
      * @return array{
      *   title: string, vendor: string,
      *   demand_number: string, story_number: string, task_number: string, ddr_number: string,
-     *   demand_state: string, story_state: string, task_state: string, ddr_state: string
+     *   demand_state: string, story_state: string, task_state: string, ddr_state: string,
+     *   _overview_description: string, _overview_business_case: string
      * }
      */
     public static function deriveProjectMeta(array $parsed, ?string $optionalTitle): array
