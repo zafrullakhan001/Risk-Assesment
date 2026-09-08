@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) NOT NULL,
     password_hash TEXT NOT NULL,
     is_admin TINYINT(1) NOT NULL DEFAULT 0,
+    is_superadmin TINYINT(1) NOT NULL DEFAULT 0,
     is_approved TINYINT(1) NOT NULL DEFAULT 0,
     is_disabled TINYINT(1) NOT NULL DEFAULT 0,
     auth_source VARCHAR(32) NOT NULL DEFAULT 'local',

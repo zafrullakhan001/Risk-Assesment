@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    is_superadmin INTEGER NOT NULL DEFAULT 0,
     is_approved INTEGER NOT NULL DEFAULT 0,
     is_disabled INTEGER NOT NULL DEFAULT 0,
     auth_source TEXT NOT NULL DEFAULT 'local',

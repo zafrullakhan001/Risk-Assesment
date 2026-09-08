@@ -14,13 +14,15 @@ final class UserRepository
     ) {
     }
 
+    private const USER_SELECT = 'id, username, email, password_hash, is_admin, is_superadmin, is_approved, is_disabled,
+                    auth_source, display_name, notes, last_login, created_at,
+                    created_by_user_id, created_by_username';
+
     /** @return array<string, mixed>|null */
     public function findById(int $id): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at,
-                    created_by_user_id, created_by_username
+            'SELECT ' . self::USER_SELECT . '
              FROM users WHERE id = :id LIMIT 1'
         );
         $statement->execute([':id' => $id]);
@@ -33,9 +35,7 @@ final class UserRepository
     public function findByUsernameOrEmail(string $identifier): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at,
-                    created_by_user_id, created_by_username
+            'SELECT ' . self::USER_SELECT . '
              FROM users
              WHERE LOWER(username) = LOWER(:username) OR LOWER(email) = LOWER(:email)
              LIMIT 1'
@@ -53,11 +53,9 @@ final class UserRepository
     public function listAll(): array
     {
         $statement = $this->pdo->query(
-            'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at,
-                    created_by_user_id, created_by_username
+            'SELECT ' . self::USER_SELECT . '
              FROM users
-             ORDER BY is_admin DESC, username COLLATE NOCASE ASC'
+             ORDER BY is_superadmin DESC, is_admin DESC, username COLLATE NOCASE ASC'
         );
         if ($statement === false) {
             return [];
@@ -83,12 +81,10 @@ final class UserRepository
         $offset = ($page - 1) * $perPage;
         [$whereSql, $params] = $this->userSearchWhere($query);
 
-        $sql = 'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at,
-                    created_by_user_id, created_by_username
+        $sql = 'SELECT ' . self::USER_SELECT . '
              FROM users
              ' . $whereSql . '
-             ORDER BY is_admin DESC, username COLLATE NOCASE ASC
+             ORDER BY is_superadmin DESC, is_admin DESC, username COLLATE NOCASE ASC
              LIMIT :limit OFFSET :offset';
         $statement = $this->pdo->prepare($sql);
         foreach ($params as $key => $value) {
@@ -169,9 +165,7 @@ final class UserRepository
     {
         $limit = max(1, min(1000, $limit));
         $statement = $this->pdo->prepare(
-            'SELECT id, username, email, password_hash, is_admin, is_approved, is_disabled,
-                    auth_source, display_name, notes, last_login, created_at,
-                    created_by_user_id, created_by_username
+            'SELECT ' . self::USER_SELECT . '
              FROM users
              WHERE is_approved = 1 AND is_disabled = 0
              ORDER BY username COLLATE NOCASE ASC
@@ -241,13 +235,14 @@ final class UserRepository
         string $displayName = '',
         string $notes = '',
         ?int $createdByUserId = null,
-        string $createdByUsername = ''
+        string $createdByUsername = '',
+        bool $isSuperAdmin = false
     ): int {
         $statement = $this->pdo->prepare(
-            'INSERT INTO users (username, email, password_hash, is_admin, is_approved, is_disabled,
+            'INSERT INTO users (username, email, password_hash, is_admin, is_superadmin, is_approved, is_disabled,
                                 auth_source, display_name, notes, created_at,
                                 created_by_user_id, created_by_username)
-             VALUES (:username, :email, :password_hash, :is_admin, :is_approved, 0,
+             VALUES (:username, :email, :password_hash, :is_admin, :is_superadmin, :is_approved, 0,
                      \'local\', :display_name, :notes, datetime(\'now\'),
                      :created_by_user_id, :created_by_username)'
         );
@@ -256,6 +251,7 @@ final class UserRepository
             ':email' => $email,
             ':password_hash' => $passwordHash,
             ':is_admin' => $isAdmin ? 1 : 0,
+            ':is_superadmin' => ($isAdmin && $isSuperAdmin) ? 1 : 0,
             ':is_approved' => $isApproved ? 1 : 0,
             ':display_name' => $displayName,
             ':notes' => $notes,
@@ -370,6 +366,19 @@ final class UserRepository
     {
         $statement = $this->pdo->prepare('UPDATE users SET is_admin = :value WHERE id = :id');
         $statement->execute([':value' => $isAdmin ? 1 : 0, ':id' => $id]);
+    }
+
+    public function setSuperAdmin(int $id, bool $isSuperAdmin): void
+    {
+        if ($isSuperAdmin) {
+            $statement = $this->pdo->prepare('UPDATE users SET is_superadmin = 1, is_admin = 1 WHERE id = :id');
+            $statement->execute([':id' => $id]);
+
+            return;
+        }
+
+        $statement = $this->pdo->prepare('UPDATE users SET is_superadmin = 0 WHERE id = :id');
+        $statement->execute([':id' => $id]);
     }
 
     public function setPassword(int $id, string $passwordHash): void
@@ -518,6 +527,7 @@ final class UserRepository
     {
         $row['id'] = (int) $row['id'];
         $row['is_admin'] = !empty($row['is_admin']);
+        $row['is_superadmin'] = !empty($row['is_superadmin']);
         $row['is_approved'] = !empty($row['is_approved']);
         $row['is_disabled'] = !empty($row['is_disabled']);
         $row['username'] = (string) $row['username'];

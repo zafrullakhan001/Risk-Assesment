@@ -289,7 +289,18 @@ final class Auth
             throw new RuntimeException('Unable to create the administrator account.');
         }
 
-        $id = $this->users->createLocal($username, $email, $hash, true, true, $username, 'First administrator', null, 'system');
+        $id = $this->users->createLocal(
+            $username,
+            $email,
+            $hash,
+            true,
+            true,
+            $username,
+            'First administrator',
+            null,
+            'system',
+            true
+        );
         $user = $this->users->findById($id);
         if ($user === null) {
             throw new RuntimeException('Unable to load the administrator account.');
@@ -363,6 +374,17 @@ final class Auth
         return ($user['username'] ?? '') === self::DEFAULT_ADMIN_USERNAME
             && ($user['auth_source'] ?? '') === 'local'
             && password_verify(self::DEFAULT_ADMIN_PASSWORD, (string) ($user['password_hash'] ?? ''));
+    }
+
+    /**
+     * Local bootstrap superadmin — unrestricted Risk Register manage/edit (delete any project).
+     * Other admins keep normal owner/editor boundaries.
+     *
+     * @param array<string, mixed> $user
+     */
+    public static function isSuperAdmin(array $user): bool
+    {
+        return !empty($user['is_superadmin']) && !empty($user['is_admin']);
     }
 
     public static function validatePasswordStrength(string $password): ?string

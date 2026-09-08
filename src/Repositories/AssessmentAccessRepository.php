@@ -289,7 +289,8 @@ final class AssessmentAccessRepository
         int $assessmentId,
         array $newOwner,
         int $actingUserId,
-        bool $keepFormerAsEditor = true
+        bool $keepFormerAsEditor = true,
+        bool $asSuperAdmin = false
     ): int {
         if ($assessmentId <= 0) {
             throw new RuntimeException('Assessment not found.');
@@ -301,7 +302,8 @@ final class AssessmentAccessRepository
         }
 
         $currentOwnerId = (int) ($meta['owner_user_id'] ?? 0);
-        if ($actingUserId <= 0 || $currentOwnerId <= 0 || $currentOwnerId !== $actingUserId) {
+        $isOwnerActor = $actingUserId > 0 && $currentOwnerId > 0 && $currentOwnerId === $actingUserId;
+        if ($actingUserId <= 0 || $currentOwnerId <= 0 || (!$isOwnerActor && !$asSuperAdmin)) {
             throw new RuntimeException('Only the current project owner can transfer ownership.');
         }
 

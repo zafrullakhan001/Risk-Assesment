@@ -441,6 +441,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $skipped[] = (string) $row['username'] . ' (your account)';
                     continue;
                 }
+                if (\RiskAssessment\Auth::isSuperAdmin($row)) {
+                    $skipped[] = (string) $row['username'] . ' (superadmin)';
+                    continue;
+                }
                 if (!empty($row['is_admin']) && $usersRepo->countAdmins() <= 1) {
                     $skipped[] = (string) $row['username'] . ' (last administrator)';
                     continue;
@@ -467,6 +471,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $usersRepo->logAudit('user.approved', (int) $currentUser['id'], (string) $currentUser['username'], $targetId, (string) $target['username']);
             $flash = 'User approved.';
         } elseif ($action === 'reject') {
+            if (\RiskAssessment\Auth::isSuperAdmin($target)) {
+                throw new RuntimeException('Cannot unapprove the superadmin account.');
+            }
             if (!empty($target['is_admin']) && $usersRepo->countAdmins() <= 1) {
                 throw new RuntimeException('Cannot reject the last administrator.');
             }
@@ -476,6 +483,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'disable') {
             if ((int) $target['id'] === (int) $currentUser['id']) {
                 throw new RuntimeException('You cannot disable your own account.');
+            }
+            if (\RiskAssessment\Auth::isSuperAdmin($target)) {
+                throw new RuntimeException('Cannot disable the superadmin account.');
             }
             if (!empty($target['is_admin']) && $usersRepo->countAdmins() <= 1) {
                 throw new RuntimeException('Cannot disable the last administrator.');
@@ -495,6 +505,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'demote') {
             if ((int) $target['id'] === (int) $currentUser['id']) {
                 throw new RuntimeException('You cannot remove your own admin role.');
+            }
+            if (\RiskAssessment\Auth::isSuperAdmin($target)) {
+                throw new RuntimeException('Cannot demote the superadmin account.');
             }
             if ($usersRepo->countAdmins() <= 1) {
                 throw new RuntimeException('Cannot demote the last administrator.');
@@ -525,6 +538,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'delete') {
             if ((int) $target['id'] === (int) $currentUser['id']) {
                 throw new RuntimeException('You cannot delete your own account.');
+            }
+            if (\RiskAssessment\Auth::isSuperAdmin($target)) {
+                throw new RuntimeException('Cannot delete the superadmin account.');
             }
             if (!empty($target['is_admin']) && $usersRepo->countAdmins() <= 1) {
                 throw new RuntimeException('Cannot delete the last administrator.');
@@ -1225,6 +1241,8 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                         <td class="col-select">
                                             <?php if ((int) $user['id'] === (int) $currentUser['id']): ?>
                                                 <span class="settings-hint" title="You cannot delete your own account">—</span>
+                                            <?php elseif (\RiskAssessment\Auth::isSuperAdmin($user)): ?>
+                                                <span class="settings-hint" title="Superadmin cannot be deleted">—</span>
                                             <?php else: ?>
                                                 <input type="checkbox" form="bulk-users-form" name="user_ids[]" value="<?= (int) $user['id'] ?>">
                                             <?php endif; ?>
@@ -1237,7 +1255,15 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                             <?php endif; ?>
                                         </td>
                                         <td><span class="auth-badge <?= $user['auth_source'] === 'ldap' ? 'is-ldap' : 'is-local' ?>"><?= e((string) $user['auth_source']) ?></span></td>
-                                        <td><?= !empty($user['is_admin']) ? 'Admin' : 'User' ?></td>
+                                        <td><?php
+                                            if (\RiskAssessment\Auth::isSuperAdmin($user)) {
+                                                echo 'Superadmin';
+                                            } elseif (!empty($user['is_admin'])) {
+                                                echo 'Admin';
+                                            } else {
+                                                echo 'User';
+                                            }
+                                        ?></td>
                                         <td>
                                             <?php if (!empty($user['is_disabled'])): ?>
                                                 <span class="token-needed">Disabled</span>
@@ -1264,7 +1290,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                             </svg>
                                                         </button>
                                                     </form>
-                                                <?php else: ?>
+                                                <?php elseif (!\RiskAssessment\Auth::isSuperAdmin($user)): ?>
                                                     <form method="post">
                                                         <?= csrf_field() ?>
                                                         <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
@@ -1290,7 +1316,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                             </svg>
                                                         </button>
                                                     </form>
-                                                <?php else: ?>
+                                                <?php elseif (!\RiskAssessment\Auth::isSuperAdmin($user)): ?>
                                                     <form method="post">
                                                         <?= csrf_field() ?>
                                                         <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
@@ -1315,7 +1341,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                             </svg>
                                                         </button>
                                                     </form>
-                                                <?php else: ?>
+                                                <?php elseif (!\RiskAssessment\Auth::isSuperAdmin($user)): ?>
                                                     <form method="post">
                                                         <?= csrf_field() ?>
                                                         <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">

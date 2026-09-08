@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Ticket Dossier module bootstrap — RiskRegister auth first, then sidecar TD stack.
+ * Ticket Dossier module bootstrap — RiskRegister auth, then dossier data stack.
  */
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 

@@ -7,7 +7,8 @@ namespace RiskAssessment;
 use RiskAssessment\Repositories\AssessmentAccessRepository;
 
 /**
- * Project-level access: owner owns edits; editors may edit; admins may open locked projects.
+ * Project-level access: owner owns edits; editors may edit; admins may open locked projects;
+ * local superadmin may edit/manage any project.
  */
 final class ProjectAccess
 {
@@ -66,18 +67,22 @@ final class ProjectAccess
      */
     public function canEdit(array $user, array $meta): bool
     {
+        if (Auth::isSuperAdmin($user)) {
+            return true;
+        }
+
         return $this->isOwner($user, $meta) || $this->isEditor($user, $meta);
     }
 
     /**
-     * Owner-only: lock/unlock, editors, delete, public share links.
+     * Owner or superadmin: lock/unlock, editors, delete, public share links, transfer.
      *
      * @param array<string, mixed> $user
      * @param array<string, mixed> $meta
      */
     public function canManage(array $user, array $meta): bool
     {
-        return $this->isOwner($user, $meta);
+        return $this->isOwner($user, $meta) || Auth::isSuperAdmin($user);
     }
 
     /**

@@ -35,7 +35,8 @@ $existing = $users->findByUsernameOrEmail($username);
 
 if ($existing === null) {
     $email = str_contains($username, '@') ? $username : $username . '@localhost';
-    $id = $users->createLocal($username, $email, $hash, true, true, $username, 'Recovered via CLI', null, 'CLI');
+    $asSuperAdmin = strcasecmp($username, Auth::DEFAULT_ADMIN_USERNAME) === 0;
+    $id = $users->createLocal($username, $email, $hash, true, true, $username, 'Recovered via CLI', null, 'CLI', $asSuperAdmin);
     $users->logAudit('user.cli_bootstrap', $id, $username, $id, $username, ['via' => 'reset_admin_password']);
     echo "Created administrator {$username} (id {$id})." . PHP_EOL;
     exit(0);
@@ -46,5 +47,11 @@ $users->setPassword($id, $hash);
 $users->setAdmin($id, true);
 $users->setApproved($id, true);
 $users->setDisabled($id, false);
+if (
+    strcasecmp((string) $existing['username'], Auth::DEFAULT_ADMIN_USERNAME) === 0
+    && ($existing['auth_source'] ?? '') === 'local'
+) {
+    $users->setSuperAdmin($id, true);
+}
 $users->logAudit('user.cli_password_reset', $id, $username, $id, (string) $existing['username'], ['via' => 'reset_admin_password']);
 echo "Reset password and restored admin access for {$username} (id {$id})." . PHP_EOL;

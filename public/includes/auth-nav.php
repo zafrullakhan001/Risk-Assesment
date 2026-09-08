@@ -43,7 +43,7 @@ $navOnHelp = str_ends_with($navScript, '/help.php');
                 aria-controls="update-notify-panel"
                 title="App update notifications"
             >
-                <svg class="update-bell-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                <svg class="update-bell-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
                     <path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm6.7-6.2V11a6.7 6.7 0 0 0-5.2-6.5V3.8a1.5 1.5 0 1 0-3 0v.7A6.7 6.7 0 0 0 5.3 11v4.8L4 17.1V18h16v-.9l-1.3-1.3Z"/>
                 </svg>
                 <span class="update-bell-badge" id="update-notify-badge" hidden>0</span>

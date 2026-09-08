@@ -191,6 +191,7 @@ final class Database
                 email TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 is_admin INTEGER NOT NULL DEFAULT 0,
+                is_superadmin INTEGER NOT NULL DEFAULT 0,
                 is_approved INTEGER NOT NULL DEFAULT 0,
                 is_disabled INTEGER NOT NULL DEFAULT 0,
                 auth_source TEXT NOT NULL DEFAULT \'local\',
@@ -208,7 +209,9 @@ final class Database
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_users_auth_source ON users (auth_source)');
         self::ensureColumn($pdo, 'users', 'created_by_user_id', 'INTEGER');
         self::ensureColumn($pdo, 'users', 'created_by_username', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'users', 'is_superadmin', 'INTEGER NOT NULL DEFAULT 0');
         self::backfillUserCreatedBy($pdo);
+        self::backfillSuperAdmin($pdo);
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS user_audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -630,9 +633,9 @@ final class Database
         }
 
         $statement = $pdo->prepare(
-            'INSERT INTO users (username, email, password_hash, is_admin, is_approved, is_disabled,
+            'INSERT INTO users (username, email, password_hash, is_admin, is_superadmin, is_approved, is_disabled,
                                 auth_source, display_name, notes, created_at, created_by_username)
-             VALUES (:username, :email, :password_hash, 1, 1, 0, \'local\', :display_name, :notes, datetime(\'now\'), :created_by_username)'
+             VALUES (:username, :email, :password_hash, 1, 1, 1, 0, \'local\', :display_name, :notes, datetime(\'now\'), :created_by_username)'
         );
         $statement->execute([
             ':username' => \RiskAssessment\Auth::DEFAULT_ADMIN_USERNAME,
@@ -685,6 +688,43 @@ final class Database
                  END
              WHERE IFNULL(created_by_username, '') = ''"
         );
+    }
+
+    /**
+     * Promote the bootstrap local administrator to superadmin once (existing installs).
+     * Prefer username "admin"; otherwise the earliest local admin.
+     */
+    private static function backfillSuperAdmin(PDO $pdo): void
+    {
+        $existing = $pdo->query('SELECT COUNT(*) FROM users WHERE is_superadmin = 1');
+        if ($existing !== false && (int) $existing->fetchColumn() > 0) {
+            return;
+        }
+
+        $statement = $pdo->prepare(
+            "SELECT id FROM users
+             WHERE is_admin = 1 AND auth_source = 'local'
+               AND LOWER(username) = LOWER(:username)
+             ORDER BY id ASC
+             LIMIT 1"
+        );
+        $statement->execute([':username' => \RiskAssessment\Auth::DEFAULT_ADMIN_USERNAME]);
+        $id = $statement->fetchColumn();
+        if ($id === false) {
+            $fallback = $pdo->query(
+                "SELECT id FROM users
+                 WHERE is_admin = 1 AND auth_source = 'local'
+                 ORDER BY id ASC
+                 LIMIT 1"
+            );
+            $id = $fallback !== false ? $fallback->fetchColumn() : false;
+        }
+        if ($id === false) {
+            return;
+        }
+
+        $update = $pdo->prepare('UPDATE users SET is_superadmin = 1 WHERE id = :id');
+        $update->execute([':id' => (int) $id]);
     }
 
     private static function migrateLegacyMermaidDiagrams(PDO $pdo): void

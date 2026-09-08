@@ -13,9 +13,23 @@ function brandMarkSvg(): string
     return Branding::current()->renderMark();
 }
 
+function dashboardCssVersion(): string
+{
+    $path = dirname(__DIR__, 2) . '/assets/css/dashboard.css';
+
+    return is_file($path) ? (string) filemtime($path) : '1';
+}
+
 function cssVersion(): string
 {
     $path = TD_ROOT . '/assets/css/app.css';
+
+    return is_file($path) ? (string) filemtime($path) : '1';
+}
+
+function themeJsVersion(): string
+{
+    $path = dirname(__DIR__, 2) . '/assets/js/theme.js';
 
     return is_file($path) ? (string) filemtime($path) : '1';
 }

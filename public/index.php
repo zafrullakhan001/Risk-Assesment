@@ -10,6 +10,7 @@ use RiskAssessment\AccessNotifier;
 use RiskAssessment\AssessmentComparer;
 use RiskAssessment\AssessmentDate;
 use RiskAssessment\AssessmentInsights;
+use RiskAssessment\Auth;
 use RiskAssessment\DashboardRenderer;
 use RiskAssessment\ExcelParser;
 use RiskAssessment\Models\Assessment;
@@ -96,9 +97,9 @@ $requireProjectEdit = static function (int $assessmentId) use ($loadProjectMeta,
  */
 $requireProjectManage = static function (int $assessmentId) use ($loadProjectMeta, $projectAccess, $currentUser): array {
     $meta = $loadProjectMeta($assessmentId);
-    if (!$projectAccess->canManage($currentUser, $meta)) {
+        if (!$projectAccess->canManage($currentUser, $meta)) {
         throw new AccessDeniedException(
-            'Only the project owner can manage access, share links, or delete this project.'
+            'Only the project owner or superadmin can manage access, share links, or delete this project.'
         );
     }
 
@@ -1255,7 +1256,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $targetId,
                 ['id' => $newOwnerId],
                 (int) ($currentUser['id'] ?? 0),
-                $keepFormer
+                $keepFormer,
+                Auth::isSuperAdmin($currentUser)
             );
 
             $notifier = new AccessNotifier(
@@ -1558,14 +1560,15 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 ''
             );
             $canEditProject = $projectAccess->canEdit($currentUser, $accessMeta);
-            $isOwnerProject = $projectAccess->isOwner($currentUser, $accessMeta);
-            $projectEditors = $isOwnerProject ? $accessRepository->listEditors($assessmentId) : [];
+            $canManageProject = $projectAccess->canManage($currentUser, $accessMeta);
+            $projectEditors = $canManageProject ? $accessRepository->listEditors($assessmentId) : [];
             $eligibleEditors = [];
-            if ($isOwnerProject) {
+            if ($canManageProject) {
                 $editorIds = array_column($projectEditors, 'user_id');
+                $ownerUserId = (int) ($accessMeta['owner_user_id'] ?? 0);
                 foreach ($auth->users()->listApprovedActive() as $candidate) {
                     $candidateId = (int) ($candidate['id'] ?? 0);
-                    if ($candidateId <= 0 || $candidateId === (int) ($currentUser['id'] ?? 0)) {
+                    if ($candidateId <= 0 || $candidateId === $ownerUserId) {
                         continue;
                     }
                     if (in_array($candidateId, $editorIds, true)) {
@@ -1600,7 +1603,7 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $sharePointCatalog,
                 $smtpEnabledForUi,
                 $viewerIsAdmin,
-                $isOwnerProject,
+                $canManageProject,
                 $projectAccess->isLocked($accessMeta),
                 $projectEditors,
                 $eligibleEditors
@@ -1684,9 +1687,14 @@ if ($dashboardHtml !== '') {
 
 $totalProjects = $repository->countAll();
 $currentUserId = (int) ($currentUser['id'] ?? 0);
+$viewerIsSuperAdmin = Auth::isSuperAdmin($currentUser);
 
-$renderProjectDelete = static function (array $project) use ($currentUserId): void {
-    if ($currentUserId <= 0 || (int) ($project['owner_user_id'] ?? 0) !== $currentUserId) {
+$renderProjectDelete = static function (array $project) use ($currentUserId, $viewerIsSuperAdmin): void {
+    $ownerId = (int) ($project['owner_user_id'] ?? 0);
+    if ($currentUserId <= 0) {
+        return;
+    }
+    if (!$viewerIsSuperAdmin && $ownerId !== $currentUserId) {
         return;
     }
     ?>

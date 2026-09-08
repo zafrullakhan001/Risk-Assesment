@@ -12,8 +12,9 @@ A default local administrator is created automatically:
 
 - Username: `admin`
 - Password: `admin123`
+- Role: **Superadmin** (can edit, manage, and delete any Risk Register project; other admins stay owner/editor-scoped)
 
-Change that password under **Admin → Overview** after the first sign-in. If no users exist yet, the first visitor can also create an administrator on `login.php`.
+Change that password under **Admin → Overview** after the first sign-in. If no users exist yet, the first visitor can also create an administrator on `login.php` (that first local admin becomes the superadmin).
 
 New local passwords (after the starter account) need at least 8 characters, one uppercase letter, one number, and one special character.
 
@@ -94,3 +95,4 @@ The script creates the user if needed, approves it, and grants admin.
 - LDAP filter/DN values are escaped
 - Five failed sign-ins lock the session for 60 seconds
 - The last administrator cannot be demoted, disabled, or deleted
+- The local superadmin cannot be demoted, disabled, or deleted

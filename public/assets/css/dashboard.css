@@ -5078,14 +5078,14 @@ body.is-presentation .print-only-block { display: block; }
     align-items: center;
 }
 
-.update-bell-btn {
+.button.update-bell-btn {
     position: relative;
     width: 38px;
     min-width: 38px;
     padding: 0;
 }
 
-.update-bell-btn.has-new {
+.button.update-bell-btn.has-new {
     border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
     color: var(--primary-dark);
     background: color-mix(in srgb, var(--primary-soft) 70%, var(--card));
@@ -5093,6 +5093,9 @@ body.is-presentation .print-only-block { display: block; }
 
 .update-bell-icon {
     display: block;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
 }
 
 .update-bell-badge {
@@ -5297,8 +5300,15 @@ body.is-presentation .print-only-block { display: block; }
     margin: 0 0 8px;
 }
 
-.shared-access-notice {
+.shared-access-notice,
+.shared-access-item {
+    display: block;
+    grid-template-columns: none;
+    gap: 0;
     padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: inherit;
 }
 
 .shared-access-notice.is-unread .shared-access-notice-link {
@@ -5371,10 +5381,6 @@ body.is-presentation .print-only-block { display: block; }
 .shared-access-list {
     max-height: min(340px, 50vh);
     overflow: auto;
-}
-
-.shared-access-item {
-    padding: 0;
 }
 
 .shared-access-link {
