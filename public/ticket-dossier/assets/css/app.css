@@ -157,6 +157,10 @@
     padding: 14px 16px;
     margin-bottom: 12px;
 }
+#find-projects,
+#import-zip {
+    scroll-margin-top: calc(var(--topbar-sticky-height, 72px) + 8px);
+}
 .upload-card {
     border-style: dashed;
     border-color: color-mix(in srgb, var(--primary) 35%, var(--line));

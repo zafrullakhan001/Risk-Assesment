@@ -147,6 +147,20 @@ function nowUtc(): string
     return gmdate('Y-m-d H:i:s');
 }
 
+function dossierFilenameSlug(string $title, string $fallback = 'dossier'): string
+{
+    $slug = preg_replace('/[^A-Za-z0-9._-]+/', '-', $title) ?? $fallback;
+    $slug = trim($slug, '-._');
+    if ($slug === '') {
+        $slug = $fallback;
+    }
+    if (strlen($slug) > 60) {
+        $slug = substr($slug, 0, 60);
+    }
+
+    return $slug;
+}
+
 /**
  * Snapshot of the signed-in user who created a Ticket Dossier project.
  *

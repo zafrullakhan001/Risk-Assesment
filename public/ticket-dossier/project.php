@@ -103,6 +103,13 @@ $ribbon = [
             ?>
             <a class="button ghost home-link" data-menu-group="ticket" data-menu-tone="sky" href="index.php" title="Return to the Ticket Dossier project list"><span class="topbar-menu-emoji" aria-hidden="true">📋</span>All projects</a>
             <a
+                class="button ghost home-link"
+                data-menu-group="ticket"
+                data-menu-tone="mint"
+                href="export-zip.php?id=<?= (int) $id ?>"
+                title="Download this dossier and its original files as a ZIP backup"
+            ><span class="topbar-menu-emoji" aria-hidden="true">📦</span>Export ZIP</a>
+            <a
                 class="button button-primary home-link"
                 data-menu-group="ticket"
                 data-menu-tone="mint"
@@ -518,6 +525,11 @@ $ribbon = [
         <section class="panel panel-tone-files" id="section-files">
             <div class="section-head">
                 <h2><?= sectionTitle('files') ?></h2>
+                <a
+                    class="button button-small"
+                    href="export-zip.php?id=<?= (int) $id ?>"
+                    title="Download this dossier and its original files as a ZIP backup"
+                >📦 Export ZIP</a>
                 <a
                     class="button button-small"
                     href="export.php?id=<?= (int) $id ?>"

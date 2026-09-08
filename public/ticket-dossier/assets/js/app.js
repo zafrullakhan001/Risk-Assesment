@@ -575,4 +575,9 @@
             });
         }
     }
+
+    var importZip = document.getElementById('import-zip');
+    if (importZip && window.location.hash === '#import-zip') {
+        importZip.open = true;
+    }
 })();

@@ -22,6 +22,7 @@ require_once __DIR__ . '/parsers/ServicenowPdfParser.php';
 require_once __DIR__ . '/PaginationPreference.php';
 require_once __DIR__ . '/ProjectRepository.php';
 require_once __DIR__ . '/ProjectImporter.php';
+require_once __DIR__ . '/ProjectPackager.php';
 
 if (!is_dir(TD_DATABASE_DIR)) {
     mkdir(TD_DATABASE_DIR, 0755, true);

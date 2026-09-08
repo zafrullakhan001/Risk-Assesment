@@ -16,6 +16,8 @@ const TD_LEGACY_SQLITE_PATH = TD_ROOT . '/data/ticketdetails.sqlite';
 const TD_LEGACY_STORAGE_DIR = TD_ROOT . '/storage/projects';
 const TD_MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 const TD_MAX_FILES_PER_UPLOAD = 10;
+const TD_MAX_ZIP_UPLOAD_BYTES = 80 * 1024 * 1024;
+const TD_MAX_ZIP_PROJECTS = 250;
 
 const TD_ALLOWED_EXTENSIONS = ['pdf', 'json'];
 const TD_ALLOWED_MIME = [

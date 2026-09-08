@@ -256,11 +256,36 @@ $projectSourcesMeta = static function (array $project): array {
             </form>
         </section>
 
+        <details class="upload-card" id="import-zip">
+            <summary class="upload-card-summary">
+                <h2>📦 Import ZIP</h2>
+            </summary>
+            <p class="context-note">Restore one project or a full Ticket Dossier backup. Import creates new projects and does not replace existing ones.</p>
+            <form class="details-form" action="import-zip.php" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
+                <label class="field">
+                    <span>ZIP file</span>
+                    <input type="file" name="zip" accept=".zip,application/zip,application/x-zip-compressed" required>
+                    <small>Exported from Ticket Dossier · up to <?= (int) round(TD_MAX_ZIP_UPLOAD_BYTES / 1024 / 1024) ?> MB</small>
+                </label>
+                <button type="submit" class="button button-primary">📥 Import ZIP</button>
+            </form>
+        </details>
+
         <section class="panel" id="find-projects">
             <div class="section-head">
                 <h2>📁 Projects</h2>
                 <span class="pill gray"><?= (int) $searchTotal ?> total</span>
+                <?php if ($searchTotal > 0): ?>
+                    <a class="button ghost button-small" href="export-zip.php" title="Download every dossier, including original files, as one ZIP">📦 Export all ZIP</a>
+                <?php endif; ?>
             </div>
+            <?php if ($flash): ?>
+                <div class="flash flash-<?= e($flash['type']) ?>">
+                    <?= $flash['type'] === 'success' ? '✅ ' : ($flash['type'] === 'error' ? '⚠️ ' : 'ℹ️ ') ?>
+                    <?= e($flash['message']) ?>
+                </div>
+            <?php endif; ?>
 
             <form method="get" class="search-form" action="index.php#find-projects">
                 <?php if ($searchPerPage !== 10): ?>
@@ -355,10 +380,11 @@ $projectSourcesMeta = static function (array $project): array {
                                 <span>🗓️ Updated <?= e((string) $project['updated_at']) ?> UTC · <?= $presentCount ?>/4 sources</span>
                                 <div class="card-actions">
                                     <a class="button button-primary button-small" href="project.php?id=<?= (int) $project['id'] ?>">Open →</a>
+                                    <a class="button ghost button-small" href="export-zip.php?id=<?= (int) $project['id'] ?>" title="Export this project as ZIP">📦 ZIP</a>
                                     <?php if ($presentCount < 4): ?>
                                         <a class="button ghost button-small" href="project.php?id=<?= (int) $project['id'] ?>#complete-dossier">🧩 Complete</a>
                                     <?php endif; ?>
-                                    <form method="post" onsubmit="return confirm('Delete this project?');">
+                                    <form method="post" action="index.php" class="project-delete-form" onsubmit="return confirm('Delete this project?');">
                                         <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
                                         <input type="hidden" name="delete_id" value="<?= (int) $project['id'] ?>">
                                         <button type="submit" class="button ghost is-danger button-small">🗑️ Delete</button>
@@ -370,7 +396,8 @@ $projectSourcesMeta = static function (array $project): array {
                 </div>
 
                 <div class="project-table-wrap table-scroll" id="project-table-wrap">
-                    <form method="get" class="project-table-filter-form" action="index.php#find-projects">
+                    <?php /* Filter form must not wrap delete forms — nested <form> is invalid and browsers POST as a GET reload. */ ?>
+                    <form method="get" class="project-table-filter-form" id="project-table-filter-form" action="index.php#find-projects">
                         <?php if ($searchQuery !== ''): ?>
                             <input type="hidden" name="q" value="<?= e($searchQuery) ?>">
                         <?php endif; ?>
@@ -379,7 +406,8 @@ $projectSourcesMeta = static function (array $project): array {
                         <?php endif; ?>
                         <input type="hidden" name="sort" value="<?= e($searchSort) ?>">
                         <input type="hidden" name="dir" value="<?= e($searchDir) ?>">
-                        <table class="project-table">
+                    </form>
+                    <table class="project-table">
                             <thead>
                                 <tr>
                                     <th scope="col" class="<?= e($sortClass('id')) ?>" aria-sort="<?= e($sortAria('id')) ?>">
@@ -412,17 +440,17 @@ $projectSourcesMeta = static function (array $project): array {
                                     <th scope="col"><span class="visually-hidden">Actions</span></th>
                                 </tr>
                                 <tr class="project-table-filters<?= $activeFilters === [] ? ' is-collapsed' : '' ?>" id="project-table-filters"<?= $activeFilters === [] ? ' hidden' : '' ?>>
-                                    <th scope="col"><input type="search" name="f_id" value="<?= e($searchFilters['id']) ?>" placeholder="#" aria-label="Filter by ID"></th>
-                                    <th scope="col"><input type="search" name="f_project" value="<?= e($searchFilters['project']) ?>" placeholder="Filter…" aria-label="Filter by project"></th>
-                                    <th scope="col"><input type="search" name="f_vendor" value="<?= e($searchFilters['vendor']) ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
-                                    <th scope="col"><input type="search" name="f_owner" value="<?= e($searchFilters['owner']) ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
-                                    <th scope="col"><input type="search" name="f_demand" value="<?= e($searchFilters['demand']) ?>" placeholder="Filter…" aria-label="Filter by demand"></th>
-                                    <th scope="col"><input type="search" name="f_story" value="<?= e($searchFilters['story']) ?>" placeholder="Filter…" aria-label="Filter by story"></th>
-                                    <th scope="col"><input type="search" name="f_task" value="<?= e($searchFilters['task']) ?>" placeholder="Filter…" aria-label="Filter by task"></th>
-                                    <th scope="col"><input type="search" name="f_ddr" value="<?= e($searchFilters['ddr']) ?>" placeholder="Filter…" aria-label="Filter by DDR"></th>
-                                    <th scope="col"><input type="search" name="f_updated" value="<?= e($searchFilters['updated']) ?>" placeholder="YYYY-MM-DD" aria-label="Filter by updated date"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_id" value="<?= e($searchFilters['id']) ?>" placeholder="#" aria-label="Filter by ID"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_project" value="<?= e($searchFilters['project']) ?>" placeholder="Filter…" aria-label="Filter by project"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_vendor" value="<?= e($searchFilters['vendor']) ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_owner" value="<?= e($searchFilters['owner']) ?>" placeholder="Filter…" aria-label="Filter by owner"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_demand" value="<?= e($searchFilters['demand']) ?>" placeholder="Filter…" aria-label="Filter by demand"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_story" value="<?= e($searchFilters['story']) ?>" placeholder="Filter…" aria-label="Filter by story"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_task" value="<?= e($searchFilters['task']) ?>" placeholder="Filter…" aria-label="Filter by task"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_ddr" value="<?= e($searchFilters['ddr']) ?>" placeholder="Filter…" aria-label="Filter by DDR"></th>
+                                    <th scope="col"><input type="search" form="project-table-filter-form" name="f_updated" value="<?= e($searchFilters['updated']) ?>" placeholder="YYYY-MM-DD" aria-label="Filter by updated date"></th>
                                     <th scope="col" class="project-table-filter-actions">
-                                        <button type="submit" class="button ghost project-filter-apply">Filter</button>
+                                        <button type="submit" form="project-table-filter-form" class="button ghost project-filter-apply">Filter</button>
                                         <?php if ($activeFilters !== []): ?>
                                             <a class="button ghost project-filter-clear" href="<?= e($projectListUrl([
                                                 'f_id' => null,
@@ -466,7 +494,8 @@ $projectSourcesMeta = static function (array $project): array {
                                         <td class="project-table-actions">
                                             <div class="project-table-action-row">
                                                 <a class="button button-primary button-small" href="project.php?id=<?= (int) $project['id'] ?>">Open</a>
-                                                <form method="post" class="project-delete-form" onsubmit="return confirm('Delete this project?');">
+                                                <a class="button ghost button-small" href="export-zip.php?id=<?= (int) $project['id'] ?>" title="Export this project as ZIP" aria-label="Export project as ZIP">📦</a>
+                                                <form method="post" action="index.php" class="project-delete-form" onsubmit="return confirm('Delete this project?');">
                                                     <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
                                                     <input type="hidden" name="delete_id" value="<?= (int) $project['id'] ?>">
                                                     <button type="submit" class="button ghost is-danger button-small" title="Delete project" aria-label="Delete project">🗑️</button>
@@ -477,7 +506,6 @@ $projectSourcesMeta = static function (array $project): array {
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
-                    </form>
                 </div>
 
                 <?php if ($searchTotal > 0): ?>

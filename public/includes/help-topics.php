@@ -322,11 +322,16 @@ HTML,
                 ],
                 [
                     'id' => 'dossier-export',
-                    'title' => 'Export JSON',
+                    'title' => 'Export and import ZIP',
                     'html' => <<<'HTML'
-<p>From an open dossier, <strong>Export JSON</strong> downloads a complete packet for offline or AI analysis. The file includes project metadata, which sources are present, the parsed dossier, and a file manifest (not the original PDF bytes).</p>
-<p>The download is named like <code>ticket-dossier-{id}-{title}.json</code> with format <code>architecture-risk.ticket-dossier.v1</code>. Original PDFs and JSON remain available under <strong>Original files</strong>.</p>
-<p>Ticket Dossier is not publicly shareable. Recipients need a signed-in account on this app. For a read-only assessment or catalog view, use the Share panels on the assessment dashboard or SharePoint instead.</p>
+<p>Use ZIP backups to copy a dossier (or every dossier) to another machine or to restore after a wipe.</p>
+<ul>
+<li>From an open dossier, <strong>Export ZIP</strong> downloads that project plus its original Demand / Story / Task / DDR files.</li>
+<li>On the Ticket Dossier home page, each row has a ZIP action, and <strong>Export all ZIP</strong> packs every project into one archive.</li>
+<li><strong>Import ZIP</strong> on the home page restores a single-project ZIP or a full backup. Imports always create <strong>new</strong> projects; they do not overwrite existing IDs.</li>
+</ul>
+<p><strong>Export JSON</strong> is still available for offline or AI analysis. That file has metadata and parsed fields, not the original PDF bytes. ZIP is the format to use when you need a complete backup.</p>
+<p>The download is named like <code>ticket-dossier-{id}-{title}.zip</code> or <code>ticket-dossier-all-{date}.zip</code>. Ticket Dossier is not publicly shareable. Recipients need a signed-in account on this app.</p>
 HTML,
                 ],
             ],
