@@ -91,7 +91,7 @@ HTML,
 </ul>
 <p>On <a href="help.php">Help &amp; About</a>, a reading toolbar adds page-only options (also stored in this browser):</p>
 <ul>
-<li><strong>Font</strong> — App, Serif, Clear, Lexend, or Rounded for the topic list and article.</li>
+<li><strong>Font</strong> — choose a Sans, Serif, Monospace, or Cursive face (web fonts plus system fonts such as Arial, Georgia, and Courier New) for the topic list and article.</li>
 <li><strong>Read aloud</strong> — Play, Pause, and Stop use the browser’s speech synthesis with up to four US English male and four US English female voices installed on your device.</li>
 </ul>
 <p>Help, SharePoint, and Ticket Dossier use the same theme tokens, so every signed-in page follows the theme you already chose. Font and Read aloud apply only on Help &amp; About.</p>

@@ -7,14 +7,49 @@
 
     const FONT_KEY = 'ra-help-font';
     const VOICE_KEY = 'ra-help-voice';
-    const FONT_OPTIONS = ['app', 'serif', 'clear', 'lexend', 'rounded'];
+    const FONT_OPTIONS = [
+        'app', 'clear', 'lexend', 'rounded', 'figtree', 'arial', 'verdana', 'tahoma', 'trebuchet', 'impact',
+        'serif', 'literata', 'merriweather', 'times', 'georgia',
+        'courier',
+        'dancing', 'caveat', 'great-vibes', 'patrick', 'comic',
+    ];
+
+    const FONT_STACKS = {
+        app: '"Source Sans 3", sans-serif',
+        clear: '"Atkinson Hyperlegible", Tahoma, sans-serif',
+        lexend: 'Lexend, sans-serif',
+        rounded: 'Nunito, sans-serif',
+        figtree: 'Figtree, sans-serif',
+        arial: 'Arial, Helvetica, sans-serif',
+        verdana: 'Verdana, Geneva, sans-serif',
+        tahoma: 'Tahoma, "Segoe UI", sans-serif',
+        trebuchet: '"Trebuchet MS", "Segoe UI", sans-serif',
+        impact: 'Impact, Haettenschweiler, sans-serif',
+        serif: '"Source Serif 4", Georgia, serif',
+        literata: 'Literata, Georgia, serif',
+        merriweather: 'Merriweather, Georgia, serif',
+        times: '"Times New Roman", Times, serif',
+        georgia: 'Georgia, "Times New Roman", serif',
+        courier: '"Courier New", Courier, monospace',
+        dancing: '"Dancing Script", cursive',
+        caveat: 'Caveat, cursive',
+        'great-vibes': '"Great Vibes", cursive',
+        patrick: '"Patrick Hand", cursive',
+        comic: '"Comic Sans MS", cursive',
+    };
 
     const voiceSelect = document.getElementById('help-voice-select');
+    const fontSelect = document.getElementById('help-font-select');
+    const fontPicker = document.getElementById('help-font-picker');
+    const fontTrigger = document.getElementById('help-font-picker-trigger');
+    const fontMenu = document.getElementById('help-font-picker-menu');
+    const fontOptions = fontMenu
+        ? Array.from(fontMenu.querySelectorAll('[data-help-font]'))
+        : [];
     const playBtn = document.getElementById('help-reader-play');
     const pauseBtn = document.getElementById('help-reader-pause');
     const stopBtn = document.getElementById('help-reader-stop');
     const statusEl = document.getElementById('help-reader-status');
-    const fontButtons = Array.from(toolbar.querySelectorAll('[data-help-font-set]'));
 
     /** @type {{ voice: SpeechSynthesisVoice, gender: 'female'|'male', label: string }[]} */
     let curatedVoices = [];
@@ -23,6 +58,7 @@
     let queueIndex = 0;
     let isSpeaking = false;
     let isPaused = false;
+    let utteranceToken = 0;
 
     const setStatus = (message) => {
         if (statusEl) {
@@ -30,15 +66,47 @@
         }
     };
 
+    const closeFontMenu = () => {
+        if (!fontMenu || !fontTrigger) {
+            return;
+        }
+        fontMenu.hidden = true;
+        fontTrigger.setAttribute('aria-expanded', 'false');
+    };
+
+    const openFontMenu = () => {
+        if (!fontMenu || !fontTrigger) {
+            return;
+        }
+        fontMenu.hidden = false;
+        fontTrigger.setAttribute('aria-expanded', 'true');
+        const selected = fontMenu.querySelector('[aria-selected="true"]');
+        if (selected && typeof selected.focus === 'function') {
+            selected.focus();
+        }
+    };
+
     const applyFont = (font) => {
         const next = FONT_OPTIONS.includes(font) ? font : 'app';
         document.documentElement.setAttribute('data-help-font', next);
         layout.setAttribute('data-help-font', next);
-        fontButtons.forEach((button) => {
-            const active = button.getAttribute('data-help-font-set') === next;
-            button.classList.toggle('is-active', active);
-            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        if (fontSelect && fontSelect.value !== next) {
+            fontSelect.value = next;
+        }
+        const stack = FONT_STACKS[next] || FONT_STACKS.app;
+        let label = next;
+        fontOptions.forEach((option) => {
+            const active = option.getAttribute('data-help-font') === next;
+            option.setAttribute('aria-selected', active ? 'true' : 'false');
+            option.classList.toggle('is-active', active);
+            if (active) {
+                label = (option.textContent || next).trim();
+            }
         });
+        if (fontTrigger) {
+            fontTrigger.textContent = label;
+            fontTrigger.style.fontFamily = stack;
+        }
         try {
             localStorage.setItem(FONT_KEY, next);
         } catch (e) { /* ignore */ }
@@ -53,11 +121,74 @@
     })();
     applyFont(savedFont);
 
-    fontButtons.forEach((button) => {
-        button.addEventListener('click', () => {
-            applyFont(button.getAttribute('data-help-font-set') || 'app');
+    if (fontTrigger && fontMenu) {
+        fontTrigger.addEventListener('click', () => {
+            if (fontMenu.hidden) {
+                openFontMenu();
+            } else {
+                closeFontMenu();
+            }
         });
-    });
+
+        fontOptions.forEach((option) => {
+            option.addEventListener('click', () => {
+                applyFont(option.getAttribute('data-help-font') || 'app');
+                closeFontMenu();
+                fontTrigger.focus();
+            });
+        });
+
+        fontMenu.addEventListener('keydown', (event) => {
+            const current = document.activeElement;
+            const index = fontOptions.indexOf(current);
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeFontMenu();
+                fontTrigger.focus();
+                return;
+            }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (index < 0) {
+                    fontOptions[0]?.focus();
+                    return;
+                }
+                const delta = event.key === 'ArrowDown' ? 1 : -1;
+                const next = fontOptions[index + delta];
+                if (next) {
+                    next.focus();
+                }
+                return;
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                if (current && current.hasAttribute('data-help-font')) {
+                    applyFont(current.getAttribute('data-help-font') || 'app');
+                    closeFontMenu();
+                    fontTrigger.focus();
+                }
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!fontPicker || fontMenu.hidden) {
+                return;
+            }
+            if (!fontPicker.contains(event.target)) {
+                closeFontMenu();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && fontMenu && !fontMenu.hidden) {
+                closeFontMenu();
+            }
+        });
+    } else if (fontSelect) {
+        fontSelect.addEventListener('change', () => {
+            applyFont(fontSelect.value || 'app');
+        });
+    }
 
     const FEMALE_PRIORITY = [
         'Microsoft Aria',
@@ -276,6 +407,42 @@
             try {
                 localStorage.setItem(VOICE_KEY, voiceSelect.value || '');
             } catch (e) { /* ignore */ }
+
+            // Mid-read voice switch: keep the current line, continue with the new voice.
+            if ((isSpeaking || isPaused) && speakQueue.length > 0) {
+                const resumeIndex = queueIndex;
+                const keepPaused = isPaused;
+                utteranceToken += 1;
+                if ('speechSynthesis' in window) {
+                    try {
+                        if (window.speechSynthesis.paused) {
+                            window.speechSynthesis.resume();
+                        }
+                    } catch (e) { /* ignore */ }
+                    window.speechSynthesis.cancel();
+                }
+                queueIndex = resumeIndex;
+                isSpeaking = true;
+                isPaused = false;
+                updateTransport();
+                setStatus(keepPaused ? 'Voice changed — press Resume to continue.' : 'Voice changed — continuing…');
+                if (keepPaused) {
+                    // Re-highlight current line; wait for Resume.
+                    clearHighlight();
+                    const el = speakQueue[queueIndex];
+                    if (el) {
+                        el.classList.add('is-speaking');
+                    }
+                    isPaused = true;
+                    updateTransport();
+                } else {
+                    window.setTimeout(() => {
+                        if (isSpeaking && !isPaused) {
+                            speakNext();
+                        }
+                    }, 40);
+                }
+            }
         });
     }
 
@@ -293,8 +460,15 @@
         playBtn.disabled = !hasVoices || isSpeaking;
         pauseBtn.disabled = !isSpeaking;
         stopBtn.disabled = !isSpeaking && !isPaused;
-        pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+        const pauseIcon = pauseBtn.querySelector('.help-reader-icon-pause');
+        const resumeIcon = pauseBtn.querySelector('.help-reader-icon-resume');
+        if (pauseIcon && resumeIcon) {
+            pauseIcon.hidden = isPaused;
+            resumeIcon.hidden = !isPaused;
+        }
+        pauseBtn.setAttribute('aria-label', isPaused ? 'Resume' : 'Pause');
         pauseBtn.title = isPaused ? 'Resume reading' : 'Pause reading';
+        pauseBtn.classList.toggle('is-resume', isPaused);
     };
 
     const activeArticle = () => layout.querySelector('.help-article.is-active:not([hidden]), [data-help-article].is-active:not([hidden])')
@@ -338,6 +512,7 @@
 
     const stopSpeaking = (options) => {
         const silent = options && options.silent;
+        utteranceToken += 1;
         if ('speechSynthesis' in window) {
             // Some browsers leave synthesis stuck in paused unless resumed before cancel.
             try {
@@ -385,6 +560,7 @@
             return;
         }
 
+        const token = utteranceToken;
         const utter = new SpeechSynthesisUtterance(text);
         utter.lang = 'en-US';
         const voice = selectedVoice();
@@ -394,18 +570,20 @@
         }
 
         utter.onend = () => {
-            if (!isSpeaking) {
+            if (token !== utteranceToken || !isSpeaking) {
                 return;
             }
             queueIndex += 1;
             speakNext();
         };
         utter.onerror = () => {
-            if (!isSpeaking) {
+            if (token !== utteranceToken || !isSpeaking) {
                 return;
             }
-            queueIndex += 1;
-            speakNext();
+            // Interrupted by cancel (voice switch / stop) — do not advance.
+            if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+                return;
+            }
         };
 
         window.speechSynthesis.speak(utter);
@@ -424,6 +602,7 @@
             return;
         }
 
+        utteranceToken += 1;
         window.speechSynthesis.cancel();
         speakQueue = chunks;
         queueIndex = 0;
@@ -439,15 +618,22 @@
             return;
         }
         if (isPaused) {
-            window.speechSynthesis.resume();
             isPaused = false;
-            setStatus('Reading…');
+            updateTransport();
+            // After a mid-read voice change, cancel left nothing to resume — restart current line.
+            if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending && !window.speechSynthesis.paused) {
+                setStatus('Reading…');
+                speakNext();
+            } else {
+                window.speechSynthesis.resume();
+                setStatus('Reading…');
+            }
         } else {
             window.speechSynthesis.pause();
             isPaused = true;
             setStatus('Paused.');
+            updateTransport();
         }
-        updateTransport();
     };
 
     if (playBtn) {

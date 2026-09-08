@@ -23,13 +23,18 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
     <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Lexend:wght@400;500;600;700&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Caveat:wght@400;600;700&family=Dancing+Script:wght@400;600;700&family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Great+Vibes&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&family=Merriweather:ital,opsz,wght@0,18..144,400;0,18..144,700;1,18..144,400&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=Patrick+Hand&family=Lexend:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
     <script>
     (function () {
         try {
             var font = localStorage.getItem('ra-help-font') || 'app';
-            var allowed = ['app', 'serif', 'clear', 'lexend', 'rounded'];
+            var allowed = [
+                'app', 'clear', 'lexend', 'rounded', 'figtree', 'arial', 'verdana', 'tahoma', 'trebuchet', 'impact',
+                'serif', 'literata', 'merriweather', 'times', 'georgia',
+                'courier',
+                'dancing', 'caveat', 'great-vibes', 'patrick', 'comic'
+            ];
             if (allowed.indexOf(font) === -1) {
                 font = 'app';
             }
@@ -103,27 +108,94 @@ $helpFirstId = (string) ($helpTopics[0]['id'] ?? 'about-app');
 
                 <div class="help-detail" id="help-detail">
                     <div class="help-reader-toolbar upload-card" id="help-reader-toolbar" role="region" aria-label="Reading options">
-                        <div class="help-reader-row">
-                            <div class="theme-controls help-font-controls" aria-label="Help reading font">
-                                <span class="theme-controls-label">Font</span>
-                                <button type="button" class="theme-btn" data-help-font-set="app" title="App — Source Sans 3, matches the rest of the register" aria-pressed="false">App</button>
-                                <button type="button" class="theme-btn" data-help-font-set="serif" title="Serif — Source Serif 4 for long-form reading" aria-pressed="false">Serif</button>
-                                <button type="button" class="theme-btn" data-help-font-set="clear" title="Clear — Atkinson Hyperlegible for high legibility" aria-pressed="false">Clear</button>
-                                <button type="button" class="theme-btn" data-help-font-set="lexend" title="Lexend — easier word decoding" aria-pressed="false">Lexend</button>
-                                <button type="button" class="theme-btn" data-help-font-set="rounded" title="Rounded — Nunito, softer and friendlier" aria-pressed="false">Rounded</button>
+                        <div class="help-reader-row help-reader-controls">
+                            <div class="help-control-label help-font-picker" id="help-font-picker">
+                                <span class="theme-controls-label" id="help-font-label">Font</span>
+                                <button
+                                    type="button"
+                                    class="help-control-select help-font-picker-trigger"
+                                    id="help-font-picker-trigger"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="false"
+                                    aria-labelledby="help-font-label help-font-picker-trigger"
+                                    title="Choose a reading font for Help &amp; About"
+                                >App (Source Sans 3)</button>
+                                <div class="help-font-picker-menu" id="help-font-picker-menu" role="listbox" aria-labelledby="help-font-label" hidden>
+                                    <div class="help-font-picker-group" role="presentation">Sans</div>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="app" style="font-family: 'Source Sans 3', sans-serif;">App (Source Sans 3)</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="clear" style="font-family: 'Atkinson Hyperlegible', Tahoma, sans-serif;">Clear (Atkinson)</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="lexend" style="font-family: Lexend, sans-serif;">Lexend</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="rounded" style="font-family: Nunito, sans-serif;">Rounded (Nunito)</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="figtree" style="font-family: Figtree, sans-serif;">Figtree</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="arial" style="font-family: Arial, Helvetica, sans-serif;">Arial</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="verdana" style="font-family: Verdana, Geneva, sans-serif;">Verdana</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="tahoma" style="font-family: Tahoma, 'Segoe UI', sans-serif;">Tahoma</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="trebuchet" style="font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;">Trebuchet MS</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="impact" style="font-family: Impact, Haettenschweiler, sans-serif;">Impact</button>
+                                    <div class="help-font-picker-group" role="presentation">Serif</div>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="serif" style="font-family: 'Source Serif 4', Georgia, serif;">Source Serif 4</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="literata" style="font-family: Literata, Georgia, serif;">Literata</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="merriweather" style="font-family: Merriweather, Georgia, serif;">Merriweather</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="times" style="font-family: 'Times New Roman', Times, serif;">Times New Roman</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="georgia" style="font-family: Georgia, 'Times New Roman', serif;">Georgia</button>
+                                    <div class="help-font-picker-group" role="presentation">Monospace</div>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="courier" style="font-family: 'Courier New', Courier, monospace;">Courier New</button>
+                                    <div class="help-font-picker-group" role="presentation">Cursive</div>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="dancing" style="font-family: 'Dancing Script', cursive;">Dancing Script</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="caveat" style="font-family: Caveat, cursive;">Caveat</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="great-vibes" style="font-family: 'Great Vibes', cursive;">Great Vibes</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="patrick" style="font-family: 'Patrick Hand', cursive;">Patrick Hand</button>
+                                    <button type="button" role="option" class="help-font-picker-option" data-help-font="comic" style="font-family: 'Comic Sans MS', cursive;">Comic Sans MS</button>
+                                </div>
+                                <select id="help-font-select" class="help-font-select-native" tabindex="-1" aria-hidden="true">
+                                    <option value="app">App (Source Sans 3)</option>
+                                    <option value="clear">Clear (Atkinson)</option>
+                                    <option value="lexend">Lexend</option>
+                                    <option value="rounded">Rounded (Nunito)</option>
+                                    <option value="figtree">Figtree</option>
+                                    <option value="arial">Arial</option>
+                                    <option value="verdana">Verdana</option>
+                                    <option value="tahoma">Tahoma</option>
+                                    <option value="trebuchet">Trebuchet MS</option>
+                                    <option value="impact">Impact</option>
+                                    <option value="serif">Source Serif 4</option>
+                                    <option value="literata">Literata</option>
+                                    <option value="merriweather">Merriweather</option>
+                                    <option value="times">Times New Roman</option>
+                                    <option value="georgia">Georgia</option>
+                                    <option value="courier">Courier New</option>
+                                    <option value="dancing">Dancing Script</option>
+                                    <option value="caveat">Caveat</option>
+                                    <option value="great-vibes">Great Vibes</option>
+                                    <option value="patrick">Patrick Hand</option>
+                                    <option value="comic">Comic Sans MS</option>
+                                </select>
                             </div>
-                        </div>
-                        <div class="help-reader-row help-reader-speak">
-                            <label class="help-voice-label" for="help-voice-select">
+                            <label class="help-control-label" for="help-voice-select">
                                 <span class="theme-controls-label">Voice</span>
-                                <select id="help-voice-select" class="help-voice-select" aria-describedby="help-reader-status">
+                                <select id="help-voice-select" class="help-control-select" aria-describedby="help-reader-status">
                                     <option value="">Loading voices…</option>
                                 </select>
                             </label>
                             <div class="help-reader-actions" role="group" aria-label="Read aloud">
-                                <button type="button" class="button ghost help-reader-btn" id="help-reader-play" title="Read the current topic aloud">Play</button>
-                                <button type="button" class="button ghost help-reader-btn" id="help-reader-pause" title="Pause or resume reading" disabled>Pause</button>
-                                <button type="button" class="button ghost help-reader-btn" id="help-reader-stop" title="Stop reading" disabled>Stop</button>
+                                <button type="button" class="help-reader-icon-btn" id="help-reader-play" title="Play — read the current topic aloud" aria-label="Play">
+                                    <svg class="help-reader-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M8 5.5v13l11-6.5L8 5.5z" fill="currentColor"/>
+                                    </svg>
+                                </button>
+                                <button type="button" class="help-reader-icon-btn" id="help-reader-pause" title="Pause reading" aria-label="Pause" disabled>
+                                    <svg class="help-reader-icon help-reader-icon-pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M7 5h3.5v14H7V5zm6.5 0H17v14h-3.5V5z" fill="currentColor"/>
+                                    </svg>
+                                    <svg class="help-reader-icon help-reader-icon-resume" viewBox="0 0 24 24" aria-hidden="true" focusable="false" hidden>
+                                        <path d="M8 5.5v13l11-6.5L8 5.5z" fill="currentColor"/>
+                                    </svg>
+                                </button>
+                                <button type="button" class="help-reader-icon-btn" id="help-reader-stop" title="Stop reading" aria-label="Stop" disabled>
+                                    <svg class="help-reader-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M6.5 6.5h11v11h-11z" fill="currentColor"/>
+                                    </svg>
+                                </button>
                             </div>
                             <p class="help-reader-status" id="help-reader-status" aria-live="polite"></p>
                         </div>
