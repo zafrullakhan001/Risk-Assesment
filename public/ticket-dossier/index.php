@@ -200,7 +200,7 @@ $projectSourcesMeta = static function (array $project): array {
 <body>
 <div class="shell">
     <header class="topbar topbar-uplift">
-        <a class="brand brand-link" href="<?= e($auth->publicPrefix()) ?>index.php#find-projects" title="Find projects by name">
+        <a class="brand brand-link" href="index.php" title="Ticket Dossier home">
             <?php require dirname(__DIR__) . '/includes/brand-mark.php'; ?>
             <div class="brand-text">
                 <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
