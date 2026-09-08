@@ -1417,10 +1417,10 @@ if ($query !== '') {
 $foldersDashUrl = 'sharepoint.php?view=folders';
 $pageHeading = $ownerSolo
     ? '👤 Project owners'
-    : ($foldersSolo ? '📁 SharePoint folders' : ($catalogSolo ? '🔎 ' . $activeTitle : '📁 SharePoint catalog'));
+    : ($foldersSolo ? '📁 SharePoint folders' : ($catalogSolo ? '🔎 architecture project catalog(s)' : '📁 SharePoint catalog'));
 $pageTitle = $ownerSolo
     ? 'Project owners'
-    : ($foldersSolo ? 'SharePoint folders' : $activeTitle);
+    : ($foldersSolo ? 'SharePoint folders' : ($catalogSolo ? 'architecture project catalog(s)' : $activeTitle));
 $soloPageClass = $ownerSolo
     ? ' sharepoint-owner-solo-page'
     : ($catalogSolo ? ' sharepoint-catalog-solo-page' : ($foldersSolo ? ' sharepoint-folders-solo-page' : ''));

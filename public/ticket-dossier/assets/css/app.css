@@ -155,6 +155,37 @@
     background:
         linear-gradient(180deg, var(--card) 0%, color-mix(in srgb, var(--primary-soft) 35%, var(--card)) 100%);
 }
+.upload-card-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.upload-card-summary::-webkit-details-marker,
+.upload-card-summary::marker {
+    display: none;
+    content: none;
+}
+.upload-card[open] > .upload-card-summary {
+    margin-bottom: 10px;
+}
+.upload-card-summary::after {
+    content: "";
+    width: 0.42em;
+    height: 0.42em;
+    border-right: 2px solid var(--ink-soft);
+    border-bottom: 2px solid var(--ink-soft);
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+    margin-top: -0.15em;
+}
+.upload-card[open] > .upload-card-summary::after {
+    transform: rotate(-135deg);
+    margin-top: 0.15em;
+}
 .upload-card h2,
 .panel h2 {
     margin: 0 0 10px;
@@ -166,6 +197,10 @@
     gap: 6px;
     align-items: center;
     flex-wrap: wrap;
+}
+.upload-card-summary h2 {
+    margin: 0;
+    flex: 1;
 }
 .section-head {
     display: flex;

@@ -1171,6 +1171,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'delete_assessments_bulk') {
+            if (!Auth::isSuperAdmin($currentUser)) {
+                throw new AccessDeniedException('Only the superadmin can bulk-delete projects.');
+            }
+
+            $rawIds = $_POST['assessment_ids'] ?? [];
+            if (!is_array($rawIds)) {
+                $rawIds = [];
+            }
+            $ids = [];
+            foreach ($rawIds as $rawId) {
+                $id = (int) $rawId;
+                if ($id > 0) {
+                    $ids[$id] = $id;
+                }
+            }
+            $ids = array_values($ids);
+            if ($ids === []) {
+                throw new RuntimeException('Select at least one project to delete.');
+            }
+            if (count($ids) > 100) {
+                throw new RuntimeException('You can delete at most 100 projects at once.');
+            }
+
+            $deleted = 0;
+            $missing = 0;
+            foreach ($ids as $deleteId) {
+                $requireProjectManage($deleteId);
+                if ($repository->findById($deleteId) === null) {
+                    $missing++;
+                    continue;
+                }
+                if ($repository->deleteById($deleteId)) {
+                    $deleted++;
+                }
+            }
+
+            header('Location: index.php?deleted_bulk=' . $deleted . ($missing > 0 ? '&missing=' . $missing : ''));
+            exit;
+        }
+
         if ($action === 'delete_older_versions') {
             $keepId = filter_var($_POST['keep_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
             if ($keepId <= 0) {
@@ -1441,6 +1482,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if (isset($_GET['deleted'])) {
     $flash = 'Assessment version deleted.';
+}
+
+if (isset($_GET['deleted_bulk'])) {
+    $bulkDeleted = max(0, (int) $_GET['deleted_bulk']);
+    $flash = $bulkDeleted === 1
+        ? '1 project deleted.'
+        : $bulkDeleted . ' projects deleted.';
+    $bulkMissing = max(0, (int) ($_GET['missing'] ?? 0));
+    if ($bulkMissing > 0) {
+        $flash .= ' ' . $bulkMissing . ' selected item' . ($bulkMissing === 1 ? ' was' : 's were') . ' already gone.';
+    }
 }
 
 if (isset($_GET['uploaded']) && $flash === '') {
@@ -1845,6 +1897,27 @@ $renderProjectLockBadge = static function (array $project): void {
                             </div>
                         </div>
                     </div>
+                    <?php if ($viewerIsSuperAdmin && $searchResults !== []): ?>
+                        <form method="post" action="index.php" id="bulk-projects-form">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string) $_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="action" value="delete_assessments_bulk">
+                        </form>
+                        <div class="bulk-response-bar project-bulk-bar">
+                            <label class="bulk-select-all">
+                                <input type="checkbox" class="js-bulk-select-all" data-bulk-form="bulk-projects-form" title="Select all listed projects">
+                                <span>Select all on this page</span>
+                            </label>
+                            <span class="bulk-selected-count" data-bulk-count="bulk-projects-form">0 selected</span>
+                            <button
+                                type="submit"
+                                form="bulk-projects-form"
+                                class="button danger-btn project-bulk-delete-btn"
+                                data-bulk-submit="bulk-projects-form"
+                                disabled
+                                onclick="return confirm('Delete the selected projects permanently? This cannot be undone.');"
+                            >🗑️ Delete selected</button>
+                        </div>
+                    <?php endif; ?>
                     <div class="project-list" id="project-list" data-project-view="table">
                         <?php if ($searchResults === []): ?>
                             <p class="empty-results">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></p>
@@ -1893,9 +1966,15 @@ $renderProjectLockBadge = static function (array $project): void {
                             <input type="hidden" name="sort" value="<?= htmlspecialchars($searchSort, ENT_QUOTES, 'UTF-8') ?>">
                             <input type="hidden" name="dir" value="<?= htmlspecialchars($searchDir, ENT_QUOTES, 'UTF-8') ?>">
                         </form>
-                        <table class="project-table">
+                        <table class="project-table<?= $viewerIsSuperAdmin ? ' has-bulk-select' : '' ?>">
                             <thead>
                                 <tr>
+                                    <?php if ($viewerIsSuperAdmin): ?>
+                                        <th scope="col" class="col-select">
+                                            <span class="visually-hidden">Select</span>
+                                            <input type="checkbox" class="js-bulk-select-all" data-bulk-form="bulk-projects-form" title="Select all listed projects" aria-label="Select all listed projects">
+                                        </th>
+                                    <?php endif; ?>
                                     <th scope="col" class="<?= htmlspecialchars($sortClass('id'), ENT_QUOTES, 'UTF-8') ?>" aria-sort="<?= htmlspecialchars($sortAria('id'), ENT_QUOTES, 'UTF-8') ?>">
                                         <a class="project-sort-link" href="<?= htmlspecialchars($sortHeaderUrl('id'), ENT_QUOTES, 'UTF-8') ?>">ID</a>
                                     </th>
@@ -1923,6 +2002,9 @@ $renderProjectLockBadge = static function (array $project): void {
                                     <th scope="col"><span class="visually-hidden">Actions</span></th>
                                 </tr>
                                 <tr class="project-table-filters<?= $activeFilters === [] ? ' is-collapsed' : '' ?>" id="project-table-filters"<?= $activeFilters === [] ? ' hidden' : '' ?>>
+                                    <?php if ($viewerIsSuperAdmin): ?>
+                                        <th scope="col" class="col-select"></th>
+                                    <?php endif; ?>
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_id" value="<?= htmlspecialchars($searchFilters['id'], ENT_QUOTES, 'UTF-8') ?>" placeholder="#" aria-label="Filter by ID"></th>
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_project" value="<?= htmlspecialchars($searchFilters['project'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by project"></th>
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_vendor" value="<?= htmlspecialchars($searchFilters['vendor'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Filter…" aria-label="Filter by vendor"></th>
@@ -1952,7 +2034,7 @@ $renderProjectLockBadge = static function (array $project): void {
                             <tbody>
                                 <?php if ($searchResults === []): ?>
                                     <tr class="project-table-empty">
-                                        <td colspan="9">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
+                                        <td colspan="<?= $viewerIsSuperAdmin ? 10 : 9 ?>">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
                                     </tr>
                                 <?php endif; ?>
                                 <?php foreach ($searchResults as $project): ?>
@@ -1963,6 +2045,11 @@ $renderProjectLockBadge = static function (array $project): void {
                                     $assessedLabel = AssessmentDate::display((string) ($project['assessment_date'] ?? ''));
                                     ?>
                                     <tr class="is-<?= htmlspecialchars($goliveStatus['key'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?php if ($viewerIsSuperAdmin): ?>
+                                            <td class="col-select">
+                                                <input type="checkbox" form="bulk-projects-form" name="assessment_ids[]" value="<?= (int) $project['id'] ?>" aria-label="Select project #<?= (int) $project['id'] ?>">
+                                            </td>
+                                        <?php endif; ?>
                                         <td class="project-table-id">#<?= (int) $project['id'] ?></td>
                                         <td class="project-table-name">
                                             <a href="index.php?view=1&amp;id=<?= (int) $project['id'] ?>">

@@ -165,8 +165,10 @@ $ribbon = [
             <?php endforeach; ?>
         </nav>
 
-        <section class="upload-card" id="complete-dossier">
-            <h2><?= $missingKinds === [] ? '✏️ Replace or refresh a source' : '🧩 Complete this dossier' ?></h2>
+        <details class="upload-card" id="complete-dossier"<?= $missingKinds !== [] ? ' open' : '' ?>>
+            <summary class="upload-card-summary">
+                <h2><?= $missingKinds === [] ? '✏️ Replace or refresh a source' : '🧩 Complete this dossier' ?></h2>
+            </summary>
             <?php if ($missingKinds !== []): ?>
                 <p class="context-note">
                     Missing:
@@ -196,7 +198,7 @@ $ribbon = [
 
                 <button type="submit" class="button button-primary" id="submit-upload" disabled>✨ Update dossier</button>
             </form>
-        </section>
+        </details>
 
         <nav class="section-nav" aria-label="Sections" id="section-nav">
             <?php foreach ($sections as $section): ?>

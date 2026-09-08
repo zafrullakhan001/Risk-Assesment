@@ -2746,6 +2746,31 @@ html:not([data-project-list-view]) .project-item.is-none {
     text-align: right;
 }
 
+.project-bulk-bar {
+    margin: 10px 0 0;
+}
+
+.project-bulk-bar .project-bulk-delete-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.project-table.has-bulk-select {
+    min-width: 1020px;
+}
+
+.project-table .col-select {
+    width: 42px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.project-table .col-select input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
 .project-item .project-status.is-ready,
 .project-table .project-status.is-ready {
     background: var(--pass-soft);
