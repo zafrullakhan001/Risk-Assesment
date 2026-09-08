@@ -6494,6 +6494,11 @@
 
     let results = state.projects.map((project) => ({ project, match: null, deepHits: { hits: [], total: 0 } }));
 
+    if (state.scopeKeys.length) {
+      const allowed = new Set(state.scopeKeys);
+      results = results.filter((row) => allowed.has(String(row.project?.source_key || '')));
+    }
+
     if (!state.showArchived) {
       results = results.filter((row) => !row.project?.archived);
     }
@@ -7498,10 +7503,10 @@
     tbody.innerHTML = `<tr class="sharepoint-empty-row"><td colspan="${listVisibleColspan()}">⏳ Loading live search index…</td></tr>`;
     syncActiveCatalogChrome();
 
-    const extra =
-      keys.length > 1 || (availableSources.length > 1 && keys.length === availableSources.length)
-        ? { sources: keys.join(',') }
-        : { source: keys[0] };
+    const extra = {
+      source: keys[0],
+      sources: keys.join(','),
+    };
 
     fetch(catalogApiUrl('search_index', extra), {
       credentials: 'same-origin',

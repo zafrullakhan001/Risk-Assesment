@@ -67,10 +67,20 @@ $activeSourceKey = (string) ($activeSource['source_key'] ?? '');
 
 $resolveIndexSources = static function (string $sourcesParam, string $fallbackKey) use ($allSources, $allowedKeys): array {
     $indexSources = [];
-    if ($sourcesParam === 'all' || $sourcesParam === '') {
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key === '') {
+            continue;
+        }
+        $byKey[$key] = $src;
+    }
+
+    // Missing sources = the checked catalog only. Use sources=all or a key list for more.
+    if ($sourcesParam === 'all') {
         foreach ($allSources as $src) {
             $key = (string) ($src['source_key'] ?? '');
-            if ($key === '') {
+            if ($key === '' || !isset($allowedKeys[$key])) {
                 continue;
             }
             $indexSources[] = [
@@ -82,21 +92,20 @@ $resolveIndexSources = static function (string $sourcesParam, string $fallbackKe
         return $indexSources;
     }
 
-    $wanted = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
-    $byKey = [];
-    foreach ($allSources as $src) {
-        $byKey[(string) ($src['source_key'] ?? '')] = $src;
-    }
-    foreach ($wanted as $key) {
-        if (!isset($allowedKeys[$key], $byKey[$key])) {
-            continue;
+    if ($sourcesParam !== '') {
+        $wanted = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+        foreach ($wanted as $key) {
+            if (!isset($allowedKeys[$key], $byKey[$key])) {
+                continue;
+            }
+            $indexSources[] = [
+                'source_key' => $key,
+                'title' => (string) ($byKey[$key]['title'] ?? $key),
+            ];
         }
-        $indexSources[] = [
-            'source_key' => $key,
-            'title' => (string) ($byKey[$key]['title'] ?? $key),
-        ];
     }
-    if ($indexSources === [] && $fallbackKey !== '' && isset($byKey[$fallbackKey])) {
+
+    if ($indexSources === [] && $fallbackKey !== '' && isset($allowedKeys[$fallbackKey], $byKey[$fallbackKey])) {
         $indexSources[] = [
             'source_key' => $fallbackKey,
             'title' => (string) ($byKey[$fallbackKey]['title'] ?? $fallbackKey),
@@ -225,15 +234,12 @@ $perPage = PaginationPreference::resolve(
 );
 
 $sourceCounts = [];
-$itemCount = 0;
-$projectCount = 0;
 foreach ($allSources as $src) {
     $key = (string) ($src['source_key'] ?? '');
-    $count = $catalog->count($key);
-    $sourceCounts[$key] = $count;
-    $itemCount += $count;
-    $projectCount += $catalog->countProjects($key);
+    $sourceCounts[$key] = $catalog->count($key);
 }
+$itemCount = (int) ($sourceCounts[$activeSourceKey] ?? 0);
+$projectCount = $catalog->countProjects($activeSourceKey);
 
 $catalogTones = [];
 $catalogToneExtra = 0;
