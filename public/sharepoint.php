@@ -1542,6 +1542,8 @@ $soloPageClass = $ownerSolo
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
+    <link rel="stylesheet" href="assets/css/sharepoint-search-uplift.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-search-uplift.css') ?>">
+    <link rel="stylesheet" href="assets/css/sharepoint-list-animations.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-list-animations.css') ?>">
 </head>
 <body>
     <div class="shell upload-page sharepoint-catalog-page<?= e($soloPageClass) ?>">
@@ -2199,7 +2201,7 @@ $soloPageClass = $ownerSolo
             require __DIR__ . '/includes/sharepoint-search-card.php';
             ?>
 
-            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-sp-section="projects" data-density="compact">
+            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-sp-section="projects" data-density="compact" data-list-animation="quiet-settle">
                 <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
                     <summary class="sharepoint-table-toolbar sharepoint-catalog-table-summary">
                     <div class="sharepoint-table-summary-lead">
@@ -2214,6 +2216,7 @@ $soloPageClass = $ownerSolo
                         </div>
                         <button type="button" class="sp-view-btn is-active" id="sharepoint-filters-toggle" title="Show or hide column filters" aria-controls="sharepoint-table-filters" aria-pressed="true">Filters</button>
                         <?php require __DIR__ . '/includes/sharepoint-list-columns-picker.php'; ?>
+                        <?php require __DIR__ . '/includes/sharepoint-list-animation-button.php'; ?>
                         <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
                             <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
                             <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
@@ -2412,6 +2415,7 @@ $soloPageClass = $ownerSolo
                 </details>
             </section>
 
+            <?php require __DIR__ . '/includes/sharepoint-list-animation-dialog.php'; ?>
             <?php require __DIR__ . '/includes/sharepoint-catalog-dialogs.php'; ?>
             <?php endif; ?>
 
@@ -2800,6 +2804,7 @@ $soloPageClass = $ownerSolo
     <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <script src="assets/js/sharepoint-list-animations.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-list-animations.js') ?>"></script>
     <script src="assets/js/sharepoint-search-dashboard.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-search-dashboard.js') ?>"></script>
     <?php if (!$panelSolo): ?>
     <script src="assets/js/sharepoint-section-board.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-section-board.js') ?>"></script>

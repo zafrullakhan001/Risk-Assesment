@@ -125,11 +125,13 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
             <?php if (count($allSources) > 1): ?>
                 <section class="sp-search-band sp-search-band--scope sharepoint-search-scopes" id="sharepoint-search-scopes" role="group" aria-label="Catalogs to search">
                     <div class="sharepoint-search-scopes-head">
-                        <span class="sharepoint-search-scopes-label">Search in</span>
-                        <button type="button" class="button ghost sharepoint-scopes-all" id="sharepoint-scopes-all">All catalogs</button>
-                        <button type="button" class="button ghost sharepoint-scopes-active" id="sharepoint-scopes-active">This catalog only</button>
-                        <button type="button" class="button ghost sharepoint-scopes-colors is-active" id="sharepoint-scopes-colors" aria-pressed="true" title="Color each catalog differently so Public, Private, and other folders are easier to tell apart">🎨 Distinct colors</button>
-                        <button type="button" class="button ghost sharepoint-scopes-color-reset" id="sharepoint-scopes-color-reset" hidden>Reset colors</button>
+                        <span class="sharepoint-search-scopes-label"><span aria-hidden="true">🗂️</span> Catalogs</span>
+                        <div class="sharepoint-search-scope-actions">
+                            <button type="button" class="button ghost sharepoint-scopes-all" id="sharepoint-scopes-all">All</button>
+                            <button type="button" class="button ghost sharepoint-scopes-active" id="sharepoint-scopes-active">Current only</button>
+                            <button type="button" class="button ghost sharepoint-scopes-colors is-active" id="sharepoint-scopes-colors" aria-pressed="true" title="Color each catalog differently so Public, Private, and other folders are easier to tell apart">🎨 Colors</button>
+                            <button type="button" class="button ghost sharepoint-scopes-color-reset" id="sharepoint-scopes-color-reset" hidden>Reset colors</button>
+                        </div>
                     </div>
                     <div class="sharepoint-search-scopes-list">
                         <?php foreach ($allSources as $src): ?>
@@ -187,7 +189,8 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         </div>
                         <div class="sharepoint-search-suggest is-hidden" id="sharepoint-search-suggest" role="listbox" hidden aria-label="Search suggestions"></div>
                     </div>
-                    <div class="sharepoint-search-find-toggles" role="group" aria-label="Search match options">
+                    <div class="sharepoint-search-find-toggles" role="group" aria-label="Search options">
+                        <span class="sharepoint-search-options-label" aria-hidden="true">Options</span>
                         <button type="button" class="sp-search-toggle sp-search-suggest-toggle" id="sharepoint-suggest-toggle" title="Suggestions — show the search dropdown with project, file, people, and operator hints while typing" aria-pressed="false">▾ Suggest</button>
                         <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Fuzzy — tolerate typos and similar-sounding words (e.g. Encore ≈ Encor)" aria-pressed="false">✨ Fuzzy</button>
                         <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Deep files — also search nested file and folder names/paths inside each project (not file contents)" aria-pressed="true">📂 Deep files</button>
@@ -219,7 +222,12 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <span class="sp-search-cluster-label" title="Keep projects that include these kinds of files">Types</span>
                         <div class="sharepoint-type-chips" id="sharepoint-type-chips" role="group" aria-label="File type filters">
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--pdf" data-type-chip="pdf" title="Has at least one PDF file" aria-pressed="false">📕 PDF</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--word" data-type-chip="word" title="Has a Word document (.doc or .docx)" aria-pressed="false">🔵 DOCX</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--excel" data-type-chip="excel" title="Has an Excel workbook (.xls, .xlsx, .xlsm, or .csv)" aria-pressed="false">🟢 XLSX</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--powerpoint" data-type-chip="powerpoint" title="Has a PowerPoint presentation (.ppt or .pptx)" aria-pressed="false">🟠 PPTX</button>
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--visio" data-type-chip="visio" title="Has Visio diagrams (.vsdx / .vsd)" aria-pressed="false">📐 Visio</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--email" data-type-chip="email" title="Has saved email files (.msg or .eml)" aria-pressed="false">✉️ MSG</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--archive" data-type-chip="archive" title="Has a compressed archive (.zip, .7z, or .rar)" aria-pressed="false">🗜️ ZIP</button>
                             <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--folders" data-type-chip="folders" title="Has nested subfolders" aria-pressed="false">📂 Folders</button>
                         </div>
                     </div>

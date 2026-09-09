@@ -594,9 +594,11 @@
       { label: 'Avg match', value: `${snapshot.avg || 0}%`, hint: 'probability' },
       { label: 'Best match', value: `${snapshot.best || 0}%`, hint: 'top score' },
       {
-        label: 'Returned in',
-        value: snapshot.queryTimeLabel || '—',
-        hint: snapshot.queryTimeMsLabel || 'query time',
+        label: 'Total time',
+        value: snapshot.totalTimeLabel || snapshot.queryTimeLabel || '—',
+        hint: snapshot.queryTimeLabel
+          ? `query ${snapshot.queryTimeLabel}`
+          : snapshot.totalTimeMsLabel || 'start to results',
       },
     ];
     return `<div class="sp-sd-kpis">${cards
@@ -1138,7 +1140,7 @@
         <div><span>Nested</span><strong>${snapshot.nestedMatchTotal || 0}</strong></div>
         <div><span>Avg</span><strong>${snapshot.avg || 0}%</strong></div>
         <div><span>Best</span><strong>${snapshot.best || 0}%</strong></div>
-        <div><span>Returned in</span><strong>${escapeHtml(snapshot.queryTimeLabel || '—')}</strong></div>
+        <div><span>Total time</span><strong>${escapeHtml(snapshot.totalTimeLabel || snapshot.queryTimeLabel || '—')}</strong></div>
       </div>
       <table><thead><tr>
         <th>Type</th><th>Project</th><th>Catalog</th><th>Name</th><th>Path</th><th>Score</th><th>Confidence</th><th>URL</th>
@@ -1296,10 +1298,10 @@
       } nested matches · ${escapeHtml(
         snapshot.deep || snapshot.matchScope === 'files' ? 'Deep files on' : 'Folder names only'
       )}${
-        snapshot.queryTimeLabel
+        snapshot.queryTimeLabel || snapshot.totalTimeLabel
           ? ` · <span class="sp-live-pill sp-live-pill--time" title="${escapeHtml(snapshot.queryTimeTitle || '')}">⏱ ${escapeHtml(
-              snapshot.queryTimeLabel
-            )}${snapshot.queryTimeMsLabel ? ` (${escapeHtml(snapshot.queryTimeMsLabel)})` : ''}</span>`
+              snapshot.queryTimeLabel || snapshot.totalTimeLabel
+            )} · ${escapeHtml(snapshot.totalTimeLabel || snapshot.queryTimeLabel)} total</span>`
           : ''
       }${snapshot.ready ? ' · <span class="sp-live-pill">⚡ Live search</span>' : ''}${
         ui.personFilter ? ` · Person: ${escapeHtml(ui.personFilter)}` : ''

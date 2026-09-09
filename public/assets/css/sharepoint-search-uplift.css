@@ -1,0 +1,491 @@
+/*
+ * SharePoint catalog search — visual hierarchy and responsive control layout.
+ * Kept separate from dashboard.css so the search experience can evolve safely.
+ */
+
+#sharepoint-search.search-card {
+    --sp-search-accent: var(--accent, #0f766e);
+    --sp-search-line: color-mix(in srgb, var(--border, #dbe3ec) 88%, transparent);
+    --sp-search-soft: color-mix(in srgb, var(--surface-2, #f8fafc) 86%, var(--surface, #fff));
+    border: 1px solid var(--sp-search-line);
+    border-radius: 16px;
+    background: var(--surface, #fff);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+}
+
+#sharepoint-search .sharepoint-search-head {
+    min-height: 2.6rem;
+    padding-bottom: 0.55rem;
+    border-bottom: 1px solid var(--sp-search-line);
+}
+
+#sharepoint-search .sharepoint-search-intro h2 {
+    margin: 0;
+    color: var(--ink, #0f172a);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+}
+
+#sharepoint-search .sharepoint-search-head-tools {
+    padding: 0.18rem;
+    border: 1px solid var(--sp-search-line);
+    border-radius: 10px;
+    background: var(--sp-search-soft);
+}
+
+#sharepoint-search .sharepoint-catalog-body {
+    padding-top: 0.55rem;
+}
+
+/* Catalog choice is one coherent region: actions at left, selected catalogs at right. */
+#sharepoint-search .sp-search-band--scope.sharepoint-search-scopes,
+#sharepoint-search.is-compact-chrome .sp-search-band--scope.sharepoint-search-scopes {
+    display: grid;
+    grid-template-columns: minmax(10.5rem, auto) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--sp-search-line);
+    border-radius: 12px;
+    background: var(--surface, #fff);
+}
+
+#sharepoint-search .sharepoint-search-scopes-head,
+#sharepoint-search.is-compact-chrome .sharepoint-search-scopes-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.55rem 0.7rem;
+    border-right: 1px solid var(--sp-search-line);
+    background: var(--sp-search-soft);
+}
+
+#sharepoint-search .sharepoint-search-scopes-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--ink, #0f172a);
+    font-size: 0.73rem;
+    line-height: 1;
+}
+
+#sharepoint-search .sharepoint-search-scope-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18rem;
+    padding: 0.15rem;
+    border: 1px solid var(--sp-search-line);
+    border-radius: 8px;
+    background: var(--surface, #fff);
+}
+
+#sharepoint-search .sharepoint-search-scope-actions .button,
+#sharepoint-search.is-compact-chrome .sharepoint-search-scope-actions .button {
+    min-height: 1.55rem;
+    height: 1.55rem;
+    padding: 0 0.48rem;
+    border-color: transparent;
+    border-radius: 6px;
+    background: transparent;
+    font-size: 0.69rem;
+}
+
+#sharepoint-search .sharepoint-search-scope-actions .button:hover,
+#sharepoint-search .sharepoint-search-scope-actions .button:focus-visible {
+    border-color: var(--sp-search-line);
+    background: var(--sp-search-soft);
+}
+
+#sharepoint-search .sharepoint-search-scopes-list {
+    align-content: center;
+    align-items: center;
+    gap: 0.38rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+}
+
+#sharepoint-search .sharepoint-scope-chip,
+#sharepoint-search.is-compact-chrome .sharepoint-scope-chip {
+    min-height: 1.8rem;
+    padding: 0.22rem 0.55rem;
+    border-radius: 8px;
+    font-size: 0.75rem;
+}
+
+#sharepoint-search .sharepoint-scopes-hint {
+    grid-column: 2;
+    padding: 0 0.65rem 0.5rem;
+}
+
+/* Search is the primary action, with secondary options grouped as a toolbar. */
+#sharepoint-search .sp-search-band--find,
+#sharepoint-search.is-compact-chrome .sp-search-band--find {
+    gap: 0;
+    padding: 0;
+    overflow: visible;
+    border-color: var(--sp-search-line);
+    border-radius: 12px;
+    background: var(--surface, #fff);
+}
+
+#sharepoint-search .sp-search-find-primary {
+    padding: 0.65rem;
+}
+
+#sharepoint-search .sharepoint-search-find-row,
+#sharepoint-search.is-compact-chrome .sharepoint-search-find-row {
+    display: grid;
+    grid-template-columns: minmax(20rem, 1fr) auto auto;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#sharepoint-search .search-wrap.sharepoint-search-main {
+    min-height: 2.5rem;
+    height: 2.5rem;
+    border-color: color-mix(in srgb, var(--sp-search-accent) 34%, var(--sp-search-line));
+    border-radius: 9px;
+    background: var(--surface, #fff);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-search-accent) 7%, transparent);
+}
+
+#sharepoint-search .search-wrap.sharepoint-search-main:focus-within {
+    border-color: var(--sp-search-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-search-accent) 14%, transparent);
+}
+
+#sharepoint-search .sharepoint-search-find-toggles {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.22rem;
+    border: 1px solid var(--sp-search-line);
+    border-radius: 9px;
+    background: var(--sp-search-soft);
+}
+
+#sharepoint-search .sharepoint-search-options-label {
+    padding: 0 0.35rem 0 0.25rem;
+    color: var(--muted, #64748b);
+    font-size: 0.67rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+}
+
+#sharepoint-search .sharepoint-search-find-toggles .sp-search-toggle,
+#sharepoint-search.is-compact-chrome .sharepoint-search-find-toggles .sp-search-toggle {
+    min-height: 2rem;
+    padding: 0 0.52rem;
+    border-color: transparent;
+    border-radius: 7px;
+    background: transparent;
+    font-size: 0.7rem;
+}
+
+#sharepoint-search .sharepoint-search-find-toggles .sp-search-toggle:hover {
+    border-color: var(--sp-search-line);
+    background: var(--surface, #fff);
+}
+
+#sharepoint-search .sharepoint-search-find-toggles .sp-search-toggle[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--sp-search-accent) 28%, transparent);
+    background: color-mix(in srgb, var(--sp-search-accent) 12%, var(--surface, #fff));
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+#sharepoint-search .sp-search-advanced-toggle,
+#sharepoint-search.is-compact-chrome .sp-search-advanced-toggle {
+    min-height: 2.5rem;
+    padding: 0 0.7rem;
+    border-radius: 9px;
+    font-size: 0.72rem;
+}
+
+#sharepoint-search .sp-search-find-filters {
+    padding: 0 0.65rem;
+}
+
+#sharepoint-search .sp-search-find-filters:has(.sharepoint-search-controls:not([hidden])),
+#sharepoint-search .sp-search-find-filters:has(.sharepoint-search-advanced:not([hidden])) {
+    padding-bottom: 0.6rem;
+}
+
+/* Keep the frequently used filter row dense, even with the broader file-type set. */
+#sharepoint-search .sharepoint-search-controls {
+    display: grid;
+    grid-template-columns: auto minmax(0, 2fr) minmax(12rem, 1fr);
+    align-items: center;
+    gap: 0.3rem;
+}
+
+#sharepoint-search .sharepoint-search-controls .sp-search-cluster,
+#sharepoint-search.is-compact-chrome .sharepoint-search-controls .sp-search-cluster {
+    min-height: 1.8rem;
+    flex-wrap: nowrap;
+    gap: 0.2rem;
+    padding: 0.14rem 0.28rem;
+    border-radius: 8px;
+}
+
+#sharepoint-search .sharepoint-search-controls .sp-search-cluster-label {
+    padding: 0 0.18rem;
+    font-size: 0.62rem;
+}
+
+#sharepoint-search .sp-search-cluster--types {
+    min-width: 0;
+    overflow: hidden;
+}
+
+#sharepoint-search .sharepoint-type-chips {
+    flex-wrap: nowrap;
+    gap: 0.18rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+#sharepoint-search .sharepoint-type-chips .sp-type-chip {
+    flex: 0 0 auto;
+    min-height: 1.4rem;
+    padding: 0.08rem 0.36rem;
+    border-radius: 6px;
+    font-size: 0.64rem;
+    line-height: 1.1;
+}
+
+#sharepoint-search .sp-search-cluster--refine .sp-refine-wrap {
+    min-width: 7rem;
+    max-width: none;
+}
+
+#sharepoint-search .sp-refine-wrap input {
+    min-height: 1.5rem;
+    padding: 0.22rem 1.6rem 0.22rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.73rem;
+}
+
+#sharepoint-search .sp-type-chip--word[aria-pressed="true"] {
+    color: #1d4ed8;
+    border-color: color-mix(in srgb, #2563eb 38%, transparent);
+    background: color-mix(in srgb, #2563eb 13%, transparent);
+}
+
+#sharepoint-search .sp-type-chip--excel[aria-pressed="true"] {
+    color: #15803d;
+    border-color: color-mix(in srgb, #16a34a 38%, transparent);
+    background: color-mix(in srgb, #16a34a 13%, transparent);
+}
+
+#sharepoint-search .sp-type-chip--powerpoint[aria-pressed="true"] {
+    color: #c2410c;
+    border-color: color-mix(in srgb, #ea580c 38%, transparent);
+    background: color-mix(in srgb, #ea580c 13%, transparent);
+}
+
+#sharepoint-search .sp-type-chip--email[aria-pressed="true"] {
+    color: #0369a1;
+    border-color: color-mix(in srgb, #0284c7 38%, transparent);
+    background: color-mix(in srgb, #0284c7 13%, transparent);
+}
+
+#sharepoint-search .sp-type-chip--archive[aria-pressed="true"] {
+    color: #a16207;
+    border-color: color-mix(in srgb, #ca8a04 38%, transparent);
+    background: color-mix(in srgb, #ca8a04 13%, transparent);
+}
+
+#sharepoint-search .sp-search-find-status {
+    min-height: 2.15rem;
+    padding: 0.48rem 0.65rem;
+    border-top: 1px solid var(--sp-search-line);
+    background: var(--sp-search-soft);
+}
+
+#sharepoint-search .sharepoint-catalog-meta {
+    color: var(--muted, #64748b);
+    font-variant-numeric: tabular-nums;
+}
+
+#sharepoint-search .sharepoint-search-stats:not([hidden]) {
+    flex: 1 1 100%;
+}
+
+/* Settled result reveal, matching the folder dialog without making search feel slow. */
+.sharepoint-table-card.is-results-settling .sharepoint-table-toolbar {
+    animation: sp-results-toolbar-settle 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sharepoint-table-card.is-results-settling .sharepoint-catalog-table-body {
+    animation: sp-results-block-settle 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sharepoint-project-row.is-results-settling td {
+    animation: sp-results-row-settle 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+@keyframes sp-results-toolbar-settle {
+    from {
+        opacity: 0.6;
+        transform: translateY(-3px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes sp-results-block-settle {
+    from {
+        opacity: 0;
+        transform: translateY(7px);
+        filter: saturate(0.85);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+        filter: none;
+    }
+}
+
+@keyframes sp-results-row-settle {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sharepoint-table-card.is-results-settling .sharepoint-table-toolbar,
+    .sharepoint-table-card.is-results-settling .sharepoint-catalog-table-body,
+    .sharepoint-project-row.is-results-settling td {
+        animation: none;
+    }
+}
+
+@media (max-width: 1280px) {
+    #sharepoint-search .sharepoint-search-find-row,
+    #sharepoint-search.is-compact-chrome .sharepoint-search-find-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    #sharepoint-search .sharepoint-search-find-stack {
+        grid-column: 1 / -1;
+    }
+
+    #sharepoint-search .sharepoint-search-find-toggles {
+        justify-self: start;
+    }
+
+    #sharepoint-search .sp-search-advanced-toggle {
+        justify-self: end;
+    }
+}
+
+@media (max-width: 760px) {
+    #sharepoint-search.search-card {
+        border-radius: 12px;
+    }
+
+    #sharepoint-search .sharepoint-search-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #sharepoint-search .sharepoint-search-intro {
+        flex: 0 1 auto;
+    }
+
+    #sharepoint-search .sharepoint-search-head-tools {
+        width: 100%;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+    }
+
+    #sharepoint-search .sharepoint-search-head-tools > * {
+        flex: 0 0 auto;
+    }
+
+    #sharepoint-search .sp-search-band--scope.sharepoint-search-scopes,
+    #sharepoint-search.is-compact-chrome .sp-search-band--scope.sharepoint-search-scopes {
+        grid-template-columns: 1fr;
+    }
+
+    #sharepoint-search .sharepoint-search-scopes-head,
+    #sharepoint-search.is-compact-chrome .sharepoint-search-scopes-head {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        border-right: 0;
+        border-bottom: 1px solid var(--sp-search-line);
+    }
+
+    #sharepoint-search .sharepoint-search-scopes-list {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+    }
+
+    #sharepoint-search .sharepoint-scopes-hint {
+        grid-column: 1;
+    }
+
+    #sharepoint-search .sharepoint-search-find-row,
+    #sharepoint-search.is-compact-chrome .sharepoint-search-find-row {
+        grid-template-columns: 1fr;
+    }
+
+    #sharepoint-search .sharepoint-search-find-stack,
+    #sharepoint-search .sharepoint-search-find-toggles,
+    #sharepoint-search .sp-search-advanced-toggle {
+        grid-column: 1;
+        width: 100%;
+        justify-self: stretch;
+    }
+
+    #sharepoint-search .sharepoint-search-find-toggles {
+        overflow-x: auto;
+    }
+
+    #sharepoint-search .sharepoint-search-find-toggles .sp-search-toggle {
+        flex: 0 0 auto;
+    }
+
+    #sharepoint-search .sharepoint-search-controls {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    #sharepoint-search .sp-search-cluster--refine {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 480px) {
+    #sharepoint-search .sharepoint-search-scopes-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    #sharepoint-search .sharepoint-search-options-label {
+        display: none;
+    }
+
+    #sharepoint-search .sharepoint-search-controls {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #sharepoint-search .sp-search-cluster--refine {
+        grid-column: 1;
+    }
+}

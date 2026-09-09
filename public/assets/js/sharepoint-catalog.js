@@ -1968,7 +1968,7 @@
     void dialog.offsetWidth;
     dialog.classList.add('is-entering');
     const done = (event) => {
-      if (event.target !== dialog) return;
+      if (event.target !== dialog || event.animationName === 'sp-workspace-backdrop-in') return;
       dialog.classList.remove('is-entering');
       dialog.removeEventListener('animationend', done);
     };
@@ -1976,7 +1976,7 @@
     window.setTimeout(() => {
       dialog.classList.remove('is-entering');
       dialog.removeEventListener('animationend', done);
-    }, 420);
+    }, 760);
   };
 
   const snapshotTreeRowTops = (tbody) => {
@@ -5239,7 +5239,14 @@
   const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
   const CAD_EXTS = new Set(['dwg', 'dxf']);
   const VISIO_EXTS = new Set(['vsdx', 'vsd']);
-  const TYPE_CHIP_KEYS = new Set(['pdf', 'visio', 'folders']);
+  const TYPE_TRAIT_EXTS = {
+    word: new Set(['doc', 'docx', 'docm', 'rtf']),
+    excel: new Set(['xls', 'xlsx', 'xlsm', 'csv']),
+    powerpoint: new Set(['ppt', 'pptx', 'pptm']),
+    email: new Set(['msg', 'eml']),
+    archive: new Set(['zip', '7z', 'rar']),
+  };
+  const TYPE_CHIP_KEYS = new Set(['pdf', 'word', 'excel', 'powerpoint', 'visio', 'email', 'archive', 'folders']);
   const HAS_LACK_KEYS = new Set(['pdf', 'visio', 'empty', 'stale']);
   const MATCH_SCOPES = new Set(['all', 'names', 'files', 'people']);
   const DATE_PRESETS = new Set(['', '7d', '30d', 'year', 'custom']);
@@ -5316,6 +5323,7 @@
   const compareClearBtn = document.getElementById('sharepoint-compare-clear');
   const compareHintEl = document.getElementById('sharepoint-compare-hint');
   const listTable = document.getElementById('sharepoint-projects-table');
+  const resultCard = document.getElementById('sharepoint-table-card');
   const listFilterRow = document.getElementById('sharepoint-table-filters');
   const listFilterToggle = document.getElementById('sharepoint-filters-toggle');
   const listFilterClear = document.getElementById('sharepoint-filters-clear');
@@ -6572,6 +6580,9 @@
     if (key === 'folders') return !!project._hasSubfolders;
     if (key === 'empty') return !!project._isEmpty;
     if (key === 'stale') return !!project._isStale;
+    if (TYPE_TRAIT_EXTS[key] && project._exts instanceof Set) {
+      return [...TYPE_TRAIT_EXTS[key]].some((ext) => project._exts.has(ext));
+    }
     if (key.startsWith('.') || /^[a-z0-9]+$/i.test(key)) {
       const ext = key.replace(/^\./, '');
       return project._exts instanceof Set && project._exts.has(ext);
@@ -6915,13 +6926,18 @@
 
   /** @type {{ rows: array, query: string, refine: string, deep: boolean, fuzzy: boolean, wordMode: string, matchScope: string, scopeKeys: string[], itemCount: number, ready: boolean, searching: boolean } | null} */
   let liveSearchSnapshot = null;
-  /** @type {{ ms: number, seconds: number, secondsLabel: string, msLabel: string, title: string } | null} */
+  /** @type {{ ms: number, seconds: number, secondsLabel: string, msLabel: string, title: string, totalMs: number, totalSecondsLabel: string, totalMsLabel: string } | null} */
   let lastQueryDuration = null;
+  let searchCycleStartedAt = 0;
 
   const nowMs = () =>
     typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
 
-  const formatSearchDuration = (ms) => {
+  const markSearchCycleStart = ({ restart = false } = {}) => {
+    if (restart || !searchCycleStartedAt) searchCycleStartedAt = nowMs();
+  };
+
+  const formatOneDuration = (ms) => {
     const n = Math.max(0, Number(ms) || 0);
     const seconds = n / 1000;
     let secondsLabel = '< 0.001 s';
@@ -6933,14 +6949,30 @@
     if (n >= 1 && n < 10) msLabel = `${n.toFixed(1)} ms`;
     else if (n >= 10) msLabel = `${Math.round(n).toLocaleString()} ms`;
 
-    const secondsText = n < 1 ? 'less than 0.001' : seconds.toFixed(3);
+    return { ms: n, seconds, secondsLabel, msLabel };
+  };
+
+  const formatSearchDuration = (queryMs, totalMs = null) => {
+    const query = formatOneDuration(queryMs);
+    const total = formatOneDuration(totalMs == null ? queryMs : totalMs);
     return {
-      ms: n,
-      seconds,
-      secondsLabel,
-      msLabel,
-      title: `Query returned in ${secondsText} seconds (${msLabel})`,
+      ...query,
+      title: `Query ${query.secondsLabel} (${query.msLabel}). Total ${total.secondsLabel} from start to results (${total.msLabel}).`,
+      totalMs: total.ms,
+      totalSecondsLabel: total.secondsLabel,
+      totalMsLabel: total.msLabel,
     };
+  };
+
+  const finishSearchTiming = (searching, queryMs) => {
+    if (!searching) {
+      lastQueryDuration = null;
+      searchCycleStartedAt = 0;
+      return;
+    }
+    const cycleStart = searchCycleStartedAt || nowMs() - queryMs;
+    lastQueryDuration = formatSearchDuration(queryMs, Math.max(queryMs, nowMs() - cycleStart));
+    searchCycleStartedAt = 0;
   };
 
   const getLiveSearchSnapshot = () => {
@@ -6961,6 +6993,7 @@
     if (!searching) {
       liveSearchSnapshot = null;
       lastQueryDuration = null;
+      searchCycleStartedAt = 0;
       statsEl.classList.add('is-hidden');
       statsEl.innerHTML = '';
       return;
@@ -6997,6 +7030,9 @@
       queryTimeLabel: lastQueryDuration?.secondsLabel || '',
       queryTimeMsLabel: lastQueryDuration?.msLabel || '',
       queryTimeTitle: lastQueryDuration?.title || '',
+      totalMs: lastQueryDuration?.totalMs ?? lastQueryDuration?.ms ?? null,
+      totalTimeLabel: lastQueryDuration?.totalSecondsLabel || lastQueryDuration?.secondsLabel || '',
+      totalTimeMsLabel: lastQueryDuration?.totalMsLabel || lastQueryDuration?.msLabel || '',
     };
 
     statsEl.classList.remove('is-hidden');
@@ -7013,13 +7049,6 @@
         <span class="sp-stats-similar">${similarCount} similar</span>
         <span class="sp-stats-avg">Avg ${avg}%</span>
         <span>Best ${best}%</span>
-        ${
-          lastQueryDuration
-            ? `<span class="sp-stats-time" title="${escapeHtml(lastQueryDuration.title)}">⏱ Returned in ${escapeHtml(
-                lastQueryDuration.secondsLabel
-              )} <span class="sp-stats-time-ms">(${escapeHtml(lastQueryDuration.msLabel)})</span></span>`
-            : ''
-        }
         ${state.fuzzy ? '<span class="sp-stats-fuzzy">Fuzzy on</span>' : ''}
         ${state.matchScope !== 'all' ? `<span class="sp-stats-scope">Scope: ${escapeHtml(state.matchScope)}</span>` : ''}
         ${state.deep || state.matchScope === 'files' ? '<span class="sp-stats-deep">Deep files on</span>' : '<span class="sp-stats-deep">Folder names only</span>'}
@@ -7029,9 +7058,7 @@
         <div class="sp-stats-bar-rail">
           <div class="sp-stats-bar-fill sp-stats-bar-fill--${barTone}" style="width:${Math.max(avg, 4)}%"></div>
         </div>
-        <span class="sp-stats-bar-label">${avg}% match probability${
-          lastQueryDuration ? ` · returned in ${escapeHtml(lastQueryDuration.secondsLabel)}` : ''
-        }</span>
+        <span class="sp-stats-bar-label">${avg}% match probability</span>
       </div>`;
   };
 
@@ -7061,9 +7088,11 @@
     }
     if (state.ready) html += ' · <span class="sp-live-pill">⚡ Live search</span>';
     if (searching && lastQueryDuration) {
+      const queryLabel = lastQueryDuration.secondsLabel;
+      const totalLabel = lastQueryDuration.totalSecondsLabel || queryLabel;
       html += ` · <span class="sp-live-pill sp-live-pill--time" title="${escapeHtml(lastQueryDuration.title)}">⏱ ${escapeHtml(
-        lastQueryDuration.secondsLabel
-      )}</span>`;
+        queryLabel
+      )} · ${escapeHtml(totalLabel)} total</span>`;
     }
     if (searching && (state.deep || state.matchScope === 'files')) html += ' · <span class="sp-live-pill sp-live-pill--deep">📂 Deep files</span>';
     else if (searching) html += ' · folder names only';
@@ -7511,11 +7540,45 @@
     return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
   };
 
+  let resultSettleTimer = 0;
+  const settleProjectResults = () => {
+    if (!resultCard || prefersReducedMotion()) return;
+
+    window.clearTimeout(resultSettleTimer);
+    resultCard.classList.remove('is-results-settling');
+    const rows = [...tbody.querySelectorAll('.sharepoint-project-row')];
+    rows.forEach((row) => {
+      row.classList.remove('is-results-settling');
+      row.style.removeProperty('--sp-result-delay');
+    });
+    if ((resultCard.dataset.listAnimation || 'quiet-settle') === 'none') return;
+
+    // Restart the short reveal when a new result set replaces the current one.
+    void resultCard.offsetWidth;
+    resultCard.classList.add('is-results-settling');
+    rows.slice(0, 24).forEach((row, index) => {
+      row.classList.add('is-results-settling');
+      row.style.setProperty('--sp-result-delay', `${Math.min(index * 22, 220)}ms`);
+    });
+
+    resultSettleTimer = window.setTimeout(() => {
+      resultCard.classList.remove('is-results-settling');
+      rows.forEach((row) => {
+        row.classList.remove('is-results-settling');
+        row.style.removeProperty('--sp-result-delay');
+      });
+    }, 900);
+  };
+  window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
+    replayListAnimation: settleProjectResults,
+  });
+
   const render = () => {
     updateControlsVisibility();
     updateHeading();
     syncScopeChips();
-    const searchStarted = nowMs();
+    if (!searchCycleStartedAt) searchCycleStartedAt = nowMs();
+    const queryStarted = nowMs();
     const rows = filteredProjects();
     const total = rows.length;
     const from = total === 0 ? 0 : (state.page - 1) * state.perPage + 1;
@@ -7540,11 +7603,9 @@
         });
       }
     }
-    lastQueryDuration = searching ? formatSearchDuration(nowMs() - searchStarted) : null;
+    const queryMs = nowMs() - queryStarted;
 
     resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() || advancedFiltersActive() || state.showFavorites ? ' · filtered' : ''}`;
-    renderMeta(total);
-    renderStats(rows);
     renderPagination(total);
     syncListSortHeaders();
     syncListFilterUi();
@@ -7570,6 +7631,9 @@
               : 'No projects to show.'
       }</td></tr>`;
       syncCompareBar();
+      finishSearchTiming(searching, queryMs);
+      renderMeta(total);
+      renderStats(rows);
       return;
     }
 
@@ -7647,9 +7711,13 @@
       })
       .join('');
 
+    settleProjectResults();
     bindRowEvents();
     bindQrButtons(tbody);
     syncCompareBar();
+    finishSearchTiming(searching, queryMs);
+    renderMeta(total);
+    renderStats(rows);
   };
 
   const readRecentSearches = () => {
@@ -7798,6 +7866,7 @@
   };
 
   const applySearch = ({ resetPage = true, syncInputs = false } = {}) => {
+    markSearchCycleStart();
     if (resetPage) state.page = 1;
     if (syncInputs) {
       if (input && input.value !== state.query) input.value = state.query;
@@ -7832,6 +7901,7 @@
   };
   const scheduleTypedSearch = () => {
     cancelTypedSearch();
+    markSearchCycleStart({ restart: true });
     typedSearchRaf = window.requestAnimationFrame(() => {
       typedSearchRaf = 0;
       const heavy = state.fuzzy && (state.deep || state.matchScope === 'files');

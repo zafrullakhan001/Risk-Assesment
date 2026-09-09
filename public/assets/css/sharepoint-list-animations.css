@@ -1,0 +1,542 @@
+/* LinkNest-inspired file-list animation picker, scoped to SharePoint results. */
+
+.sp-list-animation-trigger {
+    gap: 0.28rem;
+}
+
+.sp-list-animation-current {
+    max-width: 7rem;
+    overflow: hidden;
+    color: var(--accent, #0f766e);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sp-list-animation-dialog {
+    width: min(31rem, calc(100vw - 2rem));
+    max-height: min(43rem, calc(100vh - 2rem));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border, #dbe3ec);
+    border-radius: 16px;
+    background: var(--surface, #fff);
+    color: var(--ink, #0f172a);
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.28);
+}
+
+.sp-list-animation-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.48);
+    backdrop-filter: blur(3px);
+}
+
+.sp-list-animation-shell {
+    display: flex;
+    max-height: min(43rem, calc(100vh - 2rem));
+    flex-direction: column;
+}
+
+.sp-list-animation-head,
+.sp-list-animation-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+}
+
+.sp-list-animation-head {
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    background: linear-gradient(135deg, color-mix(in srgb, #2563eb 8%, var(--surface, #fff)), var(--surface, #fff));
+}
+
+.sp-list-animation-kicker,
+.sp-list-animation-preview-label {
+    display: block;
+    margin-bottom: 0.15rem;
+    color: #2563eb;
+    font-size: 0.66rem;
+    font-weight: 850;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+.sp-list-animation-head h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    letter-spacing: -0.015em;
+}
+
+.sp-list-animation-close {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    background: var(--surface, #fff);
+    color: var(--muted, #64748b);
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+.sp-list-animation-body {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
+    overflow: hidden;
+}
+
+.sp-list-animation-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.7rem;
+    border: 1px solid color-mix(in srgb, #2563eb 45%, var(--border, #e2e8f0));
+    border-radius: 9px;
+    background: var(--surface, #fff);
+    box-shadow: 0 0 0 3px color-mix(in srgb, #2563eb 8%, transparent);
+}
+
+.sp-list-animation-search:focus-within {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #2563eb 14%, transparent);
+}
+
+.sp-list-animation-search input {
+    width: 100%;
+    min-height: 2.35rem;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.sp-list-animation-preview {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem;
+    overflow: hidden;
+    border: 1px dashed var(--border, #dbe3ec);
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--surface-2, #f8fafc) 88%, var(--surface, #fff));
+}
+
+.sp-list-animation-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 9px;
+    background: var(--surface, #fff);
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
+}
+
+.sp-list-animation-preview-card > span:last-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.sp-list-animation-preview-card small {
+    color: var(--muted, #64748b);
+}
+
+.sp-list-animation-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    overflow-y: auto;
+    padding-right: 0.2rem;
+    scrollbar-width: thin;
+}
+
+.sp-list-animation-option {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 4.3rem;
+    padding: 0.65rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--surface-2, #f8fafc);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sp-list-animation-option:hover {
+    border-color: color-mix(in srgb, #2563eb 28%, var(--border, #e2e8f0));
+    background: color-mix(in srgb, #2563eb 6%, var(--surface, #fff));
+}
+
+.sp-list-animation-option[aria-selected="true"] {
+    border-color: #2563eb;
+    background: color-mix(in srgb, #2563eb 9%, var(--surface, #fff));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #2563eb 18%, transparent);
+}
+
+.sp-list-animation-rank {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.45rem;
+    color: #94a3b8;
+    font-size: 0.62rem;
+    font-weight: 800;
+}
+
+.sp-list-animation-icon {
+    font-size: 1.35rem;
+    text-align: center;
+}
+
+.sp-list-animation-option-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.18rem;
+}
+
+.sp-list-animation-option-copy strong {
+    font-size: 0.83rem;
+}
+
+.sp-list-animation-option-copy small,
+.sp-list-animation-footer {
+    color: var(--muted, #64748b);
+    font-size: 0.7rem;
+}
+
+.sp-list-animation-empty {
+    margin: 0;
+    padding: 1rem;
+    color: var(--muted, #64748b);
+    text-align: center;
+}
+
+.sp-list-animation-footer {
+    border-top: 1px solid var(--border, #e2e8f0);
+    background: var(--surface-2, #f8fafc);
+}
+
+.sp-list-animation-footer > div {
+    display: flex;
+    gap: 0.45rem;
+}
+
+/* The selected effect owns row motion; remove the previous fixed block animation. */
+.sharepoint-table-card.is-results-settling .sharepoint-table-toolbar,
+.sharepoint-table-card.is-results-settling .sharepoint-catalog-table-body {
+    animation: none;
+}
+
+/* Apply the same saved style to single-folder and compare-dialog file rows. */
+.sp-workspace-dialog[data-list-animation] {
+    --sp-dialog-list-animation: spListQuietSettle;
+    --sp-dialog-list-duration: 0.52s;
+    --sp-dialog-list-easing: cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.sp-workspace-dialog[data-list-animation="fade-in"] {
+    --sp-dialog-list-animation: spListFadeIn;
+    --sp-dialog-list-duration: 0.42s;
+    --sp-dialog-list-easing: ease-out;
+}
+
+.sp-workspace-dialog[data-list-animation="slide-up"] {
+    --sp-dialog-list-animation: spListSlideUp;
+    --sp-dialog-list-duration: 0.46s;
+}
+
+.sp-workspace-dialog[data-list-animation="slide-down"] {
+    --sp-dialog-list-animation: spListSlideDown;
+    --sp-dialog-list-duration: 0.46s;
+}
+
+.sp-workspace-dialog[data-list-animation="slide-left"] {
+    --sp-dialog-list-animation: spListSlideLeft;
+    --sp-dialog-list-duration: 0.46s;
+}
+
+.sp-workspace-dialog[data-list-animation="slide-right"] {
+    --sp-dialog-list-animation: spListSlideRight;
+    --sp-dialog-list-duration: 0.46s;
+}
+
+.sp-workspace-dialog[data-list-animation="zoom-in"] {
+    --sp-dialog-list-animation: spListZoomIn;
+    --sp-dialog-list-duration: 0.46s;
+    --sp-dialog-list-easing: cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+.sp-workspace-dialog[data-list-animation="zoom-out"] {
+    --sp-dialog-list-animation: spListZoomOut;
+    --sp-dialog-list-duration: 0.46s;
+    --sp-dialog-list-easing: cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+.sp-workspace-dialog[data-list-animation="blur-in"] {
+    --sp-dialog-list-animation: spListBlurIn;
+    --sp-dialog-list-duration: 0.56s;
+    --sp-dialog-list-easing: ease-out;
+}
+
+.sp-workspace-dialog[data-list-animation="reveal"] {
+    --sp-dialog-list-animation: spListReveal;
+    --sp-dialog-list-duration: 0.48s;
+    --sp-dialog-list-easing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sp-workspace-dialog[data-list-animation="flip-x"] {
+    --sp-dialog-list-animation: spListFlipX;
+    --sp-dialog-list-duration: 0.52s;
+}
+
+.sp-workspace-dialog[data-list-animation="flip-y"] {
+    --sp-dialog-list-animation: spListFlipY;
+    --sp-dialog-list-duration: 0.52s;
+}
+
+.sp-workspace-dialog[data-list-animation="perspective-in"] {
+    --sp-dialog-list-animation: spListPerspective;
+}
+
+.sp-workspace-dialog[data-list-animation="document-slide"] {
+    --sp-dialog-list-animation: spListDocumentSlide;
+    --sp-dialog-list-duration: 0.5s;
+    --sp-dialog-list-easing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.sp-workspace-dialog[data-list-animation="soft-landing"] {
+    --sp-dialog-list-animation: spListSoftLanding;
+    --sp-dialog-list-duration: 0.58s;
+}
+
+.sp-workspace-dialog[data-list-animation] .sp-dialog-row.is-settling {
+    animation: none;
+}
+
+.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-dialog-row.is-settling td {
+    animation: var(--sp-dialog-list-animation) var(--sp-dialog-list-duration) var(--sp-dialog-list-easing) both;
+    animation-delay: var(--sp-settle-delay, 0ms);
+}
+
+.sp-workspace-dialog[data-list-animation="none"] .sp-dialog-row.is-settling,
+.sp-workspace-dialog[data-list-animation="none"] .sp-dialog-row.is-settling td {
+    animation: none;
+}
+
+/* The workspace window itself uses the same style when it opens. */
+.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]).is-entering {
+    transform-origin: center;
+    will-change: transform, opacity, filter, clip-path;
+    animation: var(--sp-dialog-list-animation) var(--sp-dialog-list-duration) var(--sp-dialog-list-easing) both;
+}
+
+.sp-workspace-dialog[data-list-animation="none"].is-entering,
+.sp-workspace-dialog[data-list-animation="none"].is-entering::backdrop {
+    animation: none;
+}
+
+.sharepoint-table-card[data-list-animation="none"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="none"] {
+    animation: none;
+}
+
+.sharepoint-table-card[data-list-animation="fade-in"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="fade-in"] {
+    animation: spListFadeIn 0.42s ease-out both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="slide-up"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="slide-up"] {
+    animation: spListSlideUp 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="slide-down"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="slide-down"] {
+    animation: spListSlideDown 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="slide-left"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="slide-left"] {
+    animation: spListSlideLeft 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="slide-right"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="slide-right"] {
+    animation: spListSlideRight 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="zoom-in"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="zoom-in"] {
+    animation: spListZoomIn 0.46s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="zoom-out"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="zoom-out"] {
+    animation: spListZoomOut 0.46s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="blur-in"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="blur-in"] {
+    animation: spListBlurIn 0.56s ease-out both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="reveal"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="reveal"] {
+    animation: spListReveal 0.48s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="flip-x"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="flip-x"] {
+    animation: spListFlipX 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="flip-y"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="flip-y"] {
+    animation: spListFlipY 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="perspective-in"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="perspective-in"] {
+    animation: spListPerspective 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="document-slide"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="document-slide"] {
+    animation: spListDocumentSlide 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="soft-landing"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="soft-landing"] {
+    animation: spListSoftLanding 0.58s cubic-bezier(0.19, 1, 0.22, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+.sharepoint-table-card[data-list-animation="quiet-settle"] .sharepoint-project-row.is-results-settling td,
+.sp-list-animation-preview-card[data-preview-animation="quiet-settle"] {
+    animation: spListQuietSettle 0.52s cubic-bezier(0.19, 1, 0.22, 1) both;
+    animation-delay: var(--sp-result-delay, 0ms);
+}
+
+@keyframes spListFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes spListSlideUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListSlideDown {
+    from { opacity: 0; transform: translateY(-18px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListSlideLeft {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListSlideRight {
+    from { opacity: 0; transform: translateX(-24px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListZoomIn {
+    from { opacity: 0; transform: scale(0.93); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListZoomOut {
+    from { opacity: 0; transform: scale(1.06); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListBlurIn {
+    from { opacity: 0; filter: blur(7px); transform: scale(0.97); }
+    to { opacity: 1; filter: none; transform: none; }
+}
+
+@keyframes spListReveal {
+    from { opacity: 0; clip-path: inset(0 50%); }
+    to { opacity: 1; clip-path: inset(0); }
+}
+
+@keyframes spListFlipX {
+    from { opacity: 0; transform: perspective(700px) rotateY(-55deg); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListFlipY {
+    from { opacity: 0; transform: perspective(700px) rotateX(-55deg); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListPerspective {
+    from { opacity: 0; transform: perspective(800px) rotateX(8deg) translateY(12px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListDocumentSlide {
+    from { opacity: 0; transform: translateX(-24px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes spListSoftLanding {
+    0% { opacity: 0; transform: translateY(-22px); }
+    82% { opacity: 1; transform: translateY(2px); }
+    100% { opacity: 1; transform: none; }
+}
+
+@keyframes spListQuietSettle {
+    from { opacity: 0; transform: translateY(-9px); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 620px) {
+    .sp-list-animation-options {
+        grid-template-columns: 1fr;
+    }
+
+    .sp-list-animation-preview {
+        grid-template-columns: 1fr;
+    }
+
+    .sp-list-animation-trigger-label {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sharepoint-project-row.is-results-settling td,
+    .sp-dialog-row.is-settling,
+    .sp-dialog-row.is-settling td,
+    .sp-list-animation-preview-card[data-preview-animation] {
+        animation: none !important;
+    }
+}
