@@ -567,7 +567,7 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                 </div>
             </dialog>
 
-            <dialog class="response-dialog sharepoint-search-dash-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-search-dash-dialog" aria-labelledby="sharepoint-search-dash-title" data-density="compact" data-require-close-btn="1">
+            <dialog class="response-dialog sharepoint-search-dash-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-search-dash-dialog" aria-labelledby="sharepoint-search-dash-title" data-density="compact" data-require-close-btn="1" data-list-animation="soft-landing">
                 <div class="response-dialog-form sharepoint-search-dash-body">
                     <div class="response-dialog-head sp-dialog-drag-handle">
                         <div>

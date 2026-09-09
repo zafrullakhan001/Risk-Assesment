@@ -509,7 +509,7 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
             require __DIR__ . '/includes/sharepoint-search-card.php';
             ?>
 
-            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact" data-list-animation="quiet-settle">
+            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-density="compact" data-list-animation="soft-landing">
                 <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
                     <summary class="sharepoint-table-toolbar sharepoint-catalog-table-summary">
                         <span class="result-count" id="sharepoint-result-count">Loading catalog…</span>

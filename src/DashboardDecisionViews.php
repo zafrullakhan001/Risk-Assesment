@@ -1492,12 +1492,16 @@ final class DashboardDecisionViews
             <p class="panel-help">Create a public link so people can view this assessment version without signing in. Recipients cannot edit responses, diagrams, or evaluations. Creating a new link revokes the previous one. You can copy the active link again anytime from the list below.</p>
 
             <?php if ($freshShareUrl !== null && $freshShareUrl !== ''): ?>
+                <?php $freshSharePreview = ShareUrlPresenter::truncate($freshShareUrl); ?>
                 <div class="share-link-fresh alert alert-success">
                     <strong>Public share link created</strong>
-                    <div class="share-link-copy-row">
-                        <input type="text" class="share-link-url-input" id="share-link-url" readonly value="<?= $this->e($freshShareUrl) ?>">
-                        <button type="button" class="button button-primary share-link-copy-btn" id="btn-copy-share-link" data-copy-input="share-link-url" data-copy-status="share-link-copy-status">📋 Copy</button>
-                        <a class="button ghost-light" href="<?= $this->e($freshShareUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
+                    <div class="share-link-copy-row share-link-copy-row-uplift">
+                        <input type="hidden" id="share-link-url" value="<?= $this->e($freshShareUrl) ?>">
+                        <code class="share-link-url-preview" title="<?= $this->e($freshShareUrl) ?>"><?= $this->e($freshSharePreview) ?></code>
+                        <div class="share-link-action-group">
+                            <button type="button" class="button button-primary share-link-copy-btn" id="btn-copy-share-link" data-copy-input="share-link-url" data-copy-status="share-link-copy-status" title="Copy full link">📋 Copy</button>
+                            <a class="button ghost-light" href="<?= $this->e($freshShareUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open share link">↗ Open</a>
+                        </div>
                     </div>
                     <p class="share-link-copy-status" id="share-link-copy-status" hidden></p>
                 </div>
@@ -1567,25 +1571,33 @@ final class DashboardDecisionViews
                             $linkCanCopy = $linkActive && !empty($link['can_copy']) && $linkUrl !== '';
                             $rowUrlInputId = 'share-link-url-assessment-' . $linkId;
                             $rowStatusId = 'share-link-copy-status-assessment-' . $linkId;
+                            $linkPreview = $linkUrl !== '' ? ShareUrlPresenter::truncate($linkUrl) : '';
+                            $meta = 'Created ' . (string) ($link['created_at'] ?? '');
+                            if (($link['created_by_username'] ?? '') !== '') {
+                                $meta .= ' · ' . (string) $link['created_by_username'];
+                            }
+                            if (($link['last_accessed_at'] ?? null) !== null) {
+                                $meta .= ' · Opened ' . (string) $link['last_accessed_at'];
+                            }
                             ?>
-                            <li class="share-link-row <?= $linkActive ? 'is-active' : 'is-revoked' ?>">
-                                <div class="share-link-row-body">
-                                    <strong><?= $linkActive ? 'Active' : 'Revoked / expired' ?></strong>
-                                    <span class="share-link-row-meta">Created <?= $this->e((string) ($link['created_at'] ?? '')) ?><?= ($link['created_by_username'] ?? '') !== '' ? ' · ' . $this->e((string) $link['created_by_username']) : '' ?></span>
-                                    <?php if (($link['last_accessed_at'] ?? null) !== null): ?>
-                                        <span class="share-link-row-meta">Last opened <?= $this->e((string) $link['last_accessed_at']) ?></span>
-                                    <?php endif; ?>
-                                    <?php if ($linkCanCopy): ?>
-                                        <div class="share-link-copy-row share-link-copy-row-compact">
-                                            <input type="text" class="share-link-url-input" id="<?= $this->e($rowUrlInputId) ?>" readonly value="<?= $this->e($linkUrl) ?>">
-                                            <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= $this->e($rowUrlInputId) ?>" data-copy-status="<?= $this->e($rowStatusId) ?>">📋 Copy</button>
-                                            <a class="button ghost-light" href="<?= $this->e($linkUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
-                                        </div>
-                                        <p class="share-link-copy-status" id="<?= $this->e($rowStatusId) ?>" hidden></p>
-                                    <?php elseif ($linkActive): ?>
-                                        <p class="share-link-row-legacy">URL was not stored for this older link. Create a new link to copy the address again.</p>
-                                    <?php endif; ?>
+                            <li class="share-link-row share-link-row-uplift <?= $linkActive ? 'is-active' : 'is-revoked' ?>">
+                                <div class="share-link-row-main">
+                                    <span class="share-link-status-pill <?= $linkActive ? 'is-active' : 'is-revoked' ?>"><?= $linkActive ? 'Active' : 'Revoked / expired' ?></span>
+                                    <span class="share-link-row-meta"><?= $this->e($meta) ?></span>
                                 </div>
+                                <?php if ($linkCanCopy): ?>
+                                    <div class="share-link-copy-row share-link-copy-row-uplift">
+                                        <input type="hidden" id="<?= $this->e($rowUrlInputId) ?>" value="<?= $this->e($linkUrl) ?>">
+                                        <code class="share-link-url-preview" title="<?= $this->e($linkUrl) ?>"><?= $this->e($linkPreview) ?></code>
+                                        <div class="share-link-action-group">
+                                            <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= $this->e($rowUrlInputId) ?>" data-copy-status="<?= $this->e($rowStatusId) ?>" title="Copy full link">📋 Copy</button>
+                                            <a class="button ghost-light" href="<?= $this->e($linkUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open share link">↗ Open</a>
+                                        </div>
+                                    </div>
+                                    <p class="share-link-copy-status" id="<?= $this->e($rowStatusId) ?>" hidden></p>
+                                <?php elseif ($linkActive): ?>
+                                    <p class="share-link-row-legacy">URL was not stored for this older link. Create a new link to copy the address again.</p>
+                                <?php endif; ?>
                             </li>
                         <?php endforeach; ?>
                     </ul>

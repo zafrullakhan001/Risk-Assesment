@@ -2201,7 +2201,7 @@ $soloPageClass = $ownerSolo
             require __DIR__ . '/includes/sharepoint-search-card.php';
             ?>
 
-            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-sp-section="projects" data-density="compact" data-list-animation="quiet-settle">
+            <section class="upload-card sharepoint-table-card is-compact-rows" aria-label="SharePoint project table" id="sharepoint-table-card" data-sp-section="projects" data-density="compact" data-list-animation="soft-landing">
                 <details class="sharepoint-catalog-table-shell" id="sharepoint-catalog-table-shell" open>
                     <summary class="sharepoint-table-toolbar sharepoint-catalog-table-summary">
                     <div class="sharepoint-table-summary-lead">

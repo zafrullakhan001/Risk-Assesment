@@ -1325,6 +1325,9 @@
     bindBodyEvents(snapshot);
     if (typeof api().bindCopyLinkButtons === 'function') api().bindCopyLinkButtons(bodyEl);
     if (typeof api().bindQrButtons === 'function') api().bindQrButtons(bodyEl);
+    if (typeof api().replaySearchDashboardAnimation === 'function') {
+      api().replaySearchDashboardAnimation();
+    }
     if (kickFetch && !ui.loadingUrls) loadDetailUrls(snapshot.rows || []);
   };
 
@@ -1457,13 +1460,46 @@
     ui.loadingUrls = false;
     applyDashboardUi(readPersistedControls(), { persist: false });
     if (savedUi) applyDashboardUi(savedUi, { persist: true });
-    renderBody(snapshot, true);
+    if (typeof api().applyListAnimationSelection === 'function') {
+      api().applyListAnimationSelection();
+    }
     if (typeof dialog.showModal === 'function') {
       if (!dialog.open) dialog.showModal();
     } else {
       dialog.setAttribute('open', '');
     }
     dialog.__spPrepareWorkspace?.();
+    if (typeof api().playWorkspaceDialogEnter === 'function') {
+      api().playWorkspaceDialogEnter(dialog);
+    } else if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      dialog.classList.remove('is-entering');
+      void dialog.offsetWidth;
+      dialog.classList.add('is-entering');
+      const surface = dialog.querySelector(':scope > .response-dialog-form');
+      const done = (event) => {
+        if (
+          (event.target !== dialog && event.target !== surface) ||
+          event.animationName === 'sp-workspace-backdrop-in'
+        ) {
+          return;
+        }
+        dialog.classList.remove('is-entering');
+        dialog.removeEventListener('animationend', done);
+      };
+      dialog.addEventListener('animationend', done);
+      const durationMs =
+        Number.parseFloat(getComputedStyle(dialog).getPropertyValue('--sp-user-animation-duration')) || 580;
+      window.setTimeout(() => {
+        dialog.classList.remove('is-entering');
+        dialog.removeEventListener('animationend', done);
+      }, durationMs + 180);
+    }
+    renderBody(snapshot, true);
+    window.requestAnimationFrame(() => {
+      if (typeof api().replaySearchDashboardAnimation === 'function') {
+        api().replaySearchDashboardAnimation();
+      }
+    });
   };
 
   document.addEventListener('click', (event) => {

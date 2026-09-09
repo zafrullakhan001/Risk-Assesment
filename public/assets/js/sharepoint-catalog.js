@@ -1967,16 +1967,24 @@
     dialog.classList.remove('is-entering');
     void dialog.offsetWidth;
     dialog.classList.add('is-entering');
+    const surface = dialog.querySelector(':scope > .response-dialog-form');
     const done = (event) => {
-      if (event.target !== dialog || event.animationName === 'sp-workspace-backdrop-in') return;
+      if (
+        (event.target !== dialog && event.target !== surface) ||
+        event.animationName === 'sp-workspace-backdrop-in'
+      ) {
+        return;
+      }
       dialog.classList.remove('is-entering');
       dialog.removeEventListener('animationend', done);
     };
     dialog.addEventListener('animationend', done);
+    const durationMs =
+      Number.parseFloat(getComputedStyle(dialog).getPropertyValue('--sp-user-animation-duration')) || 580;
     window.setTimeout(() => {
       dialog.classList.remove('is-entering');
       dialog.removeEventListener('animationend', done);
-    }, 760);
+    }, durationMs + 180);
   };
 
   const snapshotTreeRowTops = (tbody) => {
@@ -5169,6 +5177,7 @@
     bindQrButtons,
     qrButtonHtml,
     bindWorkspaceDialog,
+    playWorkspaceDialogEnter,
     fileExtension,
     resolveMeta,
     formatModified,
@@ -7551,7 +7560,7 @@
       row.classList.remove('is-results-settling');
       row.style.removeProperty('--sp-result-delay');
     });
-    if ((resultCard.dataset.listAnimation || 'quiet-settle') === 'none') return;
+    if ((resultCard.dataset.listAnimation || 'soft-landing') === 'none') return;
 
     // Restart the short reveal when a new result set replaces the current one.
     void resultCard.offsetWidth;
@@ -7561,13 +7570,15 @@
       row.style.setProperty('--sp-result-delay', `${Math.min(index * 22, 220)}ms`);
     });
 
+    const durationMs =
+      Number.parseFloat(getComputedStyle(resultCard).getPropertyValue('--sp-user-animation-duration')) || 580;
     resultSettleTimer = window.setTimeout(() => {
       resultCard.classList.remove('is-results-settling');
       rows.forEach((row) => {
         row.classList.remove('is-results-settling');
         row.style.removeProperty('--sp-result-delay');
       });
-    }, 900);
+    }, durationMs + 360);
   };
   window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
     replayListAnimation: settleProjectResults,

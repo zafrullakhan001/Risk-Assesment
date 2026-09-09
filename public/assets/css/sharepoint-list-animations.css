@@ -149,6 +149,52 @@
     color: var(--muted, #64748b);
 }
 
+.sp-list-animation-speed {
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    background: color-mix(in srgb, #2563eb 4%, var(--surface, #fff));
+}
+
+.sp-list-animation-speed-head,
+.sp-list-animation-speed-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.sp-list-animation-speed-head {
+    margin-bottom: 0.42rem;
+}
+
+.sp-list-animation-speed-head label {
+    color: var(--ink, #0f172a);
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.sp-list-animation-speed-head output {
+    min-width: 5.8rem;
+    color: #2563eb;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-align: right;
+}
+
+.sp-list-animation-speed-control span {
+    color: var(--muted, #64748b);
+    font-size: 0.64rem;
+    font-weight: 700;
+}
+
+.sp-list-animation-speed-control input[type="range"] {
+    width: 100%;
+    min-width: 8rem;
+    accent-color: #2563eb;
+    cursor: pointer;
+}
+
 .sp-list-animation-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -241,8 +287,8 @@
 
 /* Apply the same saved style to single-folder and compare-dialog file rows. */
 .sp-workspace-dialog[data-list-animation] {
-    --sp-dialog-list-animation: spListQuietSettle;
-    --sp-dialog-list-duration: 0.52s;
+    --sp-dialog-list-animation: spListSoftLanding;
+    --sp-dialog-list-duration: 0.58s;
     --sp-dialog-list-easing: cubic-bezier(0.19, 1, 0.22, 1);
 }
 
@@ -330,19 +376,40 @@
     animation-delay: var(--sp-settle-delay, 0ms);
 }
 
+.sharepoint-search-dash-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-sd-kpi.is-settling,
+.sharepoint-search-dash-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-sd-panel.is-settling,
+.sharepoint-search-dash-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-sd-card.is-settling {
+    animation: var(--sp-dialog-list-animation) var(--sp-dialog-list-duration) var(--sp-dialog-list-easing) both;
+    animation-delay: var(--sp-settle-delay, 0ms);
+}
+
 .sp-workspace-dialog[data-list-animation="none"] .sp-dialog-row.is-settling,
 .sp-workspace-dialog[data-list-animation="none"] .sp-dialog-row.is-settling td {
     animation: none;
 }
 
-/* The workspace window itself uses the same style when it opens. */
-.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]).is-entering {
+.sharepoint-search-dash-dialog[data-list-animation="none"] .sp-sd-kpi.is-settling,
+.sharepoint-search-dash-dialog[data-list-animation="none"] .sp-sd-panel.is-settling,
+.sharepoint-search-dash-dialog[data-list-animation="none"] .sp-sd-card.is-settling {
+    animation: none;
+}
+
+/*
+ * Animate the inner surface, never the positioned/resizable dialog element.
+ * This keeps persisted top/left/width/height geometry authoritative.
+ */
+.sp-workspace-dialog[data-list-animation].is-entering {
+    animation: none;
+}
+
+.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]).is-entering > .response-dialog-form {
     transform-origin: center;
     will-change: transform, opacity, filter, clip-path;
     animation: var(--sp-dialog-list-animation) var(--sp-dialog-list-duration) var(--sp-dialog-list-easing) both;
 }
 
 .sp-workspace-dialog[data-list-animation="none"].is-entering,
+.sp-workspace-dialog[data-list-animation="none"].is-entering > .response-dialog-form,
 .sp-workspace-dialog[data-list-animation="none"].is-entering::backdrop {
     animation: none;
 }
@@ -442,6 +509,17 @@
     animation-delay: var(--sp-result-delay, 0ms);
 }
 
+/* User speed overrides each style's base duration while preserving its easing. */
+.sharepoint-table-card[data-list-animation]:not([data-list-animation="none"]) .sharepoint-project-row.is-results-settling td,
+.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-dialog-row.is-settling td,
+.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]).is-entering > .response-dialog-form,
+.sharepoint-search-dash-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-sd-kpi.is-settling,
+.sharepoint-search-dash-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-sd-panel.is-settling,
+.sharepoint-search-dash-dialog[data-list-animation]:not([data-list-animation="none"]) .sp-sd-card.is-settling,
+.sp-list-animation-preview-card[data-preview-animation]:not([data-preview-animation="none"]) {
+    animation-duration: var(--sp-user-animation-duration, 580ms);
+}
+
 @keyframes spListFadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -536,6 +614,9 @@
     .sharepoint-project-row.is-results-settling td,
     .sp-dialog-row.is-settling,
     .sp-dialog-row.is-settling td,
+    .sp-sd-kpi.is-settling,
+    .sp-sd-panel.is-settling,
+    .sp-sd-card.is-settling,
     .sp-list-animation-preview-card[data-preview-animation] {
         animation: none !important;
     }

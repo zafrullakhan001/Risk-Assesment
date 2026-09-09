@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RiskAssessment\Repositories\CatalogShareRepository;
+use RiskAssessment\ShareUrlPresenter;
 
 /**
  * Collapsible public-share card with compact paginated history.
@@ -121,12 +122,16 @@ $openHistory = $shareHistoryPage > 1 || ($shareHistoryTotal > 0 && $shareFreshUr
             <?php endif; ?>
 
             <?php if ($shareFreshUrl !== ''): ?>
+                <?php $shareFreshPreview = ShareUrlPresenter::truncate($shareFreshUrl); ?>
                 <div class="share-link-fresh alert alert-success" id="<?= e($sharePanelId) ?>-fresh">
                     <strong><?= e((string) ($shareFreshLabel ?? 'Public link created')) ?><?= $shareFreshTag !== '' ? ' · ' . e($shareFreshTag) : '' ?></strong>
-                    <div class="share-link-copy-row">
-                        <input type="text" class="share-link-url-input" id="<?= e($urlInputId) ?>" readonly value="<?= e($shareFreshUrl) ?>">
-                        <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($urlInputId) ?>" data-copy-status="<?= e($statusId) ?>" id="<?= e($copyBtnId) ?>">📋 Copy</button>
-                        <a class="button ghost-light" href="<?= e($shareFreshUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
+                    <div class="share-link-copy-row share-link-copy-row-uplift">
+                        <input type="hidden" id="<?= e($urlInputId) ?>" value="<?= e($shareFreshUrl) ?>">
+                        <code class="share-link-url-preview" title="<?= e($shareFreshUrl) ?>"><?= e($shareFreshPreview) ?></code>
+                        <div class="share-link-action-group">
+                            <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($urlInputId) ?>" data-copy-status="<?= e($statusId) ?>" id="<?= e($copyBtnId) ?>" title="Copy full link">📋 Copy</button>
+                            <a class="button ghost-light" href="<?= e($shareFreshUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open share link">↗ Open</a>
+                        </div>
                     </div>
                     <p class="share-link-copy-status" id="<?= e($statusId) ?>" hidden></p>
                 </div>
@@ -311,40 +316,60 @@ $openHistory = $shareHistoryPage > 1 || ($shareHistoryTotal > 0 && $shareFreshUr
                                     $revokeFormId = 'share-revoke-' . $formSuffix . '-' . $linkId;
                                     $rowUrlInputId = 'share-link-url-' . $formSuffix . '-' . $linkId;
                                     $rowStatusId = 'share-link-copy-status-' . $formSuffix . '-' . $linkId;
+                                    $linkPreview = $linkUrl !== '' ? ShareUrlPresenter::truncate($linkUrl) : '';
                                     $revokeConfirm = $linkLabel !== ''
                                         ? 'Revoke the public link "' . $linkLabel . '"? Anyone with that URL will lose access.'
                                         : 'Revoke this public link? Anyone with that URL will lose access.';
                                     ?>
-                                    <li class="share-link-row <?= $linkActive ? 'is-active' : 'is-revoked' ?>">
-                                        <strong><?= $linkActive ? 'Active' : 'Revoked' ?></strong>
-                                        <div class="share-link-row-body">
+                                    <li class="share-link-row share-link-row-uplift <?= $linkActive ? 'is-active' : 'is-revoked' ?>">
+                                        <div class="share-link-row-main">
+                                            <span class="share-link-status-pill <?= $linkActive ? 'is-active' : 'is-revoked' ?>"><?= $linkActive ? 'Active' : 'Revoked' ?></span>
                                             <?php if ($linkLabel !== ''): ?>
                                                 <span class="share-link-row-tag"><?= e($linkLabel) ?></span>
                                             <?php endif; ?>
                                             <span class="share-link-row-scope"><?= e($scopeLabel) ?></span>
                                             <span class="share-link-row-meta"><?= e($meta) ?></span>
-                                            <?php if ($linkCanCopy): ?>
-                                                <div class="share-link-copy-row share-link-copy-row-compact">
-                                                    <input type="text" class="share-link-url-input" id="<?= e($rowUrlInputId) ?>" readonly value="<?= e($linkUrl) ?>">
-                                                    <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($rowUrlInputId) ?>" data-copy-status="<?= e($rowStatusId) ?>">📋 Copy</button>
-                                                    <a class="button ghost-light" href="<?= e($linkUrl) ?>" target="_blank" rel="noopener noreferrer">↗ Open</a>
-                                                </div>
-                                                <p class="share-link-copy-status" id="<?= e($rowStatusId) ?>" hidden></p>
-                                            <?php elseif ($linkActive): ?>
-                                                <p class="share-link-row-legacy">URL was not stored for this older link. Revoke it and create a new one to copy again.</p>
-                                            <?php endif; ?>
                                         </div>
-                                        <?php if ($linkActive && $linkId > 0): ?>
-                                            <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" data-share-confirm="<?= e($revokeConfirm) ?>">
-                                                <?= csrf_field() ?>
-                                                <input type="hidden" name="action" value="<?= e((string) $shareRevokeAction) ?>">
-                                                <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
-                                                <?php if (($shareView ?? '') !== ''): ?>
-                                                    <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                                        <?php if ($linkCanCopy): ?>
+                                            <div class="share-link-copy-row share-link-copy-row-uplift">
+                                                <input type="hidden" id="<?= e($rowUrlInputId) ?>" value="<?= e($linkUrl) ?>">
+                                                <code class="share-link-url-preview" title="<?= e($linkUrl) ?>"><?= e($linkPreview) ?></code>
+                                                <div class="share-link-action-group">
+                                                    <button type="button" class="button button-primary share-link-copy-btn" data-copy-input="<?= e($rowUrlInputId) ?>" data-copy-status="<?= e($rowStatusId) ?>" title="Copy full link">📋 Copy</button>
+                                                    <a class="button ghost-light" href="<?= e($linkUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open share link">↗ Open</a>
+                                                    <?php if ($linkId > 0): ?>
+                                                        <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" data-share-confirm="<?= e($revokeConfirm) ?>">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="action" value="<?= e((string) $shareRevokeAction) ?>">
+                                                            <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
+                                                            <?php if (($shareView ?? '') !== ''): ?>
+                                                                <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                                                            <?php endif; ?>
+                                                            <input type="hidden" name="share_id" value="<?= $linkId ?>">
+                                                            <button type="submit" class="button danger-btn share-link-revoke-one" title="Revoke this link">🚫 Revoke</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                            <p class="share-link-copy-status" id="<?= e($rowStatusId) ?>" hidden></p>
+                                        <?php elseif ($linkActive): ?>
+                                            <div class="share-link-copy-row share-link-copy-row-uplift">
+                                                <p class="share-link-row-legacy">URL was not stored for this older link. Revoke it and create a new one to copy again.</p>
+                                                <?php if ($linkId > 0): ?>
+                                                    <div class="share-link-action-group">
+                                                        <form method="post" id="<?= e($revokeFormId) ?>" class="inline-form share-link-row-revoke" data-share-confirm="<?= e($revokeConfirm) ?>">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="action" value="<?= e((string) $shareRevokeAction) ?>">
+                                                            <input type="hidden" name="source" value="<?= e((string) $activeSourceKey) ?>">
+                                                            <?php if (($shareView ?? '') !== ''): ?>
+                                                                <input type="hidden" name="view" value="<?= e((string) $shareView) ?>">
+                                                            <?php endif; ?>
+                                                            <input type="hidden" name="share_id" value="<?= $linkId ?>">
+                                                            <button type="submit" class="button danger-btn share-link-revoke-one" title="Revoke this link">🚫 Revoke</button>
+                                                        </form>
+                                                    </div>
                                                 <?php endif; ?>
-                                                <input type="hidden" name="share_id" value="<?= $linkId ?>">
-                                                <button type="submit" class="button danger-btn share-link-revoke-one">🚫 Revoke</button>
-                                            </form>
+                                            </div>
                                         <?php endif; ?>
                                     </li>
                                 <?php endforeach; ?>

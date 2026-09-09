@@ -3331,24 +3331,46 @@ document.addEventListener('DOMContentLoaded', () => {
             await navigator.clipboard.writeText(value);
             return true;
         }
-        input.select();
-        document.execCommand('copy');
+        const holder = document.createElement('textarea');
+        holder.value = value;
+        holder.setAttribute('readonly', '');
+        holder.style.position = 'fixed';
+        holder.style.left = '-9999px';
+        document.body.appendChild(holder);
+        holder.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(holder);
+        if (!ok) {
+            throw new Error('copy failed');
+        }
         return true;
+    };
+    const markShareCopied = (btn, statusEl, message) => {
+        if (statusEl) {
+            statusEl.hidden = false;
+            statusEl.textContent = message;
+        }
+        if (!(btn instanceof HTMLElement)) return;
+        const original = btn.getAttribute('data-copy-label') || btn.textContent || '📋 Copy';
+        if (!btn.getAttribute('data-copy-label')) {
+            btn.setAttribute('data-copy-label', original);
+        }
+        btn.classList.add('is-copied');
+        btn.textContent = '✓ Copied';
+        window.clearTimeout(Number(btn.getAttribute('data-copy-timer') || 0));
+        const timer = window.setTimeout(() => {
+            btn.classList.remove('is-copied');
+            btn.textContent = btn.getAttribute('data-copy-label') || original;
+        }, 1600);
+        btn.setAttribute('data-copy-timer', String(timer));
     };
     if (copyShareBtn && shareUrlInput) {
         copyShareBtn.addEventListener('click', async () => {
             try {
                 await copyShareText(shareUrlInput);
-                if (shareCopyStatus) {
-                    shareCopyStatus.hidden = false;
-                    shareCopyStatus.textContent = 'Link copied to clipboard.';
-                }
+                markShareCopied(copyShareBtn, shareCopyStatus, 'Link copied to clipboard.');
             } catch (error) {
-                shareUrlInput.select();
-                if (shareCopyStatus) {
-                    shareCopyStatus.hidden = false;
-                    shareCopyStatus.textContent = 'Select the link and press Ctrl+C to copy.';
-                }
+                markShareCopied(copyShareBtn, shareCopyStatus, 'Unable to copy automatically. Hover the preview for the full link.');
             }
         });
     }
@@ -3360,16 +3382,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!input) return;
             try {
                 await copyShareText(input);
-                if (statusEl) {
-                    statusEl.hidden = false;
-                    statusEl.textContent = 'Link copied to clipboard.';
-                }
+                markShareCopied(btn, statusEl, 'Link copied to clipboard.');
             } catch {
-                input.select();
-                if (statusEl) {
-                    statusEl.hidden = false;
-                    statusEl.textContent = 'Select the link and press Ctrl+C to copy.';
-                }
+                markShareCopied(btn, statusEl, 'Unable to copy automatically. Hover the preview for the full link.');
             }
         });
     });
