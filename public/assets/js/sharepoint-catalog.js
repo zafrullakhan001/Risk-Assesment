@@ -1749,6 +1749,14 @@
     }
 
     if (fuzzyOn && Fuzzy?.scoreLabeledFieldsAgainstWords) {
+      if (mode === 'and') {
+        for (let i = 0; i < scoreWords.length; i++) {
+          const word = String(scoreWords[i] || '');
+          if (word.length < 3 && !hay.includes(word)) {
+            return { matched: false, score: 0, kind: 'none' };
+          }
+        }
+      }
       return Fuzzy.scoreLabeledFieldsAgainstWords(itemSearchFields(item), scoreWords, mode, true);
     }
     return cheapItemMatch(item, scoreWords, mode);
@@ -5508,20 +5516,24 @@
       files.forEach((item) => {
         const name = String(item?.name || '').trim();
         if (!name) return;
+        const path = String(item?.path || name).trim() || name;
         out.push({
           kind: 'file',
           name,
-          path: String(item?.path || name).trim() || name,
+          path,
+          hay: `${name}\n${path}`.toLowerCase(),
           archived: !!item?.archived,
         });
       });
       folders.forEach((item) => {
         const name = String(item?.name || '').trim();
         if (!name) return;
+        const path = String(item?.path || name).trim() || name;
         out.push({
           kind: 'folder',
           name,
-          path: String(item?.path || name).trim() || name,
+          path,
+          hay: `${name}\n${path}`.toLowerCase(),
           archived: !!item?.archived,
         });
       });
@@ -5529,7 +5541,7 @@
         (project.names || []).forEach((name) => {
           const label = String(name || '').trim();
           if (!label || label.toLowerCase() === String(project.project_name || '').trim().toLowerCase()) return;
-          out.push({ kind: 'file', name: label, path: label, archived: false });
+          out.push({ kind: 'file', name: label, path: label, hay: label.toLowerCase(), archived: false });
         });
       }
       project._entriesAll = out;
@@ -5642,6 +5654,19 @@
       });
     });
     project._hayTags = [...new Set(tagBits.filter(Boolean))].join('\n');
+    if (Fuzzy?.tokenizeSearchText) {
+      project._tokensNames = Fuzzy.tokenizeSearchText(project._hayNames || '');
+      project._tokensPeople = Fuzzy.tokenizeSearchText(project._hayPeople || '');
+      project._tokensFiles = Fuzzy.tokenizeSearchText(project._hayFiles || '');
+      project._tokensShallow = Fuzzy.tokenizeSearchText(project._hayShallow || '');
+      project._tokensDeep = Fuzzy.tokenizeSearchText(project._hayDeep || '');
+    } else {
+      project._tokensNames = [];
+      project._tokensPeople = [];
+      project._tokensFiles = [];
+      project._tokensShallow = [];
+      project._tokensDeep = [];
+    }
     return project;
   };
 
@@ -5761,44 +5786,183 @@
     return fields;
   };
 
+  const projectTokens = (project, deep, matchScope = 'all') => {
+    if (matchScope === 'names') {
+      return project._tokensNames || Fuzzy.tokenizeSearchText?.(project._hayNames || '') || [];
+    }
+    if (matchScope === 'people') {
+      return project._tokensPeople || Fuzzy.tokenizeSearchText?.(project._hayPeople || '') || [];
+    }
+    if (matchScope === 'files') {
+      return project._tokensFiles || Fuzzy.tokenizeSearchText?.(project._hayFiles || '') || [];
+    }
+    if (deep) return project._tokensDeep || Fuzzy.tokenizeSearchText?.(project._hayDeep || '') || [];
+    return project._tokensShallow || Fuzzy.tokenizeSearchText?.(project._hayShallow || '') || [];
+  };
+
+  const attachProjectMatchMeta = (project, match, words, deep, matchScope = 'all') => {
+    if (!match?.matched) return match;
+    const token = String(match.token || '').toLowerCase();
+    const longestWord = [...words].sort((a, b) => String(b || '').length - String(a || '').length)[0] || '';
+    const prefer = token || String(longestWord || '').toLowerCase();
+    const needles = [...new Set([prefer, token, ...words.map((word) => String(word || '').toLowerCase())].filter(Boolean))];
+    const preferred = [];
+    const fallback = [];
+    const consider = (text, sourceLabel, sourceName) => {
+      const hay = String(text || '').toLowerCase();
+      if (!hay) return;
+      const row = { text, sourceLabel, sourceName };
+      if (prefer && hay.includes(prefer)) preferred.push(row);
+      else if (needles.some((needle) => hay.includes(needle))) fallback.push(row);
+    };
+
+    if (matchScope === 'names') {
+      consider(project.project_name, 'Project');
+      consider(project.source_title, 'Catalog');
+    } else if (matchScope === 'people') {
+      consider(project.modified_by, 'Modified By');
+      consider(project.person, 'Created By');
+    } else if (matchScope === 'files') {
+      projectEntries(project).forEach((entry) => {
+        consider(entry.name, entry.kind === 'folder' ? 'Folder' : 'File', entry.name);
+        if (entry.path && entry.path !== entry.name) consider(entry.path, 'Path', entry.path);
+      });
+    } else {
+      consider(project.project_name, 'Project');
+      consider(project.source_title, 'Catalog');
+      consider(project.modified_by, 'Modified By');
+      consider(project.person, 'Created By');
+      if (deep) {
+        projectEntries(project).forEach((entry) => {
+          consider(entry.name, entry.kind === 'folder' ? 'Folder' : 'File', entry.name);
+          if (entry.path && entry.path !== entry.name) consider(entry.path, 'Path', entry.path);
+        });
+      }
+    }
+
+    const first = (preferred.length ? preferred : fallback)[0];
+    const extraCount = Math.max(0, (preferred.length ? preferred : fallback).length - 1);
+    const snippetNeedle = token || words[0] || '';
+    return {
+      ...match,
+      source: first?.sourceLabel || match.source,
+      sourceName: first?.sourceName || match.sourceName,
+      snippet: first ? Fuzzy.excerptAroundMatch?.(first.text, snippetNeedle) : match.snippet,
+      extraCount,
+    };
+  };
+
   const scoreProject = (project, words, mode, fuzzy, deep = true, matchScope = state.matchScope) => {
     if (!words.length) return { matched: true, score: 100, kind: 'exact' };
     const useDeep = effectiveDeep(matchScope, deep);
-    if (!fuzzy) {
-      const cheap = cheapProjectMatch(project, words, mode, useDeep, matchScope);
-      if (!cheap.matched) return cheap;
+    const hay = scopedHaystack(project, matchScope, useDeep);
+    const needsFuzzy =
+      Fuzzy.queryNeedsFuzzy?.(words, fuzzy) ?? !!(fuzzy && words.some((word) => String(word || '').length >= 3));
+
+    if (mode === 'and') {
+      for (let i = 0; i < words.length; i++) {
+        const word = String(words[i] || '');
+        if (word.length < 3 && !hay.includes(word)) {
+          return { matched: false, score: 0, kind: 'none' };
+        }
+      }
     }
-    return Fuzzy.scoreLabeledFieldsAgainstWords(
-      projectFields(project, useDeep, matchScope),
-      words,
-      mode,
-      fuzzy
+
+    const cheap = cheapProjectMatch(project, words, mode, useDeep, matchScope);
+    if (!needsFuzzy) return cheap;
+
+    const tokens = projectTokens(project, useDeep, matchScope);
+    const scored = Fuzzy.scoreTokensAgainstWords
+      ? Fuzzy.scoreTokensAgainstWords(tokens, words, mode, true)
+      : Fuzzy.scoreLabeledFieldsAgainstWords(projectFields(project, useDeep, matchScope), words, mode, true);
+    if (!scored?.matched) return scored || { matched: false, score: 0, kind: 'none' };
+    return attachProjectMatchMeta(project, scored, words, useDeep, matchScope);
+  };
+
+  const scoreDeepEntry = (entry, words, mode, fuzzy) => {
+    const hay = entry.hay || `${entry.name}\n${entry.path}`.toLowerCase();
+    const nameHay = String(entry.name || '').toLowerCase();
+    const tagged = (match) =>
+      match?.matched
+        ? {
+            ...match,
+            source: entry.kind === 'folder' ? 'Folder' : 'File',
+            sourceName: entry.name,
+            snippet: Fuzzy.excerptAroundMatch?.(entry.name, match.token || words[0] || '') || entry.name,
+          }
+        : null;
+
+    if (mode === 'and') {
+      for (let i = 0; i < words.length; i++) {
+        const word = String(words[i] || '').toLowerCase();
+        if (word.length < 3 && !hay.includes(word)) return null;
+        if (!fuzzy && !hay.includes(word)) return null;
+      }
+      if (words.every((word) => hay.includes(String(word || '').toLowerCase()))) {
+        const inName = words.every((word) => nameHay.includes(String(word || '').toLowerCase()));
+        return tagged({ matched: true, score: inName ? 96 : 90, kind: 'contains' });
+      }
+      if (!fuzzy) return null;
+    } else if (words.some((word) => hay.includes(String(word || '').toLowerCase()))) {
+      const inName = words.some((word) => nameHay.includes(String(word || '').toLowerCase()));
+      return tagged({ matched: true, score: inName ? 94 : 86, kind: 'contains' });
+    } else if (!fuzzy) {
+      return null;
+    }
+
+    if (Fuzzy.scoreHayAgainstWords) {
+      return tagged(Fuzzy.scoreHayAgainstWords(hay, words, mode, true));
+    }
+    return tagged(
+      Fuzzy.scoreLabeledFieldsAgainstWords(
+        [
+          {
+            text: entry.name,
+            sourceLabel: entry.kind === 'folder' ? 'Folder' : 'File',
+            sourceName: entry.name,
+          },
+          { text: entry.path, sourceLabel: 'Path', sourceName: entry.path },
+        ],
+        words,
+        mode,
+        true
+      )
     );
   };
 
   const collectDeepHits = (project, words, mode, fuzzy, limit = 4) => {
     if (!words.length) return { hits: [], total: 0 };
-    const hits = projectEntries(project)
-      .map((entry) => {
-        const match = Fuzzy.scoreLabeledFieldsAgainstWords(
-          [
-            {
-              text: entry.name,
-              sourceLabel: entry.kind === 'folder' ? 'Folder' : 'File',
-              sourceName: entry.name,
-            },
-            { text: entry.path, sourceLabel: 'Path', sourceName: entry.path },
-          ],
-          words,
-          mode,
-          fuzzy
-        );
-        return match.matched ? { ...entry, match } : null;
-      })
-      .filter(Boolean);
-    hits.sort((a, b) => (b.match?.score || 0) - (a.match?.score || 0));
-    const capped = Number.isFinite(limit) && limit >= 0 ? hits.slice(0, limit) : hits;
-    return { hits: capped, total: hits.length };
+    const entries = projectEntries(project);
+    const cap = Number.isFinite(limit) && limit >= 0 ? limit : Infinity;
+    const hits = [];
+    let total = 0;
+    const countOnly = cap === 0;
+    const remember = (entry, match) => {
+      total += 1;
+      if (countOnly) return;
+      const row = { ...entry, match };
+      if (!Number.isFinite(cap)) {
+        hits.push(row);
+        return;
+      }
+      if (hits.length < cap) {
+        hits.push(row);
+        if (hits.length === cap) hits.sort((a, b) => (b.match?.score || 0) - (a.match?.score || 0));
+        return;
+      }
+      if ((match?.score || 0) <= (hits[hits.length - 1].match?.score || 0)) return;
+      hits[hits.length - 1] = row;
+      hits.sort((a, b) => (b.match?.score || 0) - (a.match?.score || 0));
+    };
+
+    for (let i = 0; i < entries.length; i++) {
+      const match = scoreDeepEntry(entries[i], words, mode, fuzzy);
+      if (match) remember(entries[i], match);
+    }
+    if (!Number.isFinite(cap)) {
+      hits.sort((a, b) => (b.match?.score || 0) - (a.match?.score || 0));
+    }
+    return { hits, total };
   };
 
   const deepHitsHtml = (hitSet) => {
@@ -6751,6 +6915,33 @@
 
   /** @type {{ rows: array, query: string, refine: string, deep: boolean, fuzzy: boolean, wordMode: string, matchScope: string, scopeKeys: string[], itemCount: number, ready: boolean, searching: boolean } | null} */
   let liveSearchSnapshot = null;
+  /** @type {{ ms: number, seconds: number, secondsLabel: string, msLabel: string, title: string } | null} */
+  let lastQueryDuration = null;
+
+  const nowMs = () =>
+    typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+
+  const formatSearchDuration = (ms) => {
+    const n = Math.max(0, Number(ms) || 0);
+    const seconds = n / 1000;
+    let secondsLabel = '< 0.001 s';
+    if (n >= 1 && seconds < 1) secondsLabel = `${seconds.toFixed(3)} s`;
+    else if (seconds >= 1 && seconds < 10) secondsLabel = `${seconds.toFixed(2)} s`;
+    else if (seconds >= 10) secondsLabel = `${seconds.toFixed(1)} s`;
+
+    let msLabel = '< 1 ms';
+    if (n >= 1 && n < 10) msLabel = `${n.toFixed(1)} ms`;
+    else if (n >= 10) msLabel = `${Math.round(n).toLocaleString()} ms`;
+
+    const secondsText = n < 1 ? 'less than 0.001' : seconds.toFixed(3);
+    return {
+      ms: n,
+      seconds,
+      secondsLabel,
+      msLabel,
+      title: `Query returned in ${secondsText} seconds (${msLabel})`,
+    };
+  };
 
   const getLiveSearchSnapshot = () => {
     if (!liveSearchSnapshot) return null;
@@ -6769,6 +6960,7 @@
     const searching = queryIsActive(parsed);
     if (!searching) {
       liveSearchSnapshot = null;
+      lastQueryDuration = null;
       statsEl.classList.add('is-hidden');
       statsEl.innerHTML = '';
       return;
@@ -6801,6 +6993,10 @@
       best,
       nestedMatchTotal,
       catalogCount,
+      queryMs: lastQueryDuration?.ms ?? null,
+      queryTimeLabel: lastQueryDuration?.secondsLabel || '',
+      queryTimeMsLabel: lastQueryDuration?.msLabel || '',
+      queryTimeTitle: lastQueryDuration?.title || '',
     };
 
     statsEl.classList.remove('is-hidden');
@@ -6817,6 +7013,13 @@
         <span class="sp-stats-similar">${similarCount} similar</span>
         <span class="sp-stats-avg">Avg ${avg}%</span>
         <span>Best ${best}%</span>
+        ${
+          lastQueryDuration
+            ? `<span class="sp-stats-time" title="${escapeHtml(lastQueryDuration.title)}">⏱ Returned in ${escapeHtml(
+                lastQueryDuration.secondsLabel
+              )} <span class="sp-stats-time-ms">(${escapeHtml(lastQueryDuration.msLabel)})</span></span>`
+            : ''
+        }
         ${state.fuzzy ? '<span class="sp-stats-fuzzy">Fuzzy on</span>' : ''}
         ${state.matchScope !== 'all' ? `<span class="sp-stats-scope">Scope: ${escapeHtml(state.matchScope)}</span>` : ''}
         ${state.deep || state.matchScope === 'files' ? '<span class="sp-stats-deep">Deep files on</span>' : '<span class="sp-stats-deep">Folder names only</span>'}
@@ -6826,7 +7029,9 @@
         <div class="sp-stats-bar-rail">
           <div class="sp-stats-bar-fill sp-stats-bar-fill--${barTone}" style="width:${Math.max(avg, 4)}%"></div>
         </div>
-        <span class="sp-stats-bar-label">${avg}% match probability</span>
+        <span class="sp-stats-bar-label">${avg}% match probability${
+          lastQueryDuration ? ` · returned in ${escapeHtml(lastQueryDuration.secondsLabel)}` : ''
+        }</span>
       </div>`;
   };
 
@@ -6855,6 +7060,11 @@
       if (state.lastStatus) html += ` (${escapeHtml(state.lastStatus)})`;
     }
     if (state.ready) html += ' · <span class="sp-live-pill">⚡ Live search</span>';
+    if (searching && lastQueryDuration) {
+      html += ` · <span class="sp-live-pill sp-live-pill--time" title="${escapeHtml(lastQueryDuration.title)}">⏱ ${escapeHtml(
+        lastQueryDuration.secondsLabel
+      )}</span>`;
+    }
     if (searching && (state.deep || state.matchScope === 'files')) html += ' · <span class="sp-live-pill sp-live-pill--deep">📂 Deep files</span>';
     else if (searching) html += ' · folder names only';
     metaEl.innerHTML = html;
@@ -7305,6 +7515,7 @@
     updateControlsVisibility();
     updateHeading();
     syncScopeChips();
+    const searchStarted = nowMs();
     const rows = filteredProjects();
     const total = rows.length;
     const from = total === 0 ? 0 : (state.page - 1) * state.perPage + 1;
@@ -7316,21 +7527,20 @@
     const useDeep = effectiveDeep(state.matchScope, state.deep);
     if (searching) {
       const words = [...parsed.words, ...parsed.phrases];
-      pageRows.forEach((row) => {
-        row.match = scoreParsedProject(row.project, parsed);
-        if (useDeep && words.length) {
-          row.deepHits = collectDeepHits(row.project, words, state.wordMode, state.fuzzy);
-        }
-      });
-      // Fill nested totals for stats on all rows (cheap path counts)
       if (useDeep && words.length) {
+        pageRows.forEach((row) => {
+          row.deepHits = collectDeepHits(row.project, words, state.wordMode, state.fuzzy);
+        });
         rows.forEach((row) => {
           if (row.deepHits?.total) return;
-          const hitSet = collectDeepHits(row.project, words, state.wordMode, state.fuzzy, 0);
-          row.deepHits = { hits: [], total: hitSet.total };
+          row.deepHits = {
+            hits: [],
+            total: collectDeepHits(row.project, words, state.wordMode, state.fuzzy, 0).total,
+          };
         });
       }
     }
+    lastQueryDuration = searching ? formatSearchDuration(nowMs() - searchStarted) : null;
 
     resultCountEl.textContent = `Showing ${from}–${to} of ${total}${listFiltersActive() || advancedFiltersActive() || state.showFavorites ? ' · filtered' : ''}`;
     renderMeta(total);
@@ -7610,7 +7820,32 @@
     }
   };
 
-  const scheduleTypedSearch = debouncePaint(runTypedSearch, 70);
+  let typedSearchTimer = 0;
+  let typedSearchRaf = 0;
+  const cancelTypedSearch = () => {
+    window.clearTimeout(typedSearchTimer);
+    typedSearchTimer = 0;
+    if (typedSearchRaf) {
+      window.cancelAnimationFrame(typedSearchRaf);
+      typedSearchRaf = 0;
+    }
+  };
+  const scheduleTypedSearch = () => {
+    cancelTypedSearch();
+    typedSearchRaf = window.requestAnimationFrame(() => {
+      typedSearchRaf = 0;
+      const heavy = state.fuzzy && (state.deep || state.matchScope === 'files');
+      typedSearchTimer = window.setTimeout(() => {
+        typedSearchTimer = 0;
+        runTypedSearch();
+      }, heavy ? 180 : 70);
+    });
+  };
+  scheduleTypedSearch.cancel = cancelTypedSearch;
+  scheduleTypedSearch.flush = () => {
+    cancelTypedSearch();
+    runTypedSearch();
+  };
   const onSearchInput = (event) => {
     if (event?.isComposing || event?.inputType === 'insertCompositionText') return;
     if (event?.target === refineInput) {

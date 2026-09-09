@@ -16843,6 +16843,23 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
     color: #64748b;
     font-style: italic;
 }
+.sp-stats-time {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(14, 116, 144, 0.12);
+    color: #0e7490;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+.sp-stats-time-ms {
+    font-weight: 650;
+    font-size: 0.85em;
+    color: #155e75;
+    opacity: 0.85;
+}
 .sp-stats-bar-track {
     margin-top: 0.55rem;
     display: grid;
@@ -16884,6 +16901,10 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
 .sp-live-pill--deep {
     background: rgba(14, 165, 233, 0.14);
     color: #0369a1;
+}
+.sp-live-pill--time {
+    background: rgba(14, 116, 144, 0.14);
+    color: #0e7490;
 }
 .sp-search-deep {
     border: 1px solid var(--border, #e2e8f0);

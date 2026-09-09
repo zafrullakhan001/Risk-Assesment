@@ -1,11 +1,40 @@
 /**
  * LinkNest-style fuzzy / phonetic search (ported from linknest/utils/fuzzySearch.ts).
  * Exposed as window.FuzzySearch for SharePoint catalog live search.
+ *
+ * Performance: token/pair caches, AND fail-fast, unique-token scoring, and
+ * cheap substring prefilters so Fuzzy + Deep files stays usable on large catalogs.
  */
 (() => {
   const EMPTY_SCORE = { matched: false, score: 0, kind: 'none' };
+  const TOKEN_CACHE_MAX = 8000;
+  const PAIR_CACHE_MAX = 14000;
+  const tokenCache = new Map();
+  const soundexCache = new Map();
+  const phoneticCache = new Map();
+  const pairCache = new Map();
+
+  let levPrev = new Array(64);
+  let levCurr = new Array(64);
+
+  function cacheSet(map, key, value, max) {
+    if (map.size >= max) map.clear();
+    map.set(key, value);
+    return value;
+  }
+
+  function splitSearchTokens(text) {
+    const raw = String(text || '').toLowerCase();
+    if (!raw) return [];
+    return raw.split(/[^a-z0-9]+/).filter(Boolean);
+  }
 
   function tokenizeSearchText(text) {
+    const raw = String(text || '');
+    if (!raw) return [];
+    const cached = tokenCache.get(raw);
+    if (cached) return cached;
+
     const tokens = new Set();
     const push = (value) => {
       const token = String(value || '')
@@ -14,21 +43,19 @@
       if (token) tokens.add(token);
     };
 
-    String(text || '')
-      .split(/[^A-Za-z0-9]+/)
-      .filter(Boolean)
-      .forEach((part) => {
-        push(part);
-        part
-          .replace(/([a-z])([A-Z])/g, '$1 $2')
-          .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-          .replace(/([a-zA-Z])([0-9])/g, '$1 $2')
-          .replace(/([0-9])([a-zA-Z])/g, '$1 $2')
-          .split(/\s+/)
-          .forEach(push);
-      });
+    raw.split(/[^A-Za-z0-9]+/).forEach((part) => {
+      if (!part) return;
+      push(part);
+      part
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+        .replace(/([a-zA-Z])([0-9])/g, '$1 $2')
+        .replace(/([0-9])([a-zA-Z])/g, '$1 $2')
+        .split(/\s+/)
+        .forEach(push);
+    });
 
-    return Array.from(tokens);
+    return cacheSet(tokenCache, raw, Array.from(tokens), TOKEN_CACHE_MAX);
   }
 
   function soundex(word) {
@@ -36,6 +63,8 @@
       .toLowerCase()
       .replace(/[^a-z]/g, '');
     if (!cleaned) return '';
+    const cached = soundexCache.get(cleaned);
+    if (cached !== undefined) return cached;
 
     const codes = {
       b: '1',
@@ -67,16 +96,18 @@
       previous = code;
     }
 
-    return result.padEnd(4, '0');
+    return cacheSet(soundexCache, cleaned, result.padEnd(4, '0'), TOKEN_CACHE_MAX);
   }
 
   function phoneticKey(word) {
-    let value = String(word || '')
+    const source = String(word || '')
       .toLowerCase()
       .replace(/[^a-z]/g, '');
-    if (!value) return '';
+    if (!source) return '';
+    const cached = phoneticCache.get(source);
+    if (cached !== undefined) return cached;
 
-    value = value
+    let value = source
       .replace(/^kn/, 'n')
       .replace(/^gn/, 'n')
       .replace(/^pn/, 'n')
@@ -89,7 +120,7 @@
       .replace(/x/g, 'ks')
       .replace(/[aeiouy]/g, '');
 
-    return value.replace(/(.)\1+/g, '$1');
+    return cacheSet(phoneticCache, source, value.replace(/(.)\1+/g, '$1'), TOKEN_CACHE_MAX);
   }
 
   function levenshtein(a, b, maxDistance = Infinity) {
@@ -98,23 +129,30 @@
     if (!b.length) return a.length > maxDistance ? maxDistance + 1 : a.length;
     if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
 
-    const prev = new Array(b.length + 1);
-    const curr = new Array(b.length + 1);
-    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    const cols = b.length + 1;
+    if (levPrev.length < cols) {
+      levPrev = new Array(cols);
+      levCurr = new Array(cols);
+    }
+    for (let j = 0; j < cols; j++) levPrev[j] = j;
 
     for (let i = 1; i <= a.length; i++) {
-      curr[0] = i;
-      let rowMin = curr[0];
+      levCurr[0] = i;
+      let rowMin = levCurr[0];
+      const aCh = a[i - 1];
       for (let j = 1; j <= b.length; j++) {
-        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-        curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
-        if (curr[j] < rowMin) rowMin = curr[j];
+        const cost = aCh === b[j - 1] ? 0 : 1;
+        const cell = Math.min(levPrev[j] + 1, levCurr[j - 1] + 1, levPrev[j - 1] + cost);
+        levCurr[j] = cell;
+        if (cell < rowMin) rowMin = cell;
       }
       if (rowMin > maxDistance) return maxDistance + 1;
-      for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+      const swap = levPrev;
+      levPrev = levCurr;
+      levCurr = swap;
     }
 
-    return prev[b.length];
+    return levPrev[b.length];
   }
 
   function allowedEditDistance(wordLength) {
@@ -134,23 +172,30 @@
     return queryKey === tokenKey || tokenKey.startsWith(queryKey) || queryKey.startsWith(tokenKey);
   }
 
-  function tokensAreClose(query, token) {
-    const maxDistance = allowedEditDistance(Math.min(query.length, token.length));
-    if (Math.abs(query.length - token.length) > maxDistance + 1) return false;
-    return levenshtein(query, token, maxDistance) <= maxDistance;
-  }
-
   function clampScore(value) {
     return Math.max(0, Math.min(100, Math.round(value)));
   }
 
-  function editSimilarity(query, token) {
+  function editSimilarityFromDistance(query, token, distance) {
     const maxLen = Math.max(query.length, token.length, 1);
-    const distance = levenshtein(query, token, 3);
     return clampScore(100 * (1 - distance / maxLen));
   }
 
-  function scoreQueryAgainstToken(query, token) {
+  /**
+   * Cheap gate before Levenshtein / phonetic work.
+   * Keeps prefix-of-longer-token matches (typo at the start of a long filename).
+   */
+  function tokenMightMatch(query, token, fuzzy) {
+    if (!query || !token) return false;
+    if (token === query || token.includes(query)) return true;
+    if (query.includes(token) && token.length >= 3) return true;
+    if (!fuzzy || query.length < 3) return false;
+    const maxDistance = allowedEditDistance(Math.min(query.length, token.length));
+    if (Math.abs(query.length - token.length) <= maxDistance + 1) return true;
+    return token.length > query.length && token[0] === query[0];
+  }
+
+  function scoreQueryAgainstTokenUncached(query, token) {
     if (!query || !token) return EMPTY_SCORE;
     if (token === query) return { matched: true, score: 100, kind: 'exact', token };
 
@@ -174,23 +219,52 @@
 
     if (query.length < 3) return EMPTY_SCORE;
 
-    const close = tokensAreClose(query, token);
+    const maxDistance = allowedEditDistance(Math.min(query.length, token.length));
+    let distance = -1;
+    let close = false;
+    if (Math.abs(query.length - token.length) <= maxDistance + 1) {
+      distance = levenshtein(query, token, maxDistance);
+      close = distance <= maxDistance;
+    }
     const soundAlike = tokensSoundAlike(query, token);
     if (close || soundAlike) {
-      const similarity = editSimilarity(query, token);
+      if (!close) distance = levenshtein(query, token, 3);
+      const similarity = editSimilarityFromDistance(query, token, distance);
       if (soundAlike) {
         return { matched: true, score: Math.max(similarity, close ? 82 : 74), kind: 'phonetic', token };
       }
       return { matched: true, score: Math.max(similarity, 62), kind: 'fuzzy', token };
     }
 
-    const prefixLengths = [query.length - 1, query.length, query.length + 1];
+    if (token.length > query.length) {
+      const prefix = token.slice(0, query.length);
+      if (prefix[0] === query[0]) {
+        const prefixScore = scoreQueryAgainstToken(query, prefix);
+        if (prefixScore.matched) return { ...prefixScore, token };
+      }
+    }
+    return EMPTY_SCORE;
+  }
+
+  function scoreQueryAgainstToken(query, token) {
+    const key = `${query}\0${token}`;
+    const cached = pairCache.get(key);
+    if (cached) return cached;
+    return cacheSet(pairCache, key, scoreQueryAgainstTokenUncached(query, token), PAIR_CACHE_MAX);
+  }
+
+  function bestScoreForWord(tokens, word, fuzzy) {
+    const needle = String(word || '').toLowerCase();
+    if (!needle) return { matched: true, score: 100, kind: 'exact' };
     let best = EMPTY_SCORE;
-    for (const length of prefixLengths) {
-      if (length < 3 || length >= token.length) continue;
-      const prefix = token.slice(0, length);
-      const prefixScore = scoreQueryAgainstToken(query, prefix);
-      if (prefixScore.score > best.score) best = { ...prefixScore, token };
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (!tokenMightMatch(needle, token, fuzzy)) continue;
+      const next = scoreQueryAgainstToken(needle, token);
+      if (next.score > best.score) {
+        best = next;
+        if (best.score >= 100) break;
+      }
     }
     return best;
   }
@@ -201,20 +275,14 @@
     if (!needle) return { matched: true, score: 100, kind: 'exact' };
     if (!hay) return EMPTY_SCORE;
 
-    const tokens = tokenizeSearchText(text);
     if (hay.includes(needle)) {
+      const tokens = tokenizeSearchText(text);
       if (tokens.includes(needle)) return { matched: true, score: 100, kind: 'exact', token: needle };
       return { matched: true, score: 92, kind: 'contains', token: needle };
     }
 
     if (!fuzzy) return EMPTY_SCORE;
-
-    let best = EMPTY_SCORE;
-    for (const token of tokens) {
-      const next = scoreQueryAgainstToken(needle, token);
-      if (next.score > best.score) best = next;
-    }
-    return best;
+    return bestScoreForWord(tokenizeSearchText(text), needle, true);
   }
 
   function excerptAroundMatch(text, query, radius = 28) {
@@ -244,6 +312,74 @@
     };
   }
 
+  function reduceAndScores(wordScores) {
+    const strongest = wordScores.reduce(
+      (current, item) => (item.score > current.score ? item : current),
+      wordScores[0]
+    );
+    const average = wordScores.reduce((sum, item) => sum + item.score, 0) / wordScores.length;
+    return {
+      ...strongest,
+      matched: true,
+      score: clampScore(average),
+    };
+  }
+
+  function scoreTokensAgainstWords(tokens, words, mode, fuzzy = false) {
+    if (!words.length) return { matched: true, score: 100, kind: 'exact' };
+    const list = Array.isArray(tokens) ? tokens : [];
+    if (!list.length) return EMPTY_SCORE;
+
+    if (mode === 'and') {
+      const wordScores = new Array(words.length);
+      const order = words
+        .map((_, index) => index)
+        .sort((a, b) => String(words[a] || '').length - String(words[b] || '').length);
+      for (let n = 0; n < order.length; n++) {
+        const index = order[n];
+        const next = bestScoreForWord(list, words[index], fuzzy);
+        if (!next.matched) return EMPTY_SCORE;
+        wordScores[index] = next;
+      }
+      return reduceAndScores(wordScores);
+    }
+
+    let best = EMPTY_SCORE;
+    for (let i = 0; i < words.length; i++) {
+      const next = bestScoreForWord(list, words[i], fuzzy);
+      if (next.score > best.score) {
+        best = next;
+        if (best.score >= 100) break;
+      }
+    }
+    return best.matched ? best : EMPTY_SCORE;
+  }
+
+  function scoreHayAgainstWords(hay, words, mode, fuzzy = false) {
+    const text = String(hay || '').toLowerCase();
+    if (!words.length) return { matched: true, score: 100, kind: 'exact' };
+    if (!text) return EMPTY_SCORE;
+
+    if (mode === 'and') {
+      for (let i = 0; i < words.length; i++) {
+        const word = String(words[i] || '').toLowerCase();
+        if (word.length < 3 && !text.includes(word)) return EMPTY_SCORE;
+        if (!fuzzy && !text.includes(word)) return EMPTY_SCORE;
+      }
+      if (words.every((word) => text.includes(String(word || '').toLowerCase()))) {
+        return { matched: true, score: 92, kind: 'contains' };
+      }
+      if (!fuzzy) return EMPTY_SCORE;
+      return scoreTokensAgainstWords(splitSearchTokens(text), words, mode, true);
+    }
+
+    if (words.some((word) => text.includes(String(word || '').toLowerCase()))) {
+      return { matched: true, score: 88, kind: 'contains' };
+    }
+    if (!fuzzy) return EMPTY_SCORE;
+    return scoreTokensAgainstWords(splitSearchTokens(text), words, mode, true);
+  }
+
   function scoreLabeledFieldsAgainstWords(fields, words, mode, fuzzy = false) {
     if (!words.length) return { matched: true, score: 100, kind: 'exact' };
 
@@ -253,40 +389,47 @@
     const matchedFieldKeys = new Set();
     const bestForWord = (word) => {
       let best = EMPTY_SCORE;
-      usableFields.forEach((field) => {
+      for (let i = 0; i < usableFields.length; i++) {
+        const field = usableFields[i];
         const next = attachFieldMeta(scoreTextAgainstQuery(field.text || '', word, fuzzy), field, word);
         if (next.matched) {
           matchedFieldKeys.add(`${field.sourceLabel}|${field.sourceName || ''}`);
+          if (next.score > best.score) best = next;
+          if (best.score >= 100) break;
+        } else if (next.score > best.score) {
+          best = next;
         }
-        if (next.score > best.score) best = next;
-      });
+      }
       return best;
     };
 
-    const wordScores = words.map(bestForWord);
-    const extraCount = Math.max(0, matchedFieldKeys.size - 1);
-
     if (mode === 'and') {
-      if (wordScores.some((item) => !item.matched)) return EMPTY_SCORE;
-      const strongest = wordScores.reduce(
-        (current, item) => (item.score > current.score ? item : current),
-        wordScores[0]
-      );
-      const average = wordScores.reduce((sum, item) => sum + item.score, 0) / wordScores.length;
-      return {
-        ...strongest,
-        matched: true,
-        score: clampScore(average),
-        extraCount,
-      };
+      const wordScores = new Array(words.length);
+      const order = words
+        .map((_, index) => index)
+        .sort((a, b) => String(words[a] || '').length - String(words[b] || '').length);
+      for (let n = 0; n < order.length; n++) {
+        const index = order[n];
+        const next = bestForWord(words[index]);
+        if (!next.matched) return EMPTY_SCORE;
+        wordScores[index] = next;
+      }
+      return { ...reduceAndScores(wordScores), extraCount: Math.max(0, matchedFieldKeys.size - 1) };
     }
 
-    const best = wordScores.reduce(
-      (current, item) => (item.score > current.score ? item : current),
-      EMPTY_SCORE
-    );
+    let best = EMPTY_SCORE;
+    for (let i = 0; i < words.length; i++) {
+      const next = bestForWord(words[i]);
+      if (next.score > best.score) best = next;
+      if (best.score >= 100) break;
+    }
     if (!best.matched) return EMPTY_SCORE;
-    return { ...best, extraCount };
+    return { ...best, extraCount: Math.max(0, matchedFieldKeys.size - 1) };
+  }
+
+  function queryNeedsFuzzy(words, fuzzy) {
+    if (!fuzzy) return false;
+    return (words || []).some((word) => String(word || '').length >= 3);
   }
 
   function getSearchWords(searchTerm) {
@@ -532,6 +675,9 @@
     levenshtein,
     scoreTextAgainstQuery,
     scoreLabeledFieldsAgainstWords,
+    scoreTokensAgainstWords,
+    scoreHayAgainstWords,
+    queryNeedsFuzzy,
     getSearchWords,
     parseCatalogQuery,
     combineSearchScores,
