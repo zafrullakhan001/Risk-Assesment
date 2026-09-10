@@ -22,6 +22,7 @@ $navOnHelp = str_ends_with($navScript, '/help.php');
         <a
             class="button ghost home-link topbar-menu-item"
             data-menu-tone="lilac"
+            data-nav-dest="admin"
             href="<?= e($navPrefix) ?>admin/index.php"
             title="Users, branding, LDAP, and GitHub updates"
         ><span class="topbar-menu-emoji" aria-hidden="true">⚙️</span>Admin</a>

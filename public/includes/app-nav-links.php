@@ -24,6 +24,7 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     class="button ghost home-link"
     data-menu-group="risk"
     data-menu-tone="sky"
+    data-nav-dest="find"
     href="<?= e($appNavPrefix) ?>index.php#find-projects"
     title="Search and open saved risk assessments by name, vendor, owner, and more"
 ><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
@@ -31,6 +32,7 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     class="button ghost home-link"
     data-menu-group="risk"
     data-menu-tone="mint"
+    data-nav-dest="upload"
     href="<?= e($appNavPrefix) ?>index.php#upload"
     title="Upload an Architecture Risk Assessment workbook (.xlsx) to generate a dashboard"
 ><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
@@ -38,6 +40,7 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     class="button ghost home-link"
     data-menu-group="risk"
     data-menu-tone="lavender"
+    data-nav-dest="templates"
     href="<?= e($appNavPrefix) ?>templates.php"
     title="Browse and manage assessment workbook templates"
 ><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
@@ -47,6 +50,7 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     class="button ghost home-link"
     data-menu-group="sharepoint"
     data-menu-tone="peach"
+    data-nav-dest="sharepoint"
     href="<?= e($appNavPrefix) ?>sharepoint.php"
     title="Browse SharePoint folders, sync projects, and search architecture work"
 ><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>

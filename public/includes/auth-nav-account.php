@@ -18,6 +18,7 @@ $navPrefix = $navAuth->publicPrefix();
                 <a
                     class="topbar-menu-account-card"
                     data-menu-tone="lilac"
+                    data-nav-dest="admin"
                     href="<?= e($navPrefix) ?>admin/index.php"
                     title="Open Admin to manage users, branding, authentication, email, SQLite, and app updates"
                 >

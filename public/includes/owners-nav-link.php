@@ -21,6 +21,7 @@ $ownersNavUrl = $ownersNavUrl ?? 'sharepoint.php?view=owners';
     class="button ghost home-link<?= $ownerSolo ? ' is-active' : '' ?>"
     data-menu-tone="sky"
     data-menu-group="sharepoint"
+    data-nav-dest="owners"
     href="<?= e($ownersNavUrl) ?>"
     title="View SharePoint project owners and ownership cards"
     <?= $ownerSolo ? ' aria-current="page"' : '' ?>

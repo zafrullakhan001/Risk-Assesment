@@ -5510,6 +5510,7 @@
           : localStorage.getItem(STORAGE.wordMode) === 'or'
             ? 'or'
             : 'and',
+      page: Math.max(1, parseInt(params.get('page') || '1', 10) || 1),
     };
   };
 
@@ -5559,7 +5560,7 @@
     allTags: [],
     canEditTags: catalogCanEditTags(),
     canArchive: catalogCanArchive(),
-    page: 1,
+    page: urlSearchState.page || 1,
     perPage: Number(searchRoot.dataset.perPage || perPageSelect?.value || 25) || 25,
     ready: false,
     loadingIndex: false,
@@ -7310,6 +7311,7 @@
       btn.addEventListener('click', () => {
         state.page = Number(btn.getAttribute('data-page')) || 1;
         render();
+        scheduleUrlSync();
         document.getElementById('sharepoint-table-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
@@ -8017,7 +8019,7 @@
     if (state.showArchived) params.set('archived', '1');
     if (state.wordMode === 'or') params.set('mode', 'or');
     if (state.perPage !== 25) params.set('per', String(state.perPage));
-    if (state.page > 1 && !state.query.trim() && !advancedFiltersActive()) params.set('page', String(state.page));
+    if (state.page > 1) params.set('page', String(state.page));
     const qs = params.toString();
     const shareActionReturn = /[?&](catalog_shared|owners_shared|emailed)=/.test(window.location.search);
     let hash = '';
@@ -8045,6 +8047,7 @@
     }
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`;
     window.history.replaceState(null, '', next);
+    window.RiskRegisterNavMemory?.rememberCurrent?.();
   };
 
   const applySearch = ({ resetPage = true, syncInputs = false } = {}) => {
@@ -8169,7 +8172,7 @@
         state.ready = true;
         populatePersonFilter();
         ensurePeerIndexes();
-        applySearch({ resetPage: true, syncInputs: true });
+        applySearch({ resetPage: false, syncInputs: true });
       })
       .catch((error) => {
         state.loadingIndex = false;
@@ -8191,6 +8194,7 @@
     }
     localStorage.setItem(STORAGE.scopes, JSON.stringify(state.scopeKeys));
     syncActiveCatalogChrome();
+    state.page = 1;
     loadIndex();
   };
 
@@ -8624,6 +8628,7 @@
     if (state.perPage && Number(state.perPage) !== 25) {
       url.searchParams.set('per', String(state.perPage));
     }
+    if (state.page > 1) url.searchParams.set('page', String(state.page));
     return url.toString();
   };
 

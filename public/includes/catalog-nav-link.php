@@ -21,6 +21,7 @@ $catalogNavUrl = $catalogNavUrl ?? 'sharepoint.php?view=catalog&source=default&m
     class="button ghost home-link<?= $catalogSolo ? ' is-active' : '' ?>"
     data-menu-tone="aqua"
     data-menu-group="sharepoint"
+    data-nav-dest="catalogs"
     href="<?= e($catalogNavUrl) ?>"
     title="Search architecture project catalogs across SharePoint sources"
     <?= $catalogSolo ? ' aria-current="page"' : '' ?>

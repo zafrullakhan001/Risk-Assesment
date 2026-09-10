@@ -21,6 +21,7 @@ $heatmapNavUrl = $heatmapNavUrl ?? 'sharepoint.php?view=heatmap';
     class="button ghost home-link<?= $heatmapSolo ? ' is-active' : '' ?>"
     data-menu-tone="rose"
     data-menu-group="storage"
+    data-nav-dest="storage"
     href="<?= e($heatmapNavUrl) ?>"
     title="View catalog storage heatmap, advanced analysis, and drill down to large files"
     <?= $heatmapSolo ? ' aria-current="page"' : '' ?>
