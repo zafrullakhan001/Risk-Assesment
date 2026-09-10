@@ -16989,6 +16989,7 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
 }
 .sp-stats-exact { color: #059669; font-weight: 600; }
 .sp-stats-similar { color: #d97706; font-weight: 600; }
+.sp-stats-tags { color: #a21caf; font-weight: 700; }
 .sp-stats-avg { color: #0f766e; font-weight: 700; }
 .sp-stats-fuzzy {
     color: #7c3aed;
@@ -19155,7 +19156,7 @@ html.is-compact .help-reader-toolbar {
 }
 .sp-sd-kpis {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 0.55rem;
     margin-bottom: 0.9rem;
 }

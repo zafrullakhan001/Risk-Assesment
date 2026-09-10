@@ -588,6 +588,11 @@
     const cards = [
       { label: 'Projects', value: rows.length, hint: 'matched folders' },
       { label: 'Nested matches', value: snapshot.nestedMatchTotal || 0, hint: 'files & folders' },
+      {
+        label: 'Tag matches',
+        value: snapshot.tagMatchCount || 0,
+        hint: (snapshot.tagLabels || []).length ? snapshot.tagLabels.join(', ') : 'search tags',
+      },
       { label: 'Catalogs hit', value: snapshot.catalogCount || 0, hint: 'across selection' },
       { label: 'Exact', value: snapshot.exactCount || 0, hint: 'exact name hits' },
       { label: 'Similar', value: snapshot.similarCount || 0, hint: 'fuzzy / contains' },
@@ -1138,6 +1143,7 @@
       <div class="kpi">
         <div><span>Projects</span><strong>${snapshot.rows?.length || 0}</strong></div>
         <div><span>Nested</span><strong>${snapshot.nestedMatchTotal || 0}</strong></div>
+        <div><span>Tags</span><strong>${snapshot.tagMatchCount || 0}</strong></div>
         <div><span>Avg</span><strong>${snapshot.avg || 0}%</strong></div>
         <div><span>Best</span><strong>${snapshot.best || 0}%</strong></div>
         <div><span>Total time</span><strong>${escapeHtml(snapshot.totalTimeLabel || snapshot.queryTimeLabel || '—')}</strong></div>
@@ -1295,7 +1301,7 @@
     if (subEl) {
       subEl.innerHTML = `${rows.length} project${rows.length === 1 ? '' : 's'} · ${
         snapshot.nestedMatchTotal || 0
-      } nested matches · ${escapeHtml(
+      } nested matches · ${snapshot.tagMatchCount || 0} tag match${snapshot.tagMatchCount === 1 ? '' : 'es'} · ${escapeHtml(
         snapshot.deep || snapshot.matchScope === 'files' ? 'Deep files on' : 'Folder names only'
       )}${
         snapshot.queryTimeLabel || snapshot.totalTimeLabel

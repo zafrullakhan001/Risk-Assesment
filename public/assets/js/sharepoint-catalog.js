@@ -1154,6 +1154,62 @@
     return hay.split('\n').some((line) => line === want || line.includes(want));
   };
 
+  const collectSearchTagNeedles = (parsed) => {
+    const needles = [];
+    const push = (value) => {
+      const want = String(value || '')
+        .trim()
+        .toLowerCase();
+      if (!want || needles.includes(want)) return;
+      needles.push(want);
+    };
+    (parsed?.tags || []).forEach(push);
+    if (state.tagFilter) push(state.tagFilter);
+    (parsed?.words || []).forEach(push);
+    (parsed?.phrases || []).forEach(push);
+    return needles;
+  };
+
+  const matchedProjectTagLabels = (project, needles) => {
+    if (!needles.length) return [];
+    const seen = new Set();
+    const labels = [];
+    const consider = (label) => {
+      const text = String(label || '').trim();
+      const lower = text.toLowerCase();
+      if (!text || seen.has(lower)) return;
+      if (!needles.some((needle) => lower === needle || lower.includes(needle))) return;
+      seen.add(lower);
+      labels.push(text);
+    };
+    const fields = Array.isArray(project?._tagFields) ? project._tagFields : [];
+    if (fields.length) {
+      fields.forEach((field) => consider(field.text));
+      return labels;
+    }
+    String(project?._hayTags || '')
+      .split('\n')
+      .forEach(consider);
+    return labels;
+  };
+
+  const attachTagMatchMeta = (project, match, parsed, refineParsed = null) => {
+    if (!match?.matched) return match;
+    const needles = collectSearchTagNeedles(parsed);
+    if (refineParsed) {
+      collectSearchTagNeedles(refineParsed).forEach((needle) => {
+        if (!needles.includes(needle)) needles.push(needle);
+      });
+    }
+    const labels = matchedProjectTagLabels(project, needles);
+    match.tagMatched = labels.length > 0;
+    match.matchedTags = labels;
+    if (match.tagMatched && match.source === 'Tag' && !match.sourceName && labels[0]) {
+      match.sourceName = labels[0];
+    }
+    return match;
+  };
+
   const setDialogRefreshBusy = (btn, busy) => {
     if (!btn) return;
     btn.disabled = !!busy;
@@ -5801,6 +5857,7 @@
         score: 90,
         kind: 'contains',
         source: 'Tag',
+        sourceName: snippet,
         snippet,
       };
     }
@@ -6100,7 +6157,15 @@
       return `<span class="sp-match-placeholder">—</span>${freshnessBadge}`;
     }
     const label = Fuzzy.matchKindLabel(match.kind);
-    const reason = Fuzzy.formatMatchReason(match);
+    let reason = Fuzzy.formatMatchReason(match);
+    if (match.tagMatched) {
+      const tagNames = (match.matchedTags || []).slice(0, 3);
+      const tagReason = tagNames.length
+        ? `Tag${tagNames.length === 1 ? '' : 's'} “${tagNames.join('”, “')}”`
+        : 'Tag';
+      if (!reason) reason = tagReason;
+      else if (match.source !== 'Tag' && !/\bTag/i.test(reason)) reason = `${reason} · ${tagReason}`;
+    }
     const title = [
       `${label} match${match.token ? ` for “${match.token}”` : ''}`,
       `${match.score}% probability`,
@@ -6811,7 +6876,7 @@
         match = Fuzzy.combineSearchScores(match, refineMatch);
       }
     }
-    return match;
+    return attachTagMatchMeta(project, match, parsed, refineParsed);
   };
 
   const projectPassesQueryFilters = (project, parsed) => {
@@ -7093,6 +7158,26 @@
     const barTone = avg >= 90 ? 'high' : avg >= 75 ? 'mid' : 'low';
     const nestedMatchTotal = rows.reduce((sum, row) => sum + Number(row.deepHits?.total || 0), 0);
     const catalogCount = new Set(rows.map((row) => row.project.source_key).filter(Boolean)).size;
+    const tagLabelCounts = new Map();
+    let tagMatchCount = 0;
+    rows.forEach((row) => {
+      const labels = Array.isArray(row.match?.matchedTags)
+        ? row.match.matchedTags
+        : matchedProjectTagLabels(row.project, collectSearchTagNeedles(parsed));
+      if (!labels.length) return;
+      tagMatchCount += 1;
+      labels.forEach((label) => tagLabelCounts.set(label, (tagLabelCounts.get(label) || 0) + 1));
+    });
+    const tagLabels = [...tagLabelCounts.keys()];
+    const tagTitle = tagLabels
+      .map((label) => `${label}${tagLabelCounts.get(label) > 1 ? ` ×${tagLabelCounts.get(label)}` : ''}`)
+      .join(', ');
+    const tagSummary =
+      tagLabels.length === 0
+        ? ''
+        : tagLabels.length <= 3
+          ? ` · ${escapeHtml(tagLabels.join(', '))}`
+          : ` · ${escapeHtml(tagLabels.slice(0, 2).join(', '))} +${tagLabels.length - 2}`;
 
     liveSearchSnapshot = {
       rows,
@@ -7112,6 +7197,8 @@
       best,
       nestedMatchTotal,
       catalogCount,
+      tagMatchCount,
+      tagLabels,
       queryMs: lastQueryDuration?.ms ?? null,
       queryTimeLabel: lastQueryDuration?.secondsLabel || '',
       queryTimeMsLabel: lastQueryDuration?.msLabel || '',
@@ -7130,6 +7217,7 @@
         </button>
         <span>${rows.length} project${rows.length === 1 ? '' : 's'}</span>
         ${nestedMatchTotal ? `<span>${nestedMatchTotal} nested match${nestedMatchTotal === 1 ? '' : 'es'}</span>` : ''}
+        ${tagMatchCount ? `<span class="sp-stats-tags" title="${escapeHtml(tagTitle || 'Search tags matched')}">${tagMatchCount} tag match${tagMatchCount === 1 ? '' : 'es'}${tagSummary}</span>` : ''}
         ${state.scopeKeys.length > 1 ? `<span>${catalogCount} catalog${catalogCount === 1 ? '' : 's'} hit</span>` : ''}
         <span class="sp-stats-exact">${exactCount} exact</span>
         <span class="sp-stats-similar">${similarCount} similar</span>
