@@ -48,18 +48,25 @@
   };
 
   const dialog = document.getElementById('sharepoint-list-animation-dialog');
-  const openButton = document.getElementById('sharepoint-list-animation-open');
+  const openButtons = [
+    document.getElementById('sharepoint-list-animation-open'),
+    document.getElementById('sharepoint-heatmap-animation-open'),
+  ].filter(Boolean);
   const optionsRoot = document.getElementById('sharepoint-list-animation-options');
   const searchInput = document.getElementById('sharepoint-list-animation-search');
   const previewCard = document.getElementById('sharepoint-list-animation-preview-card');
   const previewName = document.getElementById('sharepoint-list-animation-preview-name');
-  const currentName = document.getElementById('sharepoint-list-animation-current');
+  const currentNames = [
+    document.getElementById('sharepoint-list-animation-current'),
+    document.getElementById('sharepoint-heatmap-animation-current'),
+  ].filter(Boolean);
   const footerName = document.getElementById('sharepoint-list-animation-footer-name');
   const emptyState = document.getElementById('sharepoint-list-animation-empty');
   const replayButton = document.getElementById('sharepoint-list-animation-replay');
   const speedInput = document.getElementById('sharepoint-list-animation-speed');
   const speedValue = document.getElementById('sharepoint-list-animation-speed-value');
   const resultCard = document.getElementById('sharepoint-table-card');
+  const heatmapCard = document.getElementById('sharepoint-size-heatmap');
   const dialogRows = [
     document.getElementById('sharepoint-project-dialog-rows'),
     document.getElementById('sharepoint-compare-left-rows'),
@@ -162,12 +169,18 @@
       resultCard.dataset.listAnimation = option.id;
       resultCard.style.setProperty('--sp-user-animation-duration', `${duration}ms`);
     }
+    if (heatmapCard) {
+      heatmapCard.dataset.listAnimation = option.id;
+      heatmapCard.style.setProperty('--sp-user-animation-duration', `${duration}ms`);
+    }
     workspaceDialogs().forEach((workspaceDialog) => {
       workspaceDialog.dataset.listAnimation = option.id;
       workspaceDialog.style.setProperty('--sp-user-animation-duration', `${duration}ms`);
     });
     previewCard?.style.setProperty('--sp-user-animation-duration', `${duration}ms`);
-    if (currentName) currentName.textContent = option.name;
+    currentNames.forEach((element) => {
+      element.textContent = option.name;
+    });
     if (previewName) previewName.textContent = option.name;
     if (footerName) footerName.textContent = option.name;
     if (speedInput && speedInput.value !== String(speed)) speedInput.value = String(speed);
@@ -187,6 +200,9 @@
     if (replayList && typeof window.RiskRegisterSharePoint?.replayListAnimation === 'function') {
       window.RiskRegisterSharePoint.replayListAnimation();
     }
+    if (replayList && typeof window.RiskRegisterSharePoint?.replayHeatmapAnimation === 'function') {
+      window.RiskRegisterSharePoint.replayHeatmapAnimation();
+    }
     if (replayList) {
       dialogRows.forEach(replayDialogRows);
       replaySearchDashboardAnimation();
@@ -200,8 +216,9 @@
 
   applySelection();
 
-  const pickerReady = Boolean(dialog && openButton && optionsRoot);
+  const pickerReady = Boolean(dialog && openButtons.length && optionsRoot);
   if (!pickerReady) return;
+  let activeOpenButton = openButtons[0];
 
   const replayPreview = () => {
     if (!previewCard) return;
@@ -265,10 +282,15 @@
   const closeDialog = () => {
     if (typeof dialog.close === 'function' && dialog.open) dialog.close();
     else dialog.removeAttribute('open');
-    openButton.focus();
+    activeOpenButton?.focus();
   };
 
-  openButton.addEventListener('click', openDialog);
+  openButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      activeOpenButton = button;
+      openDialog();
+    });
+  });
   dialog.querySelectorAll('[data-animation-close]').forEach((button) => {
     button.addEventListener('click', closeDialog);
   });
@@ -288,12 +310,14 @@
   });
   speedInput?.addEventListener('change', () => {
     window.RiskRegisterSharePoint?.replayListAnimation?.();
+    window.RiskRegisterSharePoint?.replayHeatmapAnimation?.();
     dialogRows.forEach(replayDialogRows);
     replaySearchDashboardAnimation();
   });
   replayButton?.addEventListener('click', () => {
     replayPreview();
     window.RiskRegisterSharePoint?.replayListAnimation?.();
+    window.RiskRegisterSharePoint?.replayHeatmapAnimation?.();
     dialogRows.forEach(replayDialogRows);
     replaySearchDashboardAnimation();
   });

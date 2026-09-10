@@ -16,6 +16,7 @@ $canNavRisk = $appNavModules->canAccess(is_array($appNavUser) ? $appNavUser : nu
 $canNavSharePoint = $appNavModules->canAccess(is_array($appNavUser) ? $appNavUser : null, AppModules::SHAREPOINT);
 $catalogNavUrl = $appNavPrefix . 'sharepoint.php?view=catalog&source=default&mode=or&per=100';
 $ownersNavUrl = $appNavPrefix . 'sharepoint.php?view=owners';
+$heatmapNavUrl = $appNavPrefix . 'sharepoint.php?view=heatmap';
 $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
 ?>
 <?php if ($canNavRisk): ?>
@@ -51,5 +52,6 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
 ><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
 <?php require __DIR__ . '/catalog-nav-link.php'; ?>
 <?php require __DIR__ . '/owners-nav-link.php'; ?>
+<?php require __DIR__ . '/heatmap-nav-link.php'; ?>
 <?php endif; ?>
 <?php require __DIR__ . '/ticket-dossier-nav-link.php'; ?>

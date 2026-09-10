@@ -19867,3 +19867,228 @@ html.is-compact .help-reader-toolbar {
     .sp-sd-tool-actions { margin-left: 0; width: 100%; }
     .sp-sd-view-toggle { width: 100%; justify-content: center; }
 }
+
+/* SharePoint storage heatmap */
+.sp-size-heatmap-shell > summary {
+    cursor: pointer;
+    list-style: none;
+}
+.sp-size-heatmap-shell > summary::-webkit-details-marker { display: none; }
+.sp-size-heatmap-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.sp-size-heatmap-summary-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.sp-size-heatmap-panel {
+    margin-top: 18px;
+    display: grid;
+    gap: 16px;
+}
+.sp-size-heatmap-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.sp-size-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.sp-size-crumb {
+    border: 0;
+    background: transparent;
+    color: var(--accent, #0f766e);
+    font: inherit;
+    font-weight: 650;
+    padding: 4px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+}
+.sp-size-crumb:hover { background: rgba(15, 118, 110, 0.08); }
+.sp-size-crumb.is-active {
+    color: var(--text, #0f172a);
+    background: rgba(15, 23, 42, 0.06);
+    cursor: default;
+}
+.sp-size-crumb-sep {
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+.sp-size-toolbar-actions {
+    display: flex;
+    gap: 8px;
+}
+.sp-size-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+.sp-size-kpi {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+}
+.sp-size-kpi-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+.sp-size-kpi-value {
+    font-size: 1.05rem;
+    color: var(--text, #0f172a);
+}
+.sp-size-treemap-wrap {
+    border-radius: 16px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(15, 23, 42, 0.02);
+    padding: 8px;
+    overflow: hidden;
+    max-width: 100%;
+}
+.sp-size-treemap {
+    position: relative;
+    width: 100%;
+    height: 340px;
+    min-height: 0;
+    max-height: none;
+    margin: 0 auto;
+    overflow: hidden;
+}
+.sp-size-tile {
+    position: absolute;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 2px;
+    padding: 8px;
+    overflow: hidden;
+    color: #fff;
+    text-align: left;
+    cursor: default;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+.sp-size-tile.is-drillable { cursor: pointer; }
+.sp-size-tile.is-drillable:hover {
+    filter: brightness(1.08);
+    z-index: 2;
+}
+.sp-size-tile.is-file { cursor: pointer; }
+.sp-size-tile.is-other {
+    cursor: default;
+    background: hsla(215, 24%, 52%, 0.82) !important;
+}
+.sp-size-tile-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sp-size-tile-size {
+    font-size: 0.68rem;
+    opacity: 0.92;
+}
+.sp-size-tile-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+}
+.sp-size-large-files h3 {
+    margin: 0 0 4px;
+    font-size: 1rem;
+}
+.sp-size-files-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.sp-size-files-table th,
+.sp-size-files-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    text-align: left;
+    vertical-align: top;
+}
+.sp-size-files-table th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+.sp-size-files-table th.is-sortable {
+    padding: 0;
+}
+.sp-size-sort-btn {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.sp-size-sort-btn::after {
+    content: "↕";
+    margin-left: 6px;
+    color: #94a3b8;
+}
+.sp-size-files-table th.is-sorted-asc .sp-size-sort-btn::after {
+    content: "↑";
+    color: var(--primary);
+}
+.sp-size-files-table th.is-sorted-desc .sp-size-sort-btn::after {
+    content: "↓";
+    color: var(--primary);
+}
+.sp-size-sort-btn:hover,
+.sp-size-sort-btn:focus-visible {
+    color: var(--primary);
+    background: var(--primary-soft);
+    outline: none;
+}
+.sp-size-file-name a {
+    color: var(--accent, #0f766e);
+    font-weight: 650;
+    text-decoration: none;
+}
+.sp-size-file-name a:hover { text-decoration: underline; }
+.sp-size-file-bytes {
+    white-space: nowrap;
+    font-weight: 700;
+}
+.sp-size-empty {
+    color: #64748b;
+    padding: 16px;
+    text-align: center;
+}
+.sp-size-error { color: #b91c1c; }
+.sp-size-heatmap-body[hidden] { display: none !important; }
+.sharepoint-heatmap-solo-page .sp-size-heatmap-body { display: none; }
+@media (max-width: 720px) {
+    .sp-size-heatmap-toolbar { align-items: stretch; }
+    .sp-size-toolbar-actions { width: 100%; justify-content: flex-end; }
+}

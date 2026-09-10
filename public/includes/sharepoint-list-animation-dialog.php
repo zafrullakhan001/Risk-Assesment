@@ -2,7 +2,7 @@
     <div class="sp-list-animation-shell">
         <header class="sp-list-animation-head">
             <div>
-                <span class="sp-list-animation-kicker">File-list appearance</span>
+                <span class="sp-list-animation-kicker">Results appearance</span>
                 <h2 id="sharepoint-list-animation-title">✨ Choose an animation</h2>
             </div>
             <button type="button" class="sp-list-animation-close" data-animation-close aria-label="Close animation picker">×</button>

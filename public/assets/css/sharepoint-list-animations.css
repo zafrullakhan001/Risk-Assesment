@@ -520,6 +520,71 @@
     animation-duration: var(--sp-user-animation-duration, 580ms);
 }
 
+/* Reuse the saved file-list appearance for storage heatmap tile reveals. */
+.sp-size-heatmap[data-list-animation] {
+    --sp-heatmap-animation: spListSoftLanding;
+    --sp-heatmap-easing: cubic-bezier(0.19, 1, 0.22, 1);
+}
+.sp-size-heatmap[data-list-animation="fade-in"] {
+    --sp-heatmap-animation: spListFadeIn;
+    --sp-heatmap-easing: ease-out;
+}
+.sp-size-heatmap[data-list-animation="slide-up"] {
+    --sp-heatmap-animation: spListSlideUp;
+}
+.sp-size-heatmap[data-list-animation="slide-down"] {
+    --sp-heatmap-animation: spListSlideDown;
+}
+.sp-size-heatmap[data-list-animation="slide-left"] {
+    --sp-heatmap-animation: spListSlideLeft;
+}
+.sp-size-heatmap[data-list-animation="slide-right"] {
+    --sp-heatmap-animation: spListSlideRight;
+}
+.sp-size-heatmap[data-list-animation="zoom-in"] {
+    --sp-heatmap-animation: spListZoomIn;
+}
+.sp-size-heatmap[data-list-animation="zoom-out"] {
+    --sp-heatmap-animation: spListZoomOut;
+}
+.sp-size-heatmap[data-list-animation="blur-in"] {
+    --sp-heatmap-animation: spListBlurIn;
+    --sp-heatmap-easing: ease-out;
+}
+.sp-size-heatmap[data-list-animation="reveal"] {
+    --sp-heatmap-animation: spListReveal;
+}
+.sp-size-heatmap[data-list-animation="flip-x"] {
+    --sp-heatmap-animation: spListFlipX;
+}
+.sp-size-heatmap[data-list-animation="flip-y"] {
+    --sp-heatmap-animation: spListFlipY;
+}
+.sp-size-heatmap[data-list-animation="perspective-in"] {
+    --sp-heatmap-animation: spListPerspective;
+}
+.sp-size-heatmap[data-list-animation="document-slide"] {
+    --sp-heatmap-animation: spListDocumentSlide;
+}
+.sp-size-heatmap[data-list-animation="soft-landing"] {
+    --sp-heatmap-animation: spListSoftLanding;
+}
+.sp-size-heatmap[data-list-animation="quiet-settle"] {
+    --sp-heatmap-animation: spListQuietSettle;
+}
+.sp-size-heatmap[data-list-animation]:not([data-list-animation="none"]) .sp-size-tile.is-settling {
+    transform-origin: center;
+    will-change: transform, opacity, filter, clip-path;
+    animation: var(--sp-heatmap-animation)
+        var(--sp-user-animation-duration, 580ms)
+        var(--sp-heatmap-easing)
+        both;
+    animation-delay: var(--sp-settle-delay, 0ms);
+}
+.sp-size-heatmap[data-list-animation="none"] .sp-size-tile.is-settling {
+    animation: none;
+}
+
 @keyframes spListFadeIn {
     from { opacity: 0; }
     to { opacity: 1; }

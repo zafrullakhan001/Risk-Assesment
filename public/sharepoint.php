@@ -19,6 +19,7 @@ use RiskAssessment\SharePoint\SharePointBrowserSync;
 use RiskAssessment\SharePoint\SharePointGraphClient;
 use RiskAssessment\SharePoint\SharePointListingImporter;
 use RiskAssessment\SharePoint\SharePointOwnerDashboard;
+use RiskAssessment\SharePoint\SharePointSizeDashboard;
 use RiskAssessment\SqliteMaintenance;
 
 $catalog = new SharePointCatalogRepository($pdo);
@@ -392,6 +393,90 @@ if ($actionParam === 'owner_stats') {
 
     $dashboard = new SharePointOwnerDashboard($pdo);
     $payload = $dashboard->build($selectedKeys, $sourceTitles);
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'size_stats') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=30');
+
+    $level = strtolower(trim((string) ($_GET['level'] ?? 'overview')));
+    $sizeSourceKey = trim((string) ($_GET['source'] ?? ''));
+    $projectName = trim((string) ($_GET['project'] ?? ''));
+    $folderPath = trim((string) ($_GET['path'] ?? ''));
+
+    $sizeDashboard = new SharePointSizeDashboard($pdo);
+
+    if ($level === 'folder') {
+        if ($sizeSourceKey === '' || $projectName === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'source and project are required for folder drill-down.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        if ($sourcesRepo->findByKey($sizeSourceKey) === null) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'SharePoint folder not found.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $sizeDashboard->buildDrilldown($sizeSourceKey, $projectName, $folderPath);
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($level === 'projects') {
+        if ($sizeSourceKey === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'source is required for project view.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $src = $sourcesRepo->findByKey($sizeSourceKey);
+        if ($src === null) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'SharePoint folder not found.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $sizeDashboard->buildProjects(
+            $sizeSourceKey,
+            (string) ($src['title'] ?? $sizeSourceKey)
+        );
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $wantedKeys = [];
+    if ($sourcesParam === 'all' || $sourcesParam === '') {
+        foreach ($allSources as $src) {
+            $wantedKeys[] = (string) ($src['source_key'] ?? '');
+        }
+    } else {
+        $wantedKeys = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+    }
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $selectedKeys = [];
+    $sourceTitles = [];
+    foreach ($wantedKeys as $key) {
+        if (!isset($byKey[$key])) {
+            continue;
+        }
+        $selectedKeys[] = $key;
+        $sourceTitles[$key] = (string) ($byKey[$key]['title'] ?? $key);
+    }
+    if ($selectedKeys === []) {
+        $selectedKeys = [$activeSourceKey];
+        $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
+    }
+
+    $payload = $sizeDashboard->buildOverview($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -1323,7 +1408,8 @@ $viewMode = trim((string) ($_GET['view'] ?? ''));
 $ownerSolo = $viewMode === 'owners';
 $catalogSolo = $viewMode === 'catalog';
 $foldersSolo = $viewMode === 'folders';
-$panelSolo = $ownerSolo || $catalogSolo || $foldersSolo;
+$heatmapSolo = $viewMode === 'heatmap';
+$panelSolo = $ownerSolo || $catalogSolo || $foldersSolo || $heatmapSolo;
 
 $sharepointListUrl = static function (array $overrides = []) use ($query, $perPage, $page, $activeSourceKey, $catalogSolo): string {
     $params = array_merge([
@@ -1362,7 +1448,7 @@ $shareListUrl = static function (array $overrides = []) use ($activeSourceKey, $
         'oshare_page' => $ownersShareHistPage,
     ], $overrides);
     unset($params['_hash']);
-    if (in_array($viewMode, ['owners', 'catalog', 'folders'], true) && ($params['view'] ?? '') === '') {
+    if (in_array($viewMode, ['owners', 'catalog', 'folders', 'heatmap'], true) && ($params['view'] ?? '') === '') {
         $params['view'] = $viewMode;
     }
     if ((int) ($params['cshare_page'] ?? 1) <= 1) {
@@ -1462,6 +1548,7 @@ $activeLastSynced = (string) ($activeSource['last_synced_at'] ?? '');
 $activeLastStatus = (string) ($activeSource['last_sync_status'] ?? '');
 $activeLastError = (string) ($activeSource['last_sync_error'] ?? '');
 $ownerDashUrl = 'sharepoint.php?view=owners';
+$heatmapDashUrl = 'sharepoint.php?view=heatmap';
 $catalogDashUrl = 'sharepoint.php?view=catalog&source=' . rawurlencode($activeSourceKey);
 if ($query !== '') {
     $catalogDashUrl .= '&q=' . rawurlencode($query);
@@ -1469,13 +1556,19 @@ if ($query !== '') {
 $foldersDashUrl = 'sharepoint.php?view=folders';
 $pageHeading = $ownerSolo
     ? '👤 Project owners'
-    : ($foldersSolo ? '📁 SharePoint folders' : ($catalogSolo ? '🔎 architecture project catalog(s)' : '📁 SharePoint catalog'));
+    : ($heatmapSolo
+        ? '🗺️ Storage heatmap'
+        : ($foldersSolo ? '📁 SharePoint folders' : ($catalogSolo ? '🔎 architecture project catalog(s)' : '📁 SharePoint catalog')));
 $pageTitle = $ownerSolo
     ? 'Project owners'
-    : ($foldersSolo ? 'SharePoint folders' : ($catalogSolo ? 'architecture project catalog(s)' : $activeTitle));
+    : ($heatmapSolo
+        ? 'Storage heatmap'
+        : ($foldersSolo ? 'SharePoint folders' : ($catalogSolo ? 'architecture project catalog(s)' : $activeTitle)));
 $soloPageClass = $ownerSolo
     ? ' sharepoint-owner-solo-page'
-    : ($catalogSolo ? ' sharepoint-catalog-solo-page' : ($foldersSolo ? ' sharepoint-folders-solo-page' : ''));
+    : ($heatmapSolo
+        ? ' sharepoint-heatmap-solo-page'
+        : ($catalogSolo ? ' sharepoint-catalog-solo-page' : ($foldersSolo ? ' sharepoint-folders-solo-page' : '')));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1573,6 +1666,8 @@ $soloPageClass = $ownerSolo
                 <?php
                 $ownersNavUrl = $ownerDashUrl;
                 require __DIR__ . '/includes/owners-nav-link.php';
+                $heatmapNavUrl = $heatmapDashUrl;
+                require __DIR__ . '/includes/heatmap-nav-link.php';
                 ?>
                 <?php endif; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
@@ -1626,7 +1721,7 @@ $soloPageClass = $ownerSolo
             <?php $showSectionMove = false; ?>
             <?php endif; ?>
 
-            <?php if (!$catalogSolo): ?>
+            <?php if (!$catalogSolo && !$heatmapSolo): ?>
             <section class="upload-card sharepoint-sources-panel" id="sharepoint-sources" data-sp-section="folders" data-folders-view="compact" data-solo="<?= $foldersSolo ? '1' : '0' ?>" data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>">
                 <details class="sharepoint-sources-shell" id="sharepoint-sources-shell" open>
                     <summary class="card-heading sharepoint-sources-heading sharepoint-sources-summary">
@@ -2002,7 +2097,7 @@ $soloPageClass = $ownerSolo
             <?php endif; ?>
             <?php endif; ?>
 
-            <?php if (!$catalogSolo && !$foldersSolo): ?>
+            <?php if (!$catalogSolo && !$foldersSolo && ($ownerSolo || !$heatmapSolo)): ?>
             <section
                 class="upload-card sp-owner-dash"
                 id="sharepoint-owner-dash"
@@ -2193,7 +2288,128 @@ $soloPageClass = $ownerSolo
             <?php endif; ?>
             <?php endif; ?>
 
-            <?php if (!$ownerSolo && !$foldersSolo): ?>
+            <?php if (!$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
+            <section
+                class="upload-card sp-size-heatmap"
+                id="sharepoint-size-heatmap"
+                data-sp-section="heatmap"
+                data-solo="<?= $heatmapSolo ? '1' : '0' ?>"
+                data-active-source="<?= e($activeSourceKey) ?>"
+                data-sources="<?= e(json_encode(array_map(static function (array $src) use ($catalogTones): array {
+                    $key = (string) ($src['source_key'] ?? '');
+                    return [
+                        'source_key' => $key,
+                        'title' => (string) ($src['title'] ?? $src['source_key'] ?? ''),
+                        'tone' => (string) ($catalogTones[$key] ?? 'slate'),
+                    ];
+                }, $allSources), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>"
+            >
+                <details class="sp-size-heatmap-shell" id="sharepoint-size-heatmap-shell"<?= $heatmapSolo ? ' open' : '' ?>>
+                    <summary class="sp-size-heatmap-summary">
+                        <div class="sp-size-heatmap-intro">
+                            <div class="eyebrow">Storage at a glance</div>
+                            <h2>🗺️ Catalog storage heatmap</h2>
+                            <p>
+                                Treemap of catalog folder sizes — click to drill into projects, subfolders, and the largest files.
+                            </p>
+                        </div>
+                        <div class="sp-size-heatmap-summary-tools" data-no-toggle onclick="event.stopPropagation()">
+                            <?php require __DIR__ . '/includes/sharepoint-section-move.php'; ?>
+                            <?php if ($heatmapSolo): ?>
+                                <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← Catalog</a>
+                            <?php else: ?>
+                                <a class="button ghost-light" id="sp-size-open-tab" href="<?= e($heatmapDashUrl) ?>" target="_blank" rel="noopener noreferrer" title="Open storage heatmap in a new browser tab">↗ New tab</a>
+                                <button type="button" class="button ghost" id="sp-size-open-window" title="Open storage heatmap in a separate window">🗗 Window</button>
+                                <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
+                            <?php endif; ?>
+                        </div>
+                    </summary>
+                    <div class="sp-size-heatmap-panel">
+                        <div class="sp-size-heatmap-toolbar">
+                            <nav class="sp-size-breadcrumb" id="sp-size-breadcrumb" aria-label="Drill-down path">
+                                <button type="button" class="sp-size-crumb is-active" data-level="overview">All catalogs</button>
+                            </nav>
+                            <div class="sp-size-toolbar-actions">
+                                <button type="button"
+                                        class="button ghost sp-list-animation-trigger"
+                                        id="sharepoint-heatmap-animation-open"
+                                        aria-haspopup="dialog"
+                                        aria-controls="sharepoint-list-animation-dialog"
+                                        title="Choose how heatmap tiles appear">
+                                    <span aria-hidden="true">✨</span>
+                                    <span>Animation</span>
+                                    <span class="sp-list-animation-current" id="sharepoint-heatmap-animation-current">Soft Landing</span>
+                                </button>
+                                <button type="button" class="button ghost" id="sp-size-back" hidden title="Go up one level">← Back</button>
+                                <button type="button" class="button ghost" id="sp-size-refresh" title="Reload storage data">↻ Refresh</button>
+                            </div>
+                        </div>
+                        <?php if (count($allSources) > 0): ?>
+                            <div class="sp-od-scopes sp-size-scopes" id="sp-size-scopes" role="group" aria-label="Catalogs for storage heatmap">
+                                <div class="sp-od-scopes-head">
+                                    <span class="sp-od-scopes-label">
+                                        <span aria-hidden="true">📁</span>
+                                        Catalogs
+                                        <b class="sp-od-scopes-count" id="sp-size-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
+                                    </span>
+                                    <button type="button" class="sp-od-scopes-all is-active" id="sp-size-scopes-all" disabled>All selected</button>
+                                </div>
+                                <div class="sp-od-scopes-list">
+                                    <?php foreach ($allSources as $src): ?>
+                                        <?php
+                                        $srcKey = (string) ($src['source_key'] ?? '');
+                                        $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                        ?>
+                                        <label class="sharepoint-scope-chip is-active" data-source-key="<?= e($srcKey) ?>">
+                                            <input type="checkbox" class="sp-size-scope-check" value="<?= e($srcKey) ?>" checked>
+                                            <span><?= e($srcTitle) ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        <div class="sp-size-kpis" id="sp-size-kpis" aria-live="polite"></div>
+                        <div class="sp-size-treemap-wrap" tabindex="0" role="region" aria-label="Storage treemap">
+                            <div class="sp-size-treemap" id="sp-size-treemap"></div>
+                        </div>
+                        <div class="sp-size-large-files">
+                            <div class="sp-size-large-head">
+                                <h3>Largest files</h3>
+                                <p class="panel-help" id="sp-size-large-help">Top files in the current view</p>
+                            </div>
+                            <div class="table-wrap">
+                                <table class="sp-size-files-table" id="sp-size-files-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col" class="is-sortable" data-file-sort="name" aria-sort="none">
+                                                <button type="button" class="sp-size-sort-btn" data-file-sort-button="name">File</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-file-sort="project" aria-sort="none">
+                                                <button type="button" class="sp-size-sort-btn" data-file-sort-button="project">Project</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable is-sorted-desc" data-file-sort="size" aria-sort="descending">
+                                                <button type="button" class="sp-size-sort-btn" data-file-sort-button="size">Size</button>
+                                            </th>
+                                            <th scope="col" class="is-sortable" data-file-sort="modified" aria-sort="none">
+                                                <button type="button" class="sp-size-sort-btn" data-file-sort-button="modified">Modified</button>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sp-size-files-body">
+                                        <tr><td colspan="4" class="sp-size-empty">Loading…</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="sp-size-heatmap-body" id="sp-size-heatmap-body">
+                            <p class="panel-help"><?= $heatmapSolo ? 'Loading storage heatmap…' : 'Expand to load the storage heatmap, or open in a new tab or window.' ?></p>
+                        </div>
+                    </div>
+                </details>
+            </section>
+            <?php endif; ?>
+
+            <?php if (!$ownerSolo && !$foldersSolo && !$heatmapSolo): ?>
             <?php
             $searchCardPublic = false;
             $searchFormAction = 'sharepoint.php';
@@ -2417,6 +2633,9 @@ $soloPageClass = $ownerSolo
 
             <?php require __DIR__ . '/includes/sharepoint-list-animation-dialog.php'; ?>
             <?php require __DIR__ . '/includes/sharepoint-catalog-dialogs.php'; ?>
+            <?php endif; ?>
+            <?php if ($heatmapSolo): ?>
+                <?php require __DIR__ . '/includes/sharepoint-list-animation-dialog.php'; ?>
             <?php endif; ?>
 
             <?php if ($isAdmin && !$panelSolo): ?>
@@ -2812,8 +3031,11 @@ $soloPageClass = $ownerSolo
     <?php if ($isAdmin && !$foldersSolo): ?>
     <script src="assets/js/sharepoint-public-share.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-public-share.js') ?>"></script>
     <?php endif; ?>
-    <?php if (!$catalogSolo && !$foldersSolo): ?>
+    <?php if (!$catalogSolo && !$foldersSolo && ($ownerSolo || !$heatmapSolo)): ?>
     <script src="assets/js/sharepoint-owner-stats.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-stats.js') ?>"></script>
+    <?php endif; ?>
+    <?php if (!$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
+    <script src="assets/js/sharepoint-size-heatmap.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-size-heatmap.js') ?>"></script>
     <?php endif; ?>
         <?php if (!$ownerSolo && !$catalogSolo && $isAdmin): ?>
         <script src="assets/js/sharepoint-source-delete.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-source-delete.js') ?>"></script>
