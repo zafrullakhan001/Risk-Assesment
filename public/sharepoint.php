@@ -147,7 +147,10 @@ if ($actionParam === 'browser_sync_import' && ($_SERVER['REQUEST_METHOD'] ?? '')
 }
 
 $currentUser = $auth->requireAuth();
-\RiskAssessment\AppModules::instance()->require(\RiskAssessment\AppModules::SHAREPOINT, $currentUser);
+$requestedApp = $actionParam === 'size_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
+    ? \RiskAssessment\AppModules::STORAGE
+    : \RiskAssessment\AppModules::SHAREPOINT;
+\RiskAssessment\AppModules::instance()->require($requestedApp, $currentUser);
 $isAdmin = !empty($currentUser['is_admin']);
 
 $error = '';
@@ -1410,6 +1413,10 @@ $catalogSolo = $viewMode === 'catalog';
 $foldersSolo = $viewMode === 'folders';
 $heatmapSolo = $viewMode === 'heatmap';
 $panelSolo = $ownerSolo || $catalogSolo || $foldersSolo || $heatmapSolo;
+$storageAvailable = \RiskAssessment\AppModules::instance()->canAccess(
+    $currentUser,
+    \RiskAssessment\AppModules::STORAGE
+);
 
 $sharepointListUrl = static function (array $overrides = []) use ($query, $perPage, $page, $activeSourceKey, $catalogSolo): string {
     $params = array_merge([
@@ -1666,10 +1673,12 @@ $soloPageClass = $ownerSolo
                 <?php
                 $ownersNavUrl = $ownerDashUrl;
                 require __DIR__ . '/includes/owners-nav-link.php';
+                ?>
+                <?php endif; ?>
+                <?php
                 $heatmapNavUrl = $heatmapDashUrl;
                 require __DIR__ . '/includes/heatmap-nav-link.php';
                 ?>
-                <?php endif; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
 
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
@@ -2288,7 +2297,7 @@ $soloPageClass = $ownerSolo
             <?php endif; ?>
             <?php endif; ?>
 
-            <?php if (!$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
+            <?php if ($storageAvailable && !$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
             <section
                 class="upload-card sp-size-heatmap"
                 id="sharepoint-size-heatmap"

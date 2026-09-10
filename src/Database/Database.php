@@ -610,6 +610,7 @@ final class Database
         $defaults = [
             'app_risk_register_enabled' => '1',
             'app_sharepoint_enabled' => '1',
+            'app_storage_heatmap_enabled' => '1',
             'app_ticket_dossier_enabled' => '1',
         ];
 

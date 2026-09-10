@@ -46,6 +46,7 @@ $smtpEnabled = $settings->get('smtp_enabled', '0') === '1';
 $appModules = \RiskAssessment\AppModules::instance();
 $riskAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::RISK);
 $sharepointAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::SHAREPOINT);
+$storageAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::STORAGE);
 $ticketAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::TICKET);
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
@@ -59,10 +60,11 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 </a>
                 <a class="upload-card admin-tile" href="apps.php">
                     <h2>Apps</h2>
-                    <p>Turn Risk Register, SharePoint, and Ticket Dossier on or off for signed-in users.</p>
+                    <p>Turn Risk Register, SharePoint, Storage Heatmap, and Ticket Dossier on or off for signed-in users.</p>
                     <div class="auth-source-row">
                         <span class="auth-badge <?= $riskAppOn ? 'is-local' : 'is-off' ?>">Risk <?= $riskAppOn ? 'on' : 'off' ?></span>
                         <span class="auth-badge <?= $sharepointAppOn ? 'is-local' : 'is-off' ?>">SharePoint <?= $sharepointAppOn ? 'on' : 'off' ?></span>
+                        <span class="auth-badge <?= $storageAppOn ? 'is-local' : 'is-off' ?>">Storage <?= $storageAppOn ? 'on' : 'off' ?></span>
                         <span class="auth-badge <?= $ticketAppOn ? 'is-local' : 'is-off' ?>">Ticket <?= $ticketAppOn ? 'on' : 'off' ?></span>
                     </div>
                 </a>

@@ -665,6 +665,7 @@ $renderMermaidOptionControls = static function (
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/owners-nav-link.php'; ?>
                 <?php endif; ?>
+                <?php require __DIR__ . '/includes/heatmap-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
 
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>

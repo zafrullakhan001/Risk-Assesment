@@ -7,24 +7,27 @@ namespace RiskAssessment;
 use RiskAssessment\Repositories\SettingsRepository;
 
 /**
- * Install-wide enable/disable for the three signed-in apps.
+ * Install-wide enable/disable for signed-in apps.
  * Superadmin always retains access so they can re-enable modules.
  */
 final class AppModules
 {
     public const RISK = 'risk';
     public const SHAREPOINT = 'sharepoint';
+    public const STORAGE = 'storage';
     public const TICKET = 'ticket';
 
     private const SETTING_KEYS = [
         self::RISK => 'app_risk_register_enabled',
         self::SHAREPOINT => 'app_sharepoint_enabled',
+        self::STORAGE => 'app_storage_heatmap_enabled',
         self::TICKET => 'app_ticket_dossier_enabled',
     ];
 
     private const LABELS = [
         self::RISK => 'Risk Register',
         self::SHAREPOINT => 'SharePoint',
+        self::STORAGE => 'Storage Heatmap',
         self::TICKET => 'Ticket Dossier',
     ];
 
@@ -41,7 +44,7 @@ final class AppModules
     /** @return list<string> */
     public static function all(): array
     {
-        return [self::RISK, self::SHAREPOINT, self::TICKET];
+        return [self::RISK, self::SHAREPOINT, self::STORAGE, self::TICKET];
     }
 
     public static function settingKey(string $app): string
@@ -128,6 +131,9 @@ final class AppModules
         if ($this->canAccess($user, self::SHAREPOINT)) {
             return 'sharepoint.php';
         }
+        if ($this->canAccess($user, self::STORAGE)) {
+            return 'sharepoint.php?view=heatmap';
+        }
         if ($this->canAccess($user, self::TICKET)) {
             return 'ticket-dossier/';
         }
@@ -141,6 +147,8 @@ final class AppModules
     public function appForPath(string $path): ?string
     {
         $path = trim($path);
+        $query = (string) (parse_url($path, PHP_URL_QUERY) ?? '');
+        parse_str($query, $queryParams);
         $path = strtok($path, '?#') ?: $path;
         $path = ltrim($path, '/');
 
@@ -148,6 +156,11 @@ final class AppModules
             return self::RISK;
         }
         if ($path === 'sharepoint.php' || str_starts_with($path, 'sharepoint.php')) {
+            $view = (string) ($queryParams['view'] ?? '');
+            $action = (string) ($queryParams['action'] ?? '');
+            if ($view === 'heatmap' || $action === 'size_stats') {
+                return self::STORAGE;
+            }
             return self::SHAREPOINT;
         }
         if ($path === 'ticket-dossier' || $path === 'ticket-dossier/' || str_starts_with($path, 'ticket-dossier/')) {

@@ -6,8 +6,8 @@ use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
 
 /**
- * Shared home section tabs (Find / Upload / Templates / SharePoint).
- * Set $homeTab before requiring: find | upload | templates | sharepoint
+ * Shared home section tabs (Find / Upload / Templates / SharePoint / Storage).
+ * Set $homeTab before requiring: find | upload | templates | sharepoint | storage
  */
 $homeTab = $homeTab ?? 'find';
 $homeTabPrefix = $homeTabPrefix ?? '';
@@ -15,7 +15,8 @@ $homeTabUser = $currentUser ?? Auth::instance()->currentUser();
 $homeTabModules = AppModules::instance();
 $showRiskTabs = $homeTabModules->canAccess(is_array($homeTabUser) ? $homeTabUser : null, AppModules::RISK);
 $showSharePointTab = $homeTabModules->canAccess(is_array($homeTabUser) ? $homeTabUser : null, AppModules::SHAREPOINT);
-if (!$showRiskTabs && !$showSharePointTab) {
+$showStorageTab = $homeTabModules->canAccess(is_array($homeTabUser) ? $homeTabUser : null, AppModules::STORAGE);
+if (!$showRiskTabs && !$showSharePointTab && !$showStorageTab) {
     return;
 }
 ?>
@@ -34,6 +35,11 @@ if (!$showRiskTabs && !$showSharePointTab) {
     <?php if ($showSharePointTab): ?>
     <a class="<?= $homeTab === 'sharepoint' ? 'is-active' : '' ?>" href="<?= e($homeTabPrefix) ?>sharepoint.php"<?= $homeTab === 'sharepoint' ? ' aria-current="page"' : '' ?>>
         <span class="settings-emoji" aria-hidden="true">📁</span> SharePoint catalog
+    </a>
+    <?php endif; ?>
+    <?php if ($showStorageTab): ?>
+    <a class="<?= $homeTab === 'storage' ? 'is-active' : '' ?>" href="<?= e($homeTabPrefix) ?>sharepoint.php?view=heatmap"<?= $homeTab === 'storage' ? ' aria-current="page"' : '' ?>>
+        <span class="settings-emoji" aria-hidden="true">🗺️</span> Storage heatmap
     </a>
     <?php endif; ?>
 </nav>

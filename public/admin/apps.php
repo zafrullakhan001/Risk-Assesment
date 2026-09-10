@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flags = [
                 AppModules::RISK => !empty($_POST['app_risk_register_enabled']),
                 AppModules::SHAREPOINT => !empty($_POST['app_sharepoint_enabled']),
+                AppModules::STORAGE => !empty($_POST['app_storage_heatmap_enabled']),
                 AppModules::TICKET => !empty($_POST['app_ticket_dossier_enabled']),
             ];
             foreach ($flags as $app => $on) {
@@ -38,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 [
                     'risk' => $flags[AppModules::RISK],
                     'sharepoint' => $flags[AppModules::SHAREPOINT],
+                    'storage' => $flags[AppModules::STORAGE],
                     'ticket' => $flags[AppModules::TICKET],
                 ]
             );
@@ -52,13 +54,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $riskOn = $apps->isEnabled(AppModules::RISK);
 $sharepointOn = $apps->isEnabled(AppModules::SHAREPOINT);
+$storageOn = $apps->isEnabled(AppModules::STORAGE);
 $ticketOn = $apps->isEnabled(AppModules::TICKET);
 
 $adminTitle = 'Apps';
 $adminTab = 'apps';
 $adminEyebrow = 'Modules';
 $adminHeading = 'Enable or <em>disable</em> apps';
-$adminIntro = 'Control whether Risk Register, SharePoint, and Ticket Dossier appear for signed-in users. The local superadmin always keeps access.';
+$adminIntro = 'Control whether Risk Register, SharePoint, Storage Heatmap, and Ticket Dossier appear for signed-in users. The local superadmin always keeps access.';
 require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
             <section class="upload-card">
@@ -79,6 +82,10 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <span><strong>SharePoint</strong> — SharePoint, catalogs, Owners</span>
                     </label>
                     <label class="remember-row">
+                        <input type="checkbox" name="app_storage_heatmap_enabled" value="1" <?= $storageOn ? 'checked' : '' ?> <?= $isSuperAdmin ? '' : 'disabled' ?>>
+                        <span><strong>Storage Heatmap</strong> — Catalog sizes, folder drill-down, and largest files</span>
+                    </label>
+                    <label class="remember-row">
                         <input type="checkbox" name="app_ticket_dossier_enabled" value="1" <?= $ticketOn ? 'checked' : '' ?> <?= $isSuperAdmin ? '' : 'disabled' ?>>
                         <span><strong>Ticket Dossier</strong> — Ticket Analysis / Ticket Dossier</span>
                     </label>
@@ -89,6 +96,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <div class="auth-source-row" style="margin-top:1rem;">
                     <span class="auth-badge <?= $riskOn ? 'is-local' : 'is-off' ?>">Risk <?= $riskOn ? 'on' : 'off' ?></span>
                     <span class="auth-badge <?= $sharepointOn ? 'is-local' : 'is-off' ?>">SharePoint <?= $sharepointOn ? 'on' : 'off' ?></span>
+                    <span class="auth-badge <?= $storageOn ? 'is-local' : 'is-off' ?>">Storage <?= $storageOn ? 'on' : 'off' ?></span>
                     <span class="auth-badge <?= $ticketOn ? 'is-local' : 'is-off' ?>">Ticket Dossier <?= $ticketOn ? 'on' : 'off' ?></span>
                 </div>
             </section>

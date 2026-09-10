@@ -11,7 +11,7 @@ use RiskAssessment\Auth;
  * Optional: set $heatmapNavUrl before include (e.g. with publicPrefix from admin/ticket-dossier).
  */
 $heatmapNavUser = $currentUser ?? Auth::instance()->currentUser();
-if (!AppModules::instance()->canAccess(is_array($heatmapNavUser) ? $heatmapNavUser : null, AppModules::SHAREPOINT)) {
+if (!AppModules::instance()->canAccess(is_array($heatmapNavUser) ? $heatmapNavUser : null, AppModules::STORAGE)) {
     return;
 }
 $heatmapSolo = $heatmapSolo ?? false;
