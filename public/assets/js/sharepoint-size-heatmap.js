@@ -32,6 +32,16 @@
     selectedSources: [],
     largeFiles: [],
     fileSort: { key: 'size', direction: 'desc' },
+    activeTab: 'treemap',
+    duplicates: {
+      loaded: false,
+      loading: false,
+      data: null,
+      search: '',
+      sort: { key: 'wasted', direction: 'desc' },
+      filterCatalog: '',
+      expanded: new Set(),
+    },
   };
   let heatmapAnimationTimer = 0;
 
@@ -694,16 +704,37 @@
     }
     saveSelectedSources();
     updateScopesUi();
+    const selected = new Set(readSelectedSources());
+    root.querySelectorAll('.sp-duplicates-scope-check').forEach((input) => {
+      input.checked = selected.has(input.value);
+    });
+    updateDuplicateScopesUi();
     if (state.level === 'overview') loadOverview();
+    if (state.activeTab === 'duplicates') {
+      state.duplicates.loaded = false;
+      loadDuplicateStats(true);
+    } else {
+      state.duplicates.loaded = false;
+    }
   });
 
   document.getElementById('sp-size-scopes-all')?.addEventListener('click', () => {
     root.querySelectorAll('.sp-size-scope-check').forEach((el) => {
       el.checked = true;
     });
+    root.querySelectorAll('.sp-duplicates-scope-check').forEach((el) => {
+      el.checked = true;
+    });
     saveSelectedSources();
     updateScopesUi();
+    updateDuplicateScopesUi();
     if (state.level === 'overview') loadOverview();
+    if (state.activeTab === 'duplicates') {
+      state.duplicates.loaded = false;
+      loadDuplicateStats(true);
+    } else {
+      state.duplicates.loaded = false;
+    }
   });
 
   document.getElementById('sp-size-open-tab')?.addEventListener('click', (event) => {
@@ -754,6 +785,401 @@
 
   restoreSelectedSources();
   updateScopesUi();
+
+  const duplicatesContainer = document.getElementById('sp-duplicates-container');
+  const duplicatesScopesRoot = document.getElementById('sp-duplicates-scopes');
+  const duplicatesSearch = document.getElementById('sp-duplicates-search');
+  const duplicatesRefreshBtn = document.getElementById('sp-duplicates-refresh');
+  const tabsRoot = root.querySelector('.sp-size-heatmap-tabs');
+
+  const readDuplicateSources = () => {
+    const checks = root.querySelectorAll('.sp-duplicates-scope-check:checked');
+    const keys = Array.from(checks).map((el) => el.value).filter(Boolean);
+    if (keys.length) return keys;
+    return readSelectedSources();
+  };
+
+  const updateDuplicateScopesUi = () => {
+    const checks = Array.from(root.querySelectorAll('.sp-duplicates-scope-check'));
+    if (!checks.length) return;
+    const selected = checks.filter((el) => el.checked).length;
+    const countEl = document.getElementById('sp-duplicates-scopes-count');
+    if (countEl) countEl.textContent = `${selected} of ${checks.length}`;
+    const allBtn = document.getElementById('sp-duplicates-scopes-all');
+    if (allBtn) {
+      const allSelected = selected === checks.length;
+      allBtn.disabled = allSelected;
+      allBtn.classList.toggle('is-active', allSelected);
+      allBtn.textContent = allSelected ? 'All selected' : 'Select all';
+    }
+    checks.forEach((input) => {
+      input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
+    });
+  };
+
+  const syncDuplicateScopesFromStorage = () => {
+    const checks = Array.from(root.querySelectorAll('.sp-duplicates-scope-check'));
+    if (!checks.length) return;
+    let stored = null;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SOURCES_KEY) || 'null');
+      if (Array.isArray(parsed)) stored = new Set(parsed.map(String));
+    } catch (e) { /* ignore */ }
+    if (stored) {
+      checks.forEach((input) => {
+        input.checked = stored.has(input.value);
+      });
+      if (!checks.some((input) => input.checked)) {
+        checks[0].checked = true;
+      }
+    }
+    updateDuplicateScopesUi();
+  };
+
+  syncDuplicateScopesFromStorage();
+
+  const duplicateApiUrl = (params = {}) => {
+    const qs = new URLSearchParams();
+    qs.set('action', 'duplicate_stats');
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || String(value) === '') return;
+      qs.set(key, String(value));
+    });
+    return `sharepoint.php?${qs.toString()}`;
+  };
+
+  const filteredDuplicateGroups = () => {
+    const groups = Array.isArray(state.duplicates.data?.duplicate_groups)
+      ? state.duplicates.data.duplicate_groups
+      : [];
+    const search = String(state.duplicates.search || '').trim().toLowerCase();
+    const catalogFilter = String(state.duplicates.filterCatalog || '');
+    let list = groups;
+    if (search) {
+      list = list.filter((g) => String(g.file_name || '').toLowerCase().includes(search));
+    }
+    if (catalogFilter) {
+      list = list.filter((g) =>
+        (g.locations || []).some((loc) => String(loc.source_key || '') === catalogFilter)
+      );
+    }
+    const { key, direction } = state.duplicates.sort;
+    const dir = direction === 'asc' ? 1 : -1;
+    return list.slice().sort((a, b) => {
+      let av;
+      let bv;
+      if (key === 'name') {
+        av = String(a.file_name || '').toLowerCase();
+        bv = String(b.file_name || '').toLowerCase();
+        return av < bv ? -dir : av > bv ? dir : 0;
+      }
+      if (key === 'size') {
+        av = Number(a.size_bytes) || 0;
+        bv = Number(b.size_bytes) || 0;
+      } else if (key === 'count') {
+        av = Number(a.occurrence_count) || 0;
+        bv = Number(b.occurrence_count) || 0;
+      } else {
+        av = Number(a.wasted_space) || 0;
+        bv = Number(b.wasted_space) || 0;
+      }
+      return (av - bv) * dir;
+    });
+  };
+
+  const groupExpandKey = (group) =>
+    `${String(group.file_name || '').toLowerCase()}::${Number(group.size_bytes) || 0}`;
+
+  const renderDuplicateCatalogBars = (byCatalog) => {
+    const rows = Array.isArray(byCatalog) ? byCatalog : [];
+    if (!rows.length) {
+      return '<p class="sp-size-empty">No catalogs contain duplicate files.</p>';
+    }
+    const maxOccupied = Math.max(...rows.map((r) => Number(r.occupied_space) || 0), 1);
+    return `<div class="sp-duplicates-catalog-bars" role="list" aria-label="Duplicate space by catalog">
+      ${rows.map((row) => {
+        const occupied = Number(row.occupied_space) || 0;
+        const wasted = Number(row.wasted_space) || 0;
+        const pct = Math.max(4, Math.round((occupied / maxOccupied) * 100));
+        const title = String(row.catalog_title || row.source_key || '');
+        const key = String(row.source_key || '');
+        const isActive = state.duplicates.filterCatalog === key;
+        return `<button type="button" class="sp-duplicates-catalog-bar${isActive ? ' is-active' : ''}" data-catalog-filter="${escapeAttr(key)}" role="listitem" title="${escapeAttr(`${title}: ${formatBytes(occupied)} occupied, ${formatBytes(wasted)} wasted`)}">
+          <span class="sp-duplicates-catalog-bar-label">${escapeHtml(title)}</span>
+          <span class="sp-duplicates-catalog-bar-track"><span class="sp-duplicates-catalog-bar-fill" style="width:${pct}%"></span></span>
+          <span class="sp-duplicates-catalog-bar-meta">${escapeHtml(formatBytes(occupied))} · ${Number(row.duplicate_count) || 0} files</span>
+        </button>`;
+      }).join('')}
+      ${state.duplicates.filterCatalog
+        ? '<button type="button" class="button ghost sp-duplicates-clear-filter" data-catalog-filter="">Clear catalog filter</button>'
+        : ''}
+    </div>`;
+  };
+
+  const renderDuplicateLocations = (group) => {
+    const locations = Array.isArray(group.locations) ? group.locations : [];
+    if (!locations.length) {
+      return '<p class="sp-size-empty">No locations found.</p>';
+    }
+    return `<div class="table-wrap"><table class="sp-duplicates-locations-table">
+      <thead>
+        <tr>
+          <th scope="col">Catalog</th>
+          <th scope="col">Project</th>
+          <th scope="col">Path</th>
+          <th scope="col">Modified</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${locations.map((loc) => {
+          const path = String(loc.relative_path || '');
+          const url = String(loc.web_url || '');
+          const pathCell = url
+            ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(path || loc.file_name || 'Open')}</a>`
+            : escapeHtml(path || '—');
+          return `<tr>
+            <td>${escapeHtml(loc.catalog_title || loc.source_key || '—')}</td>
+            <td>${escapeHtml(loc.project_name || '—')}</td>
+            <td class="sp-duplicates-path">${pathCell}</td>
+            <td>${escapeHtml(formatModified(loc.last_modified))}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>`;
+  };
+
+  const renderDuplicateGroupsTable = (groups) => {
+    if (!groups.length) {
+      return '<p class="sp-size-empty">No duplicate files match the current filters.</p>';
+    }
+    const { key, direction } = state.duplicates.sort;
+    const sortClass = (col) => {
+      if (key !== col) return '';
+      return direction === 'asc' ? ' is-sorted-asc' : ' is-sorted-desc';
+    };
+    const ariaSort = (col) => {
+      if (key !== col) return 'none';
+      return direction === 'asc' ? 'ascending' : 'descending';
+    };
+    return `<div class="table-wrap"><table class="sp-size-files-table sp-duplicates-table" id="sp-duplicates-table">
+      <thead>
+        <tr>
+          <th scope="col" class="is-sortable${sortClass('name')}" aria-sort="${ariaSort('name')}">
+            <button type="button" class="sp-size-sort-btn" data-dup-sort="name">File</button>
+          </th>
+          <th scope="col" class="is-sortable${sortClass('size')}" aria-sort="${ariaSort('size')}">
+            <button type="button" class="sp-size-sort-btn" data-dup-sort="size">Size</button>
+          </th>
+          <th scope="col" class="is-sortable${sortClass('count')}" aria-sort="${ariaSort('count')}">
+            <button type="button" class="sp-size-sort-btn" data-dup-sort="count">Copies</button>
+          </th>
+          <th scope="col" class="is-sortable${sortClass('wasted')}" aria-sort="${ariaSort('wasted')}">
+            <button type="button" class="sp-size-sort-btn" data-dup-sort="wasted">Wasted</button>
+          </th>
+          <th scope="col"><span class="visually-hidden">Expand</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${groups.map((group, index) => {
+          const expandKey = groupExpandKey(group);
+          const expanded = state.duplicates.expanded.has(expandKey);
+          const count = Number(group.occurrence_count) || 0;
+          return `<tr class="sp-duplicates-row${expanded ? ' is-expanded' : ''}" data-dup-index="${index}" data-dup-key="${escapeAttr(expandKey)}">
+            <td class="sp-size-file-name">
+              <button type="button" class="sp-duplicates-expand-btn" data-dup-toggle="${escapeAttr(expandKey)}" aria-expanded="${expanded ? 'true' : 'false'}">
+                <span class="sp-duplicates-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+                ${escapeHtml(group.file_name || '—')}
+              </button>
+            </td>
+            <td class="sp-size-file-bytes">${escapeHtml(formatBytes(group.size_bytes))}</td>
+            <td>${count}</td>
+            <td class="sp-size-file-bytes">${escapeHtml(formatBytes(group.wasted_space))}</td>
+            <td>
+              <button type="button" class="button ghost sp-duplicates-drill-btn" data-dup-toggle="${escapeAttr(expandKey)}" aria-expanded="${expanded ? 'true' : 'false'}">
+                ${expanded ? 'Hide' : 'Show'} locations
+              </button>
+            </td>
+          </tr>
+          ${expanded ? `<tr class="sp-duplicates-detail-row"><td colspan="5">${renderDuplicateLocations(group)}</td></tr>` : ''}`;
+        }).join('')}
+      </tbody>
+    </table></div>`;
+  };
+
+  const renderDuplicateView = () => {
+    if (!duplicatesContainer) return;
+    if (state.duplicates.loading) {
+      duplicatesContainer.innerHTML = '<p class="panel-help">Analysing duplicate files…</p>';
+      return;
+    }
+    const data = state.duplicates.data;
+    if (!data) {
+      duplicatesContainer.innerHTML = '<p class="panel-help">Open this tab to analyse duplicate files.</p>';
+      return;
+    }
+    if (data.ok === false) {
+      duplicatesContainer.innerHTML = `<p class="sp-size-error">${escapeHtml(data.error || 'Could not load duplicates.')}</p>`;
+      return;
+    }
+    const summary = data.summary || {};
+    const groups = filteredDuplicateGroups();
+    const returned = Number(summary.groups_returned) || 0;
+    const totalSets = Number(summary.duplicate_sets) || 0;
+    const capNote = totalSets > returned
+      ? `<p class="panel-help">Showing top ${returned} of ${totalSets} duplicate sets by wasted space.</p>`
+      : '';
+
+    duplicatesContainer.innerHTML = `
+      <div class="sp-size-kpis sp-duplicates-kpis" aria-live="polite">
+        <div class="sp-size-kpi"><span class="sp-size-kpi-label">Wasted space</span><span class="sp-size-kpi-value">${escapeHtml(formatBytes(summary.total_wasted_space))}</span></div>
+        <div class="sp-size-kpi"><span class="sp-size-kpi-label">Duplicate files</span><span class="sp-size-kpi-value">${Number(summary.total_duplicate_files) || 0}</span></div>
+        <div class="sp-size-kpi"><span class="sp-size-kpi-label">Duplicate sets</span><span class="sp-size-kpi-value">${totalSets}</span></div>
+        <div class="sp-size-kpi"><span class="sp-size-kpi-label">Catalogs affected</span><span class="sp-size-kpi-value">${Number(summary.catalogs_affected) || 0}</span></div>
+      </div>
+      <div class="sp-duplicates-section">
+        <h3>Space by catalog</h3>
+        <p class="panel-help">Click a catalog to filter the list below. Bars show space occupied by duplicate-set members.</p>
+        ${renderDuplicateCatalogBars(data.by_catalog)}
+      </div>
+      <div class="sp-duplicates-section">
+        <h3>Duplicate sets</h3>
+        ${capNote}
+        ${renderDuplicateGroupsTable(groups)}
+      </div>
+    `;
+  };
+
+  const loadDuplicateStats = async (force = false) => {
+    if (!duplicatesContainer) return;
+    if (state.duplicates.loading) return;
+    if (state.duplicates.loaded && !force) {
+      renderDuplicateView();
+      return;
+    }
+    state.duplicates.loading = true;
+    renderDuplicateView();
+    try {
+      const sources = readDuplicateSources();
+      const response = await fetch(duplicateApiUrl({ sources: sources.join(',') || 'all' }), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        state.duplicates.data = { ok: false, error: data.error || `Request failed (${response.status})` };
+      } else {
+        state.duplicates.data = data;
+        state.duplicates.loaded = true;
+        state.duplicates.expanded = new Set();
+      }
+    } catch (err) {
+      state.duplicates.data = { ok: false, error: err?.message || 'Network error loading duplicates.' };
+    } finally {
+      state.duplicates.loading = false;
+      renderDuplicateView();
+    }
+  };
+
+  const setActiveTab = (tab) => {
+    const next = tab === 'duplicates' ? 'duplicates' : 'treemap';
+    state.activeTab = next;
+    root.querySelectorAll('.sp-size-tab').forEach((btn) => {
+      const isActive = btn.getAttribute('data-tab') === next;
+      btn.classList.toggle('is-active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    root.querySelectorAll('.sp-size-tab-panel').forEach((panel) => {
+      const isActive = panel.getAttribute('data-tab-panel') === next;
+      panel.classList.toggle('is-active', isActive);
+      if (isActive) panel.removeAttribute('hidden');
+      else panel.setAttribute('hidden', '');
+    });
+    if (next === 'duplicates') {
+      loadDuplicateStats(false);
+    } else if (state.loaded && state.data?.nodes) {
+      window.setTimeout(() => renderTreemap(state.data.nodes || []), 40);
+    }
+  };
+
+  tabsRoot?.addEventListener('click', (event) => {
+    const tabBtn = event.target.closest('.sp-size-tab');
+    if (!tabBtn) return;
+    setActiveTab(tabBtn.getAttribute('data-tab') || 'treemap');
+  });
+
+  duplicatesRefreshBtn?.addEventListener('click', () => loadDuplicateStats(true));
+
+  duplicatesSearch?.addEventListener('input', () => {
+    state.duplicates.search = duplicatesSearch.value || '';
+    renderDuplicateView();
+  });
+
+  duplicatesScopesRoot?.addEventListener('change', (event) => {
+    if (!event.target.classList.contains('sp-duplicates-scope-check')) return;
+    const checks = root.querySelectorAll('.sp-duplicates-scope-check:checked');
+    if (!checks.length) {
+      event.target.checked = true;
+      return;
+    }
+    try {
+      localStorage.setItem(SOURCES_KEY, JSON.stringify(readDuplicateSources()));
+    } catch (e) { /* ignore */ }
+    // Keep treemap scopes in sync when possible.
+    const selected = new Set(readDuplicateSources());
+    root.querySelectorAll('.sp-size-scope-check').forEach((input) => {
+      input.checked = selected.has(input.value);
+    });
+    updateScopesUi();
+    updateDuplicateScopesUi();
+    loadDuplicateStats(true);
+  });
+
+  document.getElementById('sp-duplicates-scopes-all')?.addEventListener('click', () => {
+    root.querySelectorAll('.sp-duplicates-scope-check').forEach((el) => {
+      el.checked = true;
+    });
+    root.querySelectorAll('.sp-size-scope-check').forEach((el) => {
+      el.checked = true;
+    });
+    try {
+      localStorage.setItem(SOURCES_KEY, JSON.stringify(readDuplicateSources()));
+    } catch (e) { /* ignore */ }
+    updateScopesUi();
+    updateDuplicateScopesUi();
+    loadDuplicateStats(true);
+  });
+
+  duplicatesContainer?.addEventListener('click', (event) => {
+    const sortBtn = event.target.closest('[data-dup-sort]');
+    if (sortBtn) {
+      const key = sortBtn.getAttribute('data-dup-sort') || 'wasted';
+      if (state.duplicates.sort.key === key) {
+        state.duplicates.sort.direction = state.duplicates.sort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.duplicates.sort.key = key;
+        state.duplicates.sort.direction = key === 'name' ? 'asc' : 'desc';
+      }
+      renderDuplicateView();
+      return;
+    }
+
+    const filterBtn = event.target.closest('[data-catalog-filter]');
+    if (filterBtn) {
+      const key = filterBtn.getAttribute('data-catalog-filter') || '';
+      state.duplicates.filterCatalog = state.duplicates.filterCatalog === key ? '' : key;
+      renderDuplicateView();
+      return;
+    }
+
+    const toggleBtn = event.target.closest('[data-dup-toggle]');
+    if (toggleBtn) {
+      const key = toggleBtn.getAttribute('data-dup-toggle') || '';
+      if (!key) return;
+      if (state.duplicates.expanded.has(key)) state.duplicates.expanded.delete(key);
+      else state.duplicates.expanded.add(key);
+      renderDuplicateView();
+    }
+  });
 
   if (isSolo) {
     try {

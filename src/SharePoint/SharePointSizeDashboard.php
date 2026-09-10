@@ -376,6 +376,170 @@ final class SharePointSizeDashboard
     }
 
     /**
+     * Find duplicate files (same name case-insensitive + same size) across catalogs.
+     *
+     * @param list<string> $sourceKeys
+     * @param array<string, string> $sourceTitles keyed by source_key
+     * @return array<string, mixed>
+     */
+    public function buildDuplicateStats(array $sourceKeys, array $sourceTitles = []): array
+    {
+        $sourceKeys = $this->normalizeKeys($sourceKeys);
+        if ($sourceKeys === []) {
+            return $this->emptyDuplicates([]);
+        }
+
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
+
+        $statement = $this->pdo->prepare(
+            "SELECT i.source_key, i.project_name, i.name, i.relative_path, i.web_url,
+                    i.size_bytes, i.mime_type, i.last_modified
+             FROM sharepoint_items i
+             INNER JOIN (
+                 SELECT LOWER(name) AS name_key, size_bytes
+                 FROM sharepoint_items
+                 WHERE source_key IN ($placeholders)
+                   AND lower(item_type) = 'file'
+                   AND {$visible}
+                 GROUP BY LOWER(name), size_bytes
+                 HAVING COUNT(*) > 1
+             ) d ON LOWER(i.name) = d.name_key AND COALESCE(i.size_bytes, 0) = COALESCE(d.size_bytes, 0)
+             WHERE i.source_key IN ($placeholders)
+               AND lower(i.item_type) = 'file'
+               AND " . SharePointArchiveRepository::visibleProjectSql('i') . '
+             ORDER BY i.size_bytes DESC, LOWER(i.name) ASC, i.source_key ASC, LOWER(i.relative_path) ASC'
+        );
+        // Bind source keys twice: once for the subquery, once for the outer filter.
+        $statement->execute(array_merge($sourceKeys, $sourceKeys));
+        $rows = $statement->fetchAll() ?: [];
+
+        /** @var array<string, array<string, mixed>> $groups */
+        $groups = [];
+        /** @var array<string, array{source_key: string, catalog_title: string, duplicate_count: int, occupied_space: int, wasted_space: int}> $byCatalog */
+        $byCatalog = [];
+
+        foreach ($rows as $row) {
+            $name = (string) ($row['name'] ?? '');
+            $sizeBytes = (int) ($row['size_bytes'] ?? 0);
+            $nameKey = strtolower($name);
+            $groupKey = $nameKey . "\0" . $sizeBytes;
+            $sourceKey = (string) ($row['source_key'] ?? '');
+            if ($name === '' || $sourceKey === '') {
+                continue;
+            }
+
+            if (!isset($groups[$groupKey])) {
+                $groups[$groupKey] = [
+                    'file_name' => $name,
+                    'size_bytes' => $sizeBytes,
+                    'mime_type' => trim((string) ($row['mime_type'] ?? '')),
+                    'occurrence_count' => 0,
+                    'total_space' => 0,
+                    'wasted_space' => 0,
+                    'locations' => [],
+                ];
+            }
+
+            $groups[$groupKey]['occurrence_count']++;
+            $groups[$groupKey]['total_space'] += $sizeBytes;
+            if ($groups[$groupKey]['mime_type'] === '' && trim((string) ($row['mime_type'] ?? '')) !== '') {
+                $groups[$groupKey]['mime_type'] = trim((string) ($row['mime_type'] ?? ''));
+            }
+            $groups[$groupKey]['locations'][] = [
+                'source_key' => $sourceKey,
+                'catalog_title' => (string) ($sourceTitles[$sourceKey] ?? $sourceKey),
+                'project_name' => (string) ($row['project_name'] ?? ''),
+                'relative_path' => (string) ($row['relative_path'] ?? ''),
+                'web_url' => trim((string) ($row['web_url'] ?? '')),
+                'last_modified' => trim((string) ($row['last_modified'] ?? '')),
+            ];
+
+            if (!isset($byCatalog[$sourceKey])) {
+                $byCatalog[$sourceKey] = [
+                    'source_key' => $sourceKey,
+                    'catalog_title' => (string) ($sourceTitles[$sourceKey] ?? $sourceKey),
+                    'duplicate_count' => 0,
+                    'occupied_space' => 0,
+                    'wasted_space' => 0,
+                ];
+            }
+            $byCatalog[$sourceKey]['duplicate_count']++;
+            $byCatalog[$sourceKey]['occupied_space'] += $sizeBytes;
+        }
+
+        $duplicateGroups = [];
+        $totalWasted = 0;
+        $totalDuplicateFiles = 0;
+        foreach ($groups as $group) {
+            $count = (int) $group['occurrence_count'];
+            $size = (int) $group['size_bytes'];
+            $wasted = max(0, $count - 1) * $size;
+            $group['wasted_space'] = $wasted;
+            $totalWasted += $wasted;
+            $totalDuplicateFiles += $count;
+
+            // Attribute wasted space proportionally by how many copies each catalog holds.
+            $locByCatalog = [];
+            foreach ($group['locations'] as $loc) {
+                $sk = (string) $loc['source_key'];
+                $locByCatalog[$sk] = ($locByCatalog[$sk] ?? 0) + 1;
+            }
+            foreach ($locByCatalog as $sk => $localCount) {
+                if (!isset($byCatalog[$sk]) || $count <= 0) {
+                    continue;
+                }
+                $byCatalog[$sk]['wasted_space'] += (int) round($wasted * ($localCount / $count));
+            }
+
+            $duplicateGroups[] = $group;
+        }
+
+        usort(
+            $duplicateGroups,
+            static function (array $a, array $b): int {
+                $cmp = ((int) $b['wasted_space']) <=> ((int) $a['wasted_space']);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+
+                return strcasecmp((string) ($a['file_name'] ?? ''), (string) ($b['file_name'] ?? ''));
+            }
+        );
+
+        // Cap groups returned to keep the UI responsive; summary still reflects all.
+        $returnedGroups = array_slice($duplicateGroups, 0, 500);
+
+        $catalogList = array_values($byCatalog);
+        usort(
+            $catalogList,
+            static fn (array $a, array $b): int => ((int) $b['occupied_space']) <=> ((int) $a['occupied_space'])
+        );
+
+        $sources = [];
+        foreach ($sourceKeys as $key) {
+            $sources[] = [
+                'source_key' => $key,
+                'title' => (string) ($sourceTitles[$key] ?? $key),
+            ];
+        }
+
+        return [
+            'level' => 'duplicates',
+            'sources' => $sources,
+            'summary' => [
+                'total_duplicate_files' => $totalDuplicateFiles,
+                'total_wasted_space' => $totalWasted,
+                'duplicate_sets' => count($duplicateGroups),
+                'catalogs_affected' => count($catalogList),
+                'groups_returned' => count($returnedGroups),
+            ],
+            'by_catalog' => $catalogList,
+            'duplicate_groups' => $returnedGroups,
+        ];
+    }
+
+    /**
      * @param list<string> $sourceKeys
      * @return list<array<string, mixed>>
      */
@@ -543,6 +707,27 @@ final class SharePointSizeDashboard
             ],
             'nodes' => [],
             'large_files' => [],
+        ];
+    }
+
+    /**
+     * @param list<array{source_key: string, title: string}> $sources
+     * @return array<string, mixed>
+     */
+    private function emptyDuplicates(array $sources): array
+    {
+        return [
+            'level' => 'duplicates',
+            'sources' => $sources,
+            'summary' => [
+                'total_duplicate_files' => 0,
+                'total_wasted_space' => 0,
+                'duplicate_sets' => 0,
+                'catalogs_affected' => 0,
+                'groups_returned' => 0,
+            ],
+            'by_catalog' => [],
+            'duplicate_groups' => [],
         ];
     }
 }

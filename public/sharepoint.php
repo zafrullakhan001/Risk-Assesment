@@ -147,7 +147,7 @@ if ($actionParam === 'browser_sync_import' && ($_SERVER['REQUEST_METHOD'] ?? '')
 }
 
 $currentUser = $auth->requireAuth();
-$requestedApp = $actionParam === 'size_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
+$requestedApp = $actionParam === 'size_stats' || $actionParam === 'duplicate_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
     ? \RiskAssessment\AppModules::STORAGE
     : \RiskAssessment\AppModules::SHAREPOINT;
 \RiskAssessment\AppModules::instance()->require($requestedApp, $currentUser);
@@ -480,6 +480,48 @@ if ($actionParam === 'size_stats') {
     }
 
     $payload = $sizeDashboard->buildOverview($selectedKeys, $sourceTitles);
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'duplicate_stats') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=30');
+
+    $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $wantedKeys = [];
+    if ($sourcesParam === 'all' || $sourcesParam === '') {
+        foreach ($allSources as $src) {
+            $wantedKeys[] = (string) ($src['source_key'] ?? '');
+        }
+    } else {
+        $wantedKeys = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+    }
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $selectedKeys = [];
+    $sourceTitles = [];
+    foreach ($wantedKeys as $key) {
+        if (!isset($byKey[$key])) {
+            continue;
+        }
+        $selectedKeys[] = $key;
+        $sourceTitles[$key] = (string) ($byKey[$key]['title'] ?? $key);
+    }
+    if ($selectedKeys === []) {
+        $selectedKeys = [$activeSourceKey];
+        $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
+    }
+
+    $sizeDashboard = new SharePointSizeDashboard($pdo);
+    $payload = $sizeDashboard->buildDuplicateStats($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -2320,6 +2362,7 @@ $soloPageClass = $ownerSolo
                             <h2>🗺️ Catalog storage heatmap</h2>
                             <p>
                                 Treemap of catalog folder sizes — click to drill into projects, subfolders, and the largest files.
+                                Use the Duplicate Files tab to find same-name, same-size copies and the space they occupy.
                             </p>
                         </div>
                         <div class="sp-size-heatmap-summary-tools" data-no-toggle onclick="event.stopPropagation()">
@@ -2334,6 +2377,12 @@ $soloPageClass = $ownerSolo
                         </div>
                     </summary>
                     <div class="sp-size-heatmap-panel">
+                        <div class="sp-size-heatmap-tabs" role="tablist" aria-label="Storage analysis views">
+                            <button type="button" class="sp-size-tab is-active" role="tab" id="sp-size-tab-treemap" data-tab="treemap" aria-selected="true" aria-controls="sp-size-tab-panel-treemap">Storage Map</button>
+                            <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-duplicates" data-tab="duplicates" aria-selected="false" aria-controls="sp-size-tab-panel-duplicates">Duplicate Files</button>
+                        </div>
+
+                        <div class="sp-size-tab-panel is-active" role="tabpanel" id="sp-size-tab-panel-treemap" data-tab-panel="treemap" aria-labelledby="sp-size-tab-treemap">
                         <div class="sp-size-heatmap-toolbar">
                             <nav class="sp-size-breadcrumb" id="sp-size-breadcrumb" aria-label="Drill-down path">
                                 <button type="button" class="sp-size-crumb is-active" data-level="overview">All catalogs</button>
@@ -2410,6 +2459,50 @@ $soloPageClass = $ownerSolo
                                 </table>
                             </div>
                         </div>
+                        </div><!-- /.sp-size-tab-panel treemap -->
+
+                        <div class="sp-size-tab-panel" role="tabpanel" id="sp-size-tab-panel-duplicates" data-tab-panel="duplicates" aria-labelledby="sp-size-tab-duplicates" hidden>
+                            <div class="sp-duplicates-toolbar">
+                                <p class="panel-help sp-duplicates-help">
+                                    Files with the same name and size across selected catalogs. Expand a row to see every location.
+                                </p>
+                                <div class="sp-duplicates-toolbar-actions">
+                                    <label class="sp-duplicates-search-label">
+                                        <span class="visually-hidden">Search duplicate file names</span>
+                                        <input type="search" id="sp-duplicates-search" class="sp-duplicates-search" placeholder="Search file name…" autocomplete="off">
+                                    </label>
+                                    <button type="button" class="button ghost" id="sp-duplicates-refresh" title="Reload duplicate analysis">↻ Refresh</button>
+                                </div>
+                            </div>
+                            <?php if (count($allSources) > 0): ?>
+                                <div class="sp-od-scopes sp-size-scopes sp-duplicates-scopes" id="sp-duplicates-scopes" role="group" aria-label="Catalogs for duplicate analysis">
+                                    <div class="sp-od-scopes-head">
+                                        <span class="sp-od-scopes-label">
+                                            <span aria-hidden="true">📁</span>
+                                            Catalogs
+                                            <b class="sp-od-scopes-count" id="sp-duplicates-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
+                                        </span>
+                                        <button type="button" class="sp-od-scopes-all is-active" id="sp-duplicates-scopes-all" disabled>All selected</button>
+                                    </div>
+                                    <div class="sp-od-scopes-list">
+                                        <?php foreach ($allSources as $src): ?>
+                                            <?php
+                                            $srcKey = (string) ($src['source_key'] ?? '');
+                                            $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                            ?>
+                                            <label class="sharepoint-scope-chip is-active" data-source-key="<?= e($srcKey) ?>">
+                                                <input type="checkbox" class="sp-duplicates-scope-check" value="<?= e($srcKey) ?>" checked>
+                                                <span><?= e($srcTitle) ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            <div class="sp-duplicates-container" id="sp-duplicates-container">
+                                <p class="panel-help">Open this tab to analyse duplicate files.</p>
+                            </div>
+                        </div>
+
                         <div class="sp-size-heatmap-body" id="sp-size-heatmap-body">
                             <p class="panel-help"><?= $heatmapSolo ? 'Loading storage heatmap…' : 'Expand to load the storage heatmap, or open in a new tab or window.' ?></p>
                         </div>
