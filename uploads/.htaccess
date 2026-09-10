@@ -1,2 +1,17 @@
 # Deny all direct web access to uploaded files
 Require all denied
+
+# Prevent PHP execution
+<FilesMatch "\.php$">
+    Require all denied
+</FilesMatch>
+
+# Additional security for various file types that could be dangerous
+<FilesMatch "\.(php|php3|php4|php5|phtml|phps|phar|exe|sh|bat|cmd|com|cgi|pl|py)$">
+    Require all denied
+</FilesMatch>
+
+# Deny access to hidden files
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

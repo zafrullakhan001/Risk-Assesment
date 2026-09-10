@@ -1,4 +1,5 @@
 /vendor/
+.cursor/mcp.json
 /public/assets/branding/*
 !/public/assets/branding/.gitkeep
 /uploads/*

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "risk-register": {
+      "url": "http://localhost/riskregister/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ramcp_YOUR_TOKEN_HERE"
+      }
+    }
+  }
+}

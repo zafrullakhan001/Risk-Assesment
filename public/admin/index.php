@@ -87,6 +87,10 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <span class="auth-badge <?= $smtpEnabled ? 'is-local' : 'is-off' ?>">SMTP <?= $smtpEnabled ? 'on' : 'off' ?></span>
                     </div>
                 </a>
+                <a class="upload-card admin-tile" href="mcp.php">
+                    <h2>🤖 MCP / AI</h2>
+                    <p>Create tokens for AI assistants (Claude, Cursor, Copilot) to search your SharePoint catalog via MCP.</p>
+                </a>
                 <a class="upload-card admin-tile" href="maintenance.php">
                     <h2>🗄️ SQLite</h2>
                     <p>Integrity check, VACUUM, and backup or restore from database snapshots.</p>

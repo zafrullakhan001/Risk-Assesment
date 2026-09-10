@@ -444,25 +444,25 @@ HTML,
 </ol>
 
 <p><strong>Cursor configuration example:</strong></p>
-<p>Add this to your Cursor MCP settings (<code>.cursor/mcp_settings.json</code> or global settings):</p>
+<p>Add this to your Cursor MCP settings. Prefer the <strong>global</strong> file <code>~/.cursor/mcp.json</code> (Windows: <code>%USERPROFILE%\.cursor\mcp.json</code>), or a project file <code>.cursor/mcp.json</code> (do not commit tokens):</p>
 <pre><code>{
   "mcpServers": {
     "risk-register": {
-      "command": "node",
-      "args": ["-e", 
-        "const http = require('http'); const opts = {method: 'POST', headers: {'Authorization': 'Bearer YOUR_TOKEN_HERE', 'Content-Type': 'application/json'}}; const req = http.request('http://localhost/api/mcp', opts, res => {let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => console.log(data));}); process.stdin.pipe(req);"
-      ]
+      "url": "http://localhost/riskregister/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ramcp_YOUR_TOKEN_HERE"
+      }
     }
   }
 }</code></pre>
-<p>Replace <code>YOUR_TOKEN_HERE</code> with your actual token and adjust the URL if needed.</p>
+<p>Replace <code>ramcp_YOUR_TOKEN_HERE</code> with the token from Admin → MCP / AI. Adjust the URL if your install path differs. After saving, reload MCP servers in Cursor (Settings → MCP).</p>
 
 <p><strong>GitHub Copilot configuration:</strong></p>
 <p>For GitHub Copilot in VS Code, add to settings (<code>.vscode/settings.json</code>):</p>
 <pre><code>{
   "github.copilot.mcp.servers": {
     "risk-register": {
-      "url": "http://localhost/api/mcp",
+      "url": "http://localhost/riskregister/api/mcp",
       "auth": {
         "type": "bearer",
         "token": "ramcp_YOUR_TOKEN_HERE"
@@ -512,14 +512,95 @@ HTML,
 <li><strong>User binding</strong> — Each token belongs to a specific user and inherits their permissions</li>
 </ul>
 
-<p><strong>Usage examples:</strong></p>
+<p><strong>Usage examples (what to ask your AI assistant):</strong></p>
+
+<p><em>Basic Search:</em></p>
 <ul>
-<li>"Search the SharePoint catalog for 'encore'"</li>
-<li>"Find all projects with PDF files"</li>
+<li>"Search the SharePoint catalog for projects containing 'encore'"</li>
+<li>"Find projects with 'architecture' in the name"</li>
+<li>"Search for any project or file mentioning 'database migration'"</li>
+<li>"Look for folders related to 'risk assessment'"</li>
+</ul>
+
+<p><em>Search by File Type:</em></p>
+<ul>
+<li>"Find all projects that have PDF files"</li>
+<li>"Search for projects containing Visio diagrams"</li>
+<li>"Show me projects with Excel spreadsheets (XLSX files)"</li>
+<li>"Find projects that include PowerPoint presentations"</li>
+<li>"Which projects have Word documents?"</li>
+</ul>
+
+<p><em>Search by Person:</em></p>
+<ul>
 <li>"What projects were modified by John Smith?"</li>
-<li>"Show me details for Project Alpha"</li>
-<li>"List all catalog sources"</li>
-<li>"What are the most used tags?"</li>
+<li>"Find all folders created by Jane Doe"</li>
+<li>"Show me projects last modified by the architecture team"</li>
+<li>"Which projects has Sarah worked on recently?"</li>
+</ul>
+
+<p><em>Search by Tags:</em></p>
+<ul>
+<li>"Find projects tagged as 'priority'"</li>
+<li>"Show me all projects with the 'completed' tag"</li>
+<li>"Search for projects tagged 'infrastructure' or 'security'"</li>
+<li>"What tags are available in the catalog?"</li>
+<li>"List the most commonly used tags"</li>
+</ul>
+
+<p><em>Advanced Search with Operators:</em></p>
+<ul>
+<li>"Find projects with 'network' but exclude 'legacy'"</li>
+<li>"Search for exact phrase 'data center migration'"</li>
+<li>"Find projects with extension:pdf AND tag:priority"</li>
+<li>"Show me projects in the path 'drawings' folder"</li>
+<li>"Search for person:'Smith, John' AND ext:docx"</li>
+</ul>
+
+<p><em>Browse and Explore:</em></p>
+<ul>
+<li>"List all SharePoint catalog sources available"</li>
+<li>"Show me the first 10 projects in the default catalog"</li>
+<li>"What's in the Public catalog versus Private catalog?"</li>
+<li>"Get detailed information about Project Alpha including all files"</li>
+<li>"Show me the folder structure for 'Infrastructure Upgrade' project"</li>
+</ul>
+
+<p><em>Statistics and Overview:</em></p>
+<ul>
+<li>"Give me statistics about the SharePoint catalog"</li>
+<li>"How many projects are in each catalog source?"</li>
+<li>"When was each catalog last synced?"</li>
+<li>"What's the total number of items across all catalogs?"</li>
+</ul>
+
+<p><em>Combining Multiple Queries:</em></p>
+<ul>
+<li>"Search for projects with PDF files, then show me the one modified most recently"</li>
+<li>"Find all projects tagged 'active', then list those modified this month"</li>
+<li>"Get catalog stats, then search for the largest project"</li>
+<li>"List all sources, then search the Public catalog for 'design' projects"</li>
+</ul>
+
+<p><em>Project Details:</em></p>
+<ul>
+<li>"Show me all files in the 'Customer Portal' project"</li>
+<li>"What's the folder structure of 'Infrastructure Upgrade'?"</li>
+<li>"Get details about 'Q4 Planning' including file sizes and dates"</li>
+<li>"List all documents in 'Architecture Review 2026' with their URLs"</li>
+</ul>
+
+<p><strong>Search operators reference:</strong></p>
+<ul>
+<li><code>tag:priority</code> — Filter by tag name</li>
+<li><code>ext:pdf</code> — Filter by file extension (pdf, docx, xlsx, pptx, vsdx, etc.)</li>
+<li><code>type:visio</code> — Filter by file type</li>
+<li><code>person:"Last, First"</code> — Filter by person (Modified By or Created By)</li>
+<li><code>path:drawings</code> — Filter by folder path</li>
+<li><code>has:pdf</code> — Projects that contain at least one PDF</li>
+<li><code>"exact phrase"</code> — Match exact text (use quotes)</li>
+<li><code>-exclude</code> — Exclude term from results (minus sign)</li>
+<li>Multiple terms — Combine operators: <code>tag:priority ext:pdf person:Smith</code></li>
 </ul>
 
 <p><strong>Security notes:</strong></p>
@@ -532,7 +613,7 @@ HTML,
 <li>Use HTTPS in production environments</li>
 </ul>
 
-<p><strong>Troubleshooting:</strong> If tokens are not working, verify the token is active (not revoked or expired) at <a href="admin/mcp.php">Admin → MCP / AI</a>, check your Cursor configuration has the correct token, and ensure the API URL is reachable (test with <code>curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost/api/mcp</code>).</p>
+<p><strong>Troubleshooting:</strong> If tokens are not working, verify the token is active (not revoked or expired) at <a href="admin/mcp.php">Admin → MCP / AI</a>, check your Cursor <code>mcp.json</code> has the correct Bearer token and URL (<code>http://localhost/riskregister/api/mcp</code>), then reload MCP servers in Cursor.</p>
 HTML,
                 ],
             ],

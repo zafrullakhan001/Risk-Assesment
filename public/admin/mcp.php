@@ -11,636 +11,493 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/bootstrap.php';
 
 $currentUser = $auth->requireAdmin();
-$branding = \RiskAssessment\Branding::fromSettings($settings);
+$error = '';
+$flash = '';
 
-$pageTitle = 'MCP / AI Tokens';
+$adminTitle = 'MCP / AI Tokens';
+$adminTab = 'mcp';
+$adminEyebrow = 'AI assistant integration';
+$adminHeading = 'MCP / <em>AI</em> Tokens';
+$adminIntro = 'Create tokens so AI assistants like Claude, Cursor, and GitHub Copilot can search your SharePoint catalog.';
+
+require dirname(__DIR__) . '/includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($pageTitle) ?> · <?= e($branding->documentTitle()) ?></title>
-    <?php require __DIR__ . '/../includes/theme-head.php'; ?>
-    <?php require __DIR__ . '/../includes/head-branding.php'; ?>
-    <link rel="stylesheet" href="../assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/../assets/css/dashboard.css') ?>">
-    <style>
-        .mcp-tokens-page {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-        
-        .mcp-header {
-            margin-bottom: 2rem;
-        }
-        
-        .mcp-intro {
-            background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        
-        .mcp-intro h2 {
-            margin: 0 0 0.5rem 0;
-            font-size: 1.25rem;
-        }
-        
-        .mcp-intro p {
-            margin: 0.5rem 0;
-            color: var(--text-secondary);
-        }
-        
-        .mcp-actions {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .mcp-tokens-table {
-            background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .mcp-tokens-table table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .mcp-tokens-table th,
-        .mcp-tokens-table td {
-            padding: 0.75rem 1rem;
-            text-align: left;
-            border-bottom: 1px solid var(--panel-border);
-        }
-        
-        .mcp-tokens-table th {
-            background: var(--panel-bg-secondary, #f8f9fa);
-            font-weight: 600;
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-        }
-        
-        .mcp-tokens-table tr:last-child td {
-            border-bottom: none;
-        }
-        
-        .mcp-tokens-table tbody tr:hover {
-            background: var(--panel-hover, #f8f9fa);
-        }
-        
-        .token-prefix {
-            font-family: 'Courier New', monospace;
-            background: var(--code-bg, #f1f3f5);
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.875rem;
-        }
-        
-        .token-scopes {
-            display: flex;
-            gap: 0.25rem;
-        }
-        
-        .scope-badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 500;
-            text-transform: uppercase;
-        }
-        
-        .scope-read {
-            background: #e3f2fd;
-            color: #1976d2;
-        }
-        
-        .scope-write {
-            background: #fff3e0;
-            color: #f57c00;
-        }
-        
-        .token-status {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }
-        
-        .status-active {
-            background: #e8f5e9;
-            color: #2e7d32;
-        }
-        
-        .status-revoked {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .status-expired {
-            background: #fafafa;
-            color: #616161;
-        }
-        
-        .token-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-        
-        .empty-state {
-            padding: 3rem;
-            text-align: center;
-            color: var(--text-secondary);
-        }
-        
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-        
-        /* Modal styles */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .modal-overlay.active {
-            display: flex;
-        }
-        
-        .modal {
-            background: var(--panel-bg);
-            border-radius: 8px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-        }
-        
-        .modal-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--panel-border);
-        }
-        
-        .modal-header h3 {
-            margin: 0;
-            font-size: 1.25rem;
-        }
-        
-        .modal-body {
-            padding: 1.5rem;
-        }
-        
-        .modal-footer {
-            padding: 1rem 1.5rem;
-            border-top: 1px solid var(--panel-border);
-            display: flex;
-            gap: 0.5rem;
-            justify-content: flex-end;
-        }
-        
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-        
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid var(--panel-border);
-            border-radius: 4px;
-            font-size: 1rem;
-        }
-        
-        .form-help {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            margin-top: 0.25rem;
-        }
-        
-        .token-display {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            padding: 1rem;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            margin: 1rem 0;
-        }
-        
-        .copy-button {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .alert {
-            padding: 1rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-        }
-        
-        .alert-warning {
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            color: #856404;
-        }
-        
-        .alert-info {
-            background: #d1ecf1;
-            border: 1px solid #17a2b8;
-            color: #0c5460;
-        }
-    </style>
-</head>
-<body>
-    <div class="shell upload-page">
-        <header class="topbar topbar-uplift">
-            <a class="brand brand-link" href="../index.php" title="Return to home">
-                <?php require __DIR__ . '/../includes/brand-mark.php'; ?>
-                <div class="brand-text">
-                    <div class="brand-title"><?= e($branding->brandTitle()) ?></div>
-                    <h1><?= e($pageTitle) ?></h1>
-                </div>
-            </a>
-            <div class="topbar-actions">
-                <?php require __DIR__ . '/../includes/topbar-menu-start.php'; ?>
-                <?php require __DIR__ . '/../includes/admin-nav.php'; ?>
-                <?php require __DIR__ . '/../includes/topbar-menu-end.php'; ?>
-            </div>
-        </header>
+<style>
+.token-list {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
 
-        <main class="mcp-tokens-page">
-            <div class="mcp-intro">
-                <h2>🤖 MCP / AI Assistant Integration</h2>
-                <p><strong>MCP (Model Context Protocol)</strong> lets AI assistants like Claude and Cursor search your SharePoint catalog programmatically.</p>
-                <p>Create tokens below, then add them to your AI assistant's MCP configuration. Tokens are user-bound and scoped (read-only by default).</p>
-                <p>📚 <a href="../help.php#sharepoint-mcp-integration">See Help & About → SharePoint → MCP integration</a> for setup instructions.</p>
-            </div>
+.token-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 1.25rem;
+}
 
-            <div class="mcp-actions">
-                <button type="button" class="button button-primary" id="create-token-btn">
-                    + Create Token
-                </button>
-                <button type="button" class="button ghost" id="refresh-tokens-btn">
-                    ↻ Refresh
-                </button>
-                <label style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
-                    <input type="checkbox" id="show-revoked">
-                    Show revoked
-                </label>
-            </div>
+.token-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
 
-            <div class="mcp-tokens-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>User</th>
-                            <th>Token</th>
-                            <th>Scopes</th>
-                            <th>Status</th>
-                            <th>Last Used</th>
-                            <th>Created</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tokens-tbody">
-                        <tr>
-                            <td colspan="8" class="empty-state">
-                                <div class="empty-state-icon">⏳</div>
-                                <div>Loading tokens...</div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </main>
+.token-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem 0;
+}
 
-        <?php require __DIR__ . '/../includes/site-footer.php'; ?>
+.token-prefix {
+    font-family: monospace;
+    color: var(--muted, #64748b);
+    font-size: 0.875rem;
+}
+
+.token-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    color: var(--muted, #64748b);
+    font-size: 0.875rem;
+}
+
+.token-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-small {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    border-radius: 4px;
+    border: 1px solid var(--border, #cbd5e1);
+    background: var(--surface, #fff);
+    color: var(--ink, #0f172a);
+    cursor: pointer;
+}
+
+.btn-small:hover {
+    background: var(--surface-2, #f8fafc);
+}
+
+.btn-danger {
+    color: #dc2626;
+    border-color: #dc2626;
+}
+
+.btn-danger:hover {
+    background: #fef2f2;
+}
+
+.mcp-intro-card {
+    background: var(--info-bg, #eff6ff);
+    border: 1px solid var(--info-border, #60a5fa);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.mcp-intro-card h2 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.25rem;
+}
+
+.mcp-intro-card p {
+    margin: 0.5rem 0;
+}
+
+.mcp-intro-card ul {
+    margin: 0.75rem 0;
+    padding-left: 1.5rem;
+}
+
+.mcp-intro-card li {
+    margin: 0.25rem 0;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.modal.is-active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--surface, #ffffff);
+    color: var(--ink, #0f172a);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 12px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
+    padding: 1.75rem 2rem;
+    max-width: 520px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: var(--ink, #0f172a);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--muted, #64748b);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 6px;
+}
+
+.modal-close:hover {
+    background: var(--surface-2, #f1f5f9);
+    color: var(--ink, #0f172a);
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--ink, #0f172a);
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--ink, #0f172a);
+    font-size: 1rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}
+
+.token-display {
+    background: var(--code-bg, #f3f4f6);
+    border: 1px solid var(--code-border, #d1d5db);
+    border-radius: 4px;
+    padding: 1rem;
+    font-family: monospace;
+    word-break: break-all;
+    margin: 1rem 0;
+}
+
+.warning-text {
+    color: #d97706;
+    font-weight: 500;
+    margin-top: 0.75rem;
+}
+</style>
+
+<div class="mcp-intro-card">
+    <h2>🤖 MCP / AI Assistant Integration</h2>
+    <p><strong>MCP (Model Context Protocol)</strong> lets AI assistants like Claude and Cursor search your SharePoint catalog programmatically.</p>
+    <p><strong>What you can do:</strong></p>
+    <ul>
+        <li>Create tokens for AI assistants (Claude, Cursor, GitHub Copilot)</li>
+        <li>Search SharePoint catalog with natural language queries</li>
+        <li>Set expiration dates for security</li>
+        <li>Revoke tokens when no longer needed</li>
+        <li>View usage statistics and last used dates</li>
+    </ul>
+    <p>To get started, click <strong>Create Token</strong> below, name it after your AI tool, and copy the token to your MCP configuration.</p>
+</div>
+
+<section class="upload-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h2 style="margin: 0;">Your MCP Tokens</h2>
+        <button type="button" class="button button-primary" id="create-token-btn">Create Token</button>
     </div>
+    <div id="tokens-list">
+        <p style="color: var(--text-muted);">Loading tokens...</p>
+    </div>
+</section>
 
-    <!-- Create Token Modal -->
-    <div class="modal-overlay" id="create-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Create MCP Token</h3>
+<!-- Create Token Modal -->
+<div class="modal" id="create-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create MCP Token</h2>
+            <button type="button" class="modal-close" id="create-close">&times;</button>
+        </div>
+        <form id="create-form">
+            <div class="form-group">
+                <label for="token-name">Token Name *</label>
+                <input type="text" id="token-name" name="name" required 
+                       placeholder="e.g., Cursor IDE, Claude Desktop, GitHub Copilot">
             </div>
-            <div class="modal-body">
-                <form id="create-token-form">
-                    <div class="form-group">
-                        <label for="token-name">Token Name *</label>
-                        <input type="text" id="token-name" name="name" placeholder="e.g., Cursor IDE" required>
-                        <div class="form-help">Descriptive name to identify this token</div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="token-user">User</label>
-                        <select id="token-user" name="userId">
-                            <option value="<?= (int) $currentUser['id'] ?>" selected><?= e($currentUser['username']) ?> (You)</option>
-                        </select>
-                        <div class="form-help">User this token will act as</div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Scopes</label>
-                        <label style="display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" name="scope-read" checked disabled>
-                            <span>Read (search and list)</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" name="scope-write" id="scope-write">
-                            <span>Write (future use)</span>
-                        </label>
-                        <div class="form-help">Read scope is always included</div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="token-expiry">Expiration</label>
-                        <select id="token-expiry" name="expiresInDays">
-                            <option value="">Never expires</option>
-                            <option value="30">30 days</option>
-                            <option value="90" selected>90 days</option>
-                            <option value="180">180 days</option>
-                            <option value="365">1 year</option>
-                        </select>
-                        <div class="form-help">Token will automatically expire after this period</div>
-                    </div>
-                </form>
+            <div class="form-group">
+                <label for="token-expires">Expiration</label>
+                <select id="token-expires" name="expires">
+                    <option value="90">90 days (recommended)</option>
+                    <option value="30">30 days</option>
+                    <option value="180">180 days</option>
+                    <option value="365">1 year</option>
+                    <option value="0">Never expires</option>
+                </select>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="button ghost" id="create-cancel-btn">Cancel</button>
-                <button type="button" class="button button-primary" id="create-submit-btn">Create Token</button>
+            <div class="form-actions">
+                <button type="button" class="button" id="cancel-create">Cancel</button>
+                <button type="submit" class="button button-primary">Create Token</button>
             </div>
+        </form>
+    </div>
+</div>
+
+<!-- Token Display Modal -->
+<div class="modal" id="display-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Token Created! ✓</h2>
+            <button type="button" class="modal-close" id="display-close">&times;</button>
+        </div>
+        <p><strong>Copy this token now!</strong> It will only be shown once.</p>
+        <div class="token-display" id="token-value"></div>
+        <button type="button" class="button button-primary" id="copy-token" style="width: 100%;">
+            📋 Copy to Clipboard
+        </button>
+        <p class="warning-text">⚠️ Save this token securely. You won't be able to see it again.</p>
+        <div class="form-actions">
+            <button type="button" class="button" id="display-done">Done</button>
         </div>
     </div>
+</div>
 
-    <!-- Token Display Modal -->
-    <div class="modal-overlay" id="token-display-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>✅ Token Created</h3>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-warning">
-                    <strong>⚠️ Copy this token now!</strong> You won't be able to see it again.
-                </div>
-                
-                <div class="form-group">
-                    <label>Your Token:</label>
-                    <div class="token-display" id="created-token-value"></div>
-                    <button type="button" class="button" id="copy-token-btn">
-                        📋 Copy to Clipboard
-                    </button>
-                </div>
-                
-                <div class="alert alert-info">
-                    <strong>Next steps:</strong>
-                    <ol style="margin: 0.5rem 0 0 1.5rem; padding: 0;">
-                        <li>Copy the token above</li>
-                        <li>Add it to your Cursor MCP settings</li>
-                        <li>See <a href="../help.php#sharepoint-mcp-integration" target="_blank">Help & About</a> for configuration details</li>
-                    </ol>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="button button-primary" id="token-display-close-btn">Done</button>
-            </div>
-        </div>
-    </div>
+<script>
+(function() {
+    const tokensList = document.getElementById('tokens-list');
+    const createBtn = document.getElementById('create-token-btn');
+    const createModal = document.getElementById('create-modal');
+    const createClose = document.getElementById('create-close');
+    const cancelCreate = document.getElementById('cancel-create');
+    const createForm = document.getElementById('create-form');
+    const displayModal = document.getElementById('display-modal');
+    const displayClose = document.getElementById('display-close');
+    const displayDone = document.getElementById('display-done');
+    const copyToken = document.getElementById('copy-token');
+    const tokenValue = document.getElementById('token-value');
 
-    <script src="../assets/js/theme.js?v=<?= filemtime(__DIR__ . '/../assets/js/theme.js') ?>"></script>
-    <script>
-        (function() {
-            const csrfToken = '<?= e($_SESSION['csrf_token'] ?? '') ?>';
-            const apiBase = '../api/mcp-tokens.php';
-            
-            let tokens = [];
-            let showRevoked = false;
-            
-            // Load tokens
-            async function loadTokens() {
-                try {
-                    const url = showRevoked ? `${apiBase}?include_revoked=true` : apiBase;
-                    const response = await fetch(url);
-                    const result = await response.json();
-                    
-                    if (result.data) {
-                        tokens = result.data;
-                        renderTokens();
-                    }
-                } catch (error) {
-                    console.error('Failed to load tokens:', error);
-                }
-            }
-            
-            // Render tokens table
-            function renderTokens() {
-                const tbody = document.getElementById('tokens-tbody');
-                
+    function loadTokens() {
+        fetch('../api/mcp-tokens.php', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                const tokens = Array.isArray(data.tokens) ? data.tokens : (Array.isArray(data.data) ? data.data : []);
                 if (tokens.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="8" class="empty-state">
-                                <div class="empty-state-icon">🔑</div>
-                                <div>No tokens yet. Create your first token to get started!</div>
-                            </td>
-                        </tr>
-                    `;
+                    tokensList.innerHTML = '<p style="color: var(--muted, #64748b);">No tokens yet. Create one to get started!</p>';
                     return;
                 }
                 
-                tbody.innerHTML = tokens.map(token => {
-                    const status = token.revokedAt ? 'revoked' 
-                        : (token.expiresAt && token.expiresAt < Date.now() / 1000) ? 'expired'
-                        : 'active';
-                    
-                    const lastUsed = token.lastUsedAt 
-                        ? new Date(token.lastUsedAt * 1000).toLocaleString()
+                tokensList.innerHTML = tokens.map(token => {
+                    const createdAt = token.createdAt ?? token.created_at;
+                    const lastUsedAt = token.lastUsedAt ?? token.last_used_at;
+                    const expiresAt = token.expiresAt ?? token.expires_at;
+                    const revokedAt = token.revokedAt ?? token.revoked_at;
+                    const tokenPrefix = token.tokenPrefix ?? token.token_prefix ?? '';
+
+                    const createdDate = createdAt ? new Date(createdAt * 1000).toLocaleDateString() : '—';
+                    const lastUsed = lastUsedAt
+                        ? new Date(lastUsedAt * 1000).toLocaleDateString()
                         : 'Never';
+                    const expires = expiresAt
+                        ? new Date(expiresAt * 1000).toLocaleDateString()
+                        : 'Never';
+                    const isExpired = expiresAt && expiresAt < Date.now() / 1000;
+                    const isRevoked = revokedAt !== null && revokedAt !== undefined;
                     
-                    const created = new Date(token.createdAt * 1000).toLocaleString();
+                    let statusBadge = '';
+                    if (isRevoked) {
+                        statusBadge = '<span style="color: #dc2626; font-weight: 500;">Revoked</span>';
+                    } else if (isExpired) {
+                        statusBadge = '<span style="color: #f59e0b; font-weight: 500;">Expired</span>';
+                    } else {
+                        statusBadge = '<span style="color: #10b981; font-weight: 500;">Active</span>';
+                    }
                     
                     return `
-                        <tr>
-                            <td><strong>${escapeHtml(token.name)}</strong></td>
-                            <td>${escapeHtml(token.username || 'Unknown')}</td>
-                            <td><code class="token-prefix">${escapeHtml(token.tokenPrefix)}</code></td>
-                            <td>
-                                <div class="token-scopes">
-                                    ${token.scopes.map(s => `<span class="scope-badge scope-${s}">${s}</span>`).join('')}
+                        <div class="token-card">
+                            <div class="token-card-header">
+                                <div>
+                                    <div class="token-name">${escapeHtml(token.name || '')}</div>
+                                    <div class="token-prefix">${escapeHtml(tokenPrefix)}••••••••••••</div>
                                 </div>
-                            </td>
-                            <td><span class="token-status status-${status}">${status}</span></td>
-                            <td>${lastUsed}</td>
-                            <td>${created}</td>
-                            <td>
                                 <div class="token-actions">
-                                    ${status === 'active' ? `
-                                        <button type="button" class="button ghost" onclick="revokeToken(${token.id}, '${escapeHtml(token.name)}')">
+                                    ${!isRevoked && !isExpired ? `
+                                        <button type="button" class="btn-small btn-danger" data-revoke-id="${token.id}" data-revoke-name="${escapeHtml(token.name || '')}">
                                             Revoke
                                         </button>
-                                    ` : '<span style="color: var(--text-secondary);">—</span>'}
+                                    ` : ''}
                                 </div>
-                            </td>
-                        </tr>
+                            </div>
+                            <div class="token-meta">
+                                <span>Status: ${statusBadge}</span>
+                                <span>Created: ${createdDate}</span>
+                                <span>Last used: ${lastUsed}</span>
+                                <span>Expires: ${expires}</span>
+                            </div>
+                        </div>
                     `;
                 }).join('');
-            }
-            
-            // Create token
-            async function createToken() {
-                const form = document.getElementById('create-token-form');
-                const formData = new FormData(form);
-                
-                const scopes = ['read'];
-                if (document.getElementById('scope-write').checked) {
-                    scopes.push('write');
-                }
-                
-                const data = {
-                    name: formData.get('name'),
-                    userId: parseInt(formData.get('userId')),
-                    scopes: scopes,
-                    expiresInDays: formData.get('expiresInDays') ? parseInt(formData.get('expiresInDays')) : null,
-                };
-                
-                try {
-                    const response = await fetch(apiBase, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(data),
+
+                tokensList.querySelectorAll('[data-revoke-id]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        revokeToken(Number(btn.getAttribute('data-revoke-id')), btn.getAttribute('data-revoke-name') || '');
                     });
-                    
-                    const result = await response.json();
-                    
-                    if (result.data && result.data.token) {
-                        // Close create modal
-                        document.getElementById('create-modal').classList.remove('active');
-                        
-                        // Show token
-                        document.getElementById('created-token-value').textContent = result.data.token;
-                        document.getElementById('token-display-modal').classList.add('active');
-                        
-                        // Reload tokens
-                        await loadTokens();
-                        
-                        // Reset form
-                        form.reset();
-                    } else {
-                        alert('Failed to create token: ' + (result.error || 'Unknown error'));
-                    }
-                } catch (error) {
-                    console.error('Failed to create token:', error);
-                    alert('Failed to create token');
-                }
-            }
-            
-            // Revoke token
-            window.revokeToken = async function(tokenId, tokenName) {
-                if (!confirm(`Revoke token "${tokenName}"?\n\nThis action cannot be undone. The token will stop working immediately.`)) {
-                    return;
-                }
-                
-                try {
-                    const response = await fetch(`${apiBase}/${tokenId}`, {
-                        method: 'DELETE',
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.data) {
-                        await loadTokens();
-                    } else {
-                        alert('Failed to revoke token: ' + (result.error || 'Unknown error'));
-                    }
-                } catch (error) {
-                    console.error('Failed to revoke token:', error);
-                    alert('Failed to revoke token');
-                }
-            };
-            
-            // Copy token to clipboard
-            document.getElementById('copy-token-btn').addEventListener('click', async function() {
-                const tokenValue = document.getElementById('created-token-value').textContent;
-                
-                try {
-                    await navigator.clipboard.writeText(tokenValue);
-                    this.textContent = '✓ Copied!';
-                    setTimeout(() => {
-                        this.textContent = '📋 Copy to Clipboard';
-                    }, 2000);
-                } catch (error) {
-                    alert('Failed to copy to clipboard');
-                }
-            });
-            
-            // Modal controls
-            document.getElementById('create-token-btn').addEventListener('click', function() {
-                document.getElementById('create-modal').classList.add('active');
-            });
-            
-            document.getElementById('create-cancel-btn').addEventListener('click', function() {
-                document.getElementById('create-modal').classList.remove('active');
-            });
-            
-            document.getElementById('create-submit-btn').addEventListener('click', createToken);
-            
-            document.getElementById('token-display-close-btn').addEventListener('click', function() {
-                document.getElementById('token-display-modal').classList.remove('active');
-            });
-            
-            document.getElementById('refresh-tokens-btn').addEventListener('click', loadTokens);
-            
-            document.getElementById('show-revoked').addEventListener('change', function() {
-                showRevoked = this.checked;
-                loadTokens();
-            });
-            
-            // Close modals on overlay click
-            document.querySelectorAll('.modal-overlay').forEach(overlay => {
-                overlay.addEventListener('click', function(e) {
-                    if (e.target === this) {
-                        this.classList.remove('active');
-                    }
                 });
+            })
+            .catch(err => {
+                tokensList.innerHTML = '<p style="color: #dc2626;">Error loading tokens.</p>';
+                console.error('Load tokens error:', err);
             });
-            
-            // Utility function
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = String(text ?? '');
+        return div.innerHTML;
+    }
+
+    function revokeToken(id, name) {
+        if (!confirm(`Revoke token "${name}"? This cannot be undone.`)) {
+            return;
+        }
+        
+        fetch('../api/mcp-tokens.php', {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        })
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+            if (ok && (data.ok || data.data)) {
+                loadTokens();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to revoke token'));
             }
-            
-            // Initial load
-            loadTokens();
-        })();
-    </script>
-</body>
-</html>
+        })
+        .catch(err => {
+            alert('Error revoking token');
+            console.error('Revoke error:', err);
+        });
+    }
+
+    createBtn.addEventListener('click', () => {
+        createModal.classList.add('is-active');
+    });
+
+    createClose.addEventListener('click', () => {
+        createModal.classList.remove('is-active');
+    });
+
+    cancelCreate.addEventListener('click', () => {
+        createModal.classList.remove('is-active');
+    });
+
+    createForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(createForm);
+        const payload = {
+            name: formData.get('name'),
+            expiresInDays: parseInt(String(formData.get('expires') || '90'), 10)
+        };
+        
+        fetch('../api/mcp-tokens.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+            const token = data.token || (data.data && data.data.token);
+            if (ok && token) {
+                createModal.classList.remove('is-active');
+                createForm.reset();
+                tokenValue.textContent = token;
+                displayModal.classList.add('is-active');
+                loadTokens();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to create token'));
+            }
+        })
+        .catch(err => {
+            alert('Error creating token');
+            console.error('Create error:', err);
+        });
+    });
+
+    displayClose.addEventListener('click', () => {
+        displayModal.classList.remove('is-active');
+    });
+
+    displayDone.addEventListener('click', () => {
+        displayModal.classList.remove('is-active');
+    });
+
+    copyToken.addEventListener('click', () => {
+        const text = tokenValue.textContent;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => {
+                const original = copyToken.textContent;
+                copyToken.textContent = '✓ Copied!';
+                setTimeout(() => {
+                    copyToken.textContent = original;
+                }, 2000);
+            }).catch(err => {
+                console.error('Copy failed:', err);
+                alert('Failed to copy. Please copy manually.');
+            });
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            copyToken.textContent = '✓ Copied!';
+            setTimeout(() => {
+                copyToken.textContent = '📋 Copy to Clipboard';
+            }, 2000);
+        }
+    });
+
+    loadTokens();
+})();
+</script>
+
+<?php
+require dirname(__DIR__) . '/includes/admin-footer.php';

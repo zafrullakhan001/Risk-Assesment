@@ -1,8 +1,78 @@
-Options -Indexes
+# Disable directory browsing
+Options -Indexes -MultiViews
 DirectoryIndex index.php
 
+# Pass Authorization to PHP so MCP Bearer tokens survive CGI/FastCGI/rewrite.
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+</IfModule>
+<IfModule mod_cgi.c>
+    CGIPassAuth On
+</IfModule>
+
+# Prevent access to sensitive files
+<FilesMatch "^\.(?!well-known).*$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(env|ini|log|sh|sql|sqlite|md|json|lock|yml|yaml|dist|bak|old|tmp)$">
+    Require all denied
+</FilesMatch>
+
+# Security headers
 <IfModule mod_headers.c>
-    Header set X-Content-Type-Options "nosniff"
-    Header set X-Frame-Options "SAMEORIGIN"
-    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    # Prevent MIME type sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Remove server information
+    Header always unset X-Powered-By
+    Header unset X-Powered-By
+    
+    # Content Security Policy
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'self';"
+    
+    # Permissions Policy
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+    
+    # Strict Transport Security (HSTS) - Enable only if using HTTPS
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# Prevent execution of PHP in uploads
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Pass Authorization header through rewrites
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Pretty MCP endpoint: /api/mcp -> mcp.php
+    RewriteRule ^api/mcp/?$ api/mcp.php [L,QSA]
+    
+    # Block direct access to bootstrap.php
+    RewriteRule ^bootstrap\.php$ - [F,L]
+    
+    # Prevent access to includes directory
+    RewriteRule ^includes/.*$ - [F,L]
+</IfModule>
+
+# PHP security settings
+<IfModule mod_php8.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag expose_php Off
+    php_flag log_errors On
+    php_value error_reporting 32767
+    php_value session.cookie_httponly 1
+    php_value session.cookie_secure 1
+    php_value session.use_strict_mode 1
 </IfModule>

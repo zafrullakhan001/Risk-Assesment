@@ -6,12 +6,21 @@ use RiskAssessment\Auth;
 use RiskAssessment\Branding;
 use RiskAssessment\Crypto;
 use RiskAssessment\Database\Database;
+use RiskAssessment\ErrorHandler;
 use RiskAssessment\LdapAuth;
 use RiskAssessment\Repositories\SettingsRepository;
 use RiskAssessment\Repositories\UserRepository;
+use RiskAssessment\Security;
 use RiskAssessment\Session;
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
+
+// Initialize security settings
+Security::initialize();
+Security::sendSecurityHeaders();
+
+// Register error handler
+ErrorHandler::register();
 
 $config = require dirname(__DIR__) . '/config/config.php';
 $dbConfig = require dirname(__DIR__) . '/config/database.php';

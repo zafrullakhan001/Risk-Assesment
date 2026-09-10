@@ -11,8 +11,6 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-use RiskAssessment\Actor;
-
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: private, no-store');
 
@@ -110,7 +108,7 @@ try {
                 $tokens[] = mapTokenRow($row);
             }
             
-            sendJson(['data' => $tokens]);
+            sendJson(['tokens' => $tokens]);
             break;
         
         case 'POST':
@@ -118,8 +116,8 @@ try {
                 sendJson(['error' => 'Invalid endpoint'], 404);
             }
             
-            $raw = file_get_contents('php://input');
-            $data = json_decode($raw, true);
+            $rawBody = file_get_contents('php://input');
+            $data = json_decode($rawBody ?: '', true);
             
             if (!is_array($data)) {
                 sendJson(['error' => 'Invalid JSON'], 400);
@@ -157,8 +155,9 @@ try {
             $scopes = normalizeScopes($data['scopes'] ?? ['read']);
             
             $expiresAt = null;
-            if (isset($data['expiresInDays']) && is_numeric($data['expiresInDays'])) {
-                $days = (int) $data['expiresInDays'];
+            $expiresDays = $data['expiresInDays'] ?? $data['expires_days'] ?? null;
+            if ($expiresDays !== null && is_numeric($expiresDays)) {
+                $days = (int) $expiresDays;
                 if ($days > 0) {
                     $expiresAt = time() + ($days * 86400);
                 }
@@ -167,9 +166,9 @@ try {
             }
             
             // Generate token
-            $raw = 'ramcp_' . bin2hex(random_bytes(32));
-            $hash = hash('sha256', $raw);
-            $prefix = substr($raw, 0, 12) . '…';
+            $rawToken = 'ramcp_' . bin2hex(random_bytes(32));
+            $hash = hash('sha256', $rawToken);
+            $prefix = substr($rawToken, 0, 12) . '…';
             $now = time();
             
             $ins = $pdo->prepare(
@@ -181,21 +180,26 @@ try {
             $ins->execute([$userId, $name, $hash, $prefix, $scopes, $expiresAt, $now]);
             $id = (int) $pdo->lastInsertId();
             
-            // Log activity
+            // Log activity (best effort)
             try {
-                $actor = Actor::fromCurrentUser($currentUser);
-                $actor->log('mcp.token_created', [
-                    'token_id' => $id,
-                    'name' => $name,
-                    'target_user_id' => $userId,
-                    'target_username' => $target['username'],
-                    'scopes' => $scopes,
-                ]);
+                $auth->users()->logAudit(
+                    'mcp.token_created',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    $userId,
+                    (string) ($target['username'] ?? ''),
+                    [
+                        'token_id' => $id,
+                        'name' => $name,
+                        'scopes' => $scopes,
+                    ]
+                );
             } catch (\Throwable $e) {
                 error_log('Failed to log MCP token creation: ' . $e->getMessage());
             }
             
             sendJson([
+                'token' => $rawToken,
                 'data' => [
                     'id' => $id,
                     'userId' => $userId,
@@ -205,17 +209,28 @@ try {
                     'scopes' => explode(',', $scopes),
                     'expiresAt' => $expiresAt,
                     'createdAt' => $now,
-                    'token' => $raw,
+                    'token' => $rawToken,
                 ],
             ], 201);
             break;
         
         case 'DELETE':
-            if (!preg_match('#^/(\d+)$#', $path, $m)) {
-                sendJson(['error' => 'Invalid endpoint'], 404);
+            $id = 0;
+            if (preg_match('#^/(\d+)$#', $path, $m)) {
+                $id = (int) $m[1];
+            } elseif (isset($_GET['id']) && is_numeric($_GET['id'])) {
+                $id = (int) $_GET['id'];
+            } else {
+                $rawBody = file_get_contents('php://input');
+                $data = json_decode($rawBody ?: '', true);
+                if (is_array($data) && isset($data['id']) && is_numeric($data['id'])) {
+                    $id = (int) $data['id'];
+                }
             }
             
-            $id = (int) $m[1];
+            if ($id < 1) {
+                sendJson(['error' => 'Token id is required'], 400);
+            }
             
             $stmt = $pdo->prepare(
                 'SELECT t.*, u.username FROM mcp_tokens t 
@@ -230,27 +245,30 @@ try {
             }
             
             if (!empty($row['revoked_at'])) {
-                sendJson(['data' => mapTokenRow($row)]);
+                sendJson(['ok' => true, 'data' => mapTokenRow($row)]);
             }
             
             $pdo->prepare('UPDATE mcp_tokens SET revoked_at = ? WHERE id = ?')
                 ->execute([time(), $id]);
             
-            // Log activity
             try {
-                $actor = Actor::fromCurrentUser($currentUser);
-                $actor->log('mcp.token_revoked', [
-                    'token_id' => $id,
-                    'name' => $row['name'],
-                    'target_user_id' => (int) $row['user_id'],
-                    'target_username' => $row['username'] ?? null,
-                ]);
+                $auth->users()->logAudit(
+                    'mcp.token_revoked',
+                    (int) $currentUser['id'],
+                    (string) $currentUser['username'],
+                    (int) $row['user_id'],
+                    (string) ($row['username'] ?? ''),
+                    [
+                        'token_id' => $id,
+                        'name' => $row['name'],
+                    ]
+                );
             } catch (\Throwable $e) {
                 error_log('Failed to log MCP token revocation: ' . $e->getMessage());
             }
             
             $row['revoked_at'] = time();
-            sendJson(['data' => mapTokenRow($row)]);
+            sendJson(['ok' => true, 'data' => mapTokenRow($row)]);
             break;
         
         default:

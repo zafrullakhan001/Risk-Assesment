@@ -1,10 +1,41 @@
-Options -Indexes
+# Disable directory browsing
+Options -Indexes -MultiViews
 
+# Disable server signature
+ServerSignature Off
+
+# Pass Authorization to PHP so MCP Bearer tokens survive CGI/FastCGI/rewrite.
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+</IfModule>
+<IfModule mod_cgi.c>
+    CGIPassAuth On
+</IfModule>
+
+# Prevent access to sensitive files
+<FilesMatch "^\.(?!well-known).*$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(env|ini|log|sh|sql|sqlite|md|json|lock|yml|yaml|dist)$">
+    Require all denied
+</FilesMatch>
+
+# Prevent access to version control files
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Pass Authorization header through rewrites
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+    
+    # Block access to git files
+    RewriteRule ^\.git - [F,L]
+    RewriteRule \.gitignore$ - [F,L]
+    RewriteRule \.gitattributes$ - [F,L]
+
     # Deny direct web access to non-public application trees.
-    RewriteRule ^(config|database|src|vendor|bin|docs|templates|uploads|dist)(/|$) - [F,L]
+    RewriteRule ^(config|database|src|vendor|bin|docs|templates|uploads|dist|node_modules|mcp-server)(/|$) - [F,L]
 
     # Keep /public/... URLs working as-is (no double rewrite).
     RewriteRule ^public(/|$) - [L]
@@ -12,4 +43,35 @@ Options -Indexes
     # Serve everything else from public/ so the install folder works
     # at /RiskRegister/, a renamed folder, or a vhost document root.
     RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    # Prevent MIME type sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Remove server information
+    Header always unset X-Powered-By
+    Header unset X-Powered-By
+    
+    # Permissions Policy (formerly Feature Policy)
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+</IfModule>
+
+# PHP security settings
+<IfModule mod_php8.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag expose_php Off
+    php_flag log_errors On
+    php_value error_reporting 32767
 </IfModule>

@@ -17,8 +17,18 @@ use RiskAssessment\Repositories\SharePointCatalogRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
 
+// MCP is Bearer-token auth only — release the PHP session lock so Cursor
+// can run concurrent initialize/tools/list calls without hanging.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
+header('MCP-Protocol-Version: 2025-03-26');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept, MCP-Protocol-Version, Mcp-Session-Id');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -28,10 +38,27 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
-// Only POST allowed
+// Streamable HTTP clients may send DELETE to end a session
+if ($method === 'DELETE') {
+    http_response_code(204);
+    exit;
+}
+
+if ($method === 'GET') {
+    http_response_code(405);
+    header('Allow: POST, DELETE, OPTIONS');
+    echo json_encode([
+        'error' => 'Use HTTP POST with a JSON-RPC body for MCP. GET SSE streams are not required by this server.',
+        'endpoint' => 'POST /api/mcp',
+        'auth' => 'Authorization: Bearer ramcp_…',
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// Only POST allowed for JSON-RPC
 if ($method !== 'POST') {
     http_response_code(405);
-    header('Allow: POST, OPTIONS');
+    header('Allow: POST, DELETE, OPTIONS');
     echo json_encode([
         'error' => 'Method not allowed. Use POST with JSON-RPC body.',
         'endpoint' => 'POST /api/mcp',
@@ -152,7 +179,18 @@ function getMcpUser(): ?array
 {
     global $pdo;
     
-    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    $auth = '';
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        if (is_array($headers)) {
+            $auth = (string) ($headers['Authorization'] ?? $headers['authorization'] ?? '');
+        }
+    }
+    if ($auth === '') {
+        $auth = (string) ($_SERVER['HTTP_AUTHORIZATION']
+            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+            ?? '');
+    }
     if ($auth === '') {
         return null;
     }
@@ -161,7 +199,7 @@ function getMcpUser(): ?array
         return null;
     }
     
-    $token = $matches[1];
+    $token = trim((string) $matches[1]);
     if (!str_starts_with($token, 'ramcp_')) {
         return null;
     }
@@ -430,23 +468,33 @@ function callTool($id, string $name, array $args, array $user): array
                 
                 $sourceKey = trim((string) ($args['source'] ?? ''));
                 $limit = max(1, min(100, (int) ($args['limit'] ?? 25)));
+                @set_time_limit(120);
                 
                 if ($sourceKey === '') {
-                    // Search all sources
+                    // Search all sources (cap per-source and total to avoid timeouts)
                     $sources = $sourcesRepo->listAll();
                     $results = [];
+                    $perSourceLimit = max(1, min($limit, 10));
                     
                     foreach ($sources as $source) {
+                        if (count($results) >= $limit) {
+                            break;
+                        }
+                        
                         $key = (string) ($source['source_key'] ?? '');
                         if ($key === '') {
                             continue;
                         }
                         
-                        $sourceResults = $catalog->search($query, $key, $limit);
+                        $remaining = $limit - count($results);
+                        $sourceResults = $catalog->search($query, $key, min($perSourceLimit, $remaining));
                         foreach ($sourceResults as $result) {
                             $result['source_key'] = $key;
                             $result['source_title'] = (string) ($source['title'] ?? $key);
                             $results[] = $result;
+                            if (count($results) >= $limit) {
+                                break;
+                            }
                         }
                     }
                     

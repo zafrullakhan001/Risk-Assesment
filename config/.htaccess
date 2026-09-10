@@ -1,7 +1,7 @@
 # Deny all direct web access
 Require all denied
 
-# Additional protection
+# Block all file access
 <FilesMatch ".*">
     Require all denied
 </FilesMatch>

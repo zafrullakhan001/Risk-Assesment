@@ -29,6 +29,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         require_valid_csrf();
         $action = (string) ($_POST['action'] ?? 'login');
+        
+        // Rate limiting for login and registration attempts
+        if (in_array($action, ['login', 'register'], true)) {
+            $clientIp = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+            $rateLimitKey = $action . '_' . md5($clientIp);
+            
+            if (!RiskAssessment\Security::checkRateLimit($rateLimitKey, 5, 300)) {
+                $resetTime = RiskAssessment\Security::getRateLimitReset($rateLimitKey);
+                throw new RuntimeException('Too many attempts. Please try again in ' . $resetTime . ' seconds.');
+            }
+        }
+        
         if ($action === 'setup') {
             $auth->createFirstAdmin(
                 (string) ($_POST['username'] ?? ''),

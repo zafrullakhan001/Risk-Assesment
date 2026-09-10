@@ -1,7 +1,7 @@
-# Deny all direct web access
+# Deny all access to log files
 Require all denied
 
-# Additional protection
+# Block everything
 <FilesMatch ".*">
     Require all denied
 </FilesMatch>
