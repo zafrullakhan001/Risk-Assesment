@@ -26,6 +26,7 @@ if (session_status() === PHP_SESSION_ACTIVE) {
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('MCP-Protocol-Version: 2025-03-26');
+header('Access-Control-Expose-Headers: MCP-Protocol-Version');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept, MCP-Protocol-Version, Mcp-Session-Id');
@@ -45,8 +46,11 @@ if ($method === 'DELETE') {
 }
 
 if ($method === 'GET') {
-    http_response_code(405);
+    // Streamable HTTP: if the server does not offer a standalone SSE stream, return 405.
+    // A 200 SSE that closes immediately makes Cursor show "0 tools" after initialize.
     header('Allow: POST, DELETE, OPTIONS');
+    http_response_code(405);
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'error' => 'Use HTTP POST with a JSON-RPC body for MCP. GET SSE streams are not required by this server.',
         'endpoint' => 'POST /api/mcp',
@@ -82,17 +86,15 @@ if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
 $user = getMcpUser();
 if (!$user) {
     header('WWW-Authenticate: Bearer realm="Risk Register MCP"');
-    http_response_code(401);
     $id = is_array($decoded) && !isBatchRequest($decoded) ? ($decoded['id'] ?? null) : null;
-    echo json_encode([
+    mcpEmitPayload([
         'jsonrpc' => '2.0',
         'id' => $id,
         'error' => [
             'code' => -32001,
             'message' => 'Authentication required. Create an MCP token in Admin → MCP / AI and send it as Authorization: Bearer ramcp_…',
         ],
-    ], JSON_UNESCAPED_SLASHES);
-    exit;
+    ], 401);
 }
 
 // Handle batch or single request
@@ -136,21 +138,55 @@ function isBatchRequest(array $decoded): bool
     return array_keys($decoded) === range(0, count($decoded) - 1);
 }
 
+function mcpSupportedProtocolVersions(): array
+{
+    return ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+}
+
+function mcpNegotiateProtocolVersion(?string $requested): string
+{
+    $requested = trim((string) $requested);
+    if ($requested !== '' && in_array($requested, mcpSupportedProtocolVersions(), true)) {
+        return $requested;
+    }
+    return '2025-03-26';
+}
+
+function mcpEmptyObjectSchema(): array
+{
+    return [
+        'type' => 'object',
+        'properties' => new \stdClass(),
+        'additionalProperties' => false,
+    ];
+}
+
+function mcpEmitPayload($data, int $http = 200): never
+{
+    // Always JSON. Cursor's tools/list validator rejects SSE-wrapped offerings.
+    http_response_code($http);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $json = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ($json === false) {
+        $json = '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Failed to encode response"}}';
+    }
+    echo $json;
+    exit;
+}
+
 function sendJson($data): never
 {
-    echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    exit;
+    mcpEmitPayload($data, 200);
 }
 
 function mcpJsonRpcError($id, int $code, string $message, int $http = 400): never
 {
-    http_response_code($http);
-    echo json_encode([
+    mcpEmitPayload([
         'jsonrpc' => '2.0',
         'id' => $id,
         'error' => ['code' => $code, 'message' => $message],
-    ], JSON_UNESCAPED_SLASHES);
-    exit;
+    ], $http);
 }
 
 function mcpResult($id, $result): array
@@ -281,13 +317,20 @@ function handleMessage(array $message, array $user): ?array
             if ($isNotification) {
                 return null;
             }
+            $protocol = mcpNegotiateProtocolVersion(isset($params['protocolVersion']) ? (string) $params['protocolVersion'] : null);
+            if (!headers_sent()) {
+                header('MCP-Protocol-Version: ' . $protocol);
+            }
             return mcpResult($id, [
-                'protocolVersion' => '2025-03-26',
+                'protocolVersion' => $protocol,
                 'capabilities' => [
                     'tools' => ['listChanged' => false],
+                    'resources' => ['subscribe' => false, 'listChanged' => false],
+                    'prompts' => ['listChanged' => false],
                 ],
                 'serverInfo' => [
                     'name' => 'risk-register',
+                    'title' => 'Risk Register',
                     'version' => '1.0.0',
                 ],
                 'instructions' => 'SharePoint catalog search for Risk Register. Use search_sharepoint_catalog for full-text search, list_sharepoint_projects to browse, get_sharepoint_project for details. Operators: tag:name, ext:pdf, person:"name", "exact phrase", -exclude.',
@@ -308,6 +351,18 @@ function handleMessage(array $message, array $user): ?array
                 return null;
             }
             return mcpResult($id, ['tools' => getTools()]);
+
+        case 'resources/list':
+            if ($isNotification) {
+                return null;
+            }
+            return mcpResult($id, ['resources' => []]);
+
+        case 'prompts/list':
+            if ($isNotification) {
+                return null;
+            }
+            return mcpResult($id, ['prompts' => []]);
         
         case 'tools/call':
             if ($isNotification) {
@@ -401,10 +456,7 @@ function getTools(): array
         [
             'name' => 'list_sharepoint_sources',
             'description' => 'List all available SharePoint catalog sources with sync status and item counts.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [],
-            ],
+            'inputSchema' => mcpEmptyObjectSchema(),
         ],
         [
             'name' => 'get_sharepoint_source',
@@ -442,10 +494,7 @@ function getTools(): array
         [
             'name' => 'get_sharepoint_catalog_stats',
             'description' => 'Get overview statistics for all SharePoint catalog sources including total items, projects, and sync status.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [],
-            ],
+            'inputSchema' => mcpEmptyObjectSchema(),
         ],
     ];
 }
