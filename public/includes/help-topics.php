@@ -359,10 +359,10 @@ HTML,
                     'id' => 'sharepoint-search',
                     'title' => 'Search, compare, and tags',
                     'html' => <<<'HTML'
-<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Select more than one catalog to see where a project is found and where it is missing. The search card also has Comfort / Compact density.</p>
+<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Typing a tag name is enough — you do not need the <code>tag:</code> prefix. Use <code>tag:name</code> when you want to require that tag. Select more than one catalog to see where a project is found and where it is missing. The search card also has Comfort / Compact density.</p>
 <p>Search operators and toggles:</p>
 <ul>
-<li><code>tag:name</code>, <code>ext:pdf</code>, <code>type:visio</code>, <code>person:"Last, First"</code>, <code>path:drawings</code>, <code>has:pdf</code>, <code>"exact phrase"</code>, and <code>-exclude</code>.</li>
+<li><code>tag:name</code> (optional prefix), <code>ext:pdf</code>, <code>type:visio</code>, <code>person:"Last, First"</code>, <code>path:drawings</code>, <code>has:pdf</code>, <code>"exact phrase"</code>, and <code>-exclude</code>.</li>
 <li><strong>Fuzzy</strong> — tolerate typos and similar-sounding words (for example Encore ≈ Encor).</li>
 <li><strong>Deep files</strong> — walk every cataloged file alongside the folder (names and paths, not file contents).</li>
 <li><strong>Suggest</strong> — show query suggestions while typing.</li>

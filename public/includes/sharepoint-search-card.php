@@ -28,8 +28,8 @@ $metaProjectCount = (int) ($metaProjectCount ?? $matchedProjectCount ?? $project
 $searchIntroHtml = (string) ($searchIntroHtml ?? '');
 if ($searchIntroHtml === '') {
     $searchIntroHtml = $searchCardPublic
-        ? 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, Created By, or search tags. Use operators like <code>tag:name</code>, <code>ext:pdf</code>, <code>person:name</code>, <code>"exact phrase"</code>, or <code>-exclude</code>.'
-        : 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, Created By, or search tags. Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on. Operators: <code>tag:name</code>, <code>ext:pdf</code>, <code>person:name</code>, <code>"exact"</code>, <code>-exclude</code>.';
+        ? 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, Created By, and search tags (type a tag name; <code>tag:</code> is optional). Use operators like <code>tag:name</code>, <code>ext:pdf</code>, <code>person:name</code>, <code>"exact phrase"</code>, or <code>-exclude</code>.'
+        : 'Find a project folder — live search on project name, nested files, subfolders, paths, Modified By, Created By, and search tags (type a tag name; <code>tag:</code> is optional). Turn on <strong>Deep files</strong> to walk every cataloged file alongside the folder (names and paths, not file contents). Typo-tolerant when Fuzzy is on. Operators: <code>tag:name</code>, <code>ext:pdf</code>, <code>person:name</code>, <code>"exact"</code>, <code>-exclude</code>.';
 }
 
 if (!isset($sourcesJson) || $sourcesJson === null || $sourcesJson === '') {
@@ -178,7 +178,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                                    autocomplete="off"
                                    <?= $searchCardPublic ? '' : 'autofocus ' ?>
                                    aria-label="Search SharePoint catalog"
-                                   title="Live search. Tips: tag:name · ext:pdf · type:visio · person:name · path:drawings · has:pdf · &quot;exact phrase&quot; · -exclude · Press / to focus"
+                                   title="Live search. Tag names match without tag:. Tips: tag:name · ext:pdf · type:visio · person:name · path:drawings · has:pdf · &quot;exact phrase&quot; · -exclude · Press / to focus"
                                    aria-autocomplete="list"
                                    aria-controls="sharepoint-search-suggest"
                                    aria-expanded="false">

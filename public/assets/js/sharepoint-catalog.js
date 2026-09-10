@@ -1541,6 +1541,13 @@
     return display || 'me';
   };
 
+  const itemTagSearchFields = (item) =>
+    normalizeTagList(item?.tags).map((tag) => ({
+      text: tag.label,
+      sourceLabel: 'Tag',
+      sourceName: tag.label,
+    }));
+
   const itemSearchFields = (item) => {
     if (Array.isArray(item?._fields) && item._fields.length) return item._fields;
     const name = String(item?.name || '');
@@ -1557,6 +1564,7 @@
       { text: String(item?.modified_by || ''), sourceLabel: 'Modified by', sourceName: 'modified_by' },
       { text: String(item?.person || ''), sourceLabel: 'Created By', sourceName: 'person' },
       { text: String(item?.mime_type || ''), sourceLabel: 'MIME', sourceName: 'mime' },
+      ...itemTagSearchFields(item),
     ];
   };
 
@@ -1584,6 +1592,7 @@
     const path = String(item?.relative_path || '');
     const meta = resolveMeta(item);
     const ext = fileExtension(name);
+    const tagFields = itemTagSearchFields(item);
     const fields = [
       { text: name, sourceLabel: 'Name', sourceName: 'name' },
       { text: path, sourceLabel: 'Path', sourceName: 'path' },
@@ -1594,6 +1603,7 @@
       { text: String(item?.modified_by || ''), sourceLabel: 'Modified by', sourceName: 'modified_by' },
       { text: String(item?.person || ''), sourceLabel: 'Created By', sourceName: 'person' },
       { text: String(item?.mime_type || ''), sourceLabel: 'MIME', sourceName: 'mime' },
+      ...tagFields,
     ];
     const tagBits = [];
     normalizeTagList(item.tags).forEach((tag) => {
@@ -1673,6 +1683,14 @@
         source: 'Name',
         snippet: item.name,
       };
+    }
+    const tagHay = String(item?._tagHay || '');
+    if (tagHay && dialogHayHasWords(tagHay, words, mode)) {
+      const snippet =
+        tagHay
+          .split('\n')
+          .find((line) => words.some((word) => line.includes(String(word || '').toLowerCase()))) || '';
+      return { matched: true, score: 90, kind: 'contains', source: 'Tag', snippet };
     }
     return { matched: true, score: 86, kind: 'contains', source: 'Path' };
   };
@@ -5657,34 +5675,66 @@
       .join('\n');
     project._hayFiles = entries.map((entry) => `${entry.name}\n${entry.path}`.toLowerCase()).join('\n');
     const tagBits = [];
-    normalizeTagList(project.tags).forEach((tag) => {
-      tagBits.push(tag.label.toLowerCase(), tag.slug);
-    });
+    const tagFields = [];
+    const seenTagLabels = new Set();
+    const pushTag = (tag) => {
+      const label = String(tag?.label || '').trim();
+      const slug = String(tag?.slug || '').trim().toLowerCase();
+      if (label) {
+        const key = label.toLowerCase();
+        tagBits.push(key);
+        if (!seenTagLabels.has(key)) {
+          seenTagLabels.add(key);
+          tagFields.push({ text: label, sourceLabel: 'Tag', sourceName: label });
+        }
+      }
+      if (slug) tagBits.push(slug);
+    };
+    normalizeTagList(project.tags).forEach(pushTag);
     (Array.isArray(project.files) ? project.files : []).forEach((file) => {
-      normalizeTagList(file?.tags).forEach((tag) => {
-        tagBits.push(tag.label.toLowerCase(), tag.slug);
-      });
+      normalizeTagList(file?.tags).forEach(pushTag);
     });
     (Array.isArray(project.folders) ? project.folders : []).forEach((folder) => {
-      normalizeTagList(folder?.tags).forEach((tag) => {
-        tagBits.push(tag.label.toLowerCase(), tag.slug);
-      });
+      normalizeTagList(folder?.tags).forEach(pushTag);
     });
     project._hayTags = [...new Set(tagBits.filter(Boolean))].join('\n');
+    project._tagFields = tagFields;
     if (Fuzzy?.tokenizeSearchText) {
       project._tokensNames = Fuzzy.tokenizeSearchText(project._hayNames || '');
       project._tokensPeople = Fuzzy.tokenizeSearchText(project._hayPeople || '');
       project._tokensFiles = Fuzzy.tokenizeSearchText(project._hayFiles || '');
       project._tokensShallow = Fuzzy.tokenizeSearchText(project._hayShallow || '');
       project._tokensDeep = Fuzzy.tokenizeSearchText(project._hayDeep || '');
+      project._tokensTags = Fuzzy.tokenizeSearchText(project._hayTags || '');
     } else {
       project._tokensNames = [];
       project._tokensPeople = [];
       project._tokensFiles = [];
       project._tokensShallow = [];
       project._tokensDeep = [];
+      project._tokensTags = [];
     }
     return project;
+  };
+
+  const withTagHay = (hay, project) => {
+    const tags = String(project?._hayTags || '');
+    const base = String(hay || '');
+    if (!tags) return base;
+    if (!base) return tags;
+    return `${base}\n${tags}`;
+  };
+
+  const withProjectTagTokens = (tokens, project) => {
+    const tags = Array.isArray(project?._tokensTags) ? project._tokensTags : [];
+    if (!tags.length) return Array.isArray(tokens) ? tokens : [];
+    return (Array.isArray(tokens) ? tokens : []).concat(tags);
+  };
+
+  const withProjectTagFields = (fields, project) => {
+    const tags = Array.isArray(project?._tagFields) ? project._tagFields : [];
+    if (!tags.length) return fields;
+    return (Array.isArray(fields) ? fields : []).concat(tags);
   };
 
   const haystackHasWords = (hay, words, mode) => {
@@ -5711,10 +5761,12 @@
   };
 
   const scopedHaystack = (project, matchScope = state.matchScope, deep = state.deep) => {
-    if (matchScope === 'names') return project._hayNames || '';
-    if (matchScope === 'people') return project._hayPeople || '';
-    if (matchScope === 'files') return project._hayFiles || '';
-    return (effectiveDeep(matchScope, deep) ? project._hayDeep : project._hayShallow) || '';
+    let hay = '';
+    if (matchScope === 'names') hay = project._hayNames || '';
+    else if (matchScope === 'people') hay = project._hayPeople || '';
+    else if (matchScope === 'files') hay = project._hayFiles || '';
+    else hay = (effectiveDeep(matchScope, deep) ? project._hayDeep : project._hayShallow) || '';
+    return withTagHay(hay, project);
   };
 
   const cheapProjectMatch = (project, words, mode, deep, matchScope = state.matchScope) => {
@@ -5738,6 +5790,20 @@
         snippet: project.project_name,
       };
     }
+    const tagHay = String(project._hayTags || '');
+    if (tagHay && haystackHasWords(tagHay, words, mode)) {
+      const snippet =
+        tagHay
+          .split('\n')
+          .find((line) => words.some((word) => line.includes(String(word || '').toLowerCase()))) || '';
+      return {
+        matched: true,
+        score: 90,
+        kind: 'contains',
+        source: 'Tag',
+        snippet,
+      };
+    }
     return {
       matched: true,
       score: 86,
@@ -5748,16 +5814,22 @@
 
   const projectFields = (project, deep = true, matchScope = 'all') => {
     if (matchScope === 'names') {
-      return [
-        { text: project.project_name, sourceLabel: 'Project' },
-        { text: project.source_title, sourceLabel: 'Catalog' },
-      ];
+      return withProjectTagFields(
+        [
+          { text: project.project_name, sourceLabel: 'Project' },
+          { text: project.source_title, sourceLabel: 'Catalog' },
+        ],
+        project
+      );
     }
     if (matchScope === 'people') {
-      return [
-        { text: project.modified_by, sourceLabel: 'Modified By' },
-        { text: project.person, sourceLabel: 'Created By' },
-      ];
+      return withProjectTagFields(
+        [
+          { text: project.modified_by, sourceLabel: 'Modified By' },
+          { text: project.person, sourceLabel: 'Created By' },
+        ],
+        project
+      );
     }
     if (matchScope === 'files') {
       const fields = [];
@@ -5771,7 +5843,7 @@
           fields.push({ text: entry.path, sourceLabel: 'Path', sourceName: entry.path });
         }
       });
-      return fields;
+      return withProjectTagFields(fields, project);
     }
     const fields = [
       { text: project.project_name, sourceLabel: 'Project' },
@@ -5779,7 +5851,7 @@
       { text: project.modified_by, sourceLabel: 'Modified By' },
       { text: project.person, sourceLabel: 'Created By' },
     ];
-    if (!deep) return fields;
+    if (!deep) return withProjectTagFields(fields, project);
     const entries = projectEntries(project);
     if (entries.length) {
       entries.forEach((entry) => {
@@ -5792,7 +5864,7 @@
           fields.push({ text: entry.path, sourceLabel: 'Path', sourceName: entry.path });
         }
       });
-      return fields;
+      return withProjectTagFields(fields, project);
     }
     (project.names || []).forEach((name) => {
       fields.push({ text: name, sourceLabel: 'File', sourceName: name });
@@ -5800,21 +5872,23 @@
     (project.paths || []).forEach((path) => {
       fields.push({ text: path, sourceLabel: 'Path', sourceName: path });
     });
-    return fields;
+    return withProjectTagFields(fields, project);
   };
 
   const projectTokens = (project, deep, matchScope = 'all') => {
+    let tokens;
     if (matchScope === 'names') {
-      return project._tokensNames || Fuzzy.tokenizeSearchText?.(project._hayNames || '') || [];
+      tokens = project._tokensNames || Fuzzy.tokenizeSearchText?.(project._hayNames || '') || [];
+    } else if (matchScope === 'people') {
+      tokens = project._tokensPeople || Fuzzy.tokenizeSearchText?.(project._hayPeople || '') || [];
+    } else if (matchScope === 'files') {
+      tokens = project._tokensFiles || Fuzzy.tokenizeSearchText?.(project._hayFiles || '') || [];
+    } else if (deep) {
+      tokens = project._tokensDeep || Fuzzy.tokenizeSearchText?.(project._hayDeep || '') || [];
+    } else {
+      tokens = project._tokensShallow || Fuzzy.tokenizeSearchText?.(project._hayShallow || '') || [];
     }
-    if (matchScope === 'people') {
-      return project._tokensPeople || Fuzzy.tokenizeSearchText?.(project._hayPeople || '') || [];
-    }
-    if (matchScope === 'files') {
-      return project._tokensFiles || Fuzzy.tokenizeSearchText?.(project._hayFiles || '') || [];
-    }
-    if (deep) return project._tokensDeep || Fuzzy.tokenizeSearchText?.(project._hayDeep || '') || [];
-    return project._tokensShallow || Fuzzy.tokenizeSearchText?.(project._hayShallow || '') || [];
+    return withProjectTagTokens(tokens, project);
   };
 
   const attachProjectMatchMeta = (project, match, words, deep, matchScope = 'all') => {
@@ -5856,6 +5930,9 @@
         });
       }
     }
+    (project._tagFields || []).forEach((field) => {
+      consider(field.text, field.sourceLabel || 'Tag', field.sourceName);
+    });
 
     const first = (preferred.length ? preferred : fallback)[0];
     const extraCount = Math.max(0, (preferred.length ? preferred : fallback).length - 1);
@@ -6681,7 +6758,7 @@
   const scoreParsedProject = (project, parsed, refineParsed = null) => {
     const useDeep = effectiveDeep(state.matchScope, state.deep);
     const hay = scopedHaystack(project, state.matchScope, state.deep);
-    const fullHay = project._hayDeep || hay;
+    const fullHay = withTagHay(project._hayDeep || hay, project);
 
     if (parsed.phrases.length && !haystackHasPhrases(hay, parsed.phrases)) {
       return { matched: false, score: 0, kind: 'none' };
@@ -6723,7 +6800,7 @@
       if (refineParsed.phrases.length && !haystackHasPhrases(refineHay, refineParsed.phrases)) {
         return { matched: false, score: 0, kind: 'none' };
       }
-      if (haystackHasExcludes(project._hayDeep || refineHay, refineParsed.excludes)) {
+      if (haystackHasExcludes(withTagHay(project._hayDeep || refineHay, project), refineParsed.excludes)) {
         return { matched: false, score: 0, kind: 'none' };
       }
       if (refineParsed.words.length) {
@@ -7419,8 +7496,14 @@
       if (!label) return;
       const lower = label.toLowerCase();
       if (q && !lower.includes(q) && !String(tag.slug || '').includes(q) && !q.startsWith('tag')) return;
-      const value = label.includes(' ') ? `tag:"${label}"` : `tag:${label}`;
-      push('Tags', label, value, 'insert-operator');
+      const wantsOperator = q.startsWith('tag');
+      const quoted = label.includes(' ');
+      const value = wantsOperator
+        ? quoted
+          ? `tag:"${label}"`
+          : `tag:${label}`
+        : label;
+      push('Tags', label, value, wantsOperator ? 'insert-operator' : 'set-query');
     });
 
     return items;

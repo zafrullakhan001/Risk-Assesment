@@ -86,7 +86,7 @@ declare(strict_types=1);
                             <div class="sharepoint-dialog-search-row">
                                 <label class="sharepoint-dialog-search-label" for="sharepoint-project-dialog-search">
                                     <span aria-hidden="true">🔎</span>
-                                    <input type="search" id="sharepoint-project-dialog-search" placeholder='Try: encore · ext:pdf · path:archive · -exclude · "phrase"' autocomplete="off" title="Press Enter or Search to run. Supports AND/OR, Fuzzy, ext:, path:, person:, tag:, -exclude, and &quot;phrases&quot;.">
+                                    <input type="search" id="sharepoint-project-dialog-search" placeholder='Try: encore · ext:pdf · path:archive · -exclude · "phrase"' autocomplete="off" title="Press Enter or Search to run. Tag names match without tag:. Supports AND/OR, Fuzzy, ext:, path:, person:, tag:, -exclude, and &quot;phrases&quot;.">
                                 </label>
                                 <button type="button" class="button button-primary sp-dialog-search-run" id="sharepoint-project-dialog-search-run" title="Run search (Enter)">Search</button>
                             </div>
