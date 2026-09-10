@@ -20284,6 +20284,86 @@ html.is-compact .help-reader-toolbar {
     white-space: nowrap;
 }
 
+/* Owner storage concentration tab */
+.sp-owner-storage-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.sp-owner-storage-help {
+    margin: 0;
+    flex: 1 1 280px;
+}
+.sp-owner-storage-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.sp-owner-storage-kpis .sp-size-kpi.is-warn,
+.sp-owner-storage-kpi-btn.is-warn {
+    border-color: rgba(180, 83, 9, 0.35);
+    background: linear-gradient(180deg, rgba(254, 243, 199, 0.55), rgba(255, 255, 255, 0.9));
+}
+.sp-owner-storage-kpi-btn {
+    appearance: none;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+.sp-owner-storage-kpi-btn:hover {
+    border-color: rgba(15, 118, 110, 0.35);
+}
+.sp-size-kpi-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.3;
+}
+.sp-owner-storage-quality {
+    margin: 0;
+}
+.sp-owner-storage-quality[hidden] {
+    display: none !important;
+}
+.sp-owner-storage-warn {
+    appearance: none;
+    border: 1px solid rgba(180, 83, 9, 0.35);
+    background: rgba(254, 243, 199, 0.65);
+    color: #92400e;
+    font: inherit;
+    font-weight: 650;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+}
+.sp-owner-storage-warn:hover {
+    background: rgba(253, 230, 138, 0.85);
+}
+.sp-owner-storage-breadcrumb {
+    margin: 4px 0 8px;
+}
+.sp-owner-storage-owner-link {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--accent, #0f766e);
+    font: inherit;
+    font-weight: 650;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+}
+.sp-owner-storage-owner-link:hover {
+    text-decoration: underline;
+}
+
 @media (max-width: 720px) {
     .sp-size-heatmap-toolbar { align-items: stretch; }
     .sp-size-toolbar-actions { width: 100%; justify-content: flex-end; }
@@ -20293,4 +20373,5 @@ html.is-compact .help-reader-toolbar {
     }
     .sp-duplicates-toolbar-actions { width: 100%; }
     .sp-duplicates-search { width: 100%; min-width: 0; }
+    .sp-owner-storage-toolbar-actions { width: 100%; }
 }

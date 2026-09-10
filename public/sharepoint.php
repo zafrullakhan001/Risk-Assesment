@@ -19,6 +19,7 @@ use RiskAssessment\SharePoint\SharePointBrowserSync;
 use RiskAssessment\SharePoint\SharePointGraphClient;
 use RiskAssessment\SharePoint\SharePointListingImporter;
 use RiskAssessment\SharePoint\SharePointOwnerDashboard;
+use RiskAssessment\SharePoint\SharePointOwnerStorageDashboard;
 use RiskAssessment\SharePoint\SharePointSizeDashboard;
 use RiskAssessment\SqliteMaintenance;
 
@@ -147,7 +148,7 @@ if ($actionParam === 'browser_sync_import' && ($_SERVER['REQUEST_METHOD'] ?? '')
 }
 
 $currentUser = $auth->requireAuth();
-$requestedApp = $actionParam === 'size_stats' || $actionParam === 'duplicate_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
+$requestedApp = $actionParam === 'size_stats' || $actionParam === 'duplicate_stats' || $actionParam === 'owner_storage_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
     ? \RiskAssessment\AppModules::STORAGE
     : \RiskAssessment\AppModules::SHAREPOINT;
 \RiskAssessment\AppModules::instance()->require($requestedApp, $currentUser);
@@ -396,6 +397,51 @@ if ($actionParam === 'owner_stats') {
 
     $dashboard = new SharePointOwnerDashboard($pdo);
     $payload = $dashboard->build($selectedKeys, $sourceTitles);
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'owner_storage_stats') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=30');
+
+    $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $wantedKeys = [];
+    if ($sourcesParam === 'all' || $sourcesParam === '') {
+        foreach ($allSources as $src) {
+            $wantedKeys[] = (string) ($src['source_key'] ?? '');
+        }
+    } else {
+        $wantedKeys = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+    }
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $selectedKeys = [];
+    $sourceTitles = [];
+    foreach ($wantedKeys as $key) {
+        if (!isset($byKey[$key])) {
+            continue;
+        }
+        $selectedKeys[] = $key;
+        $sourceTitles[$key] = (string) ($byKey[$key]['title'] ?? $key);
+    }
+    if ($selectedKeys === []) {
+        $selectedKeys = [$activeSourceKey];
+        $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
+    }
+
+    $ownerStorageDash = new SharePointOwnerStorageDashboard($pdo);
+    $ownerKeyParam = trim((string) ($_GET['owner'] ?? ''));
+    $payload = $ownerKeyParam !== ''
+        ? $ownerStorageDash->buildOwnerProjects($selectedKeys, $sourceTitles, $ownerKeyParam)
+        : $ownerStorageDash->buildOverview($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -2171,6 +2217,9 @@ $soloPageClass = $ownerSolo
                             <h2>👤 Project owners</h2>
                             <p>
                                 Who created the project folders in the catalogs you select — and how that work landed by month, quarter, and year.
+                                <?php if ($storageAvailable): ?>
+                                    See also <a href="<?= e($heatmapDashUrl) ?>&amp;tab=owners">storage by owner</a>.
+                                <?php endif; ?>
                             </p>
                         </div>
                         <div class="sp-owner-dash-summary-tools" data-no-toggle onclick="event.stopPropagation()">
@@ -2238,6 +2287,9 @@ $soloPageClass = $ownerSolo
                                 <button type="button" class="button ghost" id="sp-owner-export" title="Download the current owner view as CSV">⬇ CSV</button>
                                 <button type="button" class="button ghost" id="sp-owner-print" title="Print or save a snapshot">🖨 Print</button>
                                 <button type="button" class="button ghost" id="sp-owner-compare" disabled title="Select 2–3 owners in the leaderboard">⚖️ Compare</button>
+                                <?php if ($storageAvailable): ?>
+                                <a class="button ghost" id="sp-owner-to-storage" href="<?= e($heatmapDashUrl) ?>&amp;tab=owners" title="See which owners consume the most catalog storage">📊 Storage by owner</a>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <?php if (count($allSources) > 0): ?>
@@ -2362,7 +2414,7 @@ $soloPageClass = $ownerSolo
                             <h2>🗺️ Catalog storage heatmap</h2>
                             <p>
                                 Treemap of catalog folder sizes — click to drill into projects, subfolders, and the largest files.
-                                Use the Duplicate Files tab to find same-name, same-size copies and the space they occupy.
+                                Use <strong>By Owner</strong> to see who consumes the most storage, or <strong>Duplicate Files</strong> to find same-name, same-size copies.
                             </p>
                         </div>
                         <div class="sp-size-heatmap-summary-tools" data-no-toggle onclick="event.stopPropagation()">
@@ -2379,6 +2431,7 @@ $soloPageClass = $ownerSolo
                     <div class="sp-size-heatmap-panel">
                         <div class="sp-size-heatmap-tabs" role="tablist" aria-label="Storage analysis views">
                             <button type="button" class="sp-size-tab is-active" role="tab" id="sp-size-tab-treemap" data-tab="treemap" aria-selected="true" aria-controls="sp-size-tab-panel-treemap">Storage Map</button>
+                            <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-owners" data-tab="owners" aria-selected="false" aria-controls="sp-size-tab-panel-owners">By Owner</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-duplicates" data-tab="duplicates" aria-selected="false" aria-controls="sp-size-tab-panel-duplicates">Duplicate Files</button>
                         </div>
 
@@ -2460,6 +2513,84 @@ $soloPageClass = $ownerSolo
                             </div>
                         </div>
                         </div><!-- /.sp-size-tab-panel treemap -->
+
+                        <div class="sp-size-tab-panel" role="tabpanel" id="sp-size-tab-panel-owners" data-tab-panel="owners" aria-labelledby="sp-size-tab-owners" hidden>
+                            <div class="sp-owner-storage-toolbar">
+                                <p class="panel-help sp-owner-storage-help">
+                                    Who “owns” the most catalog storage — tile size is total file bytes under that person’s project folders.
+                                    Click an owner to drill into their projects, or open the full Project owners dashboard.
+                                </p>
+                                <div class="sp-owner-storage-toolbar-actions">
+                                    <a class="button ghost" id="sp-owner-storage-to-owners" href="<?= e($ownerDashUrl) ?>" title="Open Project owners dashboard">👤 Owner dashboard</a>
+                                    <button type="button" class="button ghost" id="sp-owner-storage-back" hidden title="Back to all owners">← Back</button>
+                                    <button type="button" class="button ghost" id="sp-owner-storage-refresh" title="Reload owner storage data">↻ Refresh</button>
+                                </div>
+                            </div>
+                            <nav class="sp-size-breadcrumb sp-owner-storage-breadcrumb" id="sp-owner-storage-breadcrumb" aria-label="Owner storage path">
+                                <button type="button" class="sp-size-crumb is-active" data-owner-level="overview">All owners</button>
+                            </nav>
+                            <?php if (count($allSources) > 0): ?>
+                                <div class="sp-od-scopes sp-size-scopes sp-owner-storage-scopes" id="sp-owner-storage-scopes" role="group" aria-label="Catalogs for owner storage">
+                                    <div class="sp-od-scopes-head">
+                                        <span class="sp-od-scopes-label">
+                                            <span aria-hidden="true">📁</span>
+                                            Catalogs
+                                            <b class="sp-od-scopes-count" id="sp-owner-storage-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
+                                        </span>
+                                        <button type="button" class="sp-od-scopes-all is-active" id="sp-owner-storage-scopes-all" disabled>All selected</button>
+                                    </div>
+                                    <div class="sp-od-scopes-list">
+                                        <?php foreach ($allSources as $src): ?>
+                                            <?php
+                                            $srcKey = (string) ($src['source_key'] ?? '');
+                                            $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                            ?>
+                                            <label class="sharepoint-scope-chip is-active" data-source-key="<?= e($srcKey) ?>">
+                                                <input type="checkbox" class="sp-owner-storage-scope-check" value="<?= e($srcKey) ?>" checked>
+                                                <span><?= e($srcTitle) ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            <div class="sp-size-kpis sp-owner-storage-kpis" id="sp-owner-storage-kpis" aria-live="polite"></div>
+                            <div id="sp-owner-storage-quality" class="sp-owner-storage-quality" hidden></div>
+                            <div class="sp-size-treemap-wrap sp-owner-storage-treemap-wrap" tabindex="0" role="region" aria-label="Owner storage treemap">
+                                <div class="sp-size-treemap" id="sp-owner-storage-treemap"></div>
+                            </div>
+                            <div class="sp-size-large-files sp-owner-storage-files">
+                                <div class="sp-size-large-head">
+                                    <h3>Largest files by owner</h3>
+                                    <p class="panel-help" id="sp-owner-storage-files-help">Top files across selected catalogs, with folder owner</p>
+                                </div>
+                                <div class="table-wrap">
+                                    <table class="sp-size-files-table" id="sp-owner-storage-files-table">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col" class="is-sortable" data-owner-file-sort="name" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-owner-file-sort-button="name">File</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-owner-file-sort="owner" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-owner-file-sort-button="owner">Owner</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-owner-file-sort="project" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-owner-file-sort-button="project">Project</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable is-sorted-desc" data-owner-file-sort="size" aria-sort="descending">
+                                                    <button type="button" class="sp-size-sort-btn" data-owner-file-sort-button="size">Size</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-owner-file-sort="created" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-owner-file-sort-button="created">Created</button>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="sp-owner-storage-files-body">
+                                            <tr><td colspan="5" class="sp-size-empty">Open this tab to load owner storage.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
 
                         <div class="sp-size-tab-panel" role="tabpanel" id="sp-size-tab-panel-duplicates" data-tab-panel="duplicates" aria-labelledby="sp-size-tab-duplicates" hidden>
                             <div class="sp-duplicates-toolbar">
@@ -3137,6 +3268,7 @@ $soloPageClass = $ownerSolo
     <script src="assets/js/sharepoint-owner-stats.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-stats.js') ?>"></script>
     <?php endif; ?>
     <?php if ($storageAvailable && !$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
+    <script src="assets/js/sharepoint-owner-storage.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-storage.js') ?>"></script>
     <script src="assets/js/sharepoint-size-heatmap.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-size-heatmap.js') ?>"></script>
     <?php endif; ?>
         <?php if (!$ownerSolo && !$catalogSolo && $isAdmin): ?>

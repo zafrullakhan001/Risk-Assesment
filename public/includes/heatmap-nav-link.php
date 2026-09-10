@@ -22,6 +22,6 @@ $heatmapNavUrl = $heatmapNavUrl ?? 'sharepoint.php?view=heatmap';
     data-menu-tone="rose"
     data-menu-group="storage"
     href="<?= e($heatmapNavUrl) ?>"
-    title="View catalog storage heatmap and drill down to large files"
+    title="View catalog storage heatmap, advanced analysis, and drill down to large files"
     <?= $heatmapSolo ? ' aria-current="page"' : '' ?>
 ><span class="topbar-menu-emoji" aria-hidden="true">🗺️</span>Storage</a>

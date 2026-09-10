@@ -17,6 +17,7 @@
   const SHELL_KEY = 'riskregister_sp_size_heatmap_open';
   const SOURCES_KEY = 'riskregister_sp_size_heatmap_sources';
   const NAV_KEY = 'riskregister_sp_size_heatmap_navigation';
+  const TAB_KEY = 'riskregister_sp_size_heatmap_tab';
   const MIN_TILE_PX = 44;
   const treemapWrap = treemapEl.closest('.sp-size-treemap-wrap');
 
@@ -709,12 +710,23 @@
       input.checked = selected.has(input.value);
     });
     updateDuplicateScopesUi();
+    root.querySelectorAll('.sp-owner-storage-scope-check').forEach((input) => {
+      input.checked = selected.has(input.value);
+      input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
+    });
+    if (window.RiskRegisterOwnerStorage?.syncScopesFromStorage) {
+      window.RiskRegisterOwnerStorage.syncScopesFromStorage();
+    }
     if (state.level === 'overview') loadOverview();
     if (state.activeTab === 'duplicates') {
       state.duplicates.loaded = false;
       loadDuplicateStats(true);
+    } else if (state.activeTab === 'owners') {
+      window.RiskRegisterOwnerStorage?.load?.(true);
     } else {
       state.duplicates.loaded = false;
+      // Keep owner storage in sync with catalog selection when returning to that tab.
+      window.RiskRegisterOwnerStorage?.invalidate?.();
     }
   });
 
@@ -725,15 +737,26 @@
     root.querySelectorAll('.sp-duplicates-scope-check').forEach((el) => {
       el.checked = true;
     });
+    root.querySelectorAll('.sp-owner-storage-scope-check').forEach((el) => {
+      el.checked = true;
+      el.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', true);
+    });
     saveSelectedSources();
     updateScopesUi();
     updateDuplicateScopesUi();
+    if (window.RiskRegisterOwnerStorage?.syncScopesFromStorage) {
+      window.RiskRegisterOwnerStorage.syncScopesFromStorage();
+    }
     if (state.level === 'overview') loadOverview();
     if (state.activeTab === 'duplicates') {
       state.duplicates.loaded = false;
       loadDuplicateStats(true);
+    } else if (state.activeTab === 'owners') {
+      window.RiskRegisterOwnerStorage?.load?.(true);
     } else {
       state.duplicates.loaded = false;
+      // Keep owner storage in sync with catalog selection when returning to that tab.
+      window.RiskRegisterOwnerStorage?.invalidate?.();
     }
   });
 
@@ -1081,7 +1104,8 @@
   };
 
   const setActiveTab = (tab) => {
-    const next = tab === 'duplicates' ? 'duplicates' : 'treemap';
+    const allowed = new Set(['treemap', 'owners', 'duplicates']);
+    const next = allowed.has(tab) ? tab : 'treemap';
     state.activeTab = next;
     root.querySelectorAll('.sp-size-tab').forEach((btn) => {
       const isActive = btn.getAttribute('data-tab') === next;
@@ -1094,11 +1118,47 @@
       if (isActive) panel.removeAttribute('hidden');
       else panel.setAttribute('hidden', '');
     });
+    try {
+      localStorage.setItem(TAB_KEY, next);
+    } catch (e) { /* storage may be unavailable */ }
+
     if (next === 'duplicates') {
       loadDuplicateStats(false);
+    } else if (next === 'owners') {
+      if (window.RiskRegisterOwnerStorage?.load) {
+        window.RiskRegisterOwnerStorage.load(false);
+      }
     } else if (state.loaded && state.data?.nodes) {
       window.setTimeout(() => renderTreemap(state.data.nodes || []), 40);
     }
+
+    const params = new URLSearchParams(window.location.search);
+    const onHeatmapView = isSolo || params.get('view') === 'heatmap';
+    if (onHeatmapView || params.has('tab')) {
+      const url = new URL(window.location.href);
+      if (next === 'treemap') url.searchParams.delete('tab');
+      else url.searchParams.set('tab', next);
+      const nextHref = `${url.pathname}${url.search}${url.hash}`;
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (nextHref !== current) history.replaceState(null, '', nextHref);
+    }
+  };
+
+  const readPersistedTab = () => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('tab');
+    if (fromUrl === 'owners' || fromUrl === 'by-owner') return 'owners';
+    if (fromUrl === 'duplicates') return 'duplicates';
+    if (fromUrl === 'treemap' || fromUrl === 'by-size') return 'treemap';
+    // Explicit tab= in URL wins; otherwise restore last chosen tab.
+    if (params.has('tab')) return 'treemap';
+    try {
+      const stored = String(localStorage.getItem(TAB_KEY) || '');
+      if (stored === 'owners' || stored === 'duplicates' || stored === 'treemap') return stored;
+      if (stored === 'by-owner') return 'owners';
+      if (stored === 'by-size') return 'treemap';
+    } catch (e) { /* ignore */ }
+    return 'treemap';
   };
 
   tabsRoot?.addEventListener('click', (event) => {
@@ -1129,8 +1189,13 @@
     root.querySelectorAll('.sp-size-scope-check').forEach((input) => {
       input.checked = selected.has(input.value);
     });
+    root.querySelectorAll('.sp-owner-storage-scope-check').forEach((input) => {
+      input.checked = selected.has(input.value);
+      input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
+    });
     updateScopesUi();
     updateDuplicateScopesUi();
+    window.RiskRegisterOwnerStorage?.invalidate?.();
     loadDuplicateStats(true);
   });
 
@@ -1141,11 +1206,16 @@
     root.querySelectorAll('.sp-size-scope-check').forEach((el) => {
       el.checked = true;
     });
+    root.querySelectorAll('.sp-owner-storage-scope-check').forEach((el) => {
+      el.checked = true;
+      el.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', true);
+    });
     try {
       localStorage.setItem(SOURCES_KEY, JSON.stringify(readDuplicateSources()));
     } catch (e) { /* ignore */ }
     updateScopesUi();
     updateDuplicateScopesUi();
+    window.RiskRegisterOwnerStorage?.invalidate?.();
     loadDuplicateStats(true);
   });
 
@@ -1197,6 +1267,15 @@
       maybeLoad();
     });
     if (shell.open) maybeLoad();
+  }
+
+  const initialTab = readPersistedTab();
+  if (initialTab !== 'treemap') {
+    setActiveTab(initialTab);
+  } else {
+    try {
+      localStorage.setItem(TAB_KEY, 'treemap');
+    } catch (e) { /* ignore */ }
   }
 
 })();
