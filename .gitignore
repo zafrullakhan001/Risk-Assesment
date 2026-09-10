@@ -18,3 +18,7 @@
 composer.phar
 cacert.pem
 database/risk_assessment.zip
+/libredb-studio/payload/
+/libredb-studio/data/
+/libredb-studio/*.zip
+/libredb-studio/.env.local

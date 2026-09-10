@@ -1,0 +1,22 @@
+version: "1"
+
+defaults:
+  managed: true
+  environment: local
+
+connections:
+  - id: "risk-register"
+    name: "Risk Register"
+    type: sqlite
+    database: "C:/xampp/htdocs/RiskRegister/database/risk_assessment.sqlite"
+    roles: ["*"]
+    group: "RiskRegister"
+    color: "#2563EB"
+
+  - id: "ticket-dossier"
+    name: "Ticket Dossier"
+    type: sqlite
+    database: "C:/xampp/htdocs/RiskRegister/database/ticketdetails.sqlite"
+    roles: ["*"]
+    group: "RiskRegister"
+    color: "#059669"
