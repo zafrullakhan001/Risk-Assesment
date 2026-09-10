@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "sharepoint-catalog": {
+      "command": "node",
+      "args": [
+        "C:\\xampp\\htdocs\\RiskRegister\\mcp-server\\dist\\index.js"
+      ],
+      "env": {
+        "SHAREPOINT_CATALOG_API_URL": "http://localhost/api/mcp-catalog-search.php",
+        "SHAREPOINT_CATALOG_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}

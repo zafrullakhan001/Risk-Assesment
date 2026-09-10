@@ -416,6 +416,125 @@ HTML,
 <p>Use archive for noise (duplicates, retired folders, working files) rather than for access control. True permission still lives in SharePoint and in who you give public links to.</p>
 HTML,
                 ],
+                [
+                    'id' => 'sharepoint-mcp-integration',
+                    'title' => 'MCP integration for AI assistants',
+                    'html' => <<<'HTML'
+<p>The <strong>MCP (Model Context Protocol) integration</strong> allows AI assistants like Claude, Cursor, and GitHub Copilot to search your SharePoint catalog programmatically. Once configured, you can ask "Search the SharePoint catalog for projects containing 'encore'" or "Find all projects with PDF files" directly from your AI assistant.</p>
+
+<p><strong>What it provides:</strong></p>
+<ul>
+<li>Full-text search across projects, files, folders, and people</li>
+<li>Advanced filtering with operators: <code>tag:name</code>, <code>ext:pdf</code>, <code>person:"name"</code>, <code>"exact phrase"</code>, <code>-exclude</code></li>
+<li>Project details with complete file structures, sizes, and metadata</li>
+<li>Source management across multiple catalogs</li>
+<li>Tag search and catalog statistics</li>
+<li>User-bound tokens with read/write scopes</li>
+<li>Gateway support for on-premise/enterprise deployments</li>
+</ul>
+
+<p><strong>Setup (administrator only):</strong></p>
+<ol>
+<li><strong>Create a token</strong> — Open <a href="admin/mcp.php">Admin → MCP / AI</a> and click <strong>Create Token</strong></li>
+<li><strong>Name your token</strong> — Use a descriptive name like "Cursor IDE", "GitHub Copilot", or "Claude Desktop"</li>
+<li><strong>Set expiration</strong> — Choose 90 days (recommended), or never expires</li>
+<li><strong>Copy the token</strong> — You'll see it only once! It starts with <code>ramcp_</code></li>
+<li><strong>Configure AI assistant</strong> — Add to your MCP settings (see examples below)</li>
+<li><strong>Start using</strong> — Ask your AI assistant to search the catalog!</li>
+</ol>
+
+<p><strong>Cursor configuration example:</strong></p>
+<p>Add this to your Cursor MCP settings (<code>.cursor/mcp_settings.json</code> or global settings):</p>
+<pre><code>{
+  "mcpServers": {
+    "risk-register": {
+      "command": "node",
+      "args": ["-e", 
+        "const http = require('http'); const opts = {method: 'POST', headers: {'Authorization': 'Bearer YOUR_TOKEN_HERE', 'Content-Type': 'application/json'}}; const req = http.request('http://localhost/api/mcp', opts, res => {let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => console.log(data));}); process.stdin.pipe(req);"
+      ]
+    }
+  }
+}</code></pre>
+<p>Replace <code>YOUR_TOKEN_HERE</code> with your actual token and adjust the URL if needed.</p>
+
+<p><strong>GitHub Copilot configuration:</strong></p>
+<p>For GitHub Copilot in VS Code, add to settings (<code>.vscode/settings.json</code>):</p>
+<pre><code>{
+  "github.copilot.mcp.servers": {
+    "risk-register": {
+      "url": "http://localhost/api/mcp",
+      "auth": {
+        "type": "bearer",
+        "token": "ramcp_YOUR_TOKEN_HERE"
+      }
+    }
+  }
+}</code></pre>
+
+<p><strong>On-premise / Enterprise setup with Gateway:</strong></p>
+<p>For deployments behind a corporate network, use a gateway (ngrok, Cloudflare Tunnel, or corporate proxy) to expose the MCP endpoint securely:</p>
+<ul>
+<li><strong>Quick testing</strong> — Use ngrok: <code>ngrok http 80</code>, then use the HTTPS URL in your configuration</li>
+<li><strong>Production</strong> — Use Cloudflare Tunnel or corporate reverse proxy with SSL</li>
+<li><strong>Security</strong> — Enable IP allowlisting, rate limiting, and HTTPS-only access</li>
+<li><strong>Complete guide</strong> — See <code>MCP-GATEWAY-GUIDE.md</code> for detailed enterprise setup instructions</li>
+</ul>
+<p>GitHub Copilot example with gateway:</p>
+<pre><code>{
+  "github.copilot.mcp.servers": {
+    "risk-register": {
+      "url": "https://your-gateway.ngrok.io/api/mcp",
+      "auth": {
+        "type": "bearer",
+        "token": "ramcp_YOUR_TOKEN_HERE"
+      }
+    }
+  }
+}</code></pre>
+
+<p><strong>Available tools:</strong></p>
+<ul>
+<li><code>search_sharepoint_catalog</code> — Full-text search with operators</li>
+<li><code>list_sharepoint_projects</code> — Browse projects with pagination</li>
+<li><code>get_sharepoint_project</code> — Get detailed file structure and metadata</li>
+<li><code>list_sharepoint_sources</code> — List all catalog sources</li>
+<li><code>get_sharepoint_source</code> — Get source details</li>
+<li><code>search_sharepoint_tags</code> — Find organizational tags</li>
+<li><code>get_sharepoint_catalog_stats</code> — Overview statistics</li>
+</ul>
+
+<p><strong>Token management:</strong></p>
+<ul>
+<li><strong>View tokens</strong> — See all active and revoked tokens at <a href="admin/mcp.php">Admin → MCP / AI</a></li>
+<li><strong>Revoke tokens</strong> — Click Revoke to instantly disable a token</li>
+<li><strong>Check usage</strong> — See when each token was last used</li>
+<li><strong>Scopes</strong> — Tokens have read scope by default (search and list). Write scope reserved for future features.</li>
+<li><strong>User binding</strong> — Each token belongs to a specific user and inherits their permissions</li>
+</ul>
+
+<p><strong>Usage examples:</strong></p>
+<ul>
+<li>"Search the SharePoint catalog for 'encore'"</li>
+<li>"Find all projects with PDF files"</li>
+<li>"What projects were modified by John Smith?"</li>
+<li>"Show me details for Project Alpha"</li>
+<li>"List all catalog sources"</li>
+<li>"What are the most used tags?"</li>
+</ul>
+
+<p><strong>Security notes:</strong></p>
+<ul>
+<li>Tokens are user-bound and respect user permissions</li>
+<li>Read-only by default (no modifications to catalog)</li>
+<li>Optional expiration for automatic security</li>
+<li>Revoke tokens instantly from admin interface</li>
+<li>All token operations are logged in audit trail</li>
+<li>Use HTTPS in production environments</li>
+</ul>
+
+<p><strong>Troubleshooting:</strong> If tokens are not working, verify the token is active (not revoked or expired) at <a href="admin/mcp.php">Admin → MCP / AI</a>, check your Cursor configuration has the correct token, and ensure the API URL is reachable (test with <code>curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost/api/mcp</code>).</p>
+HTML,
+                ],
             ],
         ],
         [

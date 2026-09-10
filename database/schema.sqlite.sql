@@ -386,6 +386,25 @@ CREATE INDEX IF NOT EXISTS idx_sp_archives_source_scope
 CREATE INDEX IF NOT EXISTS idx_sp_archives_source_project
     ON sharepoint_archives (source_key, project_name);
 
+-- MCP (Model Context Protocol) tokens for AI assistant access
+CREATE TABLE IF NOT EXISTS mcp_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    token_prefix TEXT NOT NULL,
+    scopes TEXT NOT NULL DEFAULT 'read',
+    last_used_at INTEGER,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_tokens_user ON mcp_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens (token_hash);
+CREATE INDEX IF NOT EXISTS idx_mcp_tokens_revoked ON mcp_tokens (revoked_at);
+
 CREATE TABLE IF NOT EXISTS user_catalog_favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
