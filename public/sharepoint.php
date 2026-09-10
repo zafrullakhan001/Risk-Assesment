@@ -326,6 +326,8 @@ if ($actionParam === 'search_index') {
     }
     $favoriteIndex = $favorites->indexForUser((int) ($currentUser['id'] ?? 0));
     $index = $favorites->attachToSearchIndex($index, $favoriteIndex);
+    $favoriteProjectCount = count($favoriteIndex['projects']);
+    $favoriteSources = array_values(array_keys($favoriteIndex['sources']));
     $itemCountTotal = 0;
     $metaSources = [];
     foreach ($indexSources as $srcMeta) {
@@ -350,6 +352,8 @@ if ($actionParam === 'search_index') {
         'item_count' => $itemCountTotal,
         'project_count' => count($index),
         'projects' => $index,
+        'favorite_count' => $favoriteProjectCount,
+        'favorite_sources' => $favoriteSources,
         'tags' => $searchTags->listAll(),
         'can_edit_tags' => $isAdmin,
         'can_archive' => $isAdmin,

@@ -3010,12 +3010,15 @@
         ? 'This catalog folder is archived'
         : 'Hidden from the catalog dashboard'
     ) : '';
+    const favMark = project?.favorited
+      ? '<span class="sp-project-fav-mark" title="Favorite" aria-label="Favorite">★</span>'
+      : '';
     return `<div class="sp-project-cell">
       <div class="sp-tree-cell">
         <button type="button" class="sharepoint-project-open sp-file-link" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}">
           <span class="sp-file-icon sp-file-icon--${escapeHtml(meta.tone)}" aria-hidden="true">${meta.emoji}</span>
           <span class="sp-file-copy">
-            <span class="sp-file-name">${escapeHtml(name)}</span>
+            <span class="sp-file-name">${escapeHtml(name)}${favMark}</span>
           </span>
         </button>
       </div>
@@ -5539,6 +5542,8 @@
         return false;
       }
     })(),
+    favoriteCount: Number(favoritesToggle?.getAttribute('data-favorite-count') || 0) || 0,
+    favoriteSources: new Set(),
     suggestEnabled: (() => {
       try {
         return localStorage.getItem(STORAGE.suggest) === '1';
@@ -5599,6 +5604,80 @@
 
   /** @type {AbortController|null} */
   let peerIndexAbort = null;
+
+  const updateFavoriteToggleText = () => {
+    if (!favoritesToggle) return;
+    const count = Math.max(0, Number(state.favoriteCount) || 0);
+    state.favoriteCount = count;
+    favoritesToggle.setAttribute('data-favorite-count', String(count));
+    favoritesToggle.textContent = `★ Fav (${count})`;
+  };
+
+  const bumpFavoriteCount = (favorited) => {
+    state.favoriteCount = Math.max(0, (Number(state.favoriteCount) || 0) + (favorited ? 1 : -1));
+    updateFavoriteToggleText();
+  };
+
+  const updateScopeFavoriteStars = () => {
+    const scopesRoot = document.getElementById('sharepoint-search-scopes');
+    if (!scopesRoot) return;
+    const favorites = state.favoriteSources instanceof Set ? state.favoriteSources : new Set();
+    scopesRoot.querySelectorAll('.sharepoint-scope-chip[data-source-key]').forEach((chip) => {
+      const key = String(chip.getAttribute('data-source-key') || '');
+      const isFav = key !== '' && favorites.has(key);
+      chip.classList.toggle('is-favorite', isFav);
+      chip.setAttribute('data-favorited', isFav ? '1' : '0');
+      let star = chip.querySelector('.sharepoint-scope-favorite');
+      if (!star) {
+        star = document.createElement('span');
+        star.className = 'sharepoint-scope-favorite';
+        star.textContent = '★';
+        star.title = 'Favorite catalog';
+        star.setAttribute('aria-label', 'Favorite catalog');
+        const label = chip.querySelector('.sharepoint-scope-chip-main');
+        const hitCount = chip.querySelector('.sharepoint-scope-hit-count');
+        if (hitCount) {
+          hitCount.before(star);
+        } else {
+          label?.appendChild(star);
+        }
+      }
+      star.hidden = !isFav;
+    });
+  };
+
+  const setFavoriteSources = (keys) => {
+    state.favoriteSources = new Set(
+      (Array.isArray(keys) ? keys : []).map((key) => String(key || '').trim()).filter(Boolean)
+    );
+    updateScopeFavoriteStars();
+  };
+
+  const syncSourceFavorite = (sourceKey, favorited) => {
+    const key = String(sourceKey || '').trim();
+    if (!key) return;
+    if (!(state.favoriteSources instanceof Set)) {
+      state.favoriteSources = new Set();
+    }
+    if (favorited) state.favoriteSources.add(key);
+    else state.favoriteSources.delete(key);
+    updateScopeFavoriteStars();
+  };
+
+  window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
+    syncSourceFavorite,
+  });
+
+  // Seed scope stars from server-rendered chips (data-favorited="1").
+  (() => {
+    const seeded = [];
+    document.querySelectorAll('#sharepoint-search-scopes .sharepoint-scope-chip[data-favorited="1"]').forEach((chip) => {
+      const key = String(chip.getAttribute('data-source-key') || '').trim();
+      if (key) seeded.push(key);
+    });
+    if (seeded.length) setFavoriteSources(seeded);
+    updateFavoriteToggleText();
+  })();
 
   const projectEntries = (project) => {
     if (!Array.isArray(project?._entriesAll)) {
@@ -6547,6 +6626,23 @@
           applyFavoriteButtonState(btn, nextFavorited);
           const row = btn.closest('.sharepoint-project-row');
           row?.classList.toggle('is-favorite', nextFavorited);
+          const nameEl = row?.querySelector('.sp-file-name');
+          if (nameEl) {
+            let mark = nameEl.querySelector('.sp-project-fav-mark');
+            if (nextFavorited) {
+              if (!mark) {
+                mark = document.createElement('span');
+                mark.className = 'sp-project-fav-mark';
+                mark.title = 'Favorite';
+                mark.setAttribute('aria-label', 'Favorite');
+                mark.textContent = '★';
+                nameEl.appendChild(mark);
+              }
+            } else if (mark) {
+              mark.remove();
+            }
+          }
+          bumpFavoriteCount(nextFavorited);
           if (state.showFavorites && !nextFavorited) {
             applySearch({ resetPage: false });
           }
@@ -7019,6 +7115,7 @@
     if (favoritesToggle) {
       favoritesToggle.classList.toggle('is-active', state.showFavorites);
       favoritesToggle.setAttribute('aria-pressed', state.showFavorites ? 'true' : 'false');
+      updateFavoriteToggleText();
     }
     if (archivedToggle) {
       archivedToggle.classList.toggle('is-active', state.showArchived);
@@ -8159,6 +8256,13 @@
         state.projectCount = Number(payload.project_count || state.projects.length);
         state.lastSynced = payload.last_synced_at || state.lastSynced;
         state.lastStatus = payload.last_sync_status || state.lastStatus;
+        if (typeof payload.favorite_count === 'number') {
+          state.favoriteCount = payload.favorite_count;
+          updateFavoriteToggleText();
+        }
+        if (Array.isArray(payload.favorite_sources)) {
+          setFavoriteSources(payload.favorite_sources);
+        }
         state.allTags = normalizeTagList(payload.tags);
         if (typeof payload.can_edit_tags === 'boolean') {
           state.canEditTags = payload.can_edit_tags;
@@ -8734,6 +8838,32 @@
         btn.setAttribute('aria-label', label);
         btn.textContent = favorited ? '★' : '☆';
       });
+    document
+      .querySelectorAll(`#sharepoint-search-scopes .sharepoint-scope-chip[data-source-key="${CSS.escape(sourceKey)}"]`)
+      .forEach((chip) => {
+        chip.classList.toggle('is-favorite', favorited);
+        chip.setAttribute('data-favorited', favorited ? '1' : '0');
+        let star = chip.querySelector('.sharepoint-scope-favorite');
+        if (!star) {
+          star = document.createElement('span');
+          star.className = 'sharepoint-scope-favorite';
+          star.textContent = '★';
+          star.title = 'Favorite catalog';
+          star.setAttribute('aria-label', 'Favorite catalog');
+          const hitCount = chip.querySelector('.sharepoint-scope-hit-count');
+          if (hitCount) {
+            hitCount.before(star);
+          } else {
+            chip.querySelector('.sharepoint-scope-chip-main')?.appendChild(star);
+          }
+        }
+        star.hidden = !favorited;
+      });
+    try {
+      window.RiskRegisterSharePoint?.syncSourceFavorite?.(sourceKey, favorited);
+    } catch {
+      /* ignore */
+    }
   };
 
   const applyFoldersFavFilter = (showFav) => {

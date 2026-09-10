@@ -8,17 +8,21 @@ use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
 
 $appModules = AppModules::instance();
+$rawNext = trim((string) ($_GET['next'] ?? $_POST['next'] ?? ''));
 
 if ($auth->currentUser() !== null && !$auth->needsSetup()) {
-    header('Location: ' . $appModules->homeUrl($auth->currentUser()));
+    $user = $auth->currentUser();
+    $target = $rawNext !== ''
+        ? $appModules->resolveNext($rawNext, $user)
+        : $appModules->resumeOrHome($user);
+    header('Location: ' . $target);
     exit;
 }
 
 $error = '';
 $flash = '';
 $mode = (string) ($_GET['mode'] ?? 'login');
-$requestedNext = (string) ($_GET['next'] ?? $_POST['next'] ?? 'index.php');
-$next = $auth->safeNext($requestedNext);
+$next = $rawNext !== '' ? $auth->safeNext($rawNext) : '';
 $ldapServers = $auth->ldap()->servers();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -52,7 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 !empty($_POST['remember_me']),
                 (int) ($_POST['ldap_server_index'] ?? 0)
             );
-            header('Location: ' . $appModules->resolveNext($requestedNext, $user));
+            $target = $rawNext !== ''
+                ? $appModules->resolveNext($rawNext, $user)
+                : $appModules->resumeOrHome($user);
+            header('Location: ' . $target);
             exit;
         } else {
             throw new RuntimeException('Unknown action.');

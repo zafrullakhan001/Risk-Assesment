@@ -141,11 +141,13 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                             $srcTone = (string) ($catalogTones[$srcKey] ?? 'slate');
                             $srcHex = (string) ($catalogToneHex[$srcTone] ?? '#475569');
                             $checked = $srcKey === $activeSourceKey;
+                            $srcFavorited = !$searchCardPublic && is_array($favoriteSourceKeys ?? null) && !empty($favoriteSourceKeys[$srcKey]);
                             ?>
-                            <div class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?><?= !empty($archivedSourceKeys[$srcKey]) ? ' is-archived' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>"<?= !empty($archivedSourceKeys[$srcKey]) ? ' data-archived="1"' : '' ?>>
+                            <div class="sharepoint-scope-chip<?= $checked ? ' is-active' : '' ?><?= !empty($archivedSourceKeys[$srcKey]) ? ' is-archived' : '' ?><?= $srcFavorited ? ' is-favorite' : '' ?>" data-catalog-tone="<?= e($srcTone) ?>" data-source-key="<?= e($srcKey) ?>"<?= !empty($archivedSourceKeys[$srcKey]) ? ' data-archived="1"' : '' ?><?= $srcFavorited ? ' data-favorited="1"' : ' data-favorited="0"' ?>>
                                 <label class="sharepoint-scope-chip-main">
                                     <input type="checkbox" class="sharepoint-scope-check" value="<?= e($srcKey) ?>"<?= $checked ? ' checked' : '' ?>>
                                     <span><?= e($srcTitle) ?></span>
+                                    <span class="sharepoint-scope-favorite" title="Favorite catalog" aria-label="Favorite catalog"<?= $srcFavorited ? '' : ' hidden' ?>>★</span>
                                     <span class="sharepoint-scope-hit-count" hidden aria-hidden="true"></span>
                                 </label>
                                 <button type="button" class="sharepoint-scope-color-btn" data-source-key="<?= e($srcKey) ?>" title="Choose color for <?= e($srcTitle) ?>" aria-label="Choose color for <?= e($srcTitle) ?>" aria-haspopup="dialog" aria-expanded="false" style="--catalog-tone: <?= e($srcHex) ?>"></button>
@@ -195,7 +197,8 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <button type="button" class="sp-search-toggle sp-search-fuzzy" id="sharepoint-fuzzy-toggle" title="Fuzzy — tolerate typos and similar-sounding words (e.g. Encore ≈ Encor)" aria-pressed="false">✨ Fuzzy</button>
                         <button type="button" class="sp-search-toggle sp-search-deep is-active" id="sharepoint-deep-toggle" title="Deep files — also search nested file and folder names/paths inside each project (not file contents)" aria-pressed="true">📂 Deep files</button>
                         <?php if (empty($searchCardPublic)): ?>
-                            <button type="button" class="sp-search-toggle sp-search-favorites" id="sharepoint-favorites-toggle" title="Favorites — show only project folders you starred" aria-pressed="false">★ Fav</button>
+                            <?php $favoriteProjectCount = is_array($favoriteIndex ?? null) ? count($favoriteIndex['projects'] ?? []) : 0; ?>
+                            <button type="button" class="sp-search-toggle sp-search-favorites" id="sharepoint-favorites-toggle" title="Favorites — show only project folders you starred" aria-pressed="false" data-favorite-count="<?= (int) $favoriteProjectCount ?>">★ Fav (<?= (int) $favoriteProjectCount ?>)</button>
                         <?php endif; ?>
                         <?php if (!empty($isAdmin) && empty($searchCardPublic)): ?>
                             <button type="button" class="sp-search-toggle sp-search-archived" id="sharepoint-archived-toggle" title="Show archived — include catalogs, projects, and files you hid from the dashboard so you can restore them" aria-pressed="false">📦 Show archived</button>

@@ -327,6 +327,7 @@ final class Auth
             session_destroy();
         }
         Session::clearCookie();
+        NavResume::clearCookie();
         Session::start();
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
@@ -444,12 +445,13 @@ final class Auth
         if ($next[0] === '/') {
             return $fallback;
         }
-        // Use ~ delimiter: the pattern allows "#" in the query/hash part.
-        // Also allow ticket-dossier/ directory index without a .php file.
-        if (preg_match('~^(?:ticket-dossier/?)(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) === 1) {
+        // Query and hash are separate so catalog URLs like sharepoint.php?view=catalog#sharepoint-search pass.
+        // Delimiter @ avoids colliding with ~ in encoded query strings.
+        $queryHash = '(?:\?[A-Za-z0-9._/~&=%,:+-]*)?(?:#[A-Za-z0-9._~-]*)?';
+        if (preg_match('@^(?:ticket-dossier/?)' . $queryHash . '$@', $next) === 1) {
             return $next === 'ticket-dossier' ? 'ticket-dossier/' : $next;
         }
-        if (preg_match('~^(?:admin/|ticket-dossier/)?[A-Za-z0-9._-]+\.php(?:[?#][A-Za-z0-9._/?&=%-]*)?$~', $next) !== 1) {
+        if (preg_match('@^(?:admin/|ticket-dossier/)?[A-Za-z0-9._-]+\.php' . $queryHash . '$@', $next) !== 1) {
             return $fallback;
         }
 

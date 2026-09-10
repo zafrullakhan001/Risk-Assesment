@@ -1,6 +1,7 @@
 (function () {
     const navKey = 'ra-nav';
     const LAST_DEST_KEY = 'riskregister_last_nav';
+    const RESUME_COOKIE = 'riskregister_resume';
     const root = document.documentElement;
     const closeTimers = new WeakMap();
 
@@ -36,6 +37,16 @@
         }
     };
 
+    const isDirectoryLaunch = (href) => {
+        try {
+            const url = new URL(href || window.location.href, window.location.href);
+            const file = (url.pathname.replace(/\\/g, '/').split('/').pop() || '').toLowerCase();
+            return file === '' || file === 'public' || !/\.php$/i.test(file);
+        } catch {
+            return false;
+        }
+    };
+
     const sanitizeStoredPath = (value) => {
         const raw = String(value || '').trim();
         if (!raw || raw.length > 2000) return '';
@@ -62,6 +73,41 @@
         }
     };
 
+    const toPublicRelative = (storedPath) => {
+        try {
+            const url = new URL(storedPath, window.location.origin);
+            const pathname = url.pathname.replace(/\\/g, '/');
+            const lower = pathname.toLowerCase();
+            let rest = '';
+            const pub = lower.lastIndexOf('/public/');
+            if (pub !== -1) {
+                rest = pathname.slice(pub + '/public/'.length);
+            } else if (lower.includes('/ticket-dossier')) {
+                rest = pathname.slice(lower.lastIndexOf('/ticket-dossier')).replace(/^\/+/, '');
+            } else if (lower.includes('/admin/')) {
+                rest = `admin/${pathname.slice(lower.lastIndexOf('/admin/') + '/admin/'.length)}`;
+            } else {
+                rest = pathname.split('/').pop() || '';
+            }
+            rest = rest.replace(/^\/+/, '');
+            if (!rest || rest.toLowerCase() === 'public') return '';
+            if (/^ticket-dossier\/?$/i.test(rest)) {
+                rest = 'ticket-dossier/';
+            }
+            return `${rest}${url.search}${url.hash}`;
+        } catch {
+            return '';
+        }
+    };
+
+    const setResumeCookie = (relative) => {
+        const value = String(relative || '').trim();
+        if (!value || value.length > 1800) return;
+        const maxAge = 30 * 24 * 60 * 60;
+        const secure = location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `${RESUME_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+    };
+
     const readLastDest = () => {
         try {
             const raw = JSON.parse(localStorage.getItem(LAST_DEST_KEY) || '{}');
@@ -85,11 +131,19 @@
     const saveCurrentPage = () => {
         if (document.getElementById('sharepoint-search')?.getAttribute('data-public') === '1') return;
         const dest = destFromLocation(window.location.href);
-        if (!dest) return;
+        if (!dest || dest === 'help') return;
         const path = sanitizeStoredPath(`${window.location.pathname}${window.location.search}${window.location.hash}`);
         if (!path) return;
         const stored = readLastDest();
         stored[dest] = path;
+        const skipLast = dest === 'find' && isDirectoryLaunch(window.location.href);
+        if (!skipLast) {
+            stored.last = path;
+            const relative = toPublicRelative(path);
+            if (relative) {
+                setResumeCookie(relative);
+            }
+        }
         try {
             localStorage.setItem(LAST_DEST_KEY, JSON.stringify(stored));
         } catch {

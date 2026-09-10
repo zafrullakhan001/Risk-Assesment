@@ -16142,6 +16142,15 @@ html.sp-workspace-scroll-lock body {
     min-width: 0;
     cursor: pointer;
 }
+.sharepoint-scope-favorite {
+    color: #d97706;
+    font-size: 0.85em;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+.sharepoint-scope-favorite[hidden] {
+    display: none !important;
+}
 .sharepoint-scope-hit-count {
     display: inline-flex;
     align-items: center;
@@ -18459,6 +18468,14 @@ html[data-catalog-colors="distinct"] .sp-od-scopes .sharepoint-scope-chip[data-c
 }
 .sharepoint-project-row.is-favorite td:first-child {
     box-shadow: inset 3px 0 0 #eab308;
+}
+.sp-project-fav-mark {
+    display: inline;
+    margin-left: 0.35rem;
+    color: #ca8a04;
+    font-size: 0.92em;
+    line-height: 1;
+    vertical-align: 0.05em;
 }
 .sharepoint-folders-fav-toggle.is-active,
 .sharepoint-folders-fav-toggle[aria-pressed="true"],
