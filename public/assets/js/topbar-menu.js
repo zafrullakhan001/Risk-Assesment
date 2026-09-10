@@ -137,7 +137,7 @@
             return;
         }
 
-        const allowed = { risk: 1, sharepoint: 1, ticket: 1, misc: 1 };
+        const allowed = { risk: 1, sharepoint: 1, storage: 1, ticket: 1, misc: 1 };
         const items = Array.from(source.children);
         items.forEach((item) => {
             if (!(item instanceof Element)) {
@@ -147,7 +147,9 @@
             if (!allowed[group]) {
                 const href = (item.getAttribute('href') || '').toLowerCase();
                 const text = (item.textContent || '').toLowerCase();
-                if (href.includes('ticket-dossier') || text.includes('ticket dossier') || text.includes('export json') || text.includes('all projects')) {
+                if (href.includes('view=heatmap') || text.includes('storage heatmap') || text === 'storage') {
+                    group = 'storage';
+                } else if (href.includes('ticket-dossier') || text.includes('ticket dossier') || text.includes('export json') || text.includes('all projects')) {
                     group = 'ticket';
                 } else if (href.includes('sharepoint') || text.includes('catalog') || text.includes('owners')) {
                     group = 'sharepoint';

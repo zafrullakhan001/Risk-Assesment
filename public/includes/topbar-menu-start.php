@@ -42,6 +42,10 @@ $topbarMenuJs = dirname(__DIR__) . '/assets/js/topbar-menu.js';
                     <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">📁</span> SharePoint</p>
                     <div class="topbar-menu-nav-items" data-menu-group-items="sharepoint"></div>
                 </div>
+                <div class="topbar-menu-section topbar-menu-group" data-menu-group-panel="storage" hidden>
+                    <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🗺️</span> Storage</p>
+                    <div class="topbar-menu-nav-items" data-menu-group-items="storage"></div>
+                </div>
                 <div class="topbar-menu-section topbar-menu-group" data-menu-group-panel="ticket" hidden>
                     <p class="topbar-menu-section-label"><span class="topbar-menu-emoji" aria-hidden="true">🎫</span> Ticket Analysis</p>
                     <div class="topbar-menu-nav-items" data-menu-group-items="ticket"></div>

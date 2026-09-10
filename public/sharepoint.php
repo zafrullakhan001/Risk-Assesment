@@ -3043,7 +3043,7 @@ $soloPageClass = $ownerSolo
     <?php if (!$catalogSolo && !$foldersSolo && ($ownerSolo || !$heatmapSolo)): ?>
     <script src="assets/js/sharepoint-owner-stats.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-stats.js') ?>"></script>
     <?php endif; ?>
-    <?php if (!$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
+    <?php if ($storageAvailable && !$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
     <script src="assets/js/sharepoint-size-heatmap.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-size-heatmap.js') ?>"></script>
     <?php endif; ?>
         <?php if (!$ownerSolo && !$catalogSolo && $isAdmin): ?>
