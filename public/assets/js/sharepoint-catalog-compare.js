@@ -38,8 +38,38 @@
   const rightHead = document.getElementById('sharepoint-catalog-compare-right-head');
   const refreshBtn = document.getElementById('sharepoint-catalog-compare-refresh');
   const closeBtn = document.getElementById('sharepoint-catalog-compare-close');
+  const columnsPicker = document.getElementById('sharepoint-catalog-compare-columns-picker');
+  const exportCsvBtn = document.getElementById('sharepoint-catalog-compare-export-csv');
   const scopesRoot = document.getElementById('sharepoint-search-scopes');
   const typeChipsRoot = document.getElementById('sharepoint-catalog-compare-type-chips');
+
+  const COLUMN_PREF_KEY = 'riskregister_sp_catalog_compare_columns';
+  const TOGGLE_COLUMNS = ['items', 'files', 'folders', 'modified', 'diff', 'actions'];
+  const readHiddenColumns = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLUMN_PREF_KEY) || '[]');
+      return new Set(Array.isArray(saved) ? saved.filter((column) => TOGGLE_COLUMNS.includes(column)) : []);
+    } catch {
+      return new Set();
+    }
+  };
+  const hiddenColumns = readHiddenColumns();
+
+  const applyHiddenColumns = () => {
+    dialog.setAttribute('data-hidden-cols', [...hiddenColumns].join(' '));
+    columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+      const column = input.getAttribute('data-col-toggle') || '';
+      input.checked = !hiddenColumns.has(column);
+    });
+  };
+
+  const saveHiddenColumns = () => {
+    try {
+      localStorage.setItem(COLUMN_PREF_KEY, JSON.stringify([...hiddenColumns]));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const readPrefs = () => {
     if (typeof SP.readSearchPrefs === 'function') return SP.readSearchPrefs();
@@ -247,16 +277,6 @@
     return 'shared';
   };
 
-  const formatCounts = (side) => {
-    if (!side) return '';
-    const items = Number(side.item_count || 0);
-    const files = Number(side.file_count || 0);
-    const folders = Number(side.folder_count || 0);
-    return `${items} item${items === 1 ? '' : 's'} · ${files} file${files === 1 ? '' : 's'} · ${folders} folder${
-      folders === 1 ? '' : 's'
-    }`;
-  };
-
   const sideHtml = (side, sourceKey, sourceTitle) => {
     if (!side) {
       return `<article class="sp-cc-side is-empty" aria-label="Not in this catalog">Not in this catalog</article>`;
@@ -265,8 +285,13 @@
     const modified = side.last_modified ? formatModified(side.last_modified) : 'No date';
     return `<article class="sp-cc-side">
       <h4 class="sp-cc-name">${escapeHtml(side.project_name || '')}</h4>
-      <p class="sp-cc-meta">${badge ? `${badge} · ` : ''}${escapeHtml(formatCounts(side))}</p>
-      <p class="sp-cc-meta">Modified ${escapeHtml(modified)}</p>
+      ${badge ? `<div class="sp-cc-catalog">${badge}</div>` : ''}
+      <div class="sp-cc-fields">
+        <span class="sp-cc-field" data-col="items"><b>Items</b> ${Number(side.item_count || 0)}</span>
+        <span class="sp-cc-field" data-col="files"><b>Files</b> ${Number(side.file_count || 0)}</span>
+        <span class="sp-cc-field" data-col="folders"><b>Folders</b> ${Number(side.folder_count || 0)}</span>
+        <span class="sp-cc-field" data-col="modified"><b>Modified</b> ${escapeHtml(modified)}</span>
+      </div>
     </article>`;
   };
 
@@ -306,8 +331,10 @@
       }
     }
     return `<div class="sp-cc-row-tools">
-      <span class="sp-diff-pill sp-diff-pill--${pillClass(row.presence)}">${escapeHtml(presenceLabel(row.presence))}</span>
-      ${buttons.join('')}
+      <span data-col="diff" class="sp-diff-pill sp-diff-pill--${pillClass(row.presence)}">${escapeHtml(
+        presenceLabel(row.presence)
+      )}</span>
+      <span data-col="actions" class="sp-cc-actions">${buttons.join('')}</span>
     </div>`;
   };
 
@@ -477,6 +504,107 @@
     if (state.busy) return;
     load({ fresh: true });
   });
+
+  columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const column = input.getAttribute('data-col-toggle') || '';
+      if (!TOGGLE_COLUMNS.includes(column)) return;
+      if (input.checked) hiddenColumns.delete(column);
+      else hiddenColumns.add(column);
+      saveHiddenColumns();
+      applyHiddenColumns();
+    });
+  });
+  columnsPicker?.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  columnsPicker?.querySelector('[data-columns-close]')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    columnsPicker.open = false;
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && columnsPicker?.open) columnsPicker.open = false;
+  });
+
+  const csvEscape = (value) => {
+    let text = String(value ?? '');
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+    if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+  };
+
+  const exportFilteredCsv = async () => {
+    if (!state.left || !state.right || state.busy || exportCsvBtn?.disabled) return;
+    const leftTitle = compareCache.leftMeta?.title || catalogTitle(state.left);
+    const rightTitle = compareCache.rightMeta?.title || catalogTitle(state.right);
+    const columns = [
+      { key: 'left_project', label: `${leftTitle} project`, value: (row) => row.left?.project_name || '' },
+      { key: 'right_project', label: `${rightTitle} project`, value: (row) => row.right?.project_name || '' },
+      { key: 'left_items', label: `${leftTitle} items`, group: 'items', value: (row) => row.left?.item_count ?? '' },
+      { key: 'right_items', label: `${rightTitle} items`, group: 'items', value: (row) => row.right?.item_count ?? '' },
+      { key: 'left_files', label: `${leftTitle} files`, group: 'files', value: (row) => row.left?.file_count ?? '' },
+      { key: 'right_files', label: `${rightTitle} files`, group: 'files', value: (row) => row.right?.file_count ?? '' },
+      { key: 'left_folders', label: `${leftTitle} folders`, group: 'folders', value: (row) => row.left?.folder_count ?? '' },
+      { key: 'right_folders', label: `${rightTitle} folders`, group: 'folders', value: (row) => row.right?.folder_count ?? '' },
+      { key: 'left_modified', label: `${leftTitle} modified`, group: 'modified', value: (row) => row.left?.last_modified || '' },
+      { key: 'right_modified', label: `${rightTitle} modified`, group: 'modified', value: (row) => row.right?.last_modified || '' },
+      { key: 'diff', label: 'Diff', group: 'diff', value: (row) => presenceLabel(row.presence) },
+      { key: 'left_url', label: `${leftTitle} SharePoint URL`, group: 'actions', value: (row) => row.left?.folder_url || '' },
+      { key: 'right_url', label: `${rightTitle} SharePoint URL`, group: 'actions', value: (row) => row.right?.folder_url || '' },
+    ].filter((column) => !column.group || !hiddenColumns.has(column.group));
+
+    exportCsvBtn.disabled = true;
+    const originalLabel = exportCsvBtn.textContent;
+    exportCsvBtn.textContent = 'Exporting…';
+    try {
+      const extra = {
+        left: state.left,
+        right: state.right,
+        q: state.query,
+        presence: state.presence,
+        page: '1',
+        per: '0',
+        all: '1',
+        sort: state.sort,
+        dir: state.dir,
+        mode: state.wordMode,
+        fuzzy: state.fuzzy ? '1' : '0',
+        deep: state.deep ? '1' : '0',
+        scope: state.matchScope,
+        type: [...state.types].join(','),
+        ext: [...state.exts].join(','),
+      };
+      if (searchRoot.getAttribute('data-show-archived') === '1') extra.archived = '1';
+      const response = await fetch(catalogApiUrl('catalog_compare', extra), {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Unable to export comparison.');
+
+      const lines = [columns.map((column) => csvEscape(column.label)).join(',')];
+      (Array.isArray(payload.rows) ? payload.rows : []).forEach((row) => {
+        lines.push(columns.map((column) => csvEscape(column.value(row))).join(','));
+      });
+      const blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `catalog-compare-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      if (metaEl) metaEl.textContent = error?.message || 'Unable to export comparison.';
+    } finally {
+      exportCsvBtn.disabled = false;
+      exportCsvBtn.textContent = originalLabel || 'Export CSV';
+    }
+  };
+  exportCsvBtn?.addEventListener('click', exportFilteredCsv);
 
   const syncChipUi = () => {
     typeChipsRoot?.querySelectorAll('[data-type-chip]').forEach((btn) => {
@@ -697,5 +825,6 @@
     openCatalogCompare: openCompareCatalogs,
   });
 
+  applyHiddenColumns();
   syncOpenButton();
 })();

@@ -53,6 +53,14 @@
     min-width: 12rem;
 }
 
+#sharepoint-catalog-compare-dialog #sharepoint-catalog-compare-columns-picker {
+    z-index: 45;
+}
+
+#sharepoint-catalog-compare-dialog #sharepoint-catalog-compare-columns-picker .sp-compare-columns-menu {
+    min-width: 13rem;
+}
+
 #sharepoint-catalog-compare-dialog .sp-dialog-find-filters {
     display: flex;
     flex-wrap: wrap;
@@ -153,10 +161,29 @@
     overflow-wrap: anywhere;
 }
 
-#sharepoint-catalog-compare-dialog .sp-cc-meta {
-    margin: 0;
+#sharepoint-catalog-compare-dialog .sp-cc-catalog {
+    min-height: 1.25rem;
+}
+
+#sharepoint-catalog-compare-dialog .sp-cc-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem 0.65rem;
+}
+
+#sharepoint-catalog-compare-dialog .sp-cc-field {
     color: var(--muted, #64748b);
     font-size: 0.74rem;
+    white-space: nowrap;
+}
+
+#sharepoint-catalog-compare-dialog .sp-cc-field b {
+    color: color-mix(in srgb, var(--muted, #64748b) 82%, var(--ink, #0f172a));
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
 }
 
 #sharepoint-catalog-compare-dialog .sp-cc-row-tools {
@@ -167,6 +194,12 @@
     justify-content: flex-end;
     gap: 0.28rem;
     white-space: nowrap;
+}
+
+#sharepoint-catalog-compare-dialog .sp-cc-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
 }
 
 #sharepoint-catalog-compare-dialog .sp-cc-row-tools .sp-diff-pill {
@@ -186,6 +219,29 @@
 #sharepoint-catalog-compare-dialog .sp-cc-row-tools .sp-cc-ext {
     min-width: 1.55rem;
     padding: 0 0.32rem;
+}
+
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="items"] [data-col="items"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="files"] [data-col="files"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="folders"] [data-col="folders"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="modified"] [data-col="modified"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"] [data-col="diff"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="actions"] [data-col="actions"] {
+    display: none;
+}
+
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"] .sp-cc-col-head--meta {
+    visibility: hidden;
+}
+
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-row,
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sharepoint-catalog-compare-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-col-head--meta,
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-row-tools {
+    display: none;
 }
 
 #sharepoint-catalog-compare-dialog .sharepoint-catalog-compare-pager {

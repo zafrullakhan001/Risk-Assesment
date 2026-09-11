@@ -62,6 +62,22 @@ declare(strict_types=1);
                                         <option value="200">200</option>
                                     </select>
                                 </label>
+                                <details class="sp-compare-columns-picker" id="sharepoint-catalog-compare-columns-picker">
+                                    <summary class="sp-view-btn" title="Show or hide comparison columns">Columns</summary>
+                                    <div class="sp-compare-columns-menu" role="group" aria-label="Visible comparison columns">
+                                        <div class="sp-compare-columns-menu-head">
+                                            <span class="sp-compare-columns-menu-title">Columns</span>
+                                            <button type="button" class="sp-columns-menu-close" data-columns-close title="Close" aria-label="Close columns menu">✕</button>
+                                        </div>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="items" checked> Items</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="files" checked> Files</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="folders" checked> Folders</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="diff" checked> Diff</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Actions &amp; links</label>
+                                    </div>
+                                </details>
+                                <button type="button" class="button ghost" id="sharepoint-catalog-compare-export-csv" title="Export all filtered comparison rows as CSV">Export CSV</button>
                             </div>
                         </div>
                         <div class="sp-dialog-find-filters">
