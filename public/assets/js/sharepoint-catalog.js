@@ -7764,11 +7764,109 @@
       </div>`;
   };
 
+  const getIndexedCatalogProject = (sourceKey, projectName) => {
+    const key = String(sourceKey || '');
+    const name = String(projectName || '')
+      .trim()
+      .toLowerCase();
+    if (!key || !name) return null;
+    const pools = [];
+    if (Array.isArray(state.indexBySource?.[key])) pools.push(state.indexBySource[key]);
+    if (Array.isArray(state.projects)) pools.push(state.projects);
+    for (const rows of pools) {
+      const found = rows.find((project) => {
+        if (String(project?.source_key || '') !== key) return false;
+        return (
+          String(project?.project_name || '')
+            .trim()
+            .toLowerCase() === name
+        );
+      });
+      if (found) return found;
+    }
+    return null;
+  };
+
+  const catalogIndexHasSources = (keys) =>
+    (Array.isArray(keys) ? keys : [keys]).every((key) => {
+      const sourceKey = String(key || '');
+      if (!sourceKey) return false;
+      if (Object.prototype.hasOwnProperty.call(state.indexBySource || {}, sourceKey)) return true;
+      return (state.projects || []).some((project) => String(project?.source_key || '') === sourceKey);
+    });
+
+  const catalogProjectMatches = (project, spec = {}) => {
+    if (!project) return false;
+    const parsed = Fuzzy.parseCatalogQuery
+      ? Fuzzy.parseCatalogQuery(spec.query || '')
+      : {
+          words: Fuzzy.getSearchWords?.(spec.query || '') || [],
+          phrases: [],
+          excludes: [],
+          extensions: [],
+          types: [],
+          paths: [],
+          has: [],
+          lacks: [],
+          tags: [],
+          person: '',
+          modifiedBy: '',
+          createdBy: '',
+        };
+    const types = Array.isArray(spec.types) ? spec.types : [];
+    const extensions = Array.isArray(spec.extensions) ? spec.extensions : [];
+    const matchScope = spec.matchScope || 'all';
+    const deep = spec.deep !== false;
+    const wordMode = spec.wordMode === 'or' ? 'or' : 'and';
+    const fuzzy = !!spec.fuzzy;
+    const typeNeedles = [...types, ...(parsed.types || [])];
+    if (typeNeedles.some((trait) => !projectHasTrait(project, trait))) return false;
+    const extNeedles = [...extensions, ...(parsed.extensions || [])];
+    if (extNeedles.some((trait) => !projectHasTrait(project, trait))) return false;
+    if ((parsed.has || []).some((trait) => !projectHasTrait(project, trait))) return false;
+    if ((parsed.lacks || []).some((trait) => projectHasTrait(project, trait))) return false;
+    if (parsed.person && !personMatchesValue(project, parsed.person)) return false;
+    if (parsed.modifiedBy) {
+      const needle = resolveMeAlias(parsed.modifiedBy);
+      if (!String(project.modified_by || '')
+        .toLowerCase()
+        .includes(needle)) {
+        return false;
+      }
+    }
+    if (parsed.createdBy) {
+      const needle = resolveMeAlias(parsed.createdBy);
+      if (!String(project.person || '')
+        .toLowerCase()
+        .includes(needle)) {
+        return false;
+      }
+    }
+    if ((parsed.tags || []).some((tag) => !projectHasTagNeedle(project, tag))) return false;
+    const hay = scopedHaystack(project, matchScope, deep);
+    const fullHay = withTagHay(project._hayDeep || hay, project);
+    if (parsed.phrases?.length && !haystackHasPhrases(hay, parsed.phrases)) return false;
+    if (haystackHasExcludes(fullHay, parsed.excludes || [])) return false;
+    if (parsed.paths?.length) {
+      const pathHay = project._hayFiles || fullHay;
+      if (!parsed.paths.every((path) => pathHay.includes(path))) return false;
+    }
+    if (!(parsed.words || []).length) return true;
+    const useDeep = effectiveDeep(matchScope, deep);
+    const match = fuzzy
+      ? scoreProject(project, parsed.words, wordMode, true, useDeep, matchScope)
+      : cheapProjectMatch(project, parsed.words, wordMode, useDeep, matchScope);
+    return !!match?.matched;
+  };
+
   window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
     getLiveSearchSnapshot,
     collectDeepHits,
     formatAgeLabel,
     scoreBadgeHtml,
+    getIndexedCatalogProject,
+    catalogIndexHasSources,
+    catalogProjectMatches,
   });
 
   const renderMeta = (matchedCount) => {

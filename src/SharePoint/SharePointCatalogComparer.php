@@ -59,6 +59,7 @@ final class SharePointCatalogComparer
             'match_scope' => trim((string) ($get['scope'] ?? $get['match_scope'] ?? 'all')),
             'types' => trim((string) ($get['type'] ?? $get['types'] ?? '')),
             'extensions' => trim((string) ($get['ext'] ?? $get['extensions'] ?? '')),
+            'all' => $truthy($get['all'] ?? null, false),
         ];
     }
 
@@ -120,78 +121,170 @@ final class SharePointCatalogComparer
             ':right_key' => $rightKey,
         ];
         $parsed = SharePointCatalogQuery::parse($query);
-        $searchSql = '';
-        if (SharePointCatalogQuery::isActive($parsed, $extraTypes, $extraExts)) {
-            $filter = [
-                'parsed' => $parsed,
-                'word_mode' => $wordMode,
-                'fuzzy' => $fuzzy,
-                'deep' => $deep,
-                'match_scope' => $matchScope,
-                'types' => $extraTypes,
-                'extensions' => $extraExts,
-                'viewer' => $viewer,
-            ];
-            $leftMatch = $this->sideMatchesSql(':left_key', 'm.left_name', 'm.name_key', 'lft', $filter, $params);
-            $rightMatch = $this->sideMatchesSql(':right_key', 'm.right_name', 'm.name_key', 'rgt', $filter, $params);
-            $searchSql = " AND (({$leftMatch}) OR ({$rightMatch}))";
-        }
+        $filter = [
+            'parsed' => $parsed,
+            'word_mode' => $wordMode,
+            'fuzzy' => $fuzzy,
+            'deep' => $deep,
+            'match_scope' => $matchScope,
+            'types' => $extraTypes,
+            'extensions' => $extraExts,
+            'viewer' => $viewer,
+        ];
+        $searchActive = SharePointCatalogQuery::isActive($parsed, $extraTypes, $extraExts);
+        $returnAll = !empty($options['all']) || $perPage === 0;
 
         $matchedSql = $this->matchedSql($visibleSql);
-        $totals = $this->loadTotals($matchedSql, $searchSql, $params);
-        $filteredCount = match ($presence) {
-            self::PRESENCE_BOTH => $totals['in_both'],
-            self::PRESENCE_LEFT => $totals['only_left'],
-            self::PRESENCE_RIGHT => $totals['only_right'],
-            default => $totals['all'],
-        };
-
-        $pageCount = max(1, (int) ceil($filteredCount / $perPage));
-        if ($page > $pageCount) {
-            $page = $pageCount;
+        $hitsSql = '';
+        if ($searchActive) {
+            $leftHits = $this->hitsSelectSql(':left_key', 'lft', $filter, $params, 'left_p');
+            $rightHits = $this->hitsSelectSql(':right_key', 'rgt', $filter, $params, 'right_p');
+            $hitsSql = ",
+            left_hits AS (
+                {$leftHits}
+            ),
+            right_hits AS (
+                {$rightHits}
+            ),
+            filtered AS (
+                SELECT m.*
+                FROM matched m
+                WHERE m.name_key IN (SELECT name_key FROM left_hits)
+                   OR m.name_key IN (SELECT name_key FROM right_hits)
+            )";
+        } else {
+            $hitsSql = ',
+            filtered AS (
+                SELECT * FROM matched
+            )';
         }
-        $offset = ($page - 1) * $perPage;
 
-        $presenceSql = '';
-        if ($presence !== self::PRESENCE_ANY) {
-            $presenceSql = ' AND m.presence = :presence';
-            $params[':presence'] = $presence;
-        }
-
-        $orderSql = $this->orderSql($sort, $dir);
+        $orderSql = $this->orderSql($sort, $dir, 'f');
         $listSql = "{$matchedSql}
+            {$hitsSql}
             SELECT
-                m.name_key,
-                m.presence,
-                m.left_name,
-                m.right_name,
-                m.left_item_count,
-                m.right_item_count,
-                m.left_file_count,
-                m.right_file_count,
-                m.left_folder_count,
-                m.right_folder_count,
-                m.left_modified,
-                m.right_modified
-            FROM matched m
-            WHERE 1=1
-            {$searchSql}
-            {$presenceSql}
-            {$orderSql}
-            LIMIT :lim OFFSET :off";
+                (SELECT COUNT(*) FROM left_p) AS left_project_count,
+                (SELECT COALESCE(SUM(item_count), 0) FROM left_p) AS left_item_count,
+                (SELECT COUNT(*) FROM right_p) AS right_project_count,
+                (SELECT COALESCE(SUM(item_count), 0) FROM right_p) AS right_item_count,
+                f.name_key,
+                f.presence,
+                f.left_name,
+                f.right_name,
+                f.left_item_count,
+                f.right_item_count,
+                f.left_file_count,
+                f.right_file_count,
+                f.left_folder_count,
+                f.right_folder_count,
+                f.left_modified,
+                f.right_modified
+            FROM (SELECT 1) AS _meta
+            LEFT JOIN filtered f ON 1=1
+            {$orderSql}";
 
-        $statement = $this->pdo->prepare($listSql);
-        foreach ($params as $key => $value) {
-            $statement->bindValue($key, $value, PDO::PARAM_STR);
+        try {
+            $statement = $this->pdo->prepare($listSql);
+            $statement->execute($params);
+            $rawRows = $statement->fetchAll() ?: [];
+        } catch (\Throwable $exception) {
+            if (!$searchActive || !$this->ftsAvailable()) {
+                throw $exception;
+            }
+            $params = [
+                ':left_key' => $leftKey,
+                ':right_key' => $rightKey,
+            ];
+            $leftHits = $this->groupedHitsSql(':left_key', 'lft', $filter, $params, $parsed);
+            $rightHits = $this->groupedHitsSql(':right_key', 'rgt', $filter, $params, $parsed);
+            $hitsSql = ",
+            left_hits AS (
+                {$leftHits}
+            ),
+            right_hits AS (
+                {$rightHits}
+            ),
+            filtered AS (
+                SELECT m.*
+                FROM matched m
+                WHERE m.name_key IN (SELECT name_key FROM left_hits)
+                   OR m.name_key IN (SELECT name_key FROM right_hits)
+            )";
+            $listSql = "{$matchedSql}
+            {$hitsSql}
+            SELECT
+                (SELECT COUNT(*) FROM left_p) AS left_project_count,
+                (SELECT COALESCE(SUM(item_count), 0) FROM left_p) AS left_item_count,
+                (SELECT COUNT(*) FROM right_p) AS right_project_count,
+                (SELECT COALESCE(SUM(item_count), 0) FROM right_p) AS right_item_count,
+                f.name_key,
+                f.presence,
+                f.left_name,
+                f.right_name,
+                f.left_item_count,
+                f.right_item_count,
+                f.left_file_count,
+                f.right_file_count,
+                f.left_folder_count,
+                f.right_folder_count,
+                f.left_modified,
+                f.right_modified
+            FROM (SELECT 1) AS _meta
+            LEFT JOIN filtered f ON 1=1
+            {$orderSql}";
+            $statement = $this->pdo->prepare($listSql);
+            $statement->execute($params);
+            $rawRows = $statement->fetchAll() ?: [];
         }
-        $statement->bindValue(':lim', $perPage, PDO::PARAM_INT);
-        $statement->bindValue(':off', $offset, PDO::PARAM_INT);
-        $statement->execute();
-        $rawRows = $statement->fetchAll() ?: [];
+
+        $metaRow = $rawRows[0] ?? [];
+        $dataRows = [];
+        $totals = [
+            'in_both' => 0,
+            'only_left' => 0,
+            'only_right' => 0,
+            'all' => 0,
+        ];
+        foreach ($rawRows as $row) {
+            if (trim((string) ($row['name_key'] ?? '')) === '') {
+                continue;
+            }
+            $dataRows[] = $row;
+            $totals['all']++;
+            $rowPresence = (string) ($row['presence'] ?? '');
+            if ($rowPresence === self::PRESENCE_BOTH) {
+                $totals['in_both']++;
+            } elseif ($rowPresence === self::PRESENCE_LEFT) {
+                $totals['only_left']++;
+            } elseif ($rowPresence === self::PRESENCE_RIGHT) {
+                $totals['only_right']++;
+            }
+        }
+
+        $visibleRows = $presence === self::PRESENCE_ANY
+            ? $dataRows
+            : array_values(array_filter(
+                $dataRows,
+                static fn (array $row): bool => (string) ($row['presence'] ?? '') === $presence
+            ));
+        $filteredCount = count($visibleRows);
+        if ($returnAll || $perPage === 0) {
+            $page = 1;
+            $pageCount = 1;
+            $pageRows = $visibleRows;
+            $perPage = $filteredCount > 0 ? $filteredCount : self::DEFAULT_PER_PAGE;
+        } else {
+            $pageCount = max(1, (int) ceil($filteredCount / $perPage));
+            if ($page > $pageCount) {
+                $page = $pageCount;
+            }
+            $offset = ($page - 1) * $perPage;
+            $pageRows = array_slice($visibleRows, $offset, $perPage);
+        }
 
         $leftNames = [];
         $rightNames = [];
-        foreach ($rawRows as $row) {
+        foreach ($pageRows as $row) {
             $leftName = trim((string) ($row['left_name'] ?? ''));
             $rightName = trim((string) ($row['right_name'] ?? ''));
             if ($leftName !== '') {
@@ -206,7 +299,7 @@ final class SharePointCatalogComparer
         $rightSummaries = $this->summarizeProjects($rightKey, $rightNames, $includeArchived);
 
         $rows = [];
-        foreach ($rawRows as $row) {
+        foreach ($pageRows as $row) {
             $leftName = trim((string) ($row['left_name'] ?? ''));
             $rightName = trim((string) ($row['right_name'] ?? ''));
             $rows[] = [
@@ -222,8 +315,18 @@ final class SharePointCatalogComparer
         }
 
         return [
-            'left' => $this->catalogMeta($leftKey, $leftTitle, $includeArchived),
-            'right' => $this->catalogMeta($rightKey, $rightTitle, $includeArchived),
+            'left' => [
+                'source_key' => $leftKey,
+                'title' => $leftTitle,
+                'project_count' => (int) ($metaRow['left_project_count'] ?? 0),
+                'item_count' => (int) ($metaRow['left_item_count'] ?? 0),
+            ],
+            'right' => [
+                'source_key' => $rightKey,
+                'title' => $rightTitle,
+                'project_count' => (int) ($metaRow['right_project_count'] ?? 0),
+                'item_count' => (int) ($metaRow['right_item_count'] ?? 0),
+            ],
             'query' => $query,
             'word_mode' => $wordMode,
             'fuzzy' => $fuzzy,
@@ -245,33 +348,6 @@ final class SharePointCatalogComparer
                 'all' => $totals['all'],
             ],
             'rows' => $rows,
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $params
-     * @return array{in_both: int, only_left: int, only_right: int, all: int}
-     */
-    private function loadTotals(string $matchedSql, string $searchSql, array $params): array
-    {
-        $sql = "{$matchedSql}
-            SELECT
-                SUM(CASE WHEN m.presence = 'both' THEN 1 ELSE 0 END) AS in_both,
-                SUM(CASE WHEN m.presence = 'left' THEN 1 ELSE 0 END) AS only_left,
-                SUM(CASE WHEN m.presence = 'right' THEN 1 ELSE 0 END) AS only_right,
-                COUNT(*) AS all_count
-            FROM matched m
-            WHERE 1=1
-            {$searchSql}";
-        $statement = $this->pdo->prepare($sql);
-        $statement->execute($params);
-        $row = $statement->fetch() ?: [];
-
-        return [
-            'in_both' => (int) ($row['in_both'] ?? 0),
-            'only_left' => (int) ($row['only_left'] ?? 0),
-            'only_right' => (int) ($row['only_right'] ?? 0),
-            'all' => (int) ($row['all_count'] ?? 0),
         ];
     }
 
@@ -338,27 +414,28 @@ final class SharePointCatalogComparer
         ) ";
     }
 
-    private function orderSql(string $sort, string $dir): string
+    private function orderSql(string $sort, string $dir, string $alias = 'm'): string
     {
+        $alias = preg_replace('/[^a-zA-Z0-9_]/', '', $alias) ?: 'm';
         $dirSql = $dir === 'desc' ? 'DESC' : 'ASC';
-        $nameOrder = "m.name_key COLLATE NOCASE ASC";
+        $nameOrder = "{$alias}.name_key COLLATE NOCASE ASC";
         if ($sort === 'presence') {
-            return "ORDER BY CASE m.presence WHEN 'both' THEN 0 WHEN 'left' THEN 1 ELSE 2 END {$dirSql}, {$nameOrder}";
+            return "ORDER BY CASE {$alias}.presence WHEN 'both' THEN 0 WHEN 'left' THEN 1 ELSE 2 END {$dirSql}, {$nameOrder}";
         }
         if ($sort === 'items') {
-            return "ORDER BY (m.left_item_count + m.right_item_count) {$dirSql}, {$nameOrder}";
+            return "ORDER BY ({$alias}.left_item_count + {$alias}.right_item_count) {$dirSql}, {$nameOrder}";
         }
         if ($sort === 'modified') {
             return "ORDER BY
                 CASE
-                    WHEN CASE WHEN m.left_modified >= m.right_modified THEN m.left_modified ELSE m.right_modified END = '' THEN 1
+                    WHEN CASE WHEN {$alias}.left_modified >= {$alias}.right_modified THEN {$alias}.left_modified ELSE {$alias}.right_modified END = '' THEN 1
                     ELSE 0
                 END ASC,
-                CASE WHEN m.left_modified >= m.right_modified THEN m.left_modified ELSE m.right_modified END {$dirSql},
+                CASE WHEN {$alias}.left_modified >= {$alias}.right_modified THEN {$alias}.left_modified ELSE {$alias}.right_modified END {$dirSql},
                 {$nameOrder}";
         }
 
-        return "ORDER BY m.name_key COLLATE NOCASE {$dirSql}";
+        return "ORDER BY {$alias}.name_key COLLATE NOCASE {$dirSql}";
     }
 
     /**
@@ -443,35 +520,6 @@ final class SharePointCatalogComparer
         ];
     }
 
-    /**
-     * @return array{source_key: string, title: string, project_count: int, item_count: int}
-     */
-    private function catalogMeta(string $sourceKey, string $title, bool $includeArchived): array
-    {
-        $visibleSql = $includeArchived
-            ? '1=1'
-            : SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
-        $itemStmt = $this->pdo->prepare(
-            "SELECT COUNT(*) FROM sharepoint_items
-             WHERE source_key = :source_key AND {$visibleSql}"
-        );
-        $itemStmt->execute([':source_key' => $sourceKey]);
-        $projectStmt = $this->pdo->prepare(
-            "SELECT COUNT(DISTINCT LOWER(TRIM(project_name))) FROM sharepoint_items
-             WHERE source_key = :source_key
-               AND TRIM(project_name) != ''
-               AND {$visibleSql}"
-        );
-        $projectStmt->execute([':source_key' => $sourceKey]);
-
-        return [
-            'source_key' => $sourceKey,
-            'title' => $title,
-            'project_count' => (int) $projectStmt->fetchColumn(),
-            'item_count' => (int) $itemStmt->fetchColumn(),
-        ];
-    }
-
     private function normalizePresence(string $value): string
     {
         $value = strtolower(trim($value));
@@ -503,7 +551,10 @@ final class SharePointCatalogComparer
         if (in_array($perPage, self::ALLOWED_PER_PAGE, true)) {
             return $perPage;
         }
-        if ($perPage <= 0) {
+        if ($perPage === 0) {
+            return 0;
+        }
+        if ($perPage < 0) {
             return self::DEFAULT_PER_PAGE;
         }
 
@@ -522,24 +573,210 @@ final class SharePointCatalogComparer
     }
 
     /**
+     * One-pass project-name keys that match the Find query in a single catalog.
+     *
      * @param array<string, mixed> $filter
      * @param array<string, string> $params
      */
-    private function sideMatchesSql(
+    private function hitsSelectSql(
         string $sourceParam,
-        string $nameExpr,
-        string $nameKeyExpr,
         string $prefix,
         array $filter,
-        array &$params
+        array &$params,
+        string $projectCte
     ): string {
-        $parts = ["{$nameExpr} IS NOT NULL", "TRIM({$nameExpr}) != ''"];
         $parsed = is_array($filter['parsed'] ?? null) ? $filter['parsed'] : [];
-        $alias = 'i_' . $prefix;
-        $projectPred = "{$alias}.source_key = {$sourceParam} AND LOWER(TRIM({$alias}.project_name)) = {$nameKeyExpr}";
-        $hay = $this->haystackSql($alias, (string) ($filter['match_scope'] ?? 'all'), !empty($filter['deep']));
+        if (
+            ($filter['match_scope'] ?? 'all') === 'names'
+            && $this->isTextOnlyFilter($filter)
+        ) {
+            return $this->nameHitsSql($projectCte, $prefix, $filter, $params);
+        }
+        if (
+            empty($filter['fuzzy'])
+            && $this->isTextOnlyFilter($filter)
+            && $this->ftsAvailable()
+        ) {
+            $fts = $this->ftsHitsSql($sourceParam, $prefix, $filter, $params);
+            if ($fts !== '') {
+                return $fts;
+            }
+        }
+
+        return $this->groupedHitsSql($sourceParam, $prefix, $filter, $params, $parsed);
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function isTextOnlyFilter(array $filter): bool
+    {
+        $parsed = is_array($filter['parsed'] ?? null) ? $filter['parsed'] : [];
+
+        return ($filter['types'] ?? []) === []
+            && ($filter['extensions'] ?? []) === []
+            && ($parsed['extensions'] ?? []) === []
+            && ($parsed['types'] ?? []) === []
+            && ($parsed['paths'] ?? []) === []
+            && ($parsed['has'] ?? []) === []
+            && ($parsed['lacks'] ?? []) === []
+            && ($parsed['tags'] ?? []) === []
+            && trim((string) ($parsed['person'] ?? '')) === ''
+            && trim((string) ($parsed['modified_by'] ?? '')) === ''
+            && trim((string) ($parsed['created_by'] ?? '')) === '';
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     * @param array<string, string> $params
+     */
+    private function nameHitsSql(string $projectCte, string $prefix, array $filter, array &$params): string
+    {
+        $parsed = is_array($filter['parsed'] ?? null) ? $filter['parsed'] : [];
+        $hay = 'LOWER(IFNULL(project_name, \'\'))';
+        $parts = ['1=1'];
+        $n = 0;
         $mode = ($filter['word_mode'] ?? 'and') === 'or' ? 'or' : 'and';
         $fuzzy = !empty($filter['fuzzy']);
+
+        foreach ((array) ($parsed['excludes'] ?? []) as $exclude) {
+            $exclude = trim((string) $exclude);
+            if ($exclude === '') {
+                continue;
+            }
+            $key = ':' . $prefix . 'nex' . $n++;
+            $params[$key] = '%' . $this->escapeLike($exclude) . '%';
+            $parts[] = "{$hay} NOT LIKE {$key} ESCAPE '\\'";
+        }
+        foreach ((array) ($parsed['phrases'] ?? []) as $phrase) {
+            $phrase = trim((string) $phrase);
+            if ($phrase === '') {
+                continue;
+            }
+            $key = ':' . $prefix . 'nph' . $n++;
+            $params[$key] = '%' . $this->escapeLike($phrase) . '%';
+            $parts[] = "{$hay} LIKE {$key} ESCAPE '\\'";
+        }
+        $wordClauses = [];
+        foreach ((array) ($parsed['words'] ?? []) as $word) {
+            $word = trim((string) $word);
+            if ($word === '') {
+                continue;
+            }
+            $exactKey = ':' . $prefix . 'nw' . $n++;
+            $params[$exactKey] = '%' . $this->escapeLike($word) . '%';
+            $wordSql = "{$hay} LIKE {$exactKey} ESCAPE '\\'";
+            if ($fuzzy && mb_strlen($word) >= 3) {
+                $fuzzyKey = ':' . $prefix . 'nwf' . $n++;
+                $params[$fuzzyKey] = $this->fuzzyLike($word);
+                $wordSql = "({$wordSql} OR {$hay} LIKE {$fuzzyKey} ESCAPE '\\')";
+            }
+            $wordClauses[] = $wordSql;
+        }
+        if ($wordClauses !== []) {
+            $parts[] = '(' . implode($mode === 'or' ? ' OR ' : ' AND ', $wordClauses) . ')';
+        }
+
+        return "SELECT name_key FROM {$projectCte} WHERE " . implode(' AND ', $parts);
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     * @param array<string, string> $params
+     */
+    private function ftsHitsSql(string $sourceParam, string $prefix, array $filter, array &$params): string
+    {
+        $parsed = is_array($filter['parsed'] ?? null) ? $filter['parsed'] : [];
+        $mode = ($filter['word_mode'] ?? 'and') === 'or' ? 'or' : 'and';
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items_fts');
+        $column = $this->ftsColumnPrefix((string) ($filter['match_scope'] ?? 'all'), !empty($filter['deep']));
+        $sets = [];
+        $n = 0;
+
+        $pushMatch = function (string $match) use (&$sets, &$params, &$n, $prefix, $sourceParam, $visible, $column): void {
+            if ($match === '') {
+                return;
+            }
+            $key = ':' . $prefix . 'fts' . $n++;
+            $params[$key] = $column . $match;
+            $sets[] = "SELECT DISTINCT LOWER(TRIM(project_name)) AS name_key
+                FROM sharepoint_items_fts
+                WHERE source_key = {$sourceParam}
+                  AND TRIM(project_name) != ''
+                  AND sharepoint_items_fts MATCH {$key}
+                  AND {$visible}";
+        };
+
+        foreach ((array) ($parsed['phrases'] ?? []) as $phrase) {
+            $token = $this->ftsToken((string) $phrase, false);
+            if ($token === '') {
+                return '';
+            }
+            $pushMatch($token);
+        }
+        $wordMatches = [];
+        foreach ((array) ($parsed['words'] ?? []) as $word) {
+            $token = $this->ftsToken((string) $word, true);
+            if ($token === '') {
+                return '';
+            }
+            $wordMatches[] = $token;
+        }
+        if ($wordMatches !== []) {
+            if ($mode === 'or') {
+                $pushMatch(implode(' OR ', $wordMatches));
+            } else {
+                foreach ($wordMatches as $token) {
+                    $pushMatch($token);
+                }
+            }
+        }
+        if ($sets === []) {
+            $sets[] = "SELECT DISTINCT LOWER(TRIM(project_name)) AS name_key
+                FROM sharepoint_items
+                WHERE source_key = {$sourceParam}
+                  AND TRIM(project_name) != ''";
+        }
+
+        $sql = $sets[0];
+        if (count($sets) > 1) {
+            $sql = implode("\nINTERSECT\n", $sets);
+        }
+        foreach ((array) ($parsed['excludes'] ?? []) as $exclude) {
+            $token = $this->ftsToken((string) $exclude, true);
+            if ($token === '') {
+                return '';
+            }
+            $key = ':' . $prefix . 'ftsx' . $n++;
+            $params[$key] = $column . $token;
+            $sql .= "\nEXCEPT\nSELECT DISTINCT LOWER(TRIM(project_name)) AS name_key
+                FROM sharepoint_items_fts
+                WHERE source_key = {$sourceParam}
+                  AND TRIM(project_name) != ''
+                  AND sharepoint_items_fts MATCH {$key}
+                  AND {$visible}";
+        }
+
+        return $sql;
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     * @param array<string, mixed> $parsed
+     * @param array<string, string> $params
+     */
+    private function groupedHitsSql(
+        string $sourceParam,
+        string $prefix,
+        array $filter,
+        array &$params,
+        array $parsed
+    ): string {
+        $visible = SharePointArchiveRepository::visibleProjectSql('i');
+        $hay = $this->haystackSql('i', (string) ($filter['match_scope'] ?? 'all'), !empty($filter['deep']));
+        $mode = ($filter['word_mode'] ?? 'and') === 'or' ? 'or' : 'and';
+        $fuzzy = !empty($filter['fuzzy']);
+        $having = [];
         $n = 0;
 
         foreach ((array) ($parsed['excludes'] ?? []) as $exclude) {
@@ -549,12 +786,8 @@ final class SharePointCatalogComparer
             }
             $key = ':' . $prefix . 'ex' . $n++;
             $params[$key] = '%' . $this->escapeLike($exclude) . '%';
-            $parts[] = "NOT EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND ({$hay}) LIKE {$key} ESCAPE '\\'
-            )";
+            $having[] = "SUM(CASE WHEN ({$hay}) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) = 0";
         }
-
         foreach ((array) ($parsed['phrases'] ?? []) as $phrase) {
             $phrase = trim((string) $phrase);
             if ($phrase === '') {
@@ -562,12 +795,8 @@ final class SharePointCatalogComparer
             }
             $key = ':' . $prefix . 'ph' . $n++;
             $params[$key] = '%' . $this->escapeLike($phrase) . '%';
-            $parts[] = "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND ({$hay}) LIKE {$key} ESCAPE '\\'
-            )";
+            $having[] = "SUM(CASE WHEN ({$hay}) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) > 0";
         }
-
         $wordClauses = [];
         foreach ((array) ($parsed['words'] ?? []) as $word) {
             $word = trim((string) $word);
@@ -582,15 +811,11 @@ final class SharePointCatalogComparer
                 $params[$fuzzyKey] = $this->fuzzyLike($word);
                 $wordSql = "({$wordSql} OR ({$hay}) LIKE {$fuzzyKey} ESCAPE '\\')";
             }
-            $wordClauses[] = "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND {$wordSql}
-            )";
+            $wordClauses[] = "SUM(CASE WHEN {$wordSql} THEN 1 ELSE 0 END) > 0";
         }
         if ($wordClauses !== []) {
-            $parts[] = '(' . implode($mode === 'or' ? ' OR ' : ' AND ', $wordClauses) . ')';
+            $having[] = '(' . implode($mode === 'or' ? ' OR ' : ' AND ', $wordClauses) . ')';
         }
-
         foreach ((array) ($parsed['paths'] ?? []) as $path) {
             $path = trim((string) $path);
             if ($path === '') {
@@ -598,10 +823,7 @@ final class SharePointCatalogComparer
             }
             $key = ':' . $prefix . 'path' . $n++;
             $params[$key] = '%' . $this->escapeLike($path) . '%';
-            $parts[] = "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND LOWER(IFNULL({$alias}.relative_path, '')) LIKE {$key} ESCAPE '\\'
-            )";
+            $having[] = "SUM(CASE WHEN LOWER(IFNULL(i.relative_path, '')) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) > 0";
         }
 
         $viewer = is_array($filter['viewer'] ?? null) ? $filter['viewer'] : [];
@@ -609,31 +831,20 @@ final class SharePointCatalogComparer
         if ($person !== '') {
             $key = ':' . $prefix . 'who' . $n++;
             $params[$key] = '%' . $this->escapeLike($person) . '%';
-            $parts[] = "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND (
-                    LOWER(IFNULL({$alias}.modified_by, '')) LIKE {$key} ESCAPE '\\'
-                    OR LOWER(IFNULL({$alias}.person, '')) LIKE {$key} ESCAPE '\\'
-                )
-            )";
+            $having[] = "SUM(CASE WHEN LOWER(IFNULL(i.modified_by, '')) LIKE {$key} ESCAPE '\\'
+                OR LOWER(IFNULL(i.person, '')) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) > 0";
         }
         $modifiedBy = $this->resolveViewerAlias((string) ($parsed['modified_by'] ?? ''), $viewer);
         if ($modifiedBy !== '') {
             $key = ':' . $prefix . 'mod' . $n++;
             $params[$key] = '%' . $this->escapeLike($modifiedBy) . '%';
-            $parts[] = "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND LOWER(IFNULL({$alias}.modified_by, '')) LIKE {$key} ESCAPE '\\'
-            )";
+            $having[] = "SUM(CASE WHEN LOWER(IFNULL(i.modified_by, '')) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) > 0";
         }
         $createdBy = $this->resolveViewerAlias((string) ($parsed['created_by'] ?? ''), $viewer);
         if ($createdBy !== '') {
             $key = ':' . $prefix . 'cre' . $n++;
             $params[$key] = '%' . $this->escapeLike($createdBy) . '%';
-            $parts[] = "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND LOWER(IFNULL({$alias}.person, '')) LIKE {$key} ESCAPE '\\'
-            )";
+            $having[] = "SUM(CASE WHEN LOWER(IFNULL(i.person, '')) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) > 0";
         }
 
         $exts = array_values(array_unique(array_merge(
@@ -641,31 +852,30 @@ final class SharePointCatalogComparer
             array_map('strval', (array) ($filter['extensions'] ?? []))
         )));
         foreach ($exts as $ext) {
-            $ext = ltrim(strtolower(trim($ext)), '.');
-            if ($ext === '') {
-                continue;
+            $clause = $this->traitHavingSql((string) $ext, $prefix, $n, $params);
+            if ($clause !== '') {
+                $having[] = $clause;
             }
-            $parts[] = $this->traitExistsSql($alias, $projectPred, $ext, $prefix, $n, $params);
         }
-
         $traits = array_values(array_unique(array_merge(
             array_map('strval', (array) ($parsed['types'] ?? [])),
             array_map('strval', (array) ($parsed['has'] ?? [])),
             array_map('strval', (array) ($filter['types'] ?? []))
         )));
         foreach ($traits as $trait) {
-            $clause = $this->traitExistsSql($alias, $projectPred, $trait, $prefix, $n, $params, $nameExpr);
+            $clause = $this->traitHavingSql((string) $trait, $prefix, $n, $params);
             if ($clause !== '') {
-                $parts[] = $clause;
+                $having[] = $clause;
             }
         }
         foreach ((array) ($parsed['lacks'] ?? []) as $trait) {
-            $clause = $this->traitExistsSql($alias, $projectPred, (string) $trait, $prefix, $n, $params, $nameExpr);
+            $clause = $this->traitHavingSql((string) $trait, $prefix, $n, $params);
             if ($clause !== '') {
-                $parts[] = 'NOT ' . $clause;
+                $having[] = 'NOT (' . $clause . ')';
             }
         }
 
+        $where = "i.source_key = {$sourceParam} AND TRIM(i.project_name) != '' AND {$visible}";
         foreach ((array) ($parsed['tags'] ?? []) as $tag) {
             $tag = trim((string) $tag);
             if ($tag === '') {
@@ -673,12 +883,11 @@ final class SharePointCatalogComparer
             }
             $key = ':' . $prefix . 'tag' . $n++;
             $params[$key] = '%' . $this->escapeLike($tag) . '%';
-            $parts[] = "EXISTS (
-                SELECT 1
+            $where .= " AND LOWER(TRIM(i.project_name)) IN (
+                SELECT LOWER(TRIM(_ta.project_name))
                 FROM sharepoint_search_tag_assignments _ta
                 JOIN sharepoint_search_tags _tg ON _tg.id = _ta.tag_id
                 WHERE _ta.source_key = {$sourceParam}
-                  AND LOWER(TRIM(_ta.project_name)) = {$nameKeyExpr}
                   AND (
                       LOWER(IFNULL(_tg.label, '')) LIKE {$key} ESCAPE '\\'
                       OR LOWER(IFNULL(_tg.slug, '')) LIKE {$key} ESCAPE '\\'
@@ -686,81 +895,40 @@ final class SharePointCatalogComparer
             )";
         }
 
-        return implode(' AND ', $parts);
-    }
+        $havingSql = $having === [] ? '1=1' : implode(' AND ', $having);
 
-    private function haystackSql(string $alias, string $scope, bool $deep): string
-    {
-        if ($scope === 'names') {
-            return "LOWER(IFNULL({$alias}.project_name, ''))";
-        }
-        if ($scope === 'people') {
-            return "LOWER(IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
-        }
-        if ($scope === 'files') {
-            return "LOWER(IFNULL({$alias}.name, '') || char(10) || IFNULL({$alias}.relative_path, ''))";
-        }
-        if (!$deep) {
-            return "LOWER(IFNULL({$alias}.project_name, '') || char(10) || IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
-        }
-
-        return "LOWER(IFNULL({$alias}.project_name, '') || char(10) || IFNULL({$alias}.name, '') || char(10) || IFNULL({$alias}.relative_path, '') || char(10) || IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
+        return "SELECT LOWER(TRIM(i.project_name)) AS name_key
+            FROM sharepoint_items i
+            WHERE {$where}
+            GROUP BY LOWER(TRIM(i.project_name))
+            HAVING {$havingSql}";
     }
 
     /**
      * @param array<string, string> $params
      */
-    private function traitExistsSql(
-        string $alias,
-        string $projectPred,
-        string $trait,
-        string $prefix,
-        int &$n,
-        array &$params,
-        string $nameExpr = ''
-    ): string {
+    private function traitHavingSql(string $trait, string $prefix, int &$n, array &$params): string
+    {
         $trait = SharePointCatalogQuery::normalizeType($trait);
         if ($trait === '') {
             return '';
         }
         if ($trait === 'empty') {
-            return "NOT EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND LOWER({$alias}.item_type) = 'file'
-            )";
+            return "SUM(CASE WHEN LOWER(i.item_type) = 'file' THEN 1 ELSE 0 END) = 0";
         }
         if ($trait === 'stale') {
-            return "(
-                NOT EXISTS (
-                    SELECT 1 FROM sharepoint_items {$alias}
-                    WHERE {$projectPred} AND IFNULL({$alias}.last_modified, '') != ''
-                      AND {$alias}.last_modified >= datetime('now', '-90 days')
-                )
-            )";
+            return "SUM(CASE WHEN IFNULL(i.last_modified, '') != '' AND i.last_modified >= datetime('now', '-90 days') THEN 1 ELSE 0 END) = 0";
         }
         if ($trait === 'folders') {
-            $exclude = ["''", "{$alias}.name"];
-            if (trim($nameExpr) !== '') {
-                $exclude[] = $nameExpr;
-            }
-
-            return "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred}
-                  AND LOWER({$alias}.item_type) = 'folder'
-                  AND TRIM(IFNULL({$alias}.relative_path, '')) NOT IN (" . implode(', ', $exclude) . ')
-            )';
+            return "SUM(CASE WHEN LOWER(i.item_type) = 'folder'
+                AND TRIM(IFNULL(i.relative_path, '')) NOT IN ('', i.project_name, i.name) THEN 1 ELSE 0 END) > 0";
         }
         if ($trait === 'drawings') {
             $key = ':' . $prefix . 'draw' . $n++;
             $params[$key] = '%drawing%';
-            return "EXISTS (
-                SELECT 1 FROM sharepoint_items {$alias}
-                WHERE {$projectPred} AND (
-                    LOWER(IFNULL({$alias}.name, '')) LIKE {$key} ESCAPE '\\'
-                    OR LOWER(IFNULL({$alias}.relative_path, '')) LIKE {$key} ESCAPE '\\'
-                )
-            )";
+
+            return "SUM(CASE WHEN LOWER(IFNULL(i.name, '')) LIKE {$key} ESCAPE '\\'
+                OR LOWER(IFNULL(i.relative_path, '')) LIKE {$key} ESCAPE '\\' THEN 1 ELSE 0 END) > 0";
         }
 
         $exts = match ($trait) {
@@ -779,15 +947,68 @@ final class SharePointCatalogComparer
         foreach ($exts as $ext) {
             $key = ':' . $prefix . 'ext' . $n++;
             $params[$key] = '%.' . $this->escapeLike($ext);
-            $ors[] = "LOWER(IFNULL({$alias}.name, '')) LIKE {$key} ESCAPE '\\'";
+            $ors[] = "LOWER(IFNULL(i.name, '')) LIKE {$key} ESCAPE '\\'";
         }
 
-        return "EXISTS (
-            SELECT 1 FROM sharepoint_items {$alias}
-            WHERE {$projectPred}
-              AND LOWER({$alias}.item_type) = 'file'
-              AND (" . implode(' OR ', $ors) . ')
-        )';
+        return 'SUM(CASE WHEN LOWER(i.item_type) = \'file\' AND (' . implode(' OR ', $ors) . ') THEN 1 ELSE 0 END) > 0';
+    }
+
+    private function ftsAvailable(): bool
+    {
+        static $available = null;
+        if ($available !== null) {
+            return $available;
+        }
+        try {
+            $exists = $this->pdo->query(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sharepoint_items_fts' LIMIT 1"
+            );
+            $available = $exists !== false && $exists->fetchColumn() !== false;
+        } catch (\Throwable) {
+            $available = false;
+        }
+
+        return $available;
+    }
+
+    private function ftsColumnPrefix(string $scope, bool $deep): string
+    {
+        return match ($scope) {
+            'names' => '{project_name}: ',
+            'people' => '{modified_by person}: ',
+            'files' => '{name relative_path}: ',
+            default => $deep ? '' : '{project_name modified_by person}: ',
+        };
+    }
+
+    private function ftsToken(string $word, bool $prefix): string
+    {
+        $safe = preg_replace('/[^\p{L}\p{N}_.\-\s]+/u', '', trim($word)) ?? '';
+        $safe = trim((string) preg_replace('/\s+/u', ' ', $safe));
+        $safe = str_replace('"', '', $safe);
+        if ($safe === '') {
+            return '';
+        }
+
+        return $prefix ? '"' . $safe . '"*' : '"' . $safe . '"';
+    }
+
+    private function haystackSql(string $alias, string $scope, bool $deep): string
+    {
+        if ($scope === 'names') {
+            return "LOWER(IFNULL({$alias}.project_name, ''))";
+        }
+        if ($scope === 'people') {
+            return "LOWER(IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
+        }
+        if ($scope === 'files') {
+            return "LOWER(IFNULL({$alias}.name, '') || char(10) || IFNULL({$alias}.relative_path, ''))";
+        }
+        if (!$deep) {
+            return "LOWER(IFNULL({$alias}.project_name, '') || char(10) || IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
+        }
+
+        return "LOWER(IFNULL({$alias}.project_name, '') || char(10) || IFNULL({$alias}.name, '') || char(10) || IFNULL({$alias}.relative_path, '') || char(10) || IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
     }
 
     private function fuzzyLike(string $word): string

@@ -71,6 +71,108 @@
   };
 
   let abortController = null;
+  const compareCache = {
+    left: '',
+    right: '',
+    archived: '',
+    rows: null,
+    leftMeta: null,
+    rightMeta: null,
+  };
+
+  const searchIsActive = () => !!(state.query || state.types.size || state.exts.size);
+
+  const canFilterLocally = () =>
+    typeof SP.catalogIndexHasSources === 'function' &&
+    typeof SP.catalogProjectMatches === 'function' &&
+    typeof SP.getIndexedCatalogProject === 'function' &&
+    SP.catalogIndexHasSources([state.left, state.right]);
+
+  const cacheKeyMatches = () =>
+    compareCache.rows &&
+    compareCache.left === state.left &&
+    compareCache.right === state.right &&
+    compareCache.archived === (searchRoot.getAttribute('data-show-archived') === '1' ? '1' : '');
+
+  const sortCompareRows = (rows) => {
+    const dir = state.dir === 'desc' ? -1 : 1;
+    const rank = { both: 0, left: 1, right: 2 };
+    return [...rows].sort((left, right) => {
+      if (state.sort === 'presence') {
+        const diff = (rank[left.presence] ?? 9) - (rank[right.presence] ?? 9);
+        if (diff) return state.dir === 'desc' ? -diff : diff;
+      } else if (state.sort === 'items') {
+        const leftCount = Number(left.left?.item_count || 0) + Number(left.right?.item_count || 0);
+        const rightCount = Number(right.left?.item_count || 0) + Number(right.right?.item_count || 0);
+        if (leftCount !== rightCount) return (leftCount - rightCount) * dir;
+      } else if (state.sort === 'modified') {
+        const leftMod = String(left.left?.last_modified || left.right?.last_modified || '');
+        const rightMod = String(right.left?.last_modified || right.right?.last_modified || '');
+        if (leftMod !== rightMod) return leftMod.localeCompare(rightMod) * dir;
+      }
+      return String(left.name_key || '').localeCompare(String(right.name_key || ''), undefined, {
+        sensitivity: 'base',
+      }) * (state.sort === 'name' || state.sort === 'presence' || state.sort === 'items' || state.sort === 'modified' ? dir : 1);
+    });
+  };
+
+  const paintComparePayload = (payload) => {
+    const leftTitle = payload.left?.title || catalogTitle(state.left);
+    const rightTitle = payload.right?.title || catalogTitle(state.right);
+    if (titleEl) titleEl.textContent = 'Compare catalogs';
+    if (subEl) {
+      subEl.textContent = `${leftTitle} · ${payload.left?.project_count || 0} projects  vs  ${rightTitle} · ${
+        payload.right?.project_count || 0
+      } projects`;
+    }
+    renderTotals(payload.totals || {}, payload.presence || state.presence);
+    renderRows(payload);
+    renderPager(payload);
+  };
+
+  const applyLocalCompare = () => {
+    const spec = {
+      query: state.query,
+      types: [...state.types],
+      extensions: [...state.exts],
+      wordMode: state.wordMode,
+      fuzzy: state.fuzzy,
+      deep: state.deep,
+      matchScope: state.matchScope,
+    };
+    let rows = compareCache.rows || [];
+    if (searchIsActive()) {
+      rows = rows.filter((row) => {
+        const left = row.left ? SP.getIndexedCatalogProject(state.left, row.left.project_name) : null;
+        const right = row.right ? SP.getIndexedCatalogProject(state.right, row.right.project_name) : null;
+        return SP.catalogProjectMatches(left, spec) || SP.catalogProjectMatches(right, spec);
+      });
+    }
+    const totals = { all: 0, in_both: 0, only_left: 0, only_right: 0 };
+    rows.forEach((row) => {
+      totals.all += 1;
+      if (row.presence === 'both') totals.in_both += 1;
+      else if (row.presence === 'left') totals.only_left += 1;
+      else if (row.presence === 'right') totals.only_right += 1;
+    });
+    const visible =
+      state.presence === 'any' ? rows : rows.filter((row) => row.presence === state.presence);
+    const sorted = sortCompareRows(visible);
+    const pageCount = Math.max(1, Math.ceil(sorted.length / state.perPage));
+    if (state.page > pageCount) state.page = pageCount;
+    const start = (state.page - 1) * state.perPage;
+    paintComparePayload({
+      left: compareCache.leftMeta,
+      right: compareCache.rightMeta,
+      rows: sorted.slice(start, start + state.perPage),
+      totals,
+      presence: state.presence,
+      page: state.page,
+      per_page: state.perPage,
+      page_count: pageCount,
+      row_count: sorted.length,
+    });
+  };
 
   const catalogApiUrl = (action, extra = {}) => {
     if (typeof SP.catalogApiUrl === 'function') {
@@ -274,6 +376,13 @@
 
   const load = async ({ fresh = false } = {}) => {
     if (!state.left || !state.right) return;
+    if (fresh) {
+      compareCache.rows = null;
+    }
+    if (cacheKeyMatches() && (!searchIsActive() || canFilterLocally())) {
+      applyLocalCompare();
+      return;
+    }
     if (abortController) {
       try {
         abortController.abort();
@@ -287,22 +396,24 @@
     if (rowsEl && !rowsEl.querySelector('.sp-cc-row')) {
       rowsEl.innerHTML = `<p class="sharepoint-dialog-empty">⏳ Loading…</p>`;
     }
+    const cacheUnfiltered = canFilterLocally() || !searchIsActive();
     const extra = {
       left: state.left,
       right: state.right,
-      q: state.query,
-      presence: state.presence,
-      page: String(state.page),
-      per: String(state.perPage),
+      q: cacheUnfiltered ? '' : state.query,
+      presence: cacheUnfiltered ? 'any' : state.presence,
+      page: cacheUnfiltered ? '1' : String(state.page),
+      per: cacheUnfiltered ? '0' : String(state.perPage),
       sort: state.sort,
       dir: state.dir,
       mode: state.wordMode,
       fuzzy: state.fuzzy ? '1' : '0',
       deep: state.deep ? '1' : '0',
       scope: state.matchScope,
-      type: [...state.types].join(','),
-      ext: [...state.exts].join(','),
+      type: cacheUnfiltered ? '' : [...state.types].join(','),
+      ext: cacheUnfiltered ? '' : [...state.exts].join(','),
     };
+    if (cacheUnfiltered) extra.all = '1';
     if (searchRoot.getAttribute('data-show-archived') === '1') extra.archived = '1';
     if (fresh) extra._ts = String(Date.now());
     try {
@@ -316,17 +427,17 @@
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || 'Unable to compare catalogs.');
       }
-      const leftTitle = payload.left?.title || catalogTitle(state.left);
-      const rightTitle = payload.right?.title || catalogTitle(state.right);
-      if (titleEl) titleEl.textContent = 'Compare catalogs';
-      if (subEl) {
-        subEl.textContent = `${leftTitle} · ${payload.left?.project_count || 0} projects  vs  ${rightTitle} · ${
-          payload.right?.project_count || 0
-        } projects`;
+      if (cacheUnfiltered) {
+        compareCache.left = state.left;
+        compareCache.right = state.right;
+        compareCache.archived = extra.archived === '1' ? '1' : '';
+        compareCache.rows = Array.isArray(payload.rows) ? payload.rows : [];
+        compareCache.leftMeta = payload.left || null;
+        compareCache.rightMeta = payload.right || null;
+        applyLocalCompare();
+        return;
       }
-      renderTotals(payload.totals || {}, payload.presence || state.presence);
-      renderRows(payload);
-      renderPager(payload);
+      paintComparePayload(payload);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       if (subEl) subEl.textContent = error.message || 'Compare failed.';

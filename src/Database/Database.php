@@ -366,6 +366,10 @@ final class Database
             'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_type
              ON sharepoint_items (source_key, item_type)'
         );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_project_key
+             ON sharepoint_items (source_key, LOWER(TRIM(project_name)))'
+        );
         self::ensureColumn($pdo, 'sharepoint_items', 'modified_by', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'sharepoint_items', 'person', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'sharepoint_items', 'date_created', "TEXT NOT NULL DEFAULT ''");

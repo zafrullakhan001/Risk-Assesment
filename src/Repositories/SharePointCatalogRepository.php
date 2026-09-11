@@ -281,6 +281,8 @@ final class SharePointCatalogRepository
                 'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_name ON sharepoint_items (source_key, name)',
             'idx_sharepoint_items_source_type' =>
                 'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_type ON sharepoint_items (source_key, item_type)',
+            'idx_sharepoint_items_source_project_key' =>
+                'CREATE INDEX IF NOT EXISTS idx_sharepoint_items_source_project_key ON sharepoint_items (source_key, LOWER(TRIM(project_name)))',
             'idx_sharepoint_sources_key' =>
                 'CREATE INDEX IF NOT EXISTS idx_sharepoint_sources_key ON sharepoint_sources (source_key)',
         ];
