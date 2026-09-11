@@ -2941,6 +2941,9 @@ $soloPageClass = $ownerSolo
             <?php require __DIR__ . '/includes/sharepoint-list-animation-dialog.php'; ?>
             <?php require __DIR__ . '/includes/sharepoint-catalog-dialogs.php'; ?>
             <?php endif; ?>
+            <?php if ($ownerSolo): ?>
+                <?php require __DIR__ . '/includes/sharepoint-catalog-dialogs.php'; ?>
+            <?php endif; ?>
             <?php if ($heatmapSolo): ?>
                 <?php require __DIR__ . '/includes/sharepoint-list-animation-dialog.php'; ?>
             <?php endif; ?>

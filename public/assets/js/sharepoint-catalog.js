@@ -24,6 +24,7 @@
   let catalogCustomColors = {};
   let catalogColorPopKey = '';
   let catalogColorPopAnchor = null;
+  let catalogSearchState = null;
 
   const catalogToneFromHay = (hay) => {
     const text = String(hay || '').toLowerCase();
@@ -1260,7 +1261,7 @@
       needles.push(want);
     };
     (parsed?.tags || []).forEach(push);
-    if (state.tagFilter) push(state.tagFilter);
+    if (catalogSearchState?.tagFilter) push(catalogSearchState.tagFilter);
     (parsed?.words || []).forEach(push);
     (parsed?.phrases || []).forEach(push);
     return needles;
@@ -3984,7 +3985,7 @@
         try {
           const created = await postCatalogAction('create_search_tag', { label });
           dialogAllTags = normalizeTagList(created.tags || [...dialogAllTags, created.tag]);
-          state.allTags = dialogAllTags;
+          if (catalogSearchState) catalogSearchState.allTags = dialogAllTags;
           const addId = Number(created.tag?.id || 0);
           if (addId) {
             const nextIds = [...new Set([...currentTags().map((tag) => tag.id), addId])];
@@ -4211,8 +4212,8 @@
       const project = payload.project;
       currentSourceKey = String(project.source_key || currentSourceKey || '');
       dialogCanEditTags = !!payload.can_edit_tags && catalogCanEditTags();
-      dialogAllTags = normalizeTagList(payload.all_tags || state.allTags);
-      if (dialogAllTags.length) state.allTags = dialogAllTags;
+      dialogAllTags = normalizeTagList(payload.all_tags || catalogSearchState?.allTags);
+      if (dialogAllTags.length && catalogSearchState) catalogSearchState.allTags = dialogAllTags;
       applyLoadedProject(project, name, { seedExpanded });
     };
 
@@ -6031,6 +6032,7 @@
     /** @type {Record<string, array>} Prepared search projects keyed by source_key (for peer hit counts). */
     indexBySource: {},
   };
+  catalogSearchState = state;
 
   /** @type {AbortController|null} */
   let peerIndexAbort = null;
