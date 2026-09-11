@@ -109,6 +109,13 @@ $ribbon = [
                 class="button ghost home-link"
                 data-menu-group="ticket"
                 data-menu-tone="mint"
+                href="summary.php?id=<?= (int) $id ?>"
+                title="Open the Product &amp; Design Summary for this project"
+            ><span class="topbar-menu-emoji" aria-hidden="true">📄</span>Summary</a>
+            <a
+                class="button ghost home-link"
+                data-menu-group="ticket"
+                data-menu-tone="mint"
                 href="export-zip.php?id=<?= (int) $id ?>"
                 title="Download this dossier and its original files as a ZIP backup"
             ><span class="topbar-menu-emoji" aria-hidden="true">📦</span>Export ZIP</a>
@@ -136,6 +143,7 @@ $ribbon = [
                         <p><?= e(strlen((string) $overview['description']) > 420 ? substr((string) $overview['description'], 0, 417) . '…' : (string) $overview['description']) ?></p>
                     <?php endif; ?>
                     <p class="hero-edit">
+                        <a class="button ghost button-small" href="summary.php?id=<?= (int) $id ?>" title="Open the Product &amp; Design Summary for this project">📄 Product &amp; Design Summary</a>
                         <a class="button ghost button-small" href="#edit-details">✏️ Edit details</a>
                     </p>
                 </div>
