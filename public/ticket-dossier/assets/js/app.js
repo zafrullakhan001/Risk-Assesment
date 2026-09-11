@@ -482,6 +482,7 @@
     // ----- Global search -----
     var globalSearchInput = document.getElementById('global-search-input');
     var searchClearBtn = document.getElementById('search-clear');
+    var searchFuzzyToggle = document.getElementById('search-fuzzy-toggle');
     var searchResultsEl = document.getElementById('search-results');
     var searchJumpsEl = document.getElementById('search-jumps');
     var globalSearchContainer = document.getElementById('global-search');
@@ -490,8 +491,11 @@
     var lastMatches = [];
     var lastParsedQuery = null;
     var lastSearchQuery = '';
+    var activeMatchIndex = -1;
     var HIDE_DUPS_KEY = 'ticket_dossier_search_hide_dups';
+    var FUZZY_KEY = 'ticket_dossier_search_fuzzy';
     var hideDuplicateMatches = readHideDupsPref();
+    var fuzzyEnabled = readFuzzyPref();
     var pulseTimer = 0;
     var KIND_RANK = { exact: 0, contains: 1, phonetic: 2, fuzzy: 3 };
     var SECTION_PREF = {
@@ -507,14 +511,31 @@
     };
     var ROLE_SHORTCUTS = [
         { id: 'vendor', label: 'Vendor', emoji: '🏢', aliases: ['vendor', 'third party vendor'] },
-        { id: 'business-owner', label: 'Business Owner', emoji: '👔', aliases: ['business owner'] },
-        { id: 'sponsor', label: 'Executive Sponsor', emoji: '⭐', aliases: ['ait executive sponsor', 'executive sponsor'] },
-        { id: 'product-owner', label: 'Product Owner', emoji: '🧩', aliases: ['ait product owner', 'product owner'] },
-        { id: 'product-manager', label: 'Product Manager', emoji: '🧭', aliases: ['ait product manager', 'product manager'] },
-        { id: 'demand-manager', label: 'Demand Manager', emoji: '📋', aliases: ['ait demand manager', 'demand manager'] },
-        { id: 'requested-by', label: 'Requested by', emoji: '🙋', aliases: ['requested by', 'requester'] },
+        { id: 'business-owner', label: 'Biz Owner', emoji: '👔', aliases: ['business owner'] },
+        { id: 'sponsor', label: 'Sponsor', emoji: '⭐', aliases: ['ait executive sponsor', 'executive sponsor'] },
+        { id: 'product-owner', label: 'Prod Owner', emoji: '🧩', aliases: ['ait product owner', 'product owner'] },
+        { id: 'product-manager', label: 'Prod Mgr', emoji: '🧭', aliases: ['ait product manager', 'product manager'] },
+        { id: 'demand-manager', label: 'Demand Mgr', emoji: '📋', aliases: ['ait demand manager', 'demand manager'] },
+        { id: 'requested-by', label: 'Requester', emoji: '🙋', aliases: ['requested by', 'requester'] },
         { id: 'assignee', label: 'Assignee', emoji: '✅', aliases: ['assignee', 'assigned to'] },
         { id: 'owner', label: 'Owner', emoji: '👤', aliases: ['owner'] }
+    ];
+    var TOPIC_SHORTCUTS = [
+        { id: 'assessments', label: 'Assessments', emoji: '📝', query: 'assessment', sectionId: 'section-assessments' },
+        { id: 'business-case', label: 'Biz case', emoji: '💡', aliases: ['business case'], query: 'business case' },
+        { id: 'funding-cfo', label: 'Funding CFO', emoji: '💰', aliases: ['funding cfo'] },
+        { id: 'funding-status', label: 'Funding', emoji: '💵', aliases: ['funding status', 'funding'] },
+        { id: 'priority', label: 'Priority', emoji: '⚡', aliases: ['priority', 'priority alignment'] },
+        { id: 'portfolio', label: 'Portfolio', emoji: '📁', aliases: ['portfolio'] },
+        { id: 'classification', label: 'Class', emoji: '🏷️', aliases: ['classification', 'extract classification'] },
+        { id: 'state', label: 'State', emoji: '📌', aliases: ['state'] },
+        { id: 'go-live', label: 'Go-Live', emoji: '🚀', aliases: ['qp-go-live', 'qp go live', 'go live', 'planned go live'] },
+        { id: 'tprm', label: 'TPRM', emoji: '🛡️', query: 'TPRM', aliases: ['tprm recommendation'] },
+        { id: 'risk', label: 'Risk', emoji: '⚠️', query: 'risk' },
+        { id: 'description', label: 'Desc', emoji: '📄', aliases: ['description'] },
+        { id: 'related', label: 'Related', emoji: '🔗', query: 'related', sectionId: 'section-demand' },
+        { id: 'ddr', label: 'DDR', emoji: '🛡️', query: 'DDR', sectionId: 'section-ddr' },
+        { id: 'exceptions', label: 'Exceptions', emoji: '⛔', query: 'exception', aliases: ['exception', 'exceptions', 'exception status'] }
     ];
     var EMPTYISH = ['', '—', '-', 'n/a', 'na', 'none', 'null', 'unknown', 'unknown owner', 'no answer', 'false'];
     var PRESET_STORAGE_KEY = 'ticket_dossier_search_presets_v1';
@@ -526,11 +547,13 @@
     var presetEmojiInput = document.getElementById('preset-emoji');
     var presetFieldInput = document.getElementById('preset-field');
     var presetQueryInput = document.getElementById('preset-query');
+    var presetExcludeInput = document.getElementById('preset-exclude');
     var presetCancelBtn = document.getElementById('preset-cancel');
     var presetErrorEl = document.getElementById('preset-error');
     var presetFieldSuggestions = document.getElementById('preset-field-suggestions');
     var customPresets = loadCustomPresets();
     var searchTimer = 0;
+    var presetCountCache = {};
 
     function fuzzyApi() {
         return window.FuzzySearch || null;
@@ -773,6 +796,7 @@
         });
 
         searchableElements = bag.items;
+        invalidatePresetCountCache();
         renderRoleShortcuts();
     }
 
@@ -836,6 +860,7 @@
         var label = collapseText(preset.label || preset.name || '');
         var field = collapseText(preset.field || preset.fieldLabel || '');
         var query = collapseText(preset.query || '');
+        var exclude = collapseText(preset.exclude || preset.exception || preset.exceptions || '');
         var emoji = collapseText(preset.emoji || '🔖').slice(0, 8);
         if (label === '' || (field === '' && query === '')) return null;
         var id = collapseText(preset.id || '');
@@ -847,8 +872,101 @@
             label: label.slice(0, 40),
             emoji: emoji || '🔖',
             field: field.slice(0, 120),
-            query: query.slice(0, 200)
+            query: query.slice(0, 200),
+            exclude: exclude.slice(0, 200)
         };
+    }
+
+    function buildExcludeTerms(excludeText) {
+        var raw = collapseText(excludeText);
+        if (!raw) return [];
+        var terms = [];
+        raw.split(/[,\s]+/).forEach(function (part) {
+            var term = collapseText(part).replace(/^-+/, '');
+            if (term.length < 2) return;
+            if (terms.indexOf(term) === -1) terms.push(term);
+        });
+        return terms;
+    }
+
+    function buildPresetSearchQuery(preset) {
+        var parts = [];
+        if (preset.query) parts.push(preset.query);
+        buildExcludeTerms(preset.exclude).forEach(function (term) {
+            parts.push('-' + term);
+        });
+        return parts.join(' ').trim();
+    }
+
+    function countAliasMatches(aliases) {
+        if (!aliases || !aliases.length) return 0;
+        var normalized = aliases.map(normalizeLabel).filter(Boolean);
+        if (!normalized.length) return 0;
+        var count = 0;
+        searchableElements.forEach(function (item) {
+            var lab = normalizeLabel(item.label);
+            if (normalized.indexOf(lab) === -1) return;
+            if (isPlaceholderValue(item.originalText)) return;
+            count += 1;
+        });
+        return count;
+    }
+
+    function countFieldLabelMatches(fieldLabel) {
+        var needle = normalizeLabel(fieldLabel);
+        if (!needle) return 0;
+        var count = 0;
+        searchableElements.forEach(function (item) {
+            var lab = normalizeLabel(item.label);
+            if (!lab) return;
+            if (lab === needle || lab.indexOf(needle) !== -1 || (needle.indexOf(lab) !== -1 && lab.length >= 4)) {
+                count += 1;
+            }
+        });
+        return count;
+    }
+
+    function countQueryMatches(query) {
+        var q = collapseText(query);
+        if (!q || q.length < 2) return 0;
+        var cacheKey = (fuzzyEnabled ? '1' : '0') + '\0' + q.toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(presetCountCache, cacheKey)) {
+            return presetCountCache[cacheKey];
+        }
+        var parsed = parseSearchQuery(q);
+        var count = 0;
+        searchableElements.forEach(function (item) {
+            var scored = scoreItem(item, parsed);
+            if (scored && scored.matched) count += 1;
+        });
+        presetCountCache[cacheKey] = count;
+        return count;
+    }
+
+    function countRoleMatches(role) {
+        return countAliasMatches(role.aliases || []);
+    }
+
+    function countTopicMatches(topic) {
+        var aliasCount = countAliasMatches(topic.aliases || []);
+        if (aliasCount > 0) return aliasCount;
+        if (topic.query) return countQueryMatches(topic.query);
+        if (topic.sectionId && document.getElementById(topic.sectionId)) return 1;
+        return 0;
+    }
+
+    function countCustomPresetMatches(preset) {
+        var fieldCount = preset.field ? countFieldLabelMatches(preset.field) : 0;
+        var searchQuery = buildPresetSearchQuery(preset);
+        var queryCount = searchQuery ? countQueryMatches(searchQuery) : 0;
+        if (preset.query || preset.exclude) {
+            return queryCount > 0 ? queryCount : fieldCount;
+        }
+        return fieldCount;
+    }
+
+    function invalidatePresetCountCache() {
+        presetCountCache = {};
     }
 
     function saveCustomPresets() {
@@ -936,7 +1054,32 @@
         return best;
     }
 
+    function floatingSearchApi() {
+        return window.TicketDossierFloatingSearch || null;
+    }
+
+    function openFloatingSearch(options) {
+        var api = floatingSearchApi();
+        if (api && typeof api.open === 'function') {
+            api.open(options || { focus: false, collapsed: false });
+        }
+    }
+
+    function syncFloatingSearch(options) {
+        var api = floatingSearchApi();
+        if (!api || typeof api.sync !== 'function') return;
+        var display = visibleSearchMatches();
+        api.sync({
+            query: lastSearchQuery,
+            matchCount: display.length,
+            activeIndex: activeMatchIndex,
+            open: !!(options && options.open),
+            focus: !!(options && options.focus)
+        });
+    }
+
     function runCustomPreset(preset) {
+        openFloatingSearch({ focus: false, collapsed: false });
         var jumped = false;
         if (preset.field) {
             var item = findFieldByLabel(preset.field, false);
@@ -945,23 +1088,29 @@
                 jumped = true;
             }
         }
-        if (preset.query && globalSearchInput) {
-            globalSearchInput.value = preset.query;
-            performSearch(preset.query);
+        var searchQuery = buildPresetSearchQuery(preset);
+        if (searchQuery && globalSearchInput) {
+            globalSearchInput.value = searchQuery;
+            performSearch(searchQuery, { openDock: true });
             if (searchClearBtn) searchClearBtn.classList.remove('hidden');
             if (!jumped && lastMatches.length > 0) {
-                jumpToMatch(lastMatches[0].item);
+                goToVisibleMatch(0, { openDock: true });
             } else if (!jumped) {
                 globalSearchInput.focus();
             }
             return;
         }
-        if (!jumped && preset.field) {
+        if (preset.field) {
             if (globalSearchInput) {
                 globalSearchInput.value = preset.field;
-                performSearch(preset.field);
+                performSearch(preset.field, { openDock: true });
                 if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+                if (!jumped && visibleSearchMatches().length > 0) {
+                    goToVisibleMatch(0, { openDock: true });
+                }
             }
+        } else {
+            syncFloatingSearch({ open: true });
         }
     }
 
@@ -970,6 +1119,7 @@
             return preset.id !== presetId;
         });
         saveCustomPresets();
+        invalidatePresetCountCache();
         renderRoleShortcuts();
     }
 
@@ -981,9 +1131,51 @@
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'search-jump';
-        btn.title = options.title || options.label;
-        btn.textContent = (options.emoji ? options.emoji + ' ' : '') + options.label;
-        btn.addEventListener('click', options.onClick);
+        var count = typeof options.count === 'number' ? options.count : null;
+        var title = options.title || options.label;
+        if (count !== null && count > 0) {
+            title += ' — ' + count + ' on this dossier';
+        }
+        btn.title = title;
+
+        if (options.emoji) {
+            var emojiSpan = document.createElement('span');
+            emojiSpan.className = 'search-jump-emoji';
+            emojiSpan.setAttribute('aria-hidden', 'true');
+            emojiSpan.textContent = options.emoji;
+            btn.appendChild(emojiSpan);
+            btn.appendChild(document.createTextNode(' '));
+        }
+
+        var labelSpan = document.createElement('span');
+        labelSpan.className = 'search-jump-label';
+        labelSpan.textContent = options.label;
+        btn.appendChild(labelSpan);
+
+        if (count !== null && count > 0) {
+            var countSpan = document.createElement('span');
+            countSpan.className = 'search-jump-count';
+            countSpan.textContent = String(count);
+            countSpan.setAttribute('aria-label', count + ' matches');
+            btn.appendChild(countSpan);
+            wrap.classList.add('has-count');
+        } else if (count === 0) {
+            wrap.classList.add('is-missing');
+        }
+
+        btn.addEventListener('mousedown', function (e) {
+            e.stopPropagation();
+        });
+        btn.addEventListener('touchstart', function (e) {
+            e.stopPropagation();
+        }, { passive: true });
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof options.onClick === 'function') {
+                options.onClick(e);
+            }
+        });
         wrap.appendChild(btn);
 
         if (options.custom && options.onDelete) {
@@ -1009,6 +1201,46 @@
         list.appendChild(wrap);
     }
 
+    function runTopicShortcut(topic) {
+        openFloatingSearch({ focus: false, collapsed: false });
+        var jumped = false;
+        if (topic.aliases && topic.aliases.length) {
+            var item = findRoleItem({ aliases: topic.aliases });
+            if (!item && topic.aliases[0]) {
+                item = findFieldByLabel(topic.aliases[0], false);
+            }
+            if (item) {
+                jumpToMatch(item);
+                jumped = true;
+            }
+        }
+        var shortcutQuery = topic.query
+            || (topic.aliases && topic.aliases[0])
+            || topic.label;
+        if (shortcutQuery && globalSearchInput) {
+            globalSearchInput.value = shortcutQuery;
+            performSearch(shortcutQuery, { openDock: true, focus: false });
+            if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+            if (!jumped && visibleSearchMatches().length > 0) {
+                goToVisibleMatch(0, { openDock: true });
+                jumped = true;
+            }
+        }
+        if (!jumped && topic.sectionId) {
+            var section = document.getElementById(topic.sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                clearJumpFocus();
+                section.classList.add('search-jump-focus', 'search-jump-pulse');
+                if (pulseTimer) window.clearTimeout(pulseTimer);
+                pulseTimer = window.setTimeout(function () {
+                    section.classList.remove('search-jump-pulse');
+                }, 1800);
+            }
+        }
+        syncFloatingSearch({ open: true });
+    }
+
     function renderRoleShortcuts() {
         if (!searchJumpsEl) return;
         var list = searchJumpsListEl;
@@ -1023,28 +1255,63 @@
         list.innerHTML = '';
 
         ROLE_SHORTCUTS.forEach(function (role) {
+            var count = countRoleMatches(role);
+            if (count < 1) return;
             var item = findRoleItem(role);
             if (!item) return;
             appendJumpChip(list, {
                 label: role.label,
                 emoji: role.emoji,
-                title: 'Jump to ' + role.label,
+                count: count,
+                title: 'Jump to ' + (role.aliases && role.aliases[0] ? role.aliases[0] : role.label),
                 onClick: function () {
+                    openFloatingSearch({ focus: false, collapsed: false });
+                    var roleQuery = (role.aliases && role.aliases[0]) || role.label;
+                    if (globalSearchInput) {
+                        globalSearchInput.value = roleQuery;
+                        performSearch(roleQuery, { openDock: true, focus: false });
+                        if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+                    }
                     jumpToMatch(item);
+                    syncFloatingSearch({ open: true });
+                }
+            });
+        });
+
+        TOPIC_SHORTCUTS.forEach(function (topic) {
+            var count = countTopicMatches(topic);
+            var present = count > 0;
+            if (!present && topic.sectionId) {
+                present = !!document.getElementById(topic.sectionId);
+            }
+            appendJumpChip(list, {
+                label: topic.label,
+                emoji: topic.emoji,
+                count: count,
+                missing: !present,
+                title: topic.query ? ('Search “' + topic.query + '”') : ('Jump to ' + topic.label),
+                onClick: function () {
+                    runTopicShortcut(topic);
                 }
             });
         });
 
         customPresets.forEach(function (preset) {
-            var present = !preset.field || !!findFieldByLabel(preset.field, false);
+            var count = countCustomPresetMatches(preset);
+            var present = count > 0 || (!preset.field && !!(preset.query || preset.exclude));
+            if (preset.field && count < 1) {
+                present = !!findFieldByLabel(preset.field, false);
+            }
             var titleParts = [];
             if (preset.field) titleParts.push('Jump to “' + preset.field + '”');
             if (preset.query) titleParts.push('Search “' + preset.query + '”');
+            if (preset.exclude) titleParts.push('Exclude “' + preset.exclude + '”');
             appendJumpChip(list, {
                 label: preset.label,
                 emoji: preset.emoji,
                 custom: true,
-                missing: !present && !preset.query,
+                count: count,
+                missing: !present,
                 title: titleParts.join(' · ') || preset.label,
                 onClick: function () {
                     runCustomPreset(preset);
@@ -1070,7 +1337,8 @@
             label: presetNameInput ? presetNameInput.value : '',
             emoji: presetEmojiInput ? presetEmojiInput.value : '',
             field: presetFieldInput ? presetFieldInput.value : '',
-            query: presetQueryInput ? presetQueryInput.value : ''
+            query: presetQueryInput ? presetQueryInput.value : '',
+            exclude: presetExcludeInput ? presetExcludeInput.value : ''
         });
         if (!preset) {
             showPresetError('Enter a chip name and either a field label or a search query.');
@@ -1089,6 +1357,7 @@
         }
         customPresets.push(preset);
         saveCustomPresets();
+        invalidatePresetCountCache();
         renderRoleShortcuts();
         if (presetForm) presetForm.reset();
         setPresetFormOpen(false);
@@ -1153,7 +1422,7 @@
                 { text: item.originalText, sourceLabel: item.label, sourceName: item.sectionTitle },
                 { text: item.label, sourceLabel: 'Field name', sourceName: item.sectionTitle }
             ];
-            var scored = api.scoreLabeledFieldsAgainstWords(fields, words, 'and', true);
+            var scored = api.scoreLabeledFieldsAgainstWords(fields, words, 'and', fuzzyEnabled);
             if (scored && scored.matched) {
                 if (labelHay && words.some(function (word) { return labelHay === String(word).toLowerCase(); })) {
                     scored.score = Math.min(100, scored.score + 4);
@@ -1230,6 +1499,16 @@
         return 'Match';
     }
 
+    function clearJumpFocus() {
+        document.querySelectorAll('.search-jump-pulse, .search-jump-focus').forEach(function (el) {
+            el.classList.remove('search-jump-pulse', 'search-jump-focus');
+        });
+        if (pulseTimer) {
+            window.clearTimeout(pulseTimer);
+            pulseTimer = 0;
+        }
+    }
+
     function clearHighlights() {
         currentHighlights.forEach(function (el) {
             var parent = el.parentNode;
@@ -1238,9 +1517,7 @@
             parent.normalize();
         });
         currentHighlights = [];
-        document.querySelectorAll('.search-jump-pulse').forEach(function (el) {
-            el.classList.remove('search-jump-pulse');
-        });
+        clearJumpFocus();
     }
 
     function highlightNeedles(element, needles) {
@@ -1309,21 +1586,80 @@
         }
     }
 
-    function jumpToMatch(item) {
+    function jumpToMatch(item, options) {
         if (!item || !item.element) return;
+        options = options || {};
+        if (options.openDock) {
+            openFloatingSearch({ focus: false, collapsed: false });
+        }
         revealMatch(item);
+        var display = visibleSearchMatches();
+        var foundIdx = -1;
+        display.forEach(function (match, idx) {
+            if (match.item === item || (match.item && match.item.element === item.element)) {
+                foundIdx = idx;
+            }
+        });
+        if (foundIdx >= 0) {
+            activeMatchIndex = foundIdx;
+        }
         window.requestAnimationFrame(function () {
             var target = item.pulseTarget || item.element;
             target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            document.querySelectorAll('.search-jump-pulse').forEach(function (el) {
-                el.classList.remove('search-jump-pulse');
-            });
-            target.classList.add('search-jump-pulse');
+            clearJumpFocus();
+            // Lasting focus color so the match stays easy to spot; brief pulse draws attention.
+            target.classList.add('search-jump-focus', 'search-jump-pulse');
             if (pulseTimer) window.clearTimeout(pulseTimer);
             pulseTimer = window.setTimeout(function () {
                 target.classList.remove('search-jump-pulse');
-            }, 1200);
+                // Keep search-jump-focus until the next jump or clear.
+            }, 1800);
+            markActiveResultButton();
+            syncFloatingSearch(options.openDock ? { open: true } : null);
         });
+    }
+
+    function goToVisibleMatch(index, options) {
+        var display = visibleSearchMatches();
+        if (display.length === 0) {
+            activeMatchIndex = -1;
+            syncFloatingSearch();
+            return;
+        }
+        var next = index % display.length;
+        if (next < 0) next = display.length + next;
+        activeMatchIndex = next;
+        jumpToMatch(display[next].item, options);
+    }
+
+    function goToNextMatch() {
+        var display = visibleSearchMatches();
+        if (display.length === 0) return;
+        var next = activeMatchIndex < 0 ? 0 : activeMatchIndex + 1;
+        if (next >= display.length) next = 0;
+        goToVisibleMatch(next);
+    }
+
+    function goToPrevMatch() {
+        var display = visibleSearchMatches();
+        if (display.length === 0) return;
+        var next = activeMatchIndex < 0 ? display.length - 1 : activeMatchIndex - 1;
+        if (next < 0) next = display.length - 1;
+        goToVisibleMatch(next);
+    }
+
+    function markActiveResultButton() {
+        if (!searchResultsEl) return;
+        var activeBtn = null;
+        searchResultsEl.querySelectorAll('.search-match-item').forEach(function (button) {
+            var idx = parseInt(button.getAttribute('data-match-idx'), 10);
+            var isActive = idx === activeMatchIndex;
+            button.classList.toggle('is-active', isActive);
+            if (isActive) activeBtn = button;
+        });
+        if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
+            activeBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
     }
 
     function readHideDupsPref() {
@@ -1340,6 +1676,34 @@
         } catch (err) {
             // Ignore storage failures.
         }
+    }
+
+    function readFuzzyPref() {
+        try {
+            var raw = window.localStorage.getItem(FUZZY_KEY);
+            if (raw === null) return true;
+            return raw === '1';
+        } catch (err) {
+            return true;
+        }
+    }
+
+    function writeFuzzyPref(enabled) {
+        try {
+            window.localStorage.setItem(FUZZY_KEY, enabled ? '1' : '0');
+        } catch (err) {
+            // Ignore storage failures.
+        }
+    }
+
+    function updateFuzzyToggle() {
+        if (!searchFuzzyToggle) return;
+        searchFuzzyToggle.classList.toggle('is-active', fuzzyEnabled);
+        searchFuzzyToggle.setAttribute('aria-pressed', fuzzyEnabled ? 'true' : 'false');
+        searchFuzzyToggle.title = fuzzyEnabled
+            ? 'Fuzzy on — includes close spellings and sounds-like matches. Click to use exact/contains only.'
+            : 'Fuzzy off — exact and contains matches only. Click to include close spellings.';
+        searchFuzzyToggle.textContent = 'Fuzzy';
     }
 
     function matchDedupeKey(match) {
@@ -1370,15 +1734,20 @@
         if (!lastSearchQuery || lastSearchQuery.length < 2) return;
 
         if (matches.length === 0) {
+            activeMatchIndex = -1;
             searchResultsEl.classList.remove('hidden');
             searchResultsEl.classList.add('no-results');
             searchResultsEl.innerHTML = '<p>No matches found for “' + escapeHtml(lastSearchQuery) + '”</p>';
+            syncFloatingSearch();
             return;
         }
 
         var display = visibleSearchMatches();
         var hiddenCount = Math.max(0, matches.length - display.length);
-        var shown = display.slice(0, 15);
+        if (activeMatchIndex >= display.length) {
+            activeMatchIndex = display.length > 0 ? 0 : -1;
+        }
+        var shown = display;
         var parsed = lastParsedQuery || parseSearchQuery(lastSearchQuery);
 
         var head = '<div class="search-results-head">';
@@ -1397,8 +1766,9 @@
         shown.forEach(function (match, idx) {
             var item = match.item;
             var kindClass = 'is-' + (match.kind || 'contains');
+            var activeClass = idx === activeMatchIndex ? ' is-active' : '';
             list += '<li>';
-            list += '<button type="button" class="search-match-item" data-match-idx="' + idx + '">';
+            list += '<button type="button" class="search-match-item' + activeClass + '" data-match-idx="' + idx + '">';
             list += '<div class="search-match-label">' + escapeHtml(item.label) + ' · ' + escapeHtml(item.sectionTitle || 'Dossier') + '</div>';
             list += '<div class="search-match-context">' + markExcerpt(match.snippet, parsed, match) + '</div>';
             list += '<div class="search-match-meta">';
@@ -1406,9 +1776,6 @@
             list += '<span class="search-match-score">' + Math.round(match.score) + '%</span>';
             list += '</div></button></li>';
         });
-        if (display.length > shown.length) {
-            list += '<li class="search-match-more">… and ' + (display.length - shown.length) + ' more</li>';
-        }
         list += '</ul>';
 
         searchResultsEl.classList.remove('hidden', 'no-results');
@@ -1419,30 +1786,39 @@
             hideBtn.addEventListener('click', function () {
                 hideDuplicateMatches = !hideDuplicateMatches;
                 writeHideDupsPref(hideDuplicateMatches);
+                if (activeMatchIndex > 0) activeMatchIndex = 0;
                 renderSearchResults();
+                syncFloatingSearch();
             });
         }
 
         searchResultsEl.querySelectorAll('.search-match-item').forEach(function (button) {
             button.addEventListener('click', function () {
                 var idx = parseInt(button.getAttribute('data-match-idx'), 10);
-                var match = shown[idx];
-                if (match) jumpToMatch(match.item);
+                if (!isNaN(idx)) {
+                    // Convert inline dropdown into the vertical floating panel on result click.
+                    goToVisibleMatch(idx, { openDock: true });
+                }
             });
         });
+
+        syncFloatingSearch();
     }
 
-    function performSearch(query) {
+    function performSearch(query, options) {
+        options = options || {};
         clearHighlights();
         lastMatches = [];
         lastParsedQuery = null;
         lastSearchQuery = String(query || '').trim();
+        activeMatchIndex = -1;
 
         if (!lastSearchQuery || lastSearchQuery.length < 2) {
             searchResultsEl.classList.add('hidden');
             searchResultsEl.classList.remove('no-results');
             searchResultsEl.innerHTML = '';
             if (searchClearBtn) searchClearBtn.classList.add('hidden');
+            syncFloatingSearch(options.openDock ? { open: true, focus: !!options.focus } : null);
             return;
         }
 
@@ -1479,6 +1855,13 @@
         }
 
         renderSearchResults();
+        // Only switch to the vertical floating bar when a preset/jump explicitly requests it.
+        // Typed search stays as the inline sticky bar + dropdown list.
+        if (options.openDock) {
+            syncFloatingSearch({ open: true, focus: !!options.focus });
+        } else {
+            syncFloatingSearch();
+        }
     }
 
     function escapeHtml(text) {
@@ -1489,35 +1872,81 @@
 
     if (globalSearchInput) {
         initSearchIndex();
+        updateFuzzyToggle();
+
+        if (searchFuzzyToggle) {
+            searchFuzzyToggle.addEventListener('click', function () {
+                fuzzyEnabled = !fuzzyEnabled;
+                writeFuzzyPref(fuzzyEnabled);
+                updateFuzzyToggle();
+                invalidatePresetCountCache();
+                renderRoleShortcuts();
+                if (globalSearchInput.value.trim().length >= 2) {
+                    var wasDocked = !!(window.TicketDossierFloatingSearch && window.TicketDossierFloatingSearch.isOpen && window.TicketDossierFloatingSearch.isOpen());
+                    performSearch(globalSearchInput.value.trim(), wasDocked ? { openDock: true, focus: false } : {});
+                }
+            });
+        }
 
         globalSearchInput.addEventListener('input', function () {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(function () {
+                // Keep dropdown/inline behavior for typed search.
                 performSearch(globalSearchInput.value.trim());
             }, 220);
         });
 
         globalSearchInput.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            var first = visibleSearchMatches()[0];
-            if (first) {
-                jumpToMatch(first.item);
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var display = visibleSearchMatches();
+                if (display.length === 0) return;
+                if (e.shiftKey) {
+                    goToPrevMatch();
+                } else if (activeMatchIndex >= 0) {
+                    goToNextMatch();
+                } else {
+                    goToVisibleMatch(0);
+                }
+                return;
+            }
+            if (e.key === 'ArrowDown' && (e.altKey || e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                goToNextMatch();
+                return;
+            }
+            if (e.key === 'ArrowUp' && (e.altKey || e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                goToPrevMatch();
             }
         });
 
         searchClearBtn && searchClearBtn.addEventListener('click', function () {
-            globalSearchInput.value = '';
+            clearSearchState({ keepFocus: true });
+        });
+
+        function clearSearchState(options) {
+            options = options || {};
+            if (globalSearchInput) globalSearchInput.value = '';
             clearHighlights();
             lastMatches = [];
             lastParsedQuery = null;
             lastSearchQuery = '';
-            searchResultsEl.classList.add('hidden');
-            searchResultsEl.classList.remove('no-results');
-            searchResultsEl.innerHTML = '';
-            searchClearBtn.classList.add('hidden');
-            globalSearchInput.focus();
-        });
+            activeMatchIndex = -1;
+            if (searchResultsEl) {
+                searchResultsEl.classList.add('hidden');
+                searchResultsEl.classList.remove('no-results');
+                searchResultsEl.innerHTML = '';
+            }
+            if (searchClearBtn) searchClearBtn.classList.add('hidden');
+            if (presetForm && !presetForm.classList.contains('hidden')) {
+                setPresetFormOpen(false);
+            }
+            syncFloatingSearch();
+            if (options.keepFocus && globalSearchInput) {
+                globalSearchInput.focus();
+            }
+        }
 
         if (presetManageBtn) {
             presetManageBtn.addEventListener('click', function () {
@@ -1542,10 +1971,28 @@
             searchSentinel.style.marginTop = '-1px';
             globalSearchContainer.parentNode.insertBefore(searchSentinel, globalSearchContainer);
             var searchObserver = new IntersectionObserver(function (entries) {
+                if (globalSearchContainer.getAttribute('data-mode') === 'docked') {
+                    globalSearchContainer.classList.remove('is-stuck');
+                    return;
+                }
                 globalSearchContainer.classList.toggle('is-stuck', !entries[0].isIntersecting);
             });
             searchObserver.observe(searchSentinel);
         }
+
+        window.TicketDossierSearchNav = {
+            next: goToNextMatch,
+            prev: goToPrevMatch,
+            jumpToIndex: goToVisibleMatch,
+            clear: clearSearchState,
+            getState: function () {
+                return {
+                    query: lastSearchQuery,
+                    matchCount: visibleSearchMatches().length,
+                    activeIndex: activeMatchIndex
+                };
+            }
+        };
     } else if (searchJumpsEl) {
         renderRoleShortcuts();
     }

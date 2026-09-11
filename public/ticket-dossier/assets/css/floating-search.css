@@ -1,0 +1,421 @@
+/* Floating dossier search — docked panel / pills / drag+resize / mobile sheet */
+
+.search-dock-header {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    user-select: none;
+}
+
+.search-dock-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
+    cursor: grab;
+    touch-action: none;
+}
+
+.search-dock-title:active {
+    cursor: grabbing;
+}
+
+.search-dock-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.search-dock-drag-hint {
+    margin-left: 4px;
+    opacity: 0.55;
+    letter-spacing: 0;
+}
+
+.search-nav-status {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-dock-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.search-nav-btn,
+.search-dock-btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--paper-2);
+    color: var(--ink-soft);
+    border-radius: var(--radius-sm);
+    width: 30px;
+    height: 28px;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.search-nav-btn:hover:not(:disabled),
+.search-dock-btn:hover,
+.search-nav-btn:focus-visible:not(:disabled),
+.search-dock-btn:focus-visible {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    outline: none;
+}
+
+.search-nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.search-rail-expand {
+    display: none;
+    width: 100%;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    padding: 10px 6px;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.search-rail-expand:hover,
+.search-rail-expand:focus-visible {
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    outline: none;
+}
+
+.search-rail-expand-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    letter-spacing: 0.06em;
+}
+
+.search-reopen {
+    position: fixed;
+    right: 16px;
+    bottom: 20px;
+    z-index: 55;
+    width: 46px;
+    height: 46px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.search-reopen:hover,
+.search-reopen:focus-visible {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    outline: none;
+}
+
+.search-reopen.hidden {
+    display: none !important;
+}
+
+.search-match-item.is-active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.search-resize-handle {
+    display: none;
+}
+
+body.dossier-search-dragging,
+body.dossier-search-resizing {
+    user-select: none !important;
+    cursor: grabbing;
+}
+
+body.dossier-search-resizing {
+    cursor: nwse-resize;
+}
+
+/* Desktop floating panel */
+@media (min-width: 901px) {
+    .global-search[data-mode="docked"] {
+        position: fixed;
+        top: calc(var(--topbar-sticky-height) + 12px);
+        right: 14px;
+        bottom: auto;
+        left: auto;
+        width: min(380px, calc(100vw - 36px));
+        height: calc(100vh - var(--topbar-sticky-height) - 28px);
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+        z-index: 50;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 12px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        border-radius: var(--radius);
+    }
+
+    .global-search[data-mode="docked"] .search-dock-header {
+        display: flex;
+        flex: 0 0 auto;
+    }
+
+    .global-search[data-mode="docked"] .search-dock-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .global-search[data-mode="docked"] .search-input-wrap {
+        flex: 0 0 auto;
+    }
+
+    .global-search[data-mode="docked"] .search-jumps {
+        position: relative;
+        z-index: 2;
+        flex: 0 0 auto;
+        flex-shrink: 0;
+        max-height: 150px;
+        overflow: auto;
+        margin-top: 8px;
+        pointer-events: auto;
+        padding-bottom: 2px;
+    }
+
+    .global-search[data-mode="docked"] .search-jumps-list {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .global-search[data-mode="docked"] .search-jump-chip {
+        width: auto !important;
+        max-width: 100%;
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+    }
+
+    .global-search[data-mode="docked"] .search-jump {
+        width: auto !important;
+        text-align: center;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        line-height: 1.2;
+        pointer-events: auto;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .global-search[data-mode="docked"] .search-jump-count {
+        font-size: 9px;
+        padding: 0 4px;
+    }
+
+    .global-search[data-mode="docked"] .search-jump-chip.is-custom .search-jump {
+        border-radius: 999px 0 0 999px;
+        width: auto;
+        flex: 0 1 auto;
+    }
+
+    .global-search[data-mode="docked"] .search-jump-remove {
+        border-radius: 0 999px 999px 0;
+        pointer-events: auto;
+    }
+
+    .global-search[data-mode="docked"] .search-results {
+        position: relative;
+        z-index: 1;
+        flex: 1 1 auto;
+        min-height: 120px;
+        margin-top: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .global-search[data-mode="docked"] .search-results.hidden {
+        display: none;
+    }
+
+    .global-search[data-mode="docked"] .search-match-list {
+        max-height: none;
+        flex: 1 1 auto;
+        overflow: auto;
+    }
+
+    .global-search[data-mode="docked"] .search-resize-handle {
+        display: block;
+        position: absolute;
+        right: 2px;
+        bottom: 2px;
+        width: 16px;
+        height: 16px;
+        cursor: nwse-resize;
+        z-index: 3;
+        background:
+            linear-gradient(135deg, transparent 55%, var(--muted) 55%, var(--muted) 65%, transparent 65%),
+            linear-gradient(135deg, transparent 70%, var(--muted) 70%, var(--muted) 80%, transparent 80%);
+        opacity: 0.7;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] {
+        width: 56px !important;
+        height: auto !important;
+        min-height: 120px;
+        padding: 8px 4px;
+        align-items: stretch;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-dock-header,
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-dock-body,
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-resize-handle {
+        display: none;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-rail-expand {
+        display: flex;
+    }
+
+    /* Default dock reserves space; moved panels float over content */
+    body.dossier-search-docked:not(.dossier-search-moved):not(.dossier-search-collapsed) main {
+        padding-right: min(404px, calc(100vw - 48px));
+        transition: padding-right 0.2s ease;
+    }
+
+    body.dossier-search-docked.dossier-search-collapsed:not(.dossier-search-moved) main {
+        padding-right: 78px;
+    }
+}
+
+/* Mobile / tablet: bottom sheet when docked */
+@media (max-width: 900px) {
+    .global-search[data-mode="docked"] {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        z-index: 50;
+        margin: 0;
+        width: 100% !important;
+        max-height: min(72vh, 640px);
+        height: auto;
+        border-radius: var(--radius) var(--radius) 0 0;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        padding: 10px 12px 14px;
+        overflow: hidden;
+    }
+
+    .global-search[data-mode="docked"] .search-dock-header {
+        display: flex;
+        flex: 0 0 auto;
+    }
+
+    .global-search[data-mode="docked"] .search-dock-title {
+        cursor: default;
+    }
+
+    .global-search[data-mode="docked"] .search-dock-drag-hint {
+        display: none;
+    }
+
+    .global-search[data-mode="docked"] .search-dock-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+    }
+
+    .global-search[data-mode="docked"] .search-jumps-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .global-search[data-mode="docked"] .search-jump {
+        padding: 3px 9px;
+        font-size: 11px;
+    }
+
+    .global-search[data-mode="docked"] .search-match-list {
+        max-height: min(36vh, 280px);
+    }
+
+    .global-search[data-mode="docked"] .search-resize-handle {
+        display: none;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] {
+        max-height: none;
+        height: auto;
+        padding: 8px 12px;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-dock-body {
+        display: none;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-rail-expand {
+        display: none;
+    }
+
+    .global-search[data-mode="docked"][data-collapsed="1"] .search-dock-header {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: 0;
+    }
+
+    body.dossier-search-docked main {
+        padding-bottom: 12px;
+    }
+}
+
+@media print {
+    .search-reopen,
+    .search-dock-header,
+    .search-rail-expand,
+    .search-resize-handle {
+        display: none !important;
+    }
+}

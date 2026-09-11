@@ -35,6 +35,8 @@ $flash = flashTake();
 $token = csrfToken();
 $cssV = cssVersion();
 $jsV = jsVersion();
+$floatingCssV = floatingSearchCssVersion();
+$floatingJsV = floatingSearchJsVersion();
 
 $missingKinds = [];
 foreach (TD_SOURCE_KINDS as $kind) {
@@ -86,6 +88,7 @@ $ribbon = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="<?= e($auth->publicPrefix()) ?>assets/css/dashboard.css?v=<?= e(dashboardCssVersion()) ?>">
     <link rel="stylesheet" href="assets/css/app.css?v=<?= e($cssV) ?>">
+    <link rel="stylesheet" href="assets/css/floating-search.css?v=<?= e($floatingCssV) ?>">
 </head>
 <body>
 <div class="shell dossier-page">
@@ -213,55 +216,88 @@ $ribbon = [
             </form>
         </details>
 
-        <div class="global-search" id="global-search">
-            <div class="search-input-wrap">
-                <input
-                    type="search"
-                    id="global-search-input"
-                    placeholder="Search any text — names, numbers, vendor, sponsor…"
-                    autocomplete="off"
-                    aria-label="Search this dossier"
-                    aria-controls="search-results"
-                >
-                <button type="button" class="search-clear hidden" id="search-clear" aria-label="Clear search">×</button>
-            </div>
-            <div class="search-jumps" id="search-jumps" aria-label="Jump to people, vendor, and custom presets">
-                <div class="search-jumps-head">
-                    <p class="search-jumps-label">Jump to</p>
-                    <button type="button" class="search-preset-manage" id="search-preset-manage" aria-expanded="false" aria-controls="search-preset-form">+ Custom preset</button>
+        <div class="global-search" id="global-search" data-mode="inline" data-collapsed="0">
+            <div class="search-dock-header" id="search-dock-header">
+                <div class="search-dock-title" id="search-dock-drag" title="Drag to move">
+                    <span class="search-dock-label">Dossier search <span class="search-dock-drag-hint" aria-hidden="true">⠿</span></span>
+                    <span class="search-nav-status" id="search-nav-status" aria-live="polite"></span>
                 </div>
-                <div class="search-jumps-list" id="search-jumps-list" role="list"></div>
-                <form class="search-preset-form hidden" id="search-preset-form" autocomplete="off">
-                    <p class="search-preset-form-title">Save a custom jump / search preset</p>
-                    <div class="search-preset-grid">
-                        <label class="field">
-                            <span>Chip name</span>
-                            <input type="text" id="preset-name" maxlength="40" required placeholder="e.g. Funding CFO">
-                        </label>
-                        <label class="field">
-                            <span>Emoji <em>(optional)</em></span>
-                            <input type="text" id="preset-emoji" maxlength="8" placeholder="🔖">
-                        </label>
-                        <label class="field field-span-2">
-                            <span>Jump to field label <em>(optional)</em></span>
-                            <input type="text" id="preset-field" maxlength="120" list="preset-field-suggestions" placeholder="Exact or partial field name, e.g. Funding CFO">
-                            <datalist id="preset-field-suggestions"></datalist>
-                        </label>
-                        <label class="field field-span-2">
-                            <span>Search query <em>(optional)</em></span>
-                            <input type="text" id="preset-query" maxlength="200" placeholder="Text to search when clicked">
-                        </label>
-                    </div>
-                    <p class="search-preset-hint">Provide a field label to jump, a search query to run, or both. Presets are stored in this browser and work on every dossier.</p>
-                    <div class="search-preset-actions">
-                        <button type="submit" class="button button-primary button-small">Save preset</button>
-                        <button type="button" class="button ghost button-small" id="preset-cancel">Cancel</button>
-                    </div>
-                    <p class="search-preset-error hidden" id="preset-error" role="alert"></p>
-                </form>
+                <div class="search-dock-actions">
+                    <button type="button" class="search-nav-btn" id="search-prev" aria-label="Previous match" title="Previous match (Shift+Enter)" disabled>↑</button>
+                    <button type="button" class="search-nav-btn" id="search-next" aria-label="Next match" title="Next match (Enter)" disabled>↓</button>
+                    <button type="button" class="search-dock-btn" id="search-collapse" aria-label="Collapse search panel" title="Collapse" aria-pressed="false">⟷</button>
+                    <button type="button" class="search-dock-btn" id="search-dock-close" aria-label="Close floating search" title="Close (Esc)">×</button>
+                </div>
             </div>
-            <div class="search-results hidden" id="search-results" role="status" aria-live="polite"></div>
+            <div class="search-dock-body" id="search-dock-body">
+                <div class="search-input-wrap">
+                    <div class="search-input-field">
+                        <input
+                            type="search"
+                            id="global-search-input"
+                            placeholder="Search any text — names, numbers, vendor, sponsor…"
+                            autocomplete="off"
+                            aria-label="Search this dossier"
+                            aria-controls="search-results"
+                        >
+                        <button type="button" class="search-clear hidden" id="search-clear" aria-label="Clear search">×</button>
+                    </div>
+                    <button
+                        type="button"
+                        class="search-fuzzy-toggle is-active"
+                        id="search-fuzzy-toggle"
+                        aria-pressed="true"
+                        title="When on, includes close spellings and sounds-like matches"
+                    >Fuzzy</button>
+                </div>
+                <div class="search-jumps" id="search-jumps" aria-label="Jump to people, vendor, and custom presets">
+                    <div class="search-jumps-head">
+                        <p class="search-jumps-label">Jump to</p>
+                        <button type="button" class="search-preset-manage" id="search-preset-manage" aria-expanded="false" aria-controls="search-preset-form">+ Custom preset</button>
+                    </div>
+                    <div class="search-jumps-list" id="search-jumps-list" role="list"></div>
+                    <form class="search-preset-form hidden" id="search-preset-form" autocomplete="off">
+                        <p class="search-preset-form-title">Save a custom jump / search preset</p>
+                        <div class="search-preset-grid">
+                            <label class="field">
+                                <span>Chip name</span>
+                                <input type="text" id="preset-name" maxlength="40" required placeholder="e.g. Funding CFO">
+                            </label>
+                            <label class="field">
+                                <span>Emoji <em>(optional)</em></span>
+                                <input type="text" id="preset-emoji" maxlength="8" placeholder="🔖">
+                            </label>
+                            <label class="field field-span-2">
+                                <span>Jump to field label <em>(optional)</em></span>
+                                <input type="text" id="preset-field" maxlength="120" list="preset-field-suggestions" placeholder="Exact or partial field name, e.g. Funding CFO">
+                                <datalist id="preset-field-suggestions"></datalist>
+                            </label>
+                            <label class="field field-span-2">
+                                <span>Search query <em>(optional)</em></span>
+                                <input type="text" id="preset-query" maxlength="200" placeholder="Text to search when clicked">
+                            </label>
+                            <label class="field field-span-2">
+                                <span>Exclude / exceptions <em>(optional)</em></span>
+                                <input type="text" id="preset-exclude" maxlength="200" placeholder="Words to exclude, e.g. internal draft — or -internal -draft">
+                            </label>
+                        </div>
+                        <p class="search-preset-hint">Provide a field label to jump, a search query to run, or both. Use excludes to skip unwanted hits. Presets are stored in this browser and work on every dossier.</p>
+                        <div class="search-preset-actions">
+                            <button type="submit" class="button button-primary button-small">Save preset</button>
+                            <button type="button" class="button ghost button-small" id="preset-cancel">Cancel</button>
+                        </div>
+                        <p class="search-preset-error hidden" id="preset-error" role="alert"></p>
+                    </form>
+                </div>
+                <div class="search-results hidden" id="search-results" role="status" aria-live="polite"></div>
+            </div>
+            <button type="button" class="search-rail-expand" id="search-rail-expand" aria-label="Expand search panel" title="Expand search" hidden>
+                <span aria-hidden="true">🔍</span>
+                <span class="search-rail-expand-label">Search</span>
+            </button>
+            <div class="search-resize-handle" id="search-resize-handle" aria-hidden="true" title="Drag to resize"></div>
         </div>
+        <button type="button" class="search-reopen hidden" id="search-reopen" aria-label="Reopen dossier search" title="Reopen search">🔍</button>
 
         <nav class="ribbon" aria-label="Record relationship">
             <?php foreach ($ribbon as $node): ?>
@@ -595,6 +631,7 @@ $ribbon = [
 </div>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/fuzzy-search.js?v=<?= e(fuzzySearchJsVersion()) ?>"></script>
+<script src="assets/js/floating-search.js?v=<?= e($floatingJsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 </body>
 </html>

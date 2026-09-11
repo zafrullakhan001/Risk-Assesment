@@ -1429,8 +1429,17 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     align-items: center;
     gap: 8px;
 }
-.search-input-wrap input {
+.search-input-field {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+.search-input-wrap input,
+.search-input-field input {
     flex: 1;
+    width: 100%;
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
     padding: 8px 36px 8px 12px;
@@ -1439,7 +1448,8 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     font-family: var(--font-body);
     font-size: 13px;
 }
-.search-input-wrap input:focus {
+.search-input-wrap input:focus,
+.search-input-field input:focus {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--primary-glow);
@@ -1463,6 +1473,36 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
 }
 .search-clear:hover {
     color: var(--ink);
+}
+.search-fuzzy-toggle {
+    appearance: none;
+    flex: 0 0 auto;
+    border: 1px solid var(--line);
+    background: var(--paper-2);
+    color: var(--ink-soft);
+    border-radius: 999px;
+    padding: 7px 11px;
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.search-fuzzy-toggle:hover,
+.search-fuzzy-toggle:focus-visible {
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    background: var(--primary-soft);
+    outline: none;
+}
+.search-fuzzy-toggle.is-active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+}
+.search-fuzzy-toggle.is-active::before {
+    content: '✓ ';
 }
 .search-results {
     margin-top: 8px;
@@ -1581,6 +1621,31 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     line-height: 1.3;
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.search-jump-emoji {
+    flex: 0 0 auto;
+}
+.search-jump-label {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.search-jump-count {
+    flex: 0 0 auto;
+    min-width: 1.25em;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 18%, var(--paper));
+    color: var(--primary-dark);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.5;
+    text-align: center;
+}
+.search-jump-chip.has-count .search-jump {
+    border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
 }
 .search-jump-chip.is-custom .search-jump {
     border-radius: 999px 0 0 999px;
@@ -1774,21 +1839,37 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     font-size: 11px;
     font-weight: 600;
 }
-.search-jump-pulse {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-    background: var(--primary-soft) !important;
-    transition: background 0.3s ease, outline-color 0.3s ease;
+.search-jump-focus {
+    outline: 2px solid color-mix(in srgb, var(--primary) 75%, #f59e0b);
+    outline-offset: 3px;
+    background: color-mix(in srgb, var(--primary-soft) 70%, rgba(251, 146, 60, 0.28)) !important;
+    box-shadow: 0 0 0 4px color-mix(in srgb, rgba(251, 146, 60, 0.35) 55%, var(--primary-glow));
     border-radius: var(--radius-sm);
+    transition: background 0.25s ease, outline-color 0.25s ease, box-shadow 0.25s ease;
+}
+.search-jump-pulse {
+    animation: search-jump-pulse-flash 1.6s ease-out 1;
+}
+@keyframes search-jump-pulse-flash {
+    0% {
+        outline-color: #f59e0b;
+        box-shadow: 0 0 0 6px rgba(251, 146, 60, 0.45);
+        background: rgba(251, 146, 60, 0.38) !important;
+    }
+    100% {
+        outline-color: color-mix(in srgb, var(--primary) 75%, #f59e0b);
+        box-shadow: 0 0 0 4px color-mix(in srgb, rgba(251, 146, 60, 0.35) 55%, var(--primary-glow));
+        background: color-mix(in srgb, var(--primary-soft) 70%, rgba(251, 146, 60, 0.28));
+    }
 }
 
 /* Highlighting search matches */
 .highlight-match {
-    background: rgba(251, 146, 60, 0.35);
+    background: rgba(251, 146, 60, 0.45);
     color: var(--gap);
     padding: 1px 2px;
     border-radius: 3px;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 @media (min-width: 720px) {

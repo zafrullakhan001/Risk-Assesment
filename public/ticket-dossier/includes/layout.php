@@ -27,6 +27,20 @@ function cssVersion(): string
     return is_file($path) ? (string) filemtime($path) : '1';
 }
 
+function floatingSearchCssVersion(): string
+{
+    $path = TD_ROOT . '/assets/css/floating-search.css';
+
+    return is_file($path) ? (string) filemtime($path) : '1';
+}
+
+function floatingSearchJsVersion(): string
+{
+    $path = TD_ROOT . '/assets/js/floating-search.js';
+
+    return is_file($path) ? (string) filemtime($path) : '1';
+}
+
 function themeJsVersion(): string
 {
     $path = dirname(__DIR__, 2) . '/assets/js/theme.js';
