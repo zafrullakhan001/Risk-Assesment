@@ -6793,6 +6793,13 @@
     });
   };
 
+  const syncSelectedProjectCount = () => {
+    const countEl = document.getElementById('sharepoint-selected-project-count');
+    if (!countEl) return;
+    const count = Math.max(0, Number(state.projectCount) || 0);
+    countEl.textContent = `${count} project${count === 1 ? '' : 's'}`;
+  };
+
   const syncScopeChips = () => {
     if (!scopesRoot) return;
     scopesRoot.querySelectorAll('.sharepoint-scope-check').forEach((input) => {
@@ -8781,8 +8788,9 @@
             state.indexBySource[key] = [];
           }
         });
-        state.itemCount = Number(payload.item_count || state.itemCount);
-        state.projectCount = Number(payload.project_count || state.projects.length);
+        state.itemCount = Number(payload.item_count ?? state.itemCount);
+        state.projectCount = Number(payload.project_count ?? state.projects.length);
+        syncSelectedProjectCount();
         state.lastSynced = payload.last_synced_at || state.lastSynced;
         state.lastStatus = payload.last_sync_status || state.lastStatus;
         if (typeof payload.favorite_count === 'number') {

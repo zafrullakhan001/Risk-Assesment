@@ -1845,7 +1845,7 @@ $soloPageClass = $ownerSolo
 
                 <?php require __DIR__ . '/includes/updates-nav.php'; ?>
                 <?php require __DIR__ . '/includes/topbar-menu-end.php'; ?>
-                <div class="updated template-count-chip"><?= (int) $projectCount ?> project<?= $projectCount === 1 ? '' : 's' ?></div>
+                <div class="updated template-count-chip" id="sharepoint-selected-project-count" aria-live="polite"><?= (int) $projectCount ?> project<?= $projectCount === 1 ? '' : 's' ?></div>
             </div>
         </header>
 
