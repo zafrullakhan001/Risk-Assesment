@@ -256,7 +256,164 @@
     }
 
     // ----- Dossier helpers -----
+    var SECTION_DUP_STORAGE_KEY = 'ticket_dossier_hide_section_dups';
+    var SOURCE_SECTION_ORDER = {
+        'section-demand': 1,
+        'section-story': 2,
+        'section-task': 3,
+        'section-ddr': 4
+    };
     var toggleBtn = document.getElementById('toggle-all-fields');
+    var sectionDupsBtn = document.getElementById('toggle-section-dups');
+    var hideSectionDups = readSectionDupsPref();
+
+    function readSectionDupsPref() {
+        try {
+            return window.localStorage.getItem(SECTION_DUP_STORAGE_KEY) === '1';
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function writeSectionDupsPref(enabled) {
+        try {
+            window.localStorage.setItem(SECTION_DUP_STORAGE_KEY, enabled ? '1' : '0');
+        } catch (err) {
+            // Ignore storage failures.
+        }
+    }
+
+    function normalizeDupText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .replace(/[•·]/g, '')
+            .trim();
+    }
+
+    function clearSectionDupMarks() {
+        document.querySelectorAll('.field-item[data-cross-dup]').forEach(function (el) {
+            el.removeAttribute('data-cross-dup');
+        });
+        document.querySelectorAll('.panel[data-section-dup-count]').forEach(function (panel) {
+            panel.removeAttribute('data-section-dup-count');
+            var note = panel.querySelector('.section-dup-note');
+            if (note) note.remove();
+        });
+        if (document.body) {
+            document.body.classList.remove('dossier-hide-section-dups');
+        }
+    }
+
+    function markCrossSectionFieldDups() {
+        clearSectionDupMarks();
+        if (!hideSectionDups) {
+            updateSectionDupsButton();
+            return 0;
+        }
+
+        var groups = {};
+        document.querySelectorAll('#section-demand, #section-story, #section-task, #section-ddr').forEach(function (section) {
+            var sectionId = section.id || '';
+            var order = SOURCE_SECTION_ORDER[sectionId];
+            if (!order) return;
+            section.querySelectorAll('.field-item').forEach(function (el) {
+                var dt = el.querySelector('dt');
+                var dd = el.querySelector('dd');
+                var label = normalizeDupText(dt ? dt.textContent : '');
+                var value = normalizeDupText(dd ? dd.textContent : el.textContent);
+                if (!label || !value || value === '-' || value === '—' || value === 'n/a') return;
+                var key = label + '\0' + value;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push({
+                    el: el,
+                    section: section,
+                    sectionId: sectionId,
+                    order: order
+                });
+            });
+        });
+
+        var hiddenCount = 0;
+        var perSection = {};
+        Object.keys(groups).forEach(function (key) {
+            var entries = groups[key];
+            if (entries.length < 2) return;
+            // Keep one per section first, then hide later sections with the same label+value.
+            var bySection = {};
+            entries.forEach(function (entry) {
+                if (!bySection[entry.sectionId] || entry.order < bySection[entry.sectionId].order) {
+                    bySection[entry.sectionId] = entry;
+                }
+            });
+            var uniqueSections = Object.keys(bySection).map(function (id) {
+                return bySection[id];
+            }).sort(function (a, b) {
+                return a.order - b.order;
+            });
+            if (uniqueSections.length < 2) return;
+            uniqueSections.slice(1).forEach(function (entry) {
+                // Mark every matching field-item in that later section (summary + all-fields copies).
+                entries.forEach(function (item) {
+                    if (item.sectionId !== entry.sectionId) return;
+                    item.el.setAttribute('data-cross-dup', '1');
+                });
+                perSection[entry.sectionId] = (perSection[entry.sectionId] || 0) + 1;
+                hiddenCount += 1;
+            });
+        });
+
+        Object.keys(perSection).forEach(function (sectionId) {
+            var panel = document.getElementById(sectionId);
+            if (!panel) return;
+            var count = perSection[sectionId];
+            panel.setAttribute('data-section-dup-count', String(count));
+            var head = panel.querySelector('.section-head') || panel.querySelector('h2');
+            if (!head) return;
+            var note = document.createElement('span');
+            note.className = 'section-dup-note';
+            note.textContent = count + ' repeated field' + (count === 1 ? '' : 's') + ' hidden';
+            if (head.classList.contains('section-head')) {
+                head.appendChild(note);
+            } else {
+                head.insertAdjacentElement('afterend', note);
+            }
+        });
+
+        if (document.body) {
+            document.body.classList.add('dossier-hide-section-dups');
+        }
+        updateSectionDupsButton(hiddenCount);
+        return hiddenCount;
+    }
+
+    function updateSectionDupsButton(hiddenCount) {
+        if (!sectionDupsBtn) return;
+        sectionDupsBtn.setAttribute('data-hide-dups', hideSectionDups ? '1' : '0');
+        sectionDupsBtn.setAttribute('aria-pressed', hideSectionDups ? 'true' : 'false');
+        if (hideSectionDups) {
+            sectionDupsBtn.textContent = hiddenCount > 0
+                ? '🧹 Show section dups (' + hiddenCount + ')'
+                : '🧹 Show section dups';
+            sectionDupsBtn.title = 'Show fields that were hidden because they repeat across Demand, Story, Task, and DDR';
+            sectionDupsBtn.classList.add('is-active');
+        } else {
+            sectionDupsBtn.textContent = '🧹 Hide section dups';
+            sectionDupsBtn.title = 'Hide fields that repeat with the same value across Demand, Story, Task, and DDR';
+            sectionDupsBtn.classList.remove('is-active');
+        }
+    }
+
+    function applySectionDupPreference() {
+        markCrossSectionFieldDups();
+        if (typeof initSearchIndex === 'function' && document.getElementById('global-search-input')) {
+            initSearchIndex();
+            if (lastSearchQuery && lastSearchQuery.length >= 2 && typeof performSearch === 'function') {
+                performSearch(lastSearchQuery);
+            }
+        }
+    }
+
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function () {
             var showAll = toggleBtn.getAttribute('data-show-all') === '1';
@@ -270,7 +427,19 @@
             document.querySelectorAll('[data-fields-all]').forEach(function (el) {
                 el.classList.toggle('hidden', !next);
             });
+            applySectionDupPreference();
         });
+    }
+
+    if (sectionDupsBtn) {
+        updateSectionDupsButton();
+        sectionDupsBtn.addEventListener('click', function () {
+            hideSectionDups = !hideSectionDups;
+            writeSectionDupsPref(hideSectionDups);
+            applySectionDupPreference();
+        });
+        // Apply saved preference once the page fields are present.
+        markCrossSectionFieldDups();
     }
 
     var search = document.getElementById('qa-search');
@@ -405,7 +574,14 @@
     }
 
     function shouldSkipIndex(el) {
-        return !!(el.closest('#global-search, .upload-card, .section-nav, .topbar, .details-form, .assess-toolbar'));
+        if (!el) return true;
+        if (el.closest('#global-search, .upload-card, .section-nav, .topbar, .details-form, .assess-toolbar')) {
+            return true;
+        }
+        if (hideSectionDups && el.closest('.field-item[data-cross-dup="1"]')) {
+            return true;
+        }
+        return false;
     }
 
     function seenKey(sectionId, label, text) {
@@ -429,6 +605,7 @@
 
     function indexFieldItem(bag, el, preferVisible) {
         if (!el || shouldSkipIndex(el)) return;
+        if (hideSectionDups && el.getAttribute('data-cross-dup') === '1') return;
         var dt = el.querySelector('dt');
         var dd = el.querySelector('dd');
         var label = dt ? collapseText(dt.textContent) : '';

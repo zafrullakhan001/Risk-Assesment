@@ -319,6 +319,7 @@ $ribbon = [
             <?php foreach ($sections as $section): ?>
                 <a href="#section-<?= e($section) ?>"><?= e(sectionTitle($section)) ?></a>
             <?php endforeach; ?>
+            <button type="button" class="button ghost button-small" id="toggle-section-dups" data-hide-dups="0" aria-pressed="false" title="Hide fields that repeat with the same value across Demand, Story, Task, and DDR">🧹 Hide section dups</button>
             <button type="button" class="button ghost button-small" id="toggle-all-fields" data-show-all="0">👁️ Show all fields</button>
         </nav>
 
