@@ -317,7 +317,7 @@ HTML,
 <li><strong>Assessments</strong> — external and internal questionnaires, with progress, a question search, and an “Answered only” toggle.</li>
 <li><strong>Original files</strong> — download each stored PDF or JSON.</li>
 </ul>
-<p>Use the page search box to find a vendor, contact, number, state, or any on-screen text. <strong>Show all fields</strong> reveals empty values that are hidden by default. Jump between chapters with the section nav.</p>
+<p>Use the page search box to find any on-screen text, including misspellings. Ranked snippets jump to the matching field. Shortcut chips appear when Vendor, Owner, Business Owner, Executive Sponsor, Product Owner, Product Manager, Demand Manager, Requested by, or Assignee are present. <strong>Show all fields</strong> reveals empty values that are hidden by default. Jump between chapters with the section nav.</p>
 HTML,
                 ],
                 [

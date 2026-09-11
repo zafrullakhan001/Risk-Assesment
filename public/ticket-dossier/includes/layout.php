@@ -34,6 +34,13 @@ function themeJsVersion(): string
     return is_file($path) ? (string) filemtime($path) : '1';
 }
 
+function fuzzySearchJsVersion(): string
+{
+    $path = dirname(__DIR__, 2) . '/assets/js/fuzzy-search.js';
+
+    return is_file($path) ? (string) filemtime($path) : '1';
+}
+
 function jsVersion(): string
 {
     $paths = [

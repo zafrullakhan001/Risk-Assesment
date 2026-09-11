@@ -137,9 +137,9 @@ $ribbon = [
                     </p>
                 </div>
                 <div class="hero-chips">
-                    <span class="pill teal"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>>👤 Owner: <?= e($ownerName !== '' ? $ownerName : 'Unknown') ?></span>
+                    <span class="pill teal" data-search-label="Owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>>👤 Owner: <?= e($ownerName !== '' ? $ownerName : 'Unknown') ?></span>
                     <?php if ($project['vendor']): ?>
-                        <span class="pill gray">🏢 <?= e((string) $project['vendor']) ?></span>
+                        <span class="pill gray" data-search-label="Vendor">🏢 <?= e((string) $project['vendor']) ?></span>
                     <?php endif; ?>
                     <?php foreach ($ribbon as $node): ?>
                         <?php if ($node['number'] !== ''): ?>
@@ -215,15 +215,18 @@ $ribbon = [
 
         <div class="global-search" id="global-search">
             <div class="search-input-wrap">
-                <input 
-                    type="search" 
-                    id="global-search-input" 
-                    placeholder="🔍 Search for vendor, contact, number, state, or any text..."
+                <input
+                    type="search"
+                    id="global-search-input"
+                    placeholder="Search any text — names, numbers, vendor, sponsor…"
                     autocomplete="off"
-                />
+                    aria-label="Search this dossier"
+                    aria-controls="search-results"
+                >
                 <button type="button" class="search-clear hidden" id="search-clear" aria-label="Clear search">×</button>
             </div>
-            <div class="search-results hidden" id="search-results"></div>
+            <div class="search-jumps hidden" id="search-jumps" aria-label="Jump to people and vendor"></div>
+            <div class="search-results hidden" id="search-results" role="status" aria-live="polite"></div>
         </div>
 
         <nav class="ribbon" aria-label="Record relationship">
@@ -299,8 +302,8 @@ $ribbon = [
                 <article class="overview-card meta-card">
                     <h3>🔑 Key facts</h3>
                     <dl class="kv">
-                        <div><dt>Owner</dt><dd><span class="kv-value"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></span></dd></div>
-                        <div><dt>Vendor</dt><dd><span class="kv-value"><?= e((string) ($overview['vendor'] ?: ($project['vendor'] ?: '—'))) ?></span></dd></div>
+                        <div><dt>Owner</dt><dd><span class="kv-value" data-search-label="Owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></span></dd></div>
+                        <div><dt>Vendor</dt><dd><span class="kv-value" data-search-label="Vendor"><?= e((string) ($overview['vendor'] ?: ($project['vendor'] ?: '—'))) ?></span></dd></div>
                         <div><dt>Demand</dt><dd><span class="kv-value"><?= e((string) ($project['demand_number'] ?: '—')) ?></span><?= $project['demand_state'] ? ' <span class="pill teal">' . e((string) $project['demand_state']) . '</span>' : '' ?></dd></div>
                         <div><dt>Story</dt><dd><span class="kv-value"><?= e((string) ($project['story_number'] ?: '—')) ?></span><?= $project['story_state'] ? ' <span class="pill amber">' . e((string) $project['story_state']) . '</span>' : '' ?></dd></div>
                         <div><dt>Task</dt><dd><span class="kv-value"><?= e((string) ($project['task_number'] ?: '—')) ?></span><?= $project['task_state'] ? ' <span class="pill gray">' . e((string) $project['task_state']) . '</span>' : '' ?></dd></div>
@@ -556,6 +559,7 @@ $ribbon = [
     <?php require dirname(__DIR__) . '/includes/site-footer.php'; ?>
 </div>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
+<script src="<?= e($auth->publicPrefix()) ?>assets/js/fuzzy-search.js?v=<?= e(fuzzySearchJsVersion()) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 </body>
 </html>
