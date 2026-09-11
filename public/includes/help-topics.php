@@ -349,7 +349,7 @@ HTML,
 <li><strong>Comfort / Compact / Table</strong> change how folder cards look. Compact leaves more room for search.</li>
 <li>You can open folders, the catalog, or Owners in a <strong>new tab</strong> or a <strong>separate window</strong>.</li>
 <li>The section board lets you <strong>reorder panels</strong> (folders, catalog share, owners, owners share, search, projects, admin). Use Reset section order to restore the default.</li>
-<li>On the project table, use <strong>Columns</strong> to show or hide Match, Items, dates, people, and action buttons. Select <strong>2–3 folders</strong> and open <strong>Compare selected</strong> for a side-by-side view. Folder and compare dialogs have their own Columns pickers (Copy, QR, tags, and Archive).</li>
+<li>On the project table, use <strong>Columns</strong> to show or hide Match, Items, dates, people, and action buttons. Select <strong>2–3 folders</strong> and open <strong>Compare selected</strong> for a side-by-side view. Select exactly <strong>two catalogs</strong> and choose <strong>Compare</strong> to compare all project folders, then drill into files for a match. Folder and compare dialogs have their own Columns pickers (Copy, QR, tags, and Archive).</li>
 <li>Each project row has a <strong>QR</strong> button so you can scan the SharePoint folder URL on a phone (print or copy from the dialog).</li>
 </ul>
 <p>Administrators add folder URLs, sync listings, and manage settings. Signed-in users can browse and search the catalogs they are allowed to see.</p>
@@ -359,7 +359,7 @@ HTML,
                     'id' => 'sharepoint-search',
                     'title' => 'Search, compare, and tags',
                     'html' => <<<'HTML'
-<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Typing a tag name is enough — you do not need the <code>tag:</code> prefix. Use <code>tag:name</code> when you want to require that tag. Select more than one catalog to see where a project is found and where it is missing. The search card also has Comfort / Compact density.</p>
+<p>Catalog search is live as you type. It matches project names, nested files, subfolders, paths, Modified By, Created By, and search tags. Typing a tag name is enough — you do not need the <code>tag:</code> prefix. Use <code>tag:name</code> when you want to require that tag. Select two catalogs and choose <strong>Compare</strong> for a side-by-side project-folder comparison (shared, only left, only right). Selecting more catalogs still shows where a project is found and where it is missing. The search card also has Comfort / Compact density.</p>
 <p>Search operators and toggles:</p>
 <ul>
 <li><code>tag:name</code> (optional prefix), <code>ext:pdf</code>, <code>type:visio</code>, <code>person:"Last, First"</code>, <code>path:drawings</code>, <code>has:pdf</code>, <code>"exact phrase"</code>, and <code>-exclude</code>.</li>

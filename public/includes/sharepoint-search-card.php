@@ -129,6 +129,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <div class="sharepoint-search-scope-actions">
                             <button type="button" class="button ghost sharepoint-scopes-all" id="sharepoint-scopes-all">All</button>
                             <button type="button" class="button ghost sharepoint-scopes-active" id="sharepoint-scopes-active">Current only</button>
+                            <button type="button" class="button ghost" id="sharepoint-catalog-compare-open" disabled title="Select exactly two catalogs to compare project folders">⚖️ Compare</button>
                             <button type="button" class="button ghost sharepoint-scopes-colors is-active" id="sharepoint-scopes-colors" aria-pressed="true" title="Color each catalog differently so Public, Private, and other folders are easier to tell apart">🎨 Colors</button>
                             <button type="button" class="button ghost sharepoint-scopes-color-reset" id="sharepoint-scopes-color-reset" hidden>Reset colors</button>
                         </div>
@@ -155,7 +156,7 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                         <?php endforeach; ?>
                     </div>
                     <?php if (!$searchCardPublic): ?>
-                        <p class="panel-help sharepoint-scopes-hint">Select more than one catalog to compare — results show where a project is found and where it is missing.</p>
+                        <p class="panel-help sharepoint-scopes-hint">Select two catalogs and choose Compare to see shared and missing project folders. Selecting more catalogs still filters search by presence.</p>
                     <?php endif; ?>
                 </section>
             <?php endif; ?>

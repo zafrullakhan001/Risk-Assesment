@@ -75,6 +75,7 @@
 
 #sharepoint-search .sharepoint-search-scope-actions {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.18rem;
     padding: 0.15rem;

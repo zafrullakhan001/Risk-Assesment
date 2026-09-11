@@ -5656,6 +5656,7 @@
     escapeHtml,
     catalogBadgeHtml,
     catalogToneFor,
+    catalogApiUrl,
     fetchProjectDetail,
     bindCopyLinkButtons,
     bindQrButtons,
@@ -8708,6 +8709,7 @@
     localStorage.setItem(STORAGE.scopes, JSON.stringify(state.scopeKeys));
     syncActiveCatalogChrome();
     state.page = 1;
+    window.dispatchEvent(new CustomEvent('riskregister:sp-scopes', { detail: { keys: [...state.scopeKeys] } }));
     loadIndex();
   };
 
@@ -9114,6 +9116,7 @@
 
   controls.hidden = false;
   syncScopeChips();
+  window.dispatchEvent(new CustomEvent('riskregister:sp-scopes', { detail: { keys: [...state.scopeKeys] } }));
   syncCompareBar();
   syncActiveCatalogChrome();
   if (state.query.trim().length >= RECENT_MIN_LEN) {

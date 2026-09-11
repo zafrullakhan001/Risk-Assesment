@@ -585,3 +585,5 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                     </div>
                 </div>
             </dialog>
+
+            <?php require __DIR__ . '/sharepoint-catalog-compare-dialog.php'; ?>

@@ -10,6 +10,7 @@ use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
+use RiskAssessment\SharePoint\SharePointCatalogComparer;
 
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
@@ -224,6 +225,58 @@ if ($actionParam === 'search_index') {
     exit;
 }
 
+if ($actionParam === 'catalog_compare') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store');
+
+    $leftKey = trim((string) ($_GET['left'] ?? ''));
+    $rightKey = trim((string) ($_GET['right'] ?? ''));
+    if ($leftKey === '' || $rightKey === '') {
+        $wanted = array_values(array_filter(array_map('trim', explode(',', (string) ($_GET['sources'] ?? '')))));
+        if ($leftKey === '' && isset($wanted[0])) {
+            $leftKey = $wanted[0];
+        }
+        if ($rightKey === '' && isset($wanted[1])) {
+            $rightKey = $wanted[1];
+        }
+    }
+    if ($leftKey === '' || $rightKey === '' || !isset($allowedKeys[$leftKey], $allowedKeys[$rightKey])) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Choose two catalogs on this share link.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $leftSource = $sourcesRepo->findByKey($leftKey);
+    $rightSource = $sourcesRepo->findByKey($rightKey);
+    if ($leftSource === null || $rightSource === null) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Choose two catalogs on this share link.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        $comparer = new SharePointCatalogComparer($pdo);
+        $payload = $comparer->compare($leftKey, $rightKey, [
+            'query' => trim((string) ($_GET['q'] ?? '')),
+            'presence' => trim((string) ($_GET['presence'] ?? 'any')),
+            'page' => (int) ($_GET['page'] ?? 1),
+            'per_page' => (int) ($_GET['per'] ?? 50),
+            'sort' => trim((string) ($_GET['sort'] ?? 'name')),
+            'dir' => trim((string) ($_GET['dir'] ?? 'asc')),
+            'include_archived' => false,
+            'left_title' => (string) ($leftSource['title'] ?? $leftKey),
+            'right_title' => (string) ($rightSource['title'] ?? $rightKey),
+        ]);
+    } catch (\InvalidArgumentException $exception) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 $query = trim((string) ($_GET['q'] ?? ''));
 $allowedPerPage = [10, 25, 50, 100];
 $perPage = PaginationPreference::resolve(
@@ -321,6 +374,7 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
     <link rel="stylesheet" href="assets/css/sharepoint-search-uplift.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-search-uplift.css') ?>">
+    <link rel="stylesheet" href="assets/css/sharepoint-catalog-compare.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-catalog-compare.css') ?>">
     <link rel="stylesheet" href="assets/css/sharepoint-list-animations.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-list-animations.css') ?>">
 </head>
 <body class="is-public-catalog-share">
@@ -602,6 +656,7 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
     <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <script src="assets/js/sharepoint-catalog-compare.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog-compare.js') ?>"></script>
     <script src="assets/js/sharepoint-list-animations.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-list-animations.js') ?>"></script>
     <script src="assets/js/sharepoint-search-dashboard.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-search-dashboard.js') ?>"></script>
 </body>

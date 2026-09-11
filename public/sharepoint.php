@@ -16,6 +16,7 @@ use RiskAssessment\Repositories\SharePointFavoriteRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\SharePoint\SharePointBrowserSync;
+use RiskAssessment\SharePoint\SharePointCatalogComparer;
 use RiskAssessment\SharePoint\SharePointGraphClient;
 use RiskAssessment\SharePoint\SharePointListingImporter;
 use RiskAssessment\SharePoint\SharePointOwnerDashboard;
@@ -360,6 +361,75 @@ if ($actionParam === 'search_index') {
         'last_synced_at' => (string) ($primary['last_synced_at'] ?? ''),
         'last_sync_status' => (string) ($primary['last_sync_status'] ?? ''),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'catalog_compare') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store');
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $leftKey = trim((string) ($_GET['left'] ?? ''));
+    $rightKey = trim((string) ($_GET['right'] ?? ''));
+    if ($leftKey === '' || $rightKey === '') {
+        $wanted = array_values(array_filter(array_map('trim', explode(',', (string) ($_GET['sources'] ?? '')))));
+        if ($leftKey === '' && isset($wanted[0])) {
+            $leftKey = $wanted[0];
+        }
+        if ($rightKey === '' && isset($wanted[1])) {
+            $rightKey = $wanted[1];
+        }
+    }
+
+    $resolveCompareSource = static function (string $key) use ($byKey, $isAdmin, $archivedSourceKeys): ?array {
+        if ($key === '' || !isset($byKey[$key])) {
+            return null;
+        }
+        if (!$isAdmin && isset($archivedSourceKeys[$key])) {
+            return null;
+        }
+
+        return $byKey[$key];
+    };
+
+    $leftSource = $resolveCompareSource($leftKey);
+    $rightSource = $resolveCompareSource($rightKey);
+    if ($leftSource === null || $rightSource === null) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Choose two catalogs you can access.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $archivedParam = strtolower(trim((string) ($_GET['archived'] ?? '')));
+    $includeArchived = $isAdmin && ($archivedParam === '1' || $archivedParam === 'true');
+
+    try {
+        $comparer = new SharePointCatalogComparer($pdo);
+        $payload = $comparer->compare($leftKey, $rightKey, [
+            'query' => trim((string) ($_GET['q'] ?? '')),
+            'presence' => trim((string) ($_GET['presence'] ?? 'any')),
+            'page' => (int) ($_GET['page'] ?? 1),
+            'per_page' => (int) ($_GET['per'] ?? 50),
+            'sort' => trim((string) ($_GET['sort'] ?? 'name')),
+            'dir' => trim((string) ($_GET['dir'] ?? 'asc')),
+            'include_archived' => $includeArchived,
+            'left_title' => (string) ($leftSource['title'] ?? $leftKey),
+            'right_title' => (string) ($rightSource['title'] ?? $rightKey),
+        ]);
+    } catch (\InvalidArgumentException $exception) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -1735,6 +1805,7 @@ $soloPageClass = $ownerSolo
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/dashboard.css') ?>">
     <link rel="stylesheet" href="assets/css/sharepoint-search-uplift.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-search-uplift.css') ?>">
+    <link rel="stylesheet" href="assets/css/sharepoint-catalog-compare.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-catalog-compare.css') ?>">
     <link rel="stylesheet" href="assets/css/sharepoint-list-animations.css?v=<?= filemtime(__DIR__ . '/assets/css/sharepoint-list-animations.css') ?>">
 </head>
 <body>
@@ -3260,6 +3331,7 @@ $soloPageClass = $ownerSolo
     <script src="assets/vendor/qrcode-generator.js?v=<?= filemtime(__DIR__ . '/assets/vendor/qrcode-generator.js') ?>"></script>
     <script src="assets/js/fuzzy-search.js?v=<?= filemtime(__DIR__ . '/assets/js/fuzzy-search.js') ?>"></script>
     <script src="assets/js/sharepoint-catalog.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog.js') ?>"></script>
+    <script src="assets/js/sharepoint-catalog-compare.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-catalog-compare.js') ?>"></script>
     <script src="assets/js/sharepoint-list-animations.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-list-animations.js') ?>"></script>
     <script src="assets/js/sharepoint-search-dashboard.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-search-dashboard.js') ?>"></script>
     <?php if (!$panelSolo): ?>
