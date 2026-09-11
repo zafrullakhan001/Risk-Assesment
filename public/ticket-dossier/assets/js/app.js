@@ -319,6 +319,10 @@
     var searchableElements = [];
     var currentHighlights = [];
     var lastMatches = [];
+    var lastParsedQuery = null;
+    var lastSearchQuery = '';
+    var HIDE_DUPS_KEY = 'ticket_dossier_search_hide_dups';
+    var hideDuplicateMatches = readHideDupsPref();
     var pulseTimer = 0;
     var KIND_RANK = { exact: 0, contains: 1, phonetic: 2, fuzzy: 3 };
     var SECTION_PREF = {
@@ -344,6 +348,20 @@
         { id: 'owner', label: 'Owner', emoji: '👤', aliases: ['owner'] }
     ];
     var EMPTYISH = ['', '—', '-', 'n/a', 'na', 'none', 'null', 'unknown', 'unknown owner', 'no answer', 'false'];
+    var PRESET_STORAGE_KEY = 'ticket_dossier_search_presets_v1';
+    var MAX_CUSTOM_PRESETS = 24;
+    var searchJumpsListEl = document.getElementById('search-jumps-list');
+    var presetManageBtn = document.getElementById('search-preset-manage');
+    var presetForm = document.getElementById('search-preset-form');
+    var presetNameInput = document.getElementById('preset-name');
+    var presetEmojiInput = document.getElementById('preset-emoji');
+    var presetFieldInput = document.getElementById('preset-field');
+    var presetQueryInput = document.getElementById('preset-query');
+    var presetCancelBtn = document.getElementById('preset-cancel');
+    var presetErrorEl = document.getElementById('preset-error');
+    var presetFieldSuggestions = document.getElementById('preset-field-suggestions');
+    var customPresets = loadCustomPresets();
+    var searchTimer = 0;
 
     function fuzzyApi() {
         return window.FuzzySearch || null;
@@ -621,6 +639,109 @@
         return isEmptyish(text);
     }
 
+    function loadCustomPresets() {
+        try {
+            var raw = window.localStorage.getItem(PRESET_STORAGE_KEY);
+            if (!raw) return [];
+            var parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed
+                .map(normalizePreset)
+                .filter(Boolean)
+                .slice(0, MAX_CUSTOM_PRESETS);
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function normalizePreset(preset) {
+        if (!preset || typeof preset !== 'object') return null;
+        var label = collapseText(preset.label || preset.name || '');
+        var field = collapseText(preset.field || preset.fieldLabel || '');
+        var query = collapseText(preset.query || '');
+        var emoji = collapseText(preset.emoji || '🔖').slice(0, 8);
+        if (label === '' || (field === '' && query === '')) return null;
+        var id = collapseText(preset.id || '');
+        if (id === '') {
+            id = 'preset-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+        }
+        return {
+            id: id,
+            label: label.slice(0, 40),
+            emoji: emoji || '🔖',
+            field: field.slice(0, 120),
+            query: query.slice(0, 200)
+        };
+    }
+
+    function saveCustomPresets() {
+        try {
+            window.localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(customPresets));
+        } catch (err) {
+            // Ignore quota / private-mode failures.
+        }
+    }
+
+    function setPresetFormOpen(open) {
+        if (!presetForm || !presetManageBtn) return;
+        presetForm.classList.toggle('hidden', !open);
+        presetManageBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        presetManageBtn.textContent = open ? 'Close' : '+ Custom preset';
+        if (presetErrorEl) {
+            presetErrorEl.classList.add('hidden');
+            presetErrorEl.textContent = '';
+        }
+        if (open && presetNameInput) {
+            refreshFieldSuggestions();
+            if (!presetQueryInput.value && globalSearchInput && globalSearchInput.value.trim()) {
+                presetQueryInput.value = globalSearchInput.value.trim();
+            }
+            presetNameInput.focus();
+        }
+    }
+
+    function refreshFieldSuggestions() {
+        if (!presetFieldSuggestions) return;
+        var labels = {};
+        searchableElements.forEach(function (item) {
+            var label = collapseText(item.label);
+            if (label && !isEmptyish(label)) labels[label] = true;
+        });
+        var options = Object.keys(labels).sort(function (a, b) {
+            return a.localeCompare(b);
+        }).slice(0, 120);
+        presetFieldSuggestions.innerHTML = '';
+        options.forEach(function (label) {
+            var option = document.createElement('option');
+            option.value = label;
+            presetFieldSuggestions.appendChild(option);
+        });
+    }
+
+    function findFieldByLabel(fieldLabel, requireValue) {
+        var needle = normalizeLabel(fieldLabel);
+        if (!needle) return null;
+        var best = null;
+        var bestScore = -1;
+        searchableElements.forEach(function (item) {
+            var lab = normalizeLabel(item.label);
+            if (!lab) return;
+            if (requireValue && isPlaceholderValue(item.originalText)) return;
+            var score = -1;
+            if (lab === needle) score = 300;
+            else if (lab.indexOf(needle) === 0) score = 220;
+            else if (lab.indexOf(needle) !== -1) score = 180;
+            else if (needle.indexOf(lab) !== -1 && lab.length >= 4) score = 140;
+            if (score < 0) return;
+            score -= sectionRank(item.sectionId);
+            if (!best || score > bestScore) {
+                best = item;
+                bestScore = score;
+            }
+        });
+        return best;
+    }
+
     function findRoleItem(role) {
         var aliases = role.aliases.map(normalizeLabel);
         var best = null;
@@ -638,40 +759,162 @@
         return best;
     }
 
-    function renderRoleShortcuts() {
-        if (!searchJumpsEl) return;
-        searchJumpsEl.innerHTML = '';
-        var found = [];
-        ROLE_SHORTCUTS.forEach(function (role) {
-            var item = findRoleItem(role);
-            if (item) found.push({ role: role, item: item });
-        });
-        if (found.length === 0) {
-            searchJumpsEl.classList.add('hidden');
+    function runCustomPreset(preset) {
+        var jumped = false;
+        if (preset.field) {
+            var item = findFieldByLabel(preset.field, false);
+            if (item) {
+                jumpToMatch(item);
+                jumped = true;
+            }
+        }
+        if (preset.query && globalSearchInput) {
+            globalSearchInput.value = preset.query;
+            performSearch(preset.query);
+            if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+            if (!jumped && lastMatches.length > 0) {
+                jumpToMatch(lastMatches[0].item);
+            } else if (!jumped) {
+                globalSearchInput.focus();
+            }
             return;
         }
-        searchJumpsEl.classList.remove('hidden');
-        var heading = document.createElement('p');
-        heading.className = 'search-jumps-label';
-        heading.textContent = 'Jump to';
-        var list = document.createElement('div');
-        list.className = 'search-jumps-list';
-        list.setAttribute('role', 'list');
-        found.forEach(function (entry) {
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'search-jump';
-            btn.setAttribute('role', 'listitem');
-            btn.setAttribute('data-role', entry.role.id);
-            btn.title = 'Jump to ' + entry.role.label;
-            btn.textContent = entry.role.emoji + ' ' + entry.role.label;
-            btn.addEventListener('click', function () {
-                jumpToMatch(entry.item);
-            });
-            list.appendChild(btn);
+        if (!jumped && preset.field) {
+            if (globalSearchInput) {
+                globalSearchInput.value = preset.field;
+                performSearch(preset.field);
+                if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+            }
+        }
+    }
+
+    function deleteCustomPreset(presetId) {
+        customPresets = customPresets.filter(function (preset) {
+            return preset.id !== presetId;
         });
-        searchJumpsEl.appendChild(heading);
-        searchJumpsEl.appendChild(list);
+        saveCustomPresets();
+        renderRoleShortcuts();
+    }
+
+    function appendJumpChip(list, options) {
+        var wrap = document.createElement('div');
+        wrap.className = 'search-jump-chip' + (options.custom ? ' is-custom' : '');
+        wrap.setAttribute('role', 'listitem');
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'search-jump';
+        btn.title = options.title || options.label;
+        btn.textContent = (options.emoji ? options.emoji + ' ' : '') + options.label;
+        btn.addEventListener('click', options.onClick);
+        wrap.appendChild(btn);
+
+        if (options.custom && options.onDelete) {
+            var remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'search-jump-remove';
+            remove.setAttribute('aria-label', 'Remove preset ' + options.label);
+            remove.title = 'Remove preset';
+            remove.textContent = '×';
+            remove.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                options.onDelete();
+            });
+            wrap.appendChild(remove);
+        }
+
+        if (options.missing) {
+            wrap.classList.add('is-missing');
+            btn.title = (options.title || options.label) + ' — not found on this dossier';
+        }
+
+        list.appendChild(wrap);
+    }
+
+    function renderRoleShortcuts() {
+        if (!searchJumpsEl) return;
+        var list = searchJumpsListEl;
+        if (!list) {
+            list = document.createElement('div');
+            list.className = 'search-jumps-list';
+            list.id = 'search-jumps-list';
+            list.setAttribute('role', 'list');
+            searchJumpsEl.appendChild(list);
+            searchJumpsListEl = list;
+        }
+        list.innerHTML = '';
+
+        ROLE_SHORTCUTS.forEach(function (role) {
+            var item = findRoleItem(role);
+            if (!item) return;
+            appendJumpChip(list, {
+                label: role.label,
+                emoji: role.emoji,
+                title: 'Jump to ' + role.label,
+                onClick: function () {
+                    jumpToMatch(item);
+                }
+            });
+        });
+
+        customPresets.forEach(function (preset) {
+            var present = !preset.field || !!findFieldByLabel(preset.field, false);
+            var titleParts = [];
+            if (preset.field) titleParts.push('Jump to “' + preset.field + '”');
+            if (preset.query) titleParts.push('Search “' + preset.query + '”');
+            appendJumpChip(list, {
+                label: preset.label,
+                emoji: preset.emoji,
+                custom: true,
+                missing: !present && !preset.query,
+                title: titleParts.join(' · ') || preset.label,
+                onClick: function () {
+                    runCustomPreset(preset);
+                },
+                onDelete: function () {
+                    deleteCustomPreset(preset.id);
+                }
+            });
+        });
+
+        searchJumpsEl.classList.toggle('is-empty', list.children.length === 0);
+    }
+
+    function showPresetError(message) {
+        if (!presetErrorEl) return;
+        presetErrorEl.textContent = message;
+        presetErrorEl.classList.toggle('hidden', !message);
+    }
+
+    function handlePresetSubmit(e) {
+        e.preventDefault();
+        var preset = normalizePreset({
+            label: presetNameInput ? presetNameInput.value : '',
+            emoji: presetEmojiInput ? presetEmojiInput.value : '',
+            field: presetFieldInput ? presetFieldInput.value : '',
+            query: presetQueryInput ? presetQueryInput.value : ''
+        });
+        if (!preset) {
+            showPresetError('Enter a chip name and either a field label or a search query.');
+            return;
+        }
+        var duplicate = customPresets.some(function (existing) {
+            return normalizeLabel(existing.label) === normalizeLabel(preset.label);
+        });
+        if (duplicate) {
+            showPresetError('A preset with that name already exists.');
+            return;
+        }
+        if (customPresets.length >= MAX_CUSTOM_PRESETS) {
+            showPresetError('You can save up to ' + MAX_CUSTOM_PRESETS + ' custom presets.');
+            return;
+        }
+        customPresets.push(preset);
+        saveCustomPresets();
+        renderRoleShortcuts();
+        if (presetForm) presetForm.reset();
+        setPresetFormOpen(false);
     }
 
     function parseSearchQuery(raw) {
@@ -906,11 +1149,119 @@
         });
     }
 
+    function readHideDupsPref() {
+        try {
+            return window.localStorage.getItem(HIDE_DUPS_KEY) === '1';
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function writeHideDupsPref(enabled) {
+        try {
+            window.localStorage.setItem(HIDE_DUPS_KEY, enabled ? '1' : '0');
+        } catch (err) {
+            // Ignore storage failures.
+        }
+    }
+
+    function matchDedupeKey(match) {
+        var item = match && match.item ? match.item : {};
+        return normalizeLabel(item.label || '') + '\0' + collapseText(item.originalText || '').toLowerCase();
+    }
+
+    function uniqueMatches(matches) {
+        var seen = {};
+        var out = [];
+        matches.forEach(function (match) {
+            var key = matchDedupeKey(match);
+            if (seen[key]) return;
+            seen[key] = true;
+            out.push(match);
+        });
+        return out;
+    }
+
+    function visibleSearchMatches() {
+        if (!hideDuplicateMatches) return lastMatches;
+        return uniqueMatches(lastMatches);
+    }
+
+    function renderSearchResults() {
+        if (!searchResultsEl) return;
+        var matches = lastMatches;
+        if (!lastSearchQuery || lastSearchQuery.length < 2) return;
+
+        if (matches.length === 0) {
+            searchResultsEl.classList.remove('hidden');
+            searchResultsEl.classList.add('no-results');
+            searchResultsEl.innerHTML = '<p>No matches found for “' + escapeHtml(lastSearchQuery) + '”</p>';
+            return;
+        }
+
+        var display = visibleSearchMatches();
+        var hiddenCount = Math.max(0, matches.length - display.length);
+        var shown = display.slice(0, 15);
+        var parsed = lastParsedQuery || parseSearchQuery(lastSearchQuery);
+
+        var head = '<div class="search-results-head">';
+        head += '<span><strong>' + display.length + '</strong> match' + (display.length === 1 ? '' : 'es');
+        if (hideDuplicateMatches && hiddenCount > 0) {
+            head += ' <em class="search-dup-note">(' + hiddenCount + ' duplicate' + (hiddenCount === 1 ? '' : 's') + ' hidden)</em>';
+        }
+        head += ' — click to jump</span>';
+        head += '<button type="button" class="search-hide-dups' + (hideDuplicateMatches ? ' is-active' : '') + '" id="search-hide-dups"';
+        head += ' aria-pressed="' + (hideDuplicateMatches ? 'true' : 'false') + '"';
+        head += ' title="' + (hideDuplicateMatches ? 'Show duplicate matches' : 'Hide duplicate matches') + '">';
+        head += hideDuplicateMatches ? 'Show dups' : 'Hide dups';
+        head += '</button></div>';
+
+        var list = '<ul class="search-match-list">';
+        shown.forEach(function (match, idx) {
+            var item = match.item;
+            var kindClass = 'is-' + (match.kind || 'contains');
+            list += '<li>';
+            list += '<button type="button" class="search-match-item" data-match-idx="' + idx + '">';
+            list += '<div class="search-match-label">' + escapeHtml(item.label) + ' · ' + escapeHtml(item.sectionTitle || 'Dossier') + '</div>';
+            list += '<div class="search-match-context">' + markExcerpt(match.snippet, parsed, match) + '</div>';
+            list += '<div class="search-match-meta">';
+            list += '<span class="search-match-kind ' + kindClass + '">' + escapeHtml(kindLabel(match.kind)) + '</span>';
+            list += '<span class="search-match-score">' + Math.round(match.score) + '%</span>';
+            list += '</div></button></li>';
+        });
+        if (display.length > shown.length) {
+            list += '<li class="search-match-more">… and ' + (display.length - shown.length) + ' more</li>';
+        }
+        list += '</ul>';
+
+        searchResultsEl.classList.remove('hidden', 'no-results');
+        searchResultsEl.innerHTML = head + list;
+
+        var hideBtn = document.getElementById('search-hide-dups');
+        if (hideBtn) {
+            hideBtn.addEventListener('click', function () {
+                hideDuplicateMatches = !hideDuplicateMatches;
+                writeHideDupsPref(hideDuplicateMatches);
+                renderSearchResults();
+            });
+        }
+
+        searchResultsEl.querySelectorAll('.search-match-item').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var idx = parseInt(button.getAttribute('data-match-idx'), 10);
+                var match = shown[idx];
+                if (match) jumpToMatch(match.item);
+            });
+        });
+    }
+
     function performSearch(query) {
         clearHighlights();
         lastMatches = [];
+        lastParsedQuery = null;
+        lastSearchQuery = String(query || '').trim();
 
-        if (!query || query.length < 2) {
+        if (!lastSearchQuery || lastSearchQuery.length < 2) {
             searchResultsEl.classList.add('hidden');
             searchResultsEl.classList.remove('no-results');
             searchResultsEl.innerHTML = '';
@@ -920,7 +1271,8 @@
 
         if (searchClearBtn) searchClearBtn.classList.remove('hidden');
 
-        var parsed = parseSearchQuery(query);
+        var parsed = parseSearchQuery(lastSearchQuery);
+        lastParsedQuery = parsed;
         var matches = [];
         searchableElements.forEach(function (item) {
             var scored = scoreItem(item, parsed);
@@ -942,50 +1294,14 @@
         });
         lastMatches = matches;
 
-        if (matches.length === 0) {
-            searchResultsEl.classList.remove('hidden');
-            searchResultsEl.classList.add('no-results');
-            searchResultsEl.innerHTML = '<p>No matches found for “' + escapeHtml(query) + '”</p>';
-            return;
-        }
-
-        var highlightLimit = Math.min(matches.length, 40);
+        var highlightSource = visibleSearchMatches();
+        var highlightLimit = Math.min(highlightSource.length, 40);
         var i;
         for (i = 0; i < highlightLimit; i++) {
-            highlightNeedles(matches[i].item.element, [query, matches[i].token].concat(parsed.words, parsed.phrases));
+            highlightNeedles(highlightSource[i].item.element, [lastSearchQuery, highlightSource[i].token].concat(parsed.words, parsed.phrases));
         }
 
-        var shown = matches.slice(0, 15);
-        var head = '<p class="search-results-head"><span><strong>' + matches.length + '</strong> match'
-            + (matches.length === 1 ? '' : 'es')
-            + ' — click to jump</span></p>';
-        var list = '<ul class="search-match-list">';
-        shown.forEach(function (match, idx) {
-            var item = match.item;
-            var kindClass = 'is-' + (match.kind || 'contains');
-            list += '<li>';
-            list += '<button type="button" class="search-match-item" data-match-idx="' + idx + '">';
-            list += '<div class="search-match-label">' + escapeHtml(item.label) + ' · ' + escapeHtml(item.sectionTitle || 'Dossier') + '</div>';
-            list += '<div class="search-match-context">' + markExcerpt(match.snippet, parsed, match) + '</div>';
-            list += '<div class="search-match-meta">';
-            list += '<span class="search-match-kind ' + kindClass + '">' + escapeHtml(kindLabel(match.kind)) + '</span>';
-            list += '<span class="search-match-score">' + Math.round(match.score) + '%</span>';
-            list += '</div></button></li>';
-        });
-        if (matches.length > shown.length) {
-            list += '<li class="search-match-more">… and ' + (matches.length - shown.length) + ' more</li>';
-        }
-        list += '</ul>';
-        searchResultsEl.classList.remove('hidden', 'no-results');
-        searchResultsEl.innerHTML = head + list;
-
-        searchResultsEl.querySelectorAll('.search-match-item').forEach(function (button) {
-            button.addEventListener('click', function () {
-                var idx = parseInt(button.getAttribute('data-match-idx'), 10);
-                var match = shown[idx];
-                if (match) jumpToMatch(match.item);
-            });
-        });
+        renderSearchResults();
     }
 
     function escapeHtml(text) {
@@ -997,7 +1313,6 @@
     if (globalSearchInput) {
         initSearchIndex();
 
-        var searchTimer = 0;
         globalSearchInput.addEventListener('input', function () {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(function () {
@@ -1008,8 +1323,9 @@
         globalSearchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            if (lastMatches.length > 0) {
-                jumpToMatch(lastMatches[0].item);
+            var first = visibleSearchMatches()[0];
+            if (first) {
+                jumpToMatch(first.item);
             }
         });
 
@@ -1017,12 +1333,30 @@
             globalSearchInput.value = '';
             clearHighlights();
             lastMatches = [];
+            lastParsedQuery = null;
+            lastSearchQuery = '';
             searchResultsEl.classList.add('hidden');
             searchResultsEl.classList.remove('no-results');
             searchResultsEl.innerHTML = '';
             searchClearBtn.classList.add('hidden');
             globalSearchInput.focus();
         });
+
+        if (presetManageBtn) {
+            presetManageBtn.addEventListener('click', function () {
+                var open = presetForm && !presetForm.classList.contains('hidden');
+                setPresetFormOpen(!open);
+            });
+        }
+        if (presetForm) {
+            presetForm.addEventListener('submit', handlePresetSubmit);
+        }
+        if (presetCancelBtn) {
+            presetCancelBtn.addEventListener('click', function () {
+                if (presetForm) presetForm.reset();
+                setPresetFormOpen(false);
+            });
+        }
 
         if ('IntersectionObserver' in window && globalSearchContainer) {
             var searchSentinel = document.createElement('div');
@@ -1035,6 +1369,8 @@
             });
             searchObserver.observe(searchSentinel);
         }
+    } else if (searchJumpsEl) {
+        renderRoleShortcuts();
     }
 
     var editDetails = document.getElementById('edit-details');

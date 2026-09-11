@@ -225,7 +225,41 @@ $ribbon = [
                 >
                 <button type="button" class="search-clear hidden" id="search-clear" aria-label="Clear search">×</button>
             </div>
-            <div class="search-jumps hidden" id="search-jumps" aria-label="Jump to people and vendor"></div>
+            <div class="search-jumps" id="search-jumps" aria-label="Jump to people, vendor, and custom presets">
+                <div class="search-jumps-head">
+                    <p class="search-jumps-label">Jump to</p>
+                    <button type="button" class="search-preset-manage" id="search-preset-manage" aria-expanded="false" aria-controls="search-preset-form">+ Custom preset</button>
+                </div>
+                <div class="search-jumps-list" id="search-jumps-list" role="list"></div>
+                <form class="search-preset-form hidden" id="search-preset-form" autocomplete="off">
+                    <p class="search-preset-form-title">Save a custom jump / search preset</p>
+                    <div class="search-preset-grid">
+                        <label class="field">
+                            <span>Chip name</span>
+                            <input type="text" id="preset-name" maxlength="40" required placeholder="e.g. Funding CFO">
+                        </label>
+                        <label class="field">
+                            <span>Emoji <em>(optional)</em></span>
+                            <input type="text" id="preset-emoji" maxlength="8" placeholder="🔖">
+                        </label>
+                        <label class="field field-span-2">
+                            <span>Jump to field label <em>(optional)</em></span>
+                            <input type="text" id="preset-field" maxlength="120" list="preset-field-suggestions" placeholder="Exact or partial field name, e.g. Funding CFO">
+                            <datalist id="preset-field-suggestions"></datalist>
+                        </label>
+                        <label class="field field-span-2">
+                            <span>Search query <em>(optional)</em></span>
+                            <input type="text" id="preset-query" maxlength="200" placeholder="Text to search when clicked">
+                        </label>
+                    </div>
+                    <p class="search-preset-hint">Provide a field label to jump, a search query to run, or both. Presets are stored in this browser and work on every dossier.</p>
+                    <div class="search-preset-actions">
+                        <button type="submit" class="button button-primary button-small">Save preset</button>
+                        <button type="button" class="button ghost button-small" id="preset-cancel">Cancel</button>
+                    </div>
+                    <p class="search-preset-error hidden" id="preset-error" role="alert"></p>
+                </form>
+            </div>
             <div class="search-results hidden" id="search-results" role="status" aria-live="polite"></div>
         </div>
 
