@@ -6036,6 +6036,7 @@
 
   /** @type {AbortController|null} */
   let peerIndexAbort = null;
+  let peerIndexRequestKey = '';
 
   const updateFavoriteToggleText = () => {
     if (!favoritesToggle) return;
@@ -6830,6 +6831,18 @@
 
   const ensurePeerIndexes = () => {
     if (availableSources.length <= 1) return;
+    if (!hitCountSearchActive()) {
+      if (peerIndexAbort) {
+        try {
+          peerIndexAbort.abort();
+        } catch {
+          /* ignore */
+        }
+        peerIndexAbort = null;
+        peerIndexRequestKey = '';
+      }
+      return;
+    }
     const missing = availableSources
       .map((src) => String(src.source_key || ''))
       .filter((key) => key && !Object.prototype.hasOwnProperty.call(state.indexBySource, key));
@@ -6838,6 +6851,8 @@
       return;
     }
 
+    const requestKey = missing.join('\u0000');
+    if (peerIndexAbort && peerIndexRequestKey === requestKey) return;
     if (peerIndexAbort) {
       try {
         peerIndexAbort.abort();
@@ -6847,6 +6862,7 @@
     }
     const controller = new AbortController();
     peerIndexAbort = controller;
+    peerIndexRequestKey = requestKey;
     const fetchGen = (state._peerIndexGen = (state._peerIndexGen || 0) + 1);
 
     fetch(catalogApiUrl('search_index', { sources: missing.join(',') }), {
@@ -6873,7 +6889,10 @@
         /* Peer index is optional — leave badges for cached catalogs only. */
       })
       .finally(() => {
-        if (peerIndexAbort === controller) peerIndexAbort = null;
+        if (peerIndexAbort === controller) {
+          peerIndexAbort = null;
+          peerIndexRequestKey = '';
+        }
       });
   };
 
@@ -8701,6 +8720,7 @@
     if (input) state.query = input.value;
     if (refineInput) state.refine = refineInput.value;
     applySearch({ resetPage: true, syncInputs: false });
+    ensurePeerIndexes();
     if (state.query.trim().length >= RECENT_MIN_LEN) {
       scheduleRememberRecent();
     } else {
@@ -8760,6 +8780,7 @@
         /* ignore */
       }
       peerIndexAbort = null;
+      peerIndexRequestKey = '';
     }
     state.loadingIndex = true;
     state.ready = false;
