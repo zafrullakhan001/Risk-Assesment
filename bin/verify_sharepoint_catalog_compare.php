@@ -6,7 +6,9 @@ require __DIR__ . '/../public/bootstrap.php';
 
 use RiskAssessment\Repositories\SharePointArchiveRepository;
 use RiskAssessment\Repositories\SharePointCatalogRepository;
+use RiskAssessment\Repositories\SharePointSearchTagRepository;
 use RiskAssessment\SharePoint\SharePointCatalogComparer;
+use RiskAssessment\SharePoint\SharePointCatalogQuery;
 
 $leftKey = '_verify_cc_left';
 $rightKey = '_verify_cc_right';
@@ -32,11 +34,12 @@ $item = static function (
     string $name,
     string $type = 'folder',
     string $path = '',
-    string $modified = '2024-01-02T00:00:00Z'
+    string $modified = '2024-01-02T00:00:00Z',
+    array $extra = []
 ): array {
     $path = $path !== '' ? $path : $name;
 
-    return [
+    return $extra + [
         'item_key' => $project . '/' . $path,
         'parent_item_key' => '',
         'project_name' => $project,
@@ -53,6 +56,13 @@ $cleanup = static function () use ($catalog, $pdo, $leftKey, $rightKey): void {
     $pdo->prepare(
         "DELETE FROM sharepoint_archives WHERE source_key IN (:left_key, :right_key)"
     )->execute([':left_key' => $leftKey, ':right_key' => $rightKey]);
+    $pdo->prepare(
+        'DELETE FROM sharepoint_search_tag_assignments WHERE source_key IN (:left_key, :right_key)'
+    )->execute([':left_key' => $leftKey, ':right_key' => $rightKey]);
+    $pdo->prepare("DELETE FROM sharepoint_search_tags WHERE slug IN (:slug, :slug2)")->execute([
+        ':slug' => '_verify_cc_priority',
+        ':slug2' => 'verify_cc_priority',
+    ]);
 };
 
 $cleanup();
@@ -60,8 +70,12 @@ $cleanup();
 try {
     $leftItems = [
         $item('Encore', 'Encore', 'folder', 'Encore'),
-        $item('Encore', 'Plan.pdf', 'file', 'Encore/Plan.pdf'),
+        $item('Encore', 'Plan.pdf', 'file', 'Encore/Plan.pdf', '2024-01-02T00:00:00Z', [
+            'modified_by' => 'Alice Chen',
+        ]),
         $item('Shared App', 'Shared App', 'folder', 'Shared App'),
+        $item('Shared App', 'Drawings', 'folder', 'Shared App/Drawings'),
+        $item('Shared App', 'Plan.vsdx', 'file', 'Shared App/Drawings/Plan.vsdx'),
         $item('Alpha Only', 'Alpha Only', 'folder', 'Alpha Only'),
         $item('Hidden App', 'Hidden App', 'folder', 'Hidden App'),
         $item('Page One', 'Page One', 'folder', 'Page One'),
@@ -89,6 +103,31 @@ try {
 
     $assert($catalog->replaceForSource($leftKey, $leftItems) >= 8, 'seed left catalog');
     $assert($catalog->replaceForSource($rightKey, $rightItems) >= 8, 'seed right catalog');
+
+    $parsed = SharePointCatalogQuery::parse('tag:priority ext:pdf -exclude "exact phrase" person:"Last, First"');
+    $assert($parsed['tags'] === ['priority'], 'parse tag:priority');
+    $assert($parsed['extensions'] === ['pdf'], 'parse ext:pdf');
+    $assert($parsed['excludes'] === ['exclude'], 'parse -exclude');
+    $assert($parsed['phrases'] === ['exact phrase'], 'parse quoted phrase');
+    $assert($parsed['person'] === 'last, first', 'parse person quoted');
+
+    $fromGet = SharePointCatalogComparer::requestOptions([
+        'q' => 'Plan',
+        'mode' => 'or',
+        'fuzzy' => '1',
+        'deep' => '0',
+        'scope' => 'files',
+        'type' => 'pdf,visio',
+        'ext' => 'xlsx',
+    ]);
+    $assert($fromGet['word_mode'] === 'or', 'requestOptions word mode');
+    $assert($fromGet['fuzzy'] === true, 'requestOptions fuzzy');
+    $assert($fromGet['deep'] === false, 'requestOptions deep off');
+    $assert($fromGet['match_scope'] === 'files', 'requestOptions scope');
+
+    $searchTags = new SharePointSearchTagRepository($pdo);
+    $tag = $searchTags->create('_verify_cc_priority', ['username' => 'verify']);
+    $searchTags->setProjectTags($leftKey, 'Encore', [(int) $tag['id']]);
 
     $archives->setArchived($leftKey, 'project', true, 'Hidden App');
     $archives->setArchived($rightKey, 'project', true, 'Hidden App');
@@ -158,6 +197,81 @@ try {
 
     $withArchived = $comparer->compare($leftKey, $rightKey, ['include_archived' => true]);
     $assert(($withArchived['totals']['in_both'] ?? 0) === 26, 'include_archived restores Hidden App');
+
+    $pdf = $comparer->compare($leftKey, $rightKey, ['query' => 'ext:pdf']);
+    $assert(($pdf['row_count'] ?? 0) === 1, 'ext:pdf matches Encore');
+    $assert(($pdf['rows'][0]['name_key'] ?? '') === 'encore', 'ext:pdf row is Encore');
+
+    $typePdf = $comparer->compare($leftKey, $rightKey, ['types' => 'pdf']);
+    $assert(($typePdf['row_count'] ?? 0) === 1, 'type chip pdf matches Encore');
+
+    $exclude = $comparer->compare($leftKey, $rightKey, ['query' => '-encore']);
+    $assert(($exclude['row_count'] ?? 0) === 26, '-encore excludes the Encore folder');
+
+    $andWords = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'page zed',
+        'word_mode' => 'and',
+    ]);
+    $assert(($andWords['row_count'] ?? 0) === 0, 'AND page zed matches no folder');
+
+    $orWords = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'page zed',
+        'word_mode' => 'or',
+    ]);
+    $assert(($orWords['row_count'] ?? 0) === 23, 'OR page zed matches pages and zeds');
+
+    $exactTypo = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'encre',
+        'fuzzy' => false,
+    ]);
+    $assert(($exactTypo['row_count'] ?? 0) === 0, 'exact encre does not match Encore');
+
+    $fuzzy = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'encre',
+        'fuzzy' => true,
+    ]);
+    $assert(($fuzzy['row_count'] ?? 0) === 1, 'fuzzy encre matches Encore');
+
+    $shallow = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'Plan',
+        'deep' => false,
+    ]);
+    $assert(($shallow['row_count'] ?? 0) === 0, 'shallow Plan does not match file names');
+
+    $deep = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'Plan',
+        'deep' => true,
+    ]);
+    $assert(($deep['row_count'] ?? 0) === 2, 'deep Plan matches Encore pdf and Shared App vsdx');
+
+    $namesOnly = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'Plan',
+        'match_scope' => 'names',
+        'deep' => true,
+    ]);
+    $assert(($namesOnly['row_count'] ?? 0) === 0, 'names scope ignores file names');
+
+    $filesOnly = $comparer->compare($leftKey, $rightKey, [
+        'query' => 'Plan',
+        'match_scope' => 'files',
+    ]);
+    $assert(($filesOnly['row_count'] ?? 0) === 2, 'files scope finds Plan in nested files');
+
+    $person = $comparer->compare($leftKey, $rightKey, ['query' => 'person:alice']);
+    $assert(($person['row_count'] ?? 0) === 1, 'person:alice matches Encore');
+
+    $path = $comparer->compare($leftKey, $rightKey, ['query' => 'path:drawings']);
+    $assert(($path['row_count'] ?? 0) === 1, 'path:drawings matches Shared App');
+    $assert(($path['rows'][0]['name_key'] ?? '') === 'shared app', 'path:drawings row is Shared App');
+
+    $visio = $comparer->compare($leftKey, $rightKey, ['query' => 'type:visio']);
+    $assert(($visio['row_count'] ?? 0) === 1, 'type:visio matches Shared App');
+
+    $emptyAlpha = $comparer->compare($leftKey, $rightKey, ['query' => 'has:empty Alpha']);
+    $assert(($emptyAlpha['row_count'] ?? 0) === 1, 'has:empty Alpha matches Alpha Only');
+
+    $tagged = $comparer->compare($leftKey, $rightKey, ['query' => 'tag:priority']);
+    $assert(($tagged['row_count'] ?? 0) === 1, 'tag:priority matches Encore');
 } finally {
     $cleanup();
 }

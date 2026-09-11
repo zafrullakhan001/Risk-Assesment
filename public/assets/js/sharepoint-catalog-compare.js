@@ -28,7 +28,9 @@
   const metaEl = document.getElementById('sharepoint-catalog-compare-meta');
   const pagerEl = document.getElementById('sharepoint-catalog-compare-pager');
   const pageLabel = document.getElementById('sharepoint-catalog-compare-page-label');
+  const searchWrap = document.getElementById('sharepoint-catalog-compare-search-wrap');
   const searchInput = document.getElementById('sharepoint-catalog-compare-search');
+  const searchClear = document.getElementById('sharepoint-catalog-compare-search-clear');
   const sortEl = document.getElementById('sharepoint-catalog-compare-sort');
   const dirEl = document.getElementById('sharepoint-catalog-compare-dir');
   const perEl = document.getElementById('sharepoint-catalog-compare-per');
@@ -37,11 +39,28 @@
   const refreshBtn = document.getElementById('sharepoint-catalog-compare-refresh');
   const closeBtn = document.getElementById('sharepoint-catalog-compare-close');
   const scopesRoot = document.getElementById('sharepoint-search-scopes');
+  const typeChipsRoot = document.getElementById('sharepoint-catalog-compare-type-chips');
 
+  const readPrefs = () => {
+    if (typeof SP.readSearchPrefs === 'function') return SP.readSearchPrefs();
+    return {
+      wordMode: localStorage.getItem('riskregister_sp_search_word_mode') === 'or' ? 'or' : 'and',
+      fuzzy: localStorage.getItem('riskregister_sp_search_fuzzy') === '1',
+      deep: localStorage.getItem('riskregister_sp_search_deep') !== '0',
+    };
+  };
+
+  const prefs = readPrefs();
   const state = {
     left: '',
     right: '',
     query: '',
+    types: new Set(),
+    exts: new Set(),
+    wordMode: prefs.wordMode === 'or' ? 'or' : 'and',
+    fuzzy: !!prefs.fuzzy,
+    deep: prefs.deep !== false,
+    matchScope: 'all',
     presence: 'any',
     page: 1,
     perPage: 50,
@@ -237,9 +256,19 @@
     const from = rowCount === 0 ? 0 : (page - 1) * Number(payload.per_page || state.perPage) + 1;
     const to = Math.min(rowCount, page * Number(payload.per_page || state.perPage));
     if (metaEl) {
+      const bits = [];
+      if (state.query) bits.push(`“${state.query}”`);
+      if (state.types.size) bits.push(`type:${[...state.types].join(',')}`);
+      if (state.exts.size) bits.push(`ext:${[...state.exts].join(',')}`);
+      if ((state.query.match(/\S+/g) || []).length > 1) bits.push(state.wordMode.toUpperCase());
+      if (state.fuzzy) bits.push('Fuzzy');
+      if (state.deep || state.matchScope === 'files') bits.push('Deep files');
+      else if (state.query || state.types.size || state.exts.size) bits.push('folder names');
+      if (state.matchScope !== 'all') bits.push(state.matchScope);
+      const filterNote = bits.length ? ` · ${bits.join(' · ')}` : '';
       metaEl.textContent = rowCount
-        ? `Showing ${from}–${to} of ${rowCount} project folders`
-        : 'No matching project folders';
+        ? `Showing ${from}–${to} of ${rowCount} project folders${filterNote}`
+        : `No matching project folders${filterNote}`;
     }
   };
 
@@ -267,6 +296,12 @@
       per: String(state.perPage),
       sort: state.sort,
       dir: state.dir,
+      mode: state.wordMode,
+      fuzzy: state.fuzzy ? '1' : '0',
+      deep: state.deep ? '1' : '0',
+      scope: state.matchScope,
+      type: [...state.types].join(','),
+      ext: [...state.exts].join(','),
     };
     if (searchRoot.getAttribute('data-show-archived') === '1') extra.archived = '1';
     if (fresh) extra._ts = String(Date.now());
@@ -306,10 +341,13 @@
     state.left = keys[0];
     state.right = keys[1];
     state.page = 1;
+    applyPrefsToState();
     if (searchInput) searchInput.value = state.query;
     if (sortEl) sortEl.value = state.sort;
     if (dirEl) dirEl.value = state.dir;
     if (perEl) perEl.value = String(state.perPage);
+    syncChipUi();
+    syncSearchModes?.(state.query);
     dialog.__spPrepareWorkspace?.();
     if (!dialog.open) dialog.showModal();
     dialog.__spPrepareWorkspace?.();
@@ -329,15 +367,79 @@
     load({ fresh: true });
   });
 
+  const syncChipUi = () => {
+    typeChipsRoot?.querySelectorAll('[data-type-chip]').forEach((btn) => {
+      const key = String(btn.getAttribute('data-type-chip') || '').toLowerCase();
+      const active = state.types.has(key);
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    searchWrap?.querySelectorAll('.sp-dialog-chip[data-ext]').forEach((btn) => {
+      const key = String(btn.getAttribute('data-ext') || '')
+        .toLowerCase()
+        .replace(/^\./, '');
+      const active = state.exts.has(key);
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    searchWrap?.querySelectorAll('[data-match-scope]').forEach((btn) => {
+      const active = (btn.getAttribute('data-match-scope') || 'all') === state.matchScope;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (searchClear) {
+      const active = !!(state.query || state.types.size || state.exts.size);
+      searchClear.hidden = !active;
+    }
+  };
+
+  const applyPrefsToState = () => {
+    const next = readPrefs();
+    state.wordMode = next.wordMode === 'or' ? 'or' : 'and';
+    state.fuzzy = !!next.fuzzy;
+    state.deep = next.deep !== false;
+  };
+
   const applySearchQuery = (next, { reload = true } = {}) => {
     const query = String(next ?? '').trim();
     const changed = query !== state.query;
     state.query = query;
     if (searchInput && searchInput.value !== query) searchInput.value = query;
+    syncChipUi();
+    syncSearchModes?.(query);
     if (!reload || !changed) return;
     state.page = 1;
     load();
   };
+
+  const resetFilters = ({ reload = false } = {}) => {
+    state.query = '';
+    state.types.clear();
+    state.exts.clear();
+    state.matchScope = 'all';
+    if (searchInput) searchInput.value = '';
+    syncChipUi();
+    syncSearchModes?.('');
+    if (reload) {
+      state.page = 1;
+      load();
+    }
+  };
+
+  let syncSearchModes = () => readPrefs();
+  if (typeof SP.bindDialogSearchModes === 'function' && searchWrap) {
+    syncSearchModes = SP.bindDialogSearchModes(searchWrap, () => {
+      applyPrefsToState();
+      state.page = 1;
+      if (dialog.open) load();
+    });
+  }
+  if (typeof SP.bindDialogSavedPresets === 'function') {
+    SP.bindDialogSavedPresets('sharepoint-catalog-compare-saved-chips', {
+      getActiveQuery: () => state.query,
+      onApply: (query) => applySearchQuery(query),
+    });
+  }
 
   document.getElementById('sharepoint-catalog-compare-search-run')?.addEventListener('click', () => {
     applySearchQuery(searchInput?.value || '');
@@ -360,9 +462,46 @@
     applySearchQuery('');
   });
   dialog.addEventListener('close', () => {
-    applySearchQuery('', { reload: false });
+    resetFilters({ reload: false });
     state.presence = 'any';
     state.page = 1;
+  });
+
+  typeChipsRoot?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-type-chip]');
+    if (!btn || !typeChipsRoot.contains(btn)) return;
+    const key = String(btn.getAttribute('data-type-chip') || '').toLowerCase();
+    if (!key) return;
+    if (state.types.has(key)) state.types.delete(key);
+    else state.types.add(key);
+    syncChipUi();
+    state.page = 1;
+    load();
+  });
+  searchWrap?.querySelectorAll('.sp-dialog-chip[data-ext]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const key = String(chip.getAttribute('data-ext') || '')
+        .toLowerCase()
+        .replace(/^\./, '');
+      if (!key) return;
+      if (state.exts.has(key)) state.exts.delete(key);
+      else state.exts.add(key);
+      syncChipUi();
+      state.page = 1;
+      load();
+    });
+  });
+  searchWrap?.querySelectorAll('[data-match-scope]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('data-match-scope') || 'all';
+      state.matchScope = ['all', 'names', 'files', 'people'].includes(next) ? next : 'all';
+      syncChipUi();
+      state.page = 1;
+      load();
+    });
+  });
+  searchClear?.addEventListener('click', () => {
+    resetFilters({ reload: dialog.open });
   });
 
   sortEl?.addEventListener('change', () => {

@@ -53,6 +53,35 @@
     min-width: 12rem;
 }
 
+#sharepoint-catalog-compare-dialog .sp-dialog-find-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.45rem;
+    min-width: 0;
+}
+
+#sharepoint-catalog-compare-dialog .sharepoint-dialog-saved-searches,
+#sharepoint-catalog-compare-dialog .sharepoint-dialog-search-controls,
+#sharepoint-catalog-compare-dialog .sharepoint-type-chips,
+#sharepoint-catalog-compare-dialog .sharepoint-dialog-search-chips,
+#sharepoint-catalog-compare-dialog .sp-cc-match-scope {
+    margin: 0;
+}
+
+#sharepoint-catalog-compare-dialog .sharepoint-type-chips,
+#sharepoint-catalog-compare-dialog .sharepoint-dialog-search-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.28rem;
+}
+
+#sharepoint-catalog-compare-dialog .sharepoint-dialog-search-meta {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
 #sharepoint-catalog-compare-dialog .sharepoint-catalog-compare-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;

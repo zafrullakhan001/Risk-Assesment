@@ -1350,6 +1350,7 @@
   const SEARCH_PREF = {
     wordMode: 'riskregister_sp_search_word_mode',
     fuzzy: 'riskregister_sp_search_fuzzy',
+    deep: 'riskregister_sp_search_deep',
     compareDensity: 'riskregister_sp_compare_density',
     compareColumns: 'riskregister_sp_compare_columns',
     projectColumns: 'riskregister_sp_project_columns',
@@ -1883,11 +1884,15 @@
   const readSearchPrefs = () => ({
     wordMode: localStorage.getItem(SEARCH_PREF.wordMode) === 'or' ? 'or' : 'and',
     fuzzy: localStorage.getItem(SEARCH_PREF.fuzzy) === '1',
+    deep: localStorage.getItem(SEARCH_PREF.deep) !== '0',
   });
 
   const writeSearchPrefs = (prefs) => {
     localStorage.setItem(SEARCH_PREF.wordMode, prefs.wordMode === 'or' ? 'or' : 'and');
     localStorage.setItem(SEARCH_PREF.fuzzy, prefs.fuzzy ? '1' : '0');
+    if (prefs.deep !== undefined) {
+      localStorage.setItem(SEARCH_PREF.deep, prefs.deep ? '1' : '0');
+    }
   };
 
   const DIALOG_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
@@ -2685,6 +2690,7 @@
 
     const wordModeGroup = root.querySelector('.sp-dialog-word-mode');
     const fuzzyBtn = root.querySelector('.sp-dialog-fuzzy');
+    const deepBtn = root.querySelector('.sp-dialog-deep');
 
     const syncUi = (query = '') => {
       const prefs = readSearchPrefs();
@@ -2699,6 +2705,10 @@
       if (fuzzyBtn) {
         fuzzyBtn.classList.toggle('is-active', prefs.fuzzy);
         fuzzyBtn.setAttribute('aria-pressed', prefs.fuzzy ? 'true' : 'false');
+      }
+      if (deepBtn) {
+        deepBtn.classList.toggle('is-active', prefs.deep);
+        deepBtn.setAttribute('aria-pressed', prefs.deep ? 'true' : 'false');
       }
       return prefs;
     };
@@ -2716,6 +2726,14 @@
     fuzzyBtn?.addEventListener('click', () => {
       const prefs = readSearchPrefs();
       prefs.fuzzy = !prefs.fuzzy;
+      writeSearchPrefs(prefs);
+      syncUi(root.querySelector('input[type="search"]')?.value || '');
+      onChange?.();
+    });
+
+    deepBtn?.addEventListener('click', () => {
+      const prefs = readSearchPrefs();
+      prefs.deep = !prefs.deep;
       writeSearchPrefs(prefs);
       syncUi(root.querySelector('input[type="search"]')?.value || '');
       onChange?.();
@@ -5662,6 +5680,9 @@
     bindQrButtons,
     qrButtonHtml,
     bindWorkspaceDialog,
+    bindDialogSearchModes,
+    bindDialogSavedPresets,
+    readSearchPrefs,
     playWorkspaceDialogEnter,
     playWorkspaceDialogLeave,
     fileExtension,

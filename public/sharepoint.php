@@ -412,16 +412,15 @@ if ($actionParam === 'catalog_compare') {
 
     try {
         $comparer = new SharePointCatalogComparer($pdo);
-        $payload = $comparer->compare($leftKey, $rightKey, [
-            'query' => trim((string) ($_GET['q'] ?? '')),
-            'presence' => trim((string) ($_GET['presence'] ?? 'any')),
-            'page' => (int) ($_GET['page'] ?? 1),
-            'per_page' => (int) ($_GET['per'] ?? 50),
-            'sort' => trim((string) ($_GET['sort'] ?? 'name')),
-            'dir' => trim((string) ($_GET['dir'] ?? 'asc')),
+        $payload = $comparer->compare($leftKey, $rightKey, SharePointCatalogComparer::requestOptions($_GET) + [
             'include_archived' => $includeArchived,
             'left_title' => (string) ($leftSource['title'] ?? $leftKey),
             'right_title' => (string) ($rightSource['title'] ?? $rightKey),
+            'viewer' => [
+                'display' => (string) ($currentUser['display_name'] ?? ''),
+                'name' => (string) ($currentUser['username'] ?? ''),
+                'email' => (string) ($currentUser['email'] ?? ''),
+            ],
         ]);
     } catch (\InvalidArgumentException $exception) {
         http_response_code(400);

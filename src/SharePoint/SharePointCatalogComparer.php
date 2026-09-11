@@ -29,6 +29,40 @@ final class SharePointCatalogComparer
     }
 
     /**
+     * @param array<string, mixed> $get
+     * @return array<string, mixed>
+     */
+    public static function requestOptions(array $get): array
+    {
+        $truthy = static function (mixed $value, bool $default): bool {
+            if ($value === null || $value === '') {
+                return $default;
+            }
+            $value = strtolower(trim((string) $value));
+            if (in_array($value, ['0', 'false', 'off', 'no'], true)) {
+                return false;
+            }
+
+            return in_array($value, ['1', 'true', 'on', 'yes'], true) || $default;
+        };
+
+        return [
+            'query' => trim((string) ($get['q'] ?? '')),
+            'presence' => trim((string) ($get['presence'] ?? 'any')),
+            'page' => (int) ($get['page'] ?? 1),
+            'per_page' => (int) ($get['per'] ?? 50),
+            'sort' => trim((string) ($get['sort'] ?? 'name')),
+            'dir' => trim((string) ($get['dir'] ?? 'asc')),
+            'word_mode' => strtolower(trim((string) ($get['mode'] ?? $get['word_mode'] ?? 'and'))),
+            'fuzzy' => $truthy($get['fuzzy'] ?? null, false),
+            'deep' => $truthy($get['deep'] ?? null, true),
+            'match_scope' => trim((string) ($get['scope'] ?? $get['match_scope'] ?? 'all')),
+            'types' => trim((string) ($get['type'] ?? $get['types'] ?? '')),
+            'extensions' => trim((string) ($get['ext'] ?? $get['extensions'] ?? '')),
+        ];
+    }
+
+    /**
      * @param array{
      *   query?: string,
      *   presence?: string,
@@ -38,7 +72,14 @@ final class SharePointCatalogComparer
      *   dir?: string,
      *   include_archived?: bool,
      *   left_title?: string,
-     *   right_title?: string
+     *   right_title?: string,
+     *   word_mode?: string,
+     *   fuzzy?: bool,
+     *   deep?: bool,
+     *   match_scope?: string,
+     *   types?: string|list<string>,
+     *   extensions?: string|list<string>,
+     *   viewer?: array{display?: string, name?: string, email?: string}
      * } $options
      * @return array<string, mixed>
      */
@@ -62,6 +103,13 @@ final class SharePointCatalogComparer
         $includeArchived = !empty($options['include_archived']);
         $leftTitle = trim((string) ($options['left_title'] ?? '')) ?: $leftKey;
         $rightTitle = trim((string) ($options['right_title'] ?? '')) ?: $rightKey;
+        $wordMode = strtolower(trim((string) ($options['word_mode'] ?? 'and'))) === 'or' ? 'or' : 'and';
+        $fuzzy = !empty($options['fuzzy']);
+        $deep = !array_key_exists('deep', $options) || !empty($options['deep']);
+        $matchScope = $this->normalizeMatchScope((string) ($options['match_scope'] ?? 'all'));
+        $extraTypes = $this->csvList($options['types'] ?? []);
+        $extraExts = $this->csvList($options['extensions'] ?? []);
+        $viewer = is_array($options['viewer'] ?? null) ? $options['viewer'] : [];
 
         $visibleSql = $includeArchived
             ? '1=1'
@@ -71,15 +119,22 @@ final class SharePointCatalogComparer
             ':left_key' => $leftKey,
             ':right_key' => $rightKey,
         ];
+        $parsed = SharePointCatalogQuery::parse($query);
         $searchSql = '';
-        if ($query !== '') {
-            $searchSql = " AND (
-                IFNULL(m.left_name, '') LIKE :q ESCAPE '\\'
-                OR IFNULL(m.right_name, '') LIKE :q2 ESCAPE '\\'
-            )";
-            $like = '%' . $this->escapeLike($query) . '%';
-            $params[':q'] = $like;
-            $params[':q2'] = $like;
+        if (SharePointCatalogQuery::isActive($parsed, $extraTypes, $extraExts)) {
+            $filter = [
+                'parsed' => $parsed,
+                'word_mode' => $wordMode,
+                'fuzzy' => $fuzzy,
+                'deep' => $deep,
+                'match_scope' => $matchScope,
+                'types' => $extraTypes,
+                'extensions' => $extraExts,
+                'viewer' => $viewer,
+            ];
+            $leftMatch = $this->sideMatchesSql(':left_key', 'm.left_name', 'm.name_key', 'lft', $filter, $params);
+            $rightMatch = $this->sideMatchesSql(':right_key', 'm.right_name', 'm.name_key', 'rgt', $filter, $params);
+            $searchSql = " AND (({$leftMatch}) OR ({$rightMatch}))";
         }
 
         $matchedSql = $this->matchedSql($visibleSql);
@@ -170,6 +225,12 @@ final class SharePointCatalogComparer
             'left' => $this->catalogMeta($leftKey, $leftTitle, $includeArchived),
             'right' => $this->catalogMeta($rightKey, $rightTitle, $includeArchived),
             'query' => $query,
+            'word_mode' => $wordMode,
+            'fuzzy' => $fuzzy,
+            'deep' => $deep,
+            'match_scope' => $matchScope,
+            'types' => $extraTypes,
+            'extensions' => $extraExts,
             'presence' => $presence,
             'sort' => $sort,
             'dir' => $dir,
@@ -458,5 +519,327 @@ final class SharePointCatalogComparer
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     * @param array<string, string> $params
+     */
+    private function sideMatchesSql(
+        string $sourceParam,
+        string $nameExpr,
+        string $nameKeyExpr,
+        string $prefix,
+        array $filter,
+        array &$params
+    ): string {
+        $parts = ["{$nameExpr} IS NOT NULL", "TRIM({$nameExpr}) != ''"];
+        $parsed = is_array($filter['parsed'] ?? null) ? $filter['parsed'] : [];
+        $alias = 'i_' . $prefix;
+        $projectPred = "{$alias}.source_key = {$sourceParam} AND LOWER(TRIM({$alias}.project_name)) = {$nameKeyExpr}";
+        $hay = $this->haystackSql($alias, (string) ($filter['match_scope'] ?? 'all'), !empty($filter['deep']));
+        $mode = ($filter['word_mode'] ?? 'and') === 'or' ? 'or' : 'and';
+        $fuzzy = !empty($filter['fuzzy']);
+        $n = 0;
+
+        foreach ((array) ($parsed['excludes'] ?? []) as $exclude) {
+            $exclude = trim((string) $exclude);
+            if ($exclude === '') {
+                continue;
+            }
+            $key = ':' . $prefix . 'ex' . $n++;
+            $params[$key] = '%' . $this->escapeLike($exclude) . '%';
+            $parts[] = "NOT EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND ({$hay}) LIKE {$key} ESCAPE '\\'
+            )";
+        }
+
+        foreach ((array) ($parsed['phrases'] ?? []) as $phrase) {
+            $phrase = trim((string) $phrase);
+            if ($phrase === '') {
+                continue;
+            }
+            $key = ':' . $prefix . 'ph' . $n++;
+            $params[$key] = '%' . $this->escapeLike($phrase) . '%';
+            $parts[] = "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND ({$hay}) LIKE {$key} ESCAPE '\\'
+            )";
+        }
+
+        $wordClauses = [];
+        foreach ((array) ($parsed['words'] ?? []) as $word) {
+            $word = trim((string) $word);
+            if ($word === '') {
+                continue;
+            }
+            $exactKey = ':' . $prefix . 'w' . $n++;
+            $params[$exactKey] = '%' . $this->escapeLike($word) . '%';
+            $wordSql = "({$hay}) LIKE {$exactKey} ESCAPE '\\'";
+            if ($fuzzy && mb_strlen($word) >= 3) {
+                $fuzzyKey = ':' . $prefix . 'wf' . $n++;
+                $params[$fuzzyKey] = $this->fuzzyLike($word);
+                $wordSql = "({$wordSql} OR ({$hay}) LIKE {$fuzzyKey} ESCAPE '\\')";
+            }
+            $wordClauses[] = "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND {$wordSql}
+            )";
+        }
+        if ($wordClauses !== []) {
+            $parts[] = '(' . implode($mode === 'or' ? ' OR ' : ' AND ', $wordClauses) . ')';
+        }
+
+        foreach ((array) ($parsed['paths'] ?? []) as $path) {
+            $path = trim((string) $path);
+            if ($path === '') {
+                continue;
+            }
+            $key = ':' . $prefix . 'path' . $n++;
+            $params[$key] = '%' . $this->escapeLike($path) . '%';
+            $parts[] = "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND LOWER(IFNULL({$alias}.relative_path, '')) LIKE {$key} ESCAPE '\\'
+            )";
+        }
+
+        $viewer = is_array($filter['viewer'] ?? null) ? $filter['viewer'] : [];
+        $person = $this->resolveViewerAlias((string) ($parsed['person'] ?? ''), $viewer);
+        if ($person !== '') {
+            $key = ':' . $prefix . 'who' . $n++;
+            $params[$key] = '%' . $this->escapeLike($person) . '%';
+            $parts[] = "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND (
+                    LOWER(IFNULL({$alias}.modified_by, '')) LIKE {$key} ESCAPE '\\'
+                    OR LOWER(IFNULL({$alias}.person, '')) LIKE {$key} ESCAPE '\\'
+                )
+            )";
+        }
+        $modifiedBy = $this->resolveViewerAlias((string) ($parsed['modified_by'] ?? ''), $viewer);
+        if ($modifiedBy !== '') {
+            $key = ':' . $prefix . 'mod' . $n++;
+            $params[$key] = '%' . $this->escapeLike($modifiedBy) . '%';
+            $parts[] = "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND LOWER(IFNULL({$alias}.modified_by, '')) LIKE {$key} ESCAPE '\\'
+            )";
+        }
+        $createdBy = $this->resolveViewerAlias((string) ($parsed['created_by'] ?? ''), $viewer);
+        if ($createdBy !== '') {
+            $key = ':' . $prefix . 'cre' . $n++;
+            $params[$key] = '%' . $this->escapeLike($createdBy) . '%';
+            $parts[] = "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND LOWER(IFNULL({$alias}.person, '')) LIKE {$key} ESCAPE '\\'
+            )";
+        }
+
+        $exts = array_values(array_unique(array_merge(
+            array_map('strval', (array) ($parsed['extensions'] ?? [])),
+            array_map('strval', (array) ($filter['extensions'] ?? []))
+        )));
+        foreach ($exts as $ext) {
+            $ext = ltrim(strtolower(trim($ext)), '.');
+            if ($ext === '') {
+                continue;
+            }
+            $parts[] = $this->traitExistsSql($alias, $projectPred, $ext, $prefix, $n, $params);
+        }
+
+        $traits = array_values(array_unique(array_merge(
+            array_map('strval', (array) ($parsed['types'] ?? [])),
+            array_map('strval', (array) ($parsed['has'] ?? [])),
+            array_map('strval', (array) ($filter['types'] ?? []))
+        )));
+        foreach ($traits as $trait) {
+            $clause = $this->traitExistsSql($alias, $projectPred, $trait, $prefix, $n, $params, $nameExpr);
+            if ($clause !== '') {
+                $parts[] = $clause;
+            }
+        }
+        foreach ((array) ($parsed['lacks'] ?? []) as $trait) {
+            $clause = $this->traitExistsSql($alias, $projectPred, (string) $trait, $prefix, $n, $params, $nameExpr);
+            if ($clause !== '') {
+                $parts[] = 'NOT ' . $clause;
+            }
+        }
+
+        foreach ((array) ($parsed['tags'] ?? []) as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag === '') {
+                continue;
+            }
+            $key = ':' . $prefix . 'tag' . $n++;
+            $params[$key] = '%' . $this->escapeLike($tag) . '%';
+            $parts[] = "EXISTS (
+                SELECT 1
+                FROM sharepoint_search_tag_assignments _ta
+                JOIN sharepoint_search_tags _tg ON _tg.id = _ta.tag_id
+                WHERE _ta.source_key = {$sourceParam}
+                  AND LOWER(TRIM(_ta.project_name)) = {$nameKeyExpr}
+                  AND (
+                      LOWER(IFNULL(_tg.label, '')) LIKE {$key} ESCAPE '\\'
+                      OR LOWER(IFNULL(_tg.slug, '')) LIKE {$key} ESCAPE '\\'
+                  )
+            )";
+        }
+
+        return implode(' AND ', $parts);
+    }
+
+    private function haystackSql(string $alias, string $scope, bool $deep): string
+    {
+        if ($scope === 'names') {
+            return "LOWER(IFNULL({$alias}.project_name, ''))";
+        }
+        if ($scope === 'people') {
+            return "LOWER(IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
+        }
+        if ($scope === 'files') {
+            return "LOWER(IFNULL({$alias}.name, '') || char(10) || IFNULL({$alias}.relative_path, ''))";
+        }
+        if (!$deep) {
+            return "LOWER(IFNULL({$alias}.project_name, '') || char(10) || IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
+        }
+
+        return "LOWER(IFNULL({$alias}.project_name, '') || char(10) || IFNULL({$alias}.name, '') || char(10) || IFNULL({$alias}.relative_path, '') || char(10) || IFNULL({$alias}.modified_by, '') || char(10) || IFNULL({$alias}.person, ''))";
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    private function traitExistsSql(
+        string $alias,
+        string $projectPred,
+        string $trait,
+        string $prefix,
+        int &$n,
+        array &$params,
+        string $nameExpr = ''
+    ): string {
+        $trait = SharePointCatalogQuery::normalizeType($trait);
+        if ($trait === '') {
+            return '';
+        }
+        if ($trait === 'empty') {
+            return "NOT EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND LOWER({$alias}.item_type) = 'file'
+            )";
+        }
+        if ($trait === 'stale') {
+            return "(
+                NOT EXISTS (
+                    SELECT 1 FROM sharepoint_items {$alias}
+                    WHERE {$projectPred} AND IFNULL({$alias}.last_modified, '') != ''
+                      AND {$alias}.last_modified >= datetime('now', '-90 days')
+                )
+            )";
+        }
+        if ($trait === 'folders') {
+            $exclude = ["''", "{$alias}.name"];
+            if (trim($nameExpr) !== '') {
+                $exclude[] = $nameExpr;
+            }
+
+            return "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred}
+                  AND LOWER({$alias}.item_type) = 'folder'
+                  AND TRIM(IFNULL({$alias}.relative_path, '')) NOT IN (" . implode(', ', $exclude) . ')
+            )';
+        }
+        if ($trait === 'drawings') {
+            $key = ':' . $prefix . 'draw' . $n++;
+            $params[$key] = '%drawing%';
+            return "EXISTS (
+                SELECT 1 FROM sharepoint_items {$alias}
+                WHERE {$projectPred} AND (
+                    LOWER(IFNULL({$alias}.name, '')) LIKE {$key} ESCAPE '\\'
+                    OR LOWER(IFNULL({$alias}.relative_path, '')) LIKE {$key} ESCAPE '\\'
+                )
+            )";
+        }
+
+        $exts = match ($trait) {
+            'pdf' => ['pdf'],
+            'visio' => ['vsdx', 'vsd'],
+            'word', 'doc', 'docx' => ['doc', 'docx'],
+            'excel', 'xls', 'xlsx' => ['xls', 'xlsx', 'xlsm', 'csv'],
+            'powerpoint', 'ppt', 'pptx' => ['ppt', 'pptx'],
+            'email', 'msg' => ['msg', 'eml'],
+            'archive', 'zip' => ['zip', '7z', 'rar'],
+            'cad' => ['dwg', 'dxf'],
+            'images' => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
+            default => [$trait],
+        };
+        $ors = [];
+        foreach ($exts as $ext) {
+            $key = ':' . $prefix . 'ext' . $n++;
+            $params[$key] = '%.' . $this->escapeLike($ext);
+            $ors[] = "LOWER(IFNULL({$alias}.name, '')) LIKE {$key} ESCAPE '\\'";
+        }
+
+        return "EXISTS (
+            SELECT 1 FROM sharepoint_items {$alias}
+            WHERE {$projectPred}
+              AND LOWER({$alias}.item_type) = 'file'
+              AND (" . implode(' OR ', $ors) . ')
+        )';
+    }
+
+    private function fuzzyLike(string $word): string
+    {
+        $chars = preg_split('//u', mb_strtolower($word), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $safe = array_map(fn (string $char): string => $this->escapeLike($char), $chars);
+
+        return '%' . implode('%', $safe) . '%';
+    }
+
+    /**
+     * @param array<string, mixed> $viewer
+     */
+    private function resolveViewerAlias(string $value, array $viewer): string
+    {
+        $value = mb_strtolower(trim($value));
+        if ($value !== 'me') {
+            return $value;
+        }
+        foreach (['display', 'name', 'email'] as $key) {
+            $candidate = mb_strtolower(trim((string) ($viewer[$key] ?? '')));
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return 'me';
+    }
+
+    private function normalizeMatchScope(string $value): string
+    {
+        $value = strtolower(trim($value));
+
+        return in_array($value, ['all', 'names', 'files', 'people'], true) ? $value : 'all';
+    }
+
+    /**
+     * @param mixed $value
+     * @return list<string>
+     */
+    private function csvList(mixed $value): array
+    {
+        $parts = is_array($value) ? $value : explode(',', (string) $value);
+        $out = [];
+        foreach ($parts as $part) {
+            $part = strtolower(trim((string) $part));
+            $part = ltrim($part, '.');
+            if ($part !== '') {
+                $out[] = SharePointCatalogQuery::normalizeType($part);
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 }
