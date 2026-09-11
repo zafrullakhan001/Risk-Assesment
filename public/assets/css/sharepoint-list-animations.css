@@ -398,7 +398,8 @@
  * Animate the inner surface, never the positioned/resizable dialog element.
  * This keeps persisted top/left/width/height geometry authoritative.
  */
-.sp-workspace-dialog[data-list-animation].is-entering {
+.sp-workspace-dialog[data-list-animation].is-entering,
+.sp-workspace-dialog[data-list-animation].is-leaving {
     animation: none;
 }
 
@@ -408,9 +409,18 @@
     animation: var(--sp-dialog-list-animation) var(--sp-dialog-list-duration) var(--sp-dialog-list-easing) both;
 }
 
+.sp-workspace-dialog[data-list-animation]:not([data-list-animation="none"]).is-leaving > .response-dialog-form {
+    transform-origin: center;
+    will-change: transform, opacity;
+    animation: sp-workspace-dialog-out var(--sp-dialog-exit-duration, 240ms) ease-in both;
+}
+
 .sp-workspace-dialog[data-list-animation="none"].is-entering,
 .sp-workspace-dialog[data-list-animation="none"].is-entering > .response-dialog-form,
-.sp-workspace-dialog[data-list-animation="none"].is-entering::backdrop {
+.sp-workspace-dialog[data-list-animation="none"].is-entering::backdrop,
+.sp-workspace-dialog[data-list-animation="none"].is-leaving,
+.sp-workspace-dialog[data-list-animation="none"].is-leaving > .response-dialog-form,
+.sp-workspace-dialog[data-list-animation="none"].is-leaving::backdrop {
     animation: none;
 }
 
@@ -682,7 +692,9 @@
     .sp-sd-kpi.is-settling,
     .sp-sd-panel.is-settling,
     .sp-sd-card.is-settling,
-    .sp-list-animation-preview-card[data-preview-animation] {
+    .sp-list-animation-preview-card[data-preview-animation],
+    .sp-workspace-dialog.is-entering > .response-dialog-form,
+    .sp-workspace-dialog.is-leaving > .response-dialog-form {
         animation: none !important;
     }
 }

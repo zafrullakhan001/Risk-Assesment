@@ -547,10 +547,24 @@
       return;
     }
     if (!anyOpen && locked) {
+      const previousScrollBehavior = html.style.getPropertyValue('scroll-behavior');
+      const previousScrollBehaviorPriority = html.style.getPropertyPriority('scroll-behavior');
+      html.style.setProperty('scroll-behavior', 'auto', 'important');
       html.classList.remove('sp-workspace-scroll-lock');
       document.body.classList.remove('sp-workspace-scroll-lock');
       document.body.style.top = '';
       window.scrollTo(0, workspaceSavedScrollY);
+      window.requestAnimationFrame(() => {
+        if (previousScrollBehavior) {
+          html.style.setProperty(
+            'scroll-behavior',
+            previousScrollBehavior,
+            previousScrollBehaviorPriority
+          );
+        } else {
+          html.style.removeProperty('scroll-behavior');
+        }
+      });
     }
   };
 
@@ -667,29 +681,81 @@
       });
     };
 
-    const setMaximized = (next) => {
-      if (next) {
-        if (!maximized) {
-          if (dialog.open) rememberRect();
-          savedRect = lastRect || savedRect;
-        }
-        maximized = true;
-        dialog.classList.add('is-maximized', 'is-placed');
-        dialog.style.transform = 'none';
-        dialog.style.left = '0px';
-        dialog.style.top = '0px';
-        dialog.style.width = '100vw';
-        dialog.style.height = '100vh';
-        dialog.style.right = '0px';
-        dialog.style.bottom = '0px';
-      } else {
-        maximized = false;
-        dialog.classList.remove('is-maximized');
-        if (isUsableRect(savedRect) || isUsableRect(lastRect)) applyRect(savedRect || lastRect);
-        else centerDefault();
+    const layoutDurationMs = () => {
+      const raw = Number.parseFloat(
+        getComputedStyle(dialog).getPropertyValue('--sp-dialog-layout-duration')
+      );
+      return Number.isFinite(raw) && raw > 0 ? raw : 340;
+    };
+
+    const playLayoutTransition = (applyNext) => {
+      if (!dialog.open || prefersReducedMotion()) {
+        applyNext();
+        return;
       }
-      syncMaximizeBtn();
-      schedulePersist();
+      const from = currentRect();
+      dialog.classList.add('is-placed');
+      dialog.style.transform = 'none';
+      dialog.style.right = '';
+      dialog.style.bottom = '';
+      dialog.style.left = `${Math.round(from.left)}px`;
+      dialog.style.top = `${Math.round(from.top)}px`;
+      dialog.style.width = `${Math.round(from.width)}px`;
+      dialog.style.height = `${Math.round(from.height)}px`;
+      dialog.classList.remove('is-layout-animating');
+      void dialog.offsetWidth;
+      dialog.classList.add('is-layout-animating');
+      applyNext();
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        dialog.removeEventListener('transitionend', onEnd);
+        dialog.classList.remove('is-layout-animating');
+      };
+      const onEnd = (event) => {
+        if (event.target !== dialog) return;
+        if (!['left', 'top', 'width', 'height', 'border-radius'].includes(event.propertyName)) {
+          return;
+        }
+        settle();
+      };
+      dialog.addEventListener('transitionend', onEnd);
+      window.setTimeout(settle, layoutDurationMs() + 80);
+    };
+
+    const applyMaximizedStyles = () => {
+      dialog.classList.add('is-maximized', 'is-placed');
+      dialog.style.transform = 'none';
+      dialog.style.left = '0px';
+      dialog.style.top = '0px';
+      dialog.style.width = '100vw';
+      dialog.style.height = '100vh';
+      dialog.style.right = '0px';
+      dialog.style.bottom = '0px';
+    };
+
+    const setMaximized = (next, { animate = false } = {}) => {
+      if (dialog.classList.contains('is-layout-animating')) return;
+      const apply = () => {
+        if (next) {
+          if (!maximized) {
+            if (dialog.open) rememberRect();
+            savedRect = lastRect || savedRect;
+          }
+          maximized = true;
+          applyMaximizedStyles();
+        } else {
+          maximized = false;
+          dialog.classList.remove('is-maximized');
+          if (isUsableRect(savedRect) || isUsableRect(lastRect)) applyRect(savedRect || lastRect);
+          else centerDefault();
+        }
+        syncMaximizeBtn();
+        schedulePersist();
+      };
+      if (animate && dialog.open) playLayoutTransition(apply);
+      else apply();
     };
 
     const restoreLayout = () => {
@@ -718,7 +784,7 @@
     maximizeBtn?.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setMaximized(!maximized);
+      setMaximized(!maximized, { animate: true });
     });
 
     head?.addEventListener('pointerdown', (event) => {
@@ -773,12 +839,14 @@
 
     head?.addEventListener('dblclick', (event) => {
       if (event.target.closest('button, a, input, select, textarea, label')) return;
-      setMaximized(!maximized);
+      setMaximized(!maximized, { animate: true });
     });
 
     if (typeof ResizeObserver === 'function') {
       const resizeObserver = new ResizeObserver(() => {
-        if (!dialog.open || maximized || drag) return;
+        if (!dialog.open || maximized || drag || dialog.classList.contains('is-layout-animating')) {
+          return;
+        }
         rememberRect();
         schedulePersist();
       });
@@ -810,10 +878,38 @@
     dialog.addEventListener('toggle', syncPageScrollLock);
     dialog.addEventListener('close', () => {
       drag = null;
-      dialog.classList.remove('is-dragging');
+      dialog.classList.remove('is-dragging', 'is-leaving', 'is-entering', 'is-layout-animating');
       persistLayout();
       if (maximized) dialog.classList.remove('is-maximized');
       syncPageScrollLock();
+    });
+
+    const nativeClose = typeof dialog.close === 'function' ? dialog.close.bind(dialog) : null;
+    let leavePromise = null;
+    const requestClose = (returnValue) => {
+      if (returnValue !== undefined) {
+        dialog.returnValue = String(returnValue);
+      }
+      if (!dialog.open) return;
+      if (leavePromise) return leavePromise;
+      leavePromise = playWorkspaceDialogLeave(dialog)
+        .catch(() => {})
+        .then(() => {
+          leavePromise = null;
+          if (!dialog.open) return;
+          if (nativeClose) nativeClose();
+          else dialog.removeAttribute('open');
+        });
+      return leavePromise;
+    };
+    if (nativeClose) {
+      dialog.close = requestClose;
+    }
+
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      if (dialog.getAttribute('data-require-close-btn') === '1') return;
+      requestClose();
     });
 
     dialog.addEventListener(
@@ -824,7 +920,7 @@
         event.stopPropagation();
         // Search stats dashboard stays open until the Close button is used.
         if (dialog.getAttribute('data-require-close-btn') === '1') return;
-        dialog.close();
+        requestClose();
       },
       true
     );
@@ -1257,6 +1353,10 @@
     compareDensity: 'riskregister_sp_compare_density',
     compareColumns: 'riskregister_sp_compare_columns',
     projectColumns: 'riskregister_sp_project_columns',
+    projectColWidths: 'riskregister_sp_project_col_widths',
+    compareColWidths: 'riskregister_sp_compare_col_widths',
+    listColWidths: 'riskregister_sp_list_col_widths',
+    listColOrder: 'riskregister_sp_list_col_order',
     listDensity: 'riskregister_sp_list_density',
     listColumns: 'riskregister_sp_list_columns',
     catalogDensity: 'riskregister_sp_catalog_density',
@@ -1268,7 +1368,8 @@
   const PROJECT_DEFAULT_HIDDEN_COLS = [];
   const LIST_TOGGLE_COLS = ['match', 'items', 'modified', 'modified_by', 'created_by', 'actions'];
   const LIST_DEFAULT_HIDDEN_COLS = [];
-  const LIST_FIXED_COL_COUNT = 2;
+  const LIST_FIXED_COLS = ['select', 'name'];
+  const LIST_FIXED_COL_COUNT = LIST_FIXED_COLS.length;
 
   const readHiddenCols = (storageKey, allowed, fallback) => {
     try {
@@ -1300,13 +1401,253 @@
 
   const writeProjectHiddenCols = (hidden) => writeHiddenCols(SEARCH_PREF.projectColumns, hidden);
 
+  const MIN_DIALOG_COL_PX = {
+    name: 148,
+    type: 72,
+    size: 68,
+    modified: 100,
+    created: 100,
+    modified_by: 108,
+    created_by: 108,
+    actions: 132,
+    archive: 76,
+    diff: 72,
+    hide: 36,
+    select: 40,
+    match: 100,
+    items: 88,
+  };
+
+  const bindColumnResize = (host, options = {}) => {
+    const storageKey = typeof options === 'string' ? options : options.storageKey;
+    const tableSelector =
+      typeof options === 'string' ? '.sharepoint-dialog-table' : options.tableSelector || '.sharepoint-dialog-table';
+    const handleRowSelector =
+      typeof options === 'string' ? 'thead tr' : options.handleRowSelector || 'thead tr';
+    const tables = host instanceof Element ? [...host.querySelectorAll(tableSelector)] : [];
+    if (host instanceof HTMLTableElement && tables.length === 0) tables.push(host);
+    if (!host || !storageKey || tables.length === 0) {
+      return { apply: () => {} };
+    }
+
+    const readWidths = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(storageKey) || 'null');
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+        const next = {};
+        Object.entries(raw).forEach(([col, value]) => {
+          const width = Number(value);
+          if (col && Number.isFinite(width) && width >= 36) {
+            next[col] = Math.round(width);
+          }
+        });
+        return next;
+      } catch {
+        return {};
+      }
+    };
+
+    let widths = readWidths();
+    let persistTimer = 0;
+
+    const persist = () => {
+      window.clearTimeout(persistTimer);
+      persistTimer = window.setTimeout(() => {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(widths));
+        } catch {
+          /* ignore */
+        }
+      }, 120);
+    };
+
+    const apply = () => {
+      tables.forEach((table) => {
+        table.classList.add('is-col-resizable');
+        table.querySelectorAll('th[data-col]').forEach((th) => {
+          const col = th.getAttribute('data-col') || '';
+          const width = widths[col];
+          if (width) {
+            th.style.width = `${width}px`;
+            th.style.minWidth = `${width}px`;
+          } else {
+            th.style.width = '';
+            th.style.minWidth = '';
+          }
+        });
+      });
+    };
+
+    const setWidth = (col, px) => {
+      if (!col) return;
+      const min = MIN_DIALOG_COL_PX[col] || 56;
+      widths[col] = Math.min(760, Math.max(min, Math.round(px)));
+      apply();
+    };
+
+    const resetWidth = (col) => {
+      if (!col || !(col in widths)) return;
+      delete widths[col];
+      apply();
+      persist();
+    };
+
+    const startResize = (event) => {
+      const handle = event.currentTarget;
+      const th = handle instanceof Element ? handle.closest('th[data-col]') : null;
+      const col = th?.getAttribute('data-col') || '';
+      if (!col || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startW = th.getBoundingClientRect().width;
+      host.classList.add('is-col-resizing');
+      handle.classList.add('is-active');
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
+
+      const onMove = (moveEvent) => {
+        if (moveEvent.pointerId !== event.pointerId) return;
+        setWidth(col, startW + (moveEvent.clientX - startX));
+      };
+      const onUp = (upEvent) => {
+        if (upEvent.pointerId !== event.pointerId) return;
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        handle.classList.remove('is-active');
+        host.classList.remove('is-col-resizing');
+        persist();
+        try {
+          handle.releasePointerCapture(upEvent.pointerId);
+        } catch {
+          /* ignore */
+        }
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    };
+
+    tables.forEach((table) => {
+      const handleRow = table.querySelector(handleRowSelector) || table.querySelector('thead tr');
+      handleRow?.querySelectorAll('th[data-col]').forEach((th) => {
+        if (th.querySelector('.sp-col-resize-handle')) return;
+        const handle = document.createElement('span');
+        handle.className = 'sp-col-resize-handle';
+        handle.setAttribute('role', 'separator');
+        handle.setAttribute('aria-orientation', 'vertical');
+        handle.setAttribute('aria-label', `Resize ${th.getAttribute('data-col') || 'column'}`);
+        handle.title = 'Drag to resize. Double-click to reset.';
+        handle.addEventListener('pointerdown', startResize);
+        handle.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        handle.addEventListener('dblclick', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          resetWidth(th.getAttribute('data-col') || '');
+        });
+        th.appendChild(handle);
+      });
+    });
+
+    apply();
+    return { apply };
+  };
+
   const readListHiddenCols = () =>
     readHiddenCols(SEARCH_PREF.listColumns, LIST_TOGGLE_COLS, LIST_DEFAULT_HIDDEN_COLS);
 
   const writeListHiddenCols = (hidden) => writeHiddenCols(SEARCH_PREF.listColumns, hidden);
 
+  const readColOrder = (storageKey, allowed) => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(storageKey) || 'null');
+      if (!Array.isArray(raw)) return [...allowed];
+      const seen = new Set();
+      const next = [];
+      raw.forEach((col) => {
+        if (allowed.includes(col) && !seen.has(col)) {
+          seen.add(col);
+          next.push(col);
+        }
+      });
+      allowed.forEach((col) => {
+        if (!seen.has(col)) next.push(col);
+      });
+      return next;
+    } catch {
+      return [...allowed];
+    }
+  };
+
+  const writeColOrder = (storageKey, order) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(order));
+    } catch {
+      /* ignore */
+    }
+  };
+
   /** @type {Set<string>} */
   let listHiddenCols = readListHiddenCols();
+  let listColOrder = readColOrder(SEARCH_PREF.listColOrder, LIST_TOGGLE_COLS);
+
+  const listColumnSequence = () => [...LIST_FIXED_COLS, ...listColOrder];
+
+  const applyListColumnOrder = () => {
+    const table = document.getElementById('sharepoint-projects-table');
+    if (!table) return;
+    const rank = new Map(listColumnSequence().map((col, index) => [col, index]));
+    table.querySelectorAll('thead tr, tbody tr').forEach((row) => {
+      const cells = [...row.children].filter((cell) => cell.hasAttribute?.('data-col'));
+      if (cells.length < 2) return;
+      cells
+        .slice()
+        .sort((left, right) => {
+          const leftRank = rank.get(left.getAttribute('data-col') || '') ?? 99;
+          const rightRank = rank.get(right.getAttribute('data-col') || '') ?? 99;
+          return leftRank - rightRank;
+        })
+        .forEach((cell) => row.appendChild(cell));
+    });
+  };
+
+  const syncListColumnMenuOrder = () => {
+    const menu = document.getElementById('sharepoint-list-columns-menu');
+    if (!menu) return;
+    listColOrder.forEach((col) => {
+      const row = menu.querySelector(`[data-col-row="${col}"]`);
+      if (row) menu.appendChild(row);
+    });
+    menu.querySelectorAll('[data-col-row]').forEach((row) => {
+      const col = row.getAttribute('data-col-row') || '';
+      const index = listColOrder.indexOf(col);
+      const up = row.querySelector('[data-col-move="up"]');
+      const down = row.querySelector('[data-col-move="down"]');
+      if (up instanceof HTMLButtonElement) up.disabled = index <= 0;
+      if (down instanceof HTMLButtonElement) down.disabled = index < 0 || index >= listColOrder.length - 1;
+    });
+  };
+
+  const moveListColumn = (col, delta) => {
+    const index = listColOrder.indexOf(col);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= listColOrder.length) return;
+    const next = listColOrder.slice();
+    const [item] = next.splice(index, 1);
+    next.splice(nextIndex, 0, item);
+    listColOrder = next;
+    writeColOrder(SEARCH_PREF.listColOrder, listColOrder);
+    syncListColumnMenuOrder();
+    applyListColumnOrder();
+    listColResize.apply();
+  };
 
   const listVisibleColspan = () => {
     let count = LIST_FIXED_COL_COUNT;
@@ -1354,7 +1695,19 @@
     document.querySelectorAll('#sharepoint-projects-tbody .sharepoint-empty-row td').forEach((cell) => {
       cell.colSpan = span;
     });
+    syncListColumnMenuOrder();
+    applyListColumnOrder();
+    listColResize.apply();
   };
+
+  const listColResize = bindColumnResize(
+    document.getElementById('sharepoint-table-card') || document.getElementById('sharepoint-projects-table'),
+    {
+      storageKey: SEARCH_PREF.listColWidths,
+      tableSelector: '#sharepoint-projects-table',
+      handleRowSelector: 'thead tr:not(.sharepoint-table-filters)',
+    }
+  );
 
   const bindListColumnsPicker = () => {
     const picker = document.getElementById('sharepoint-list-columns-picker');
@@ -1385,6 +1738,15 @@
         else listHiddenCols.add(col);
         writeListHiddenCols(listHiddenCols);
         applyListHiddenCols();
+      });
+    });
+    picker.querySelectorAll('[data-col-move]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const col = btn.getAttribute('data-col') || '';
+        const delta = btn.getAttribute('data-col-move') === 'up' ? -1 : 1;
+        moveListColumn(col, delta);
       });
     });
     picker.querySelector('.sp-compare-columns-menu')?.addEventListener('click', (event) => {
@@ -2038,7 +2400,7 @@
 
   const playWorkspaceDialogEnter = (dialog) => {
     if (!dialog || prefersReducedMotion()) return;
-    dialog.classList.remove('is-entering');
+    dialog.classList.remove('is-entering', 'is-leaving');
     void dialog.offsetWidth;
     dialog.classList.add('is-entering');
     const surface = dialog.querySelector(':scope > .response-dialog-form');
@@ -2060,6 +2422,45 @@
       dialog.removeEventListener('animationend', done);
     }, durationMs + 180);
   };
+
+  const workspaceExitDurationMs = (dialog) => {
+    const raw = Number.parseFloat(
+      getComputedStyle(dialog).getPropertyValue('--sp-dialog-exit-duration')
+    );
+    return Number.isFinite(raw) && raw > 0 ? raw : 240;
+  };
+
+  const playWorkspaceDialogLeave = (dialog) =>
+    new Promise((resolve) => {
+      if (!dialog?.open) {
+        resolve();
+        return;
+      }
+      const animation = dialog.getAttribute('data-list-animation') || '';
+      if (prefersReducedMotion() || animation === 'none') {
+        dialog.classList.remove('is-leaving');
+        resolve();
+        return;
+      }
+      dialog.classList.remove('is-entering', 'is-leaving');
+      void dialog.offsetWidth;
+      dialog.classList.add('is-leaving');
+      let settled = false;
+      const surface = dialog.querySelector(':scope > .response-dialog-form');
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        dialog.removeEventListener('animationend', onEnd);
+        resolve();
+      };
+      const onEnd = (event) => {
+        if (event.target !== dialog && event.target !== surface) return;
+        if (String(event.animationName || '').includes('backdrop')) return;
+        settle();
+      };
+      dialog.addEventListener('animationend', onEnd);
+      window.setTimeout(settle, workspaceExitDurationMs(dialog) + 80);
+    });
 
   const snapshotTreeRowTops = (tbody) => {
     const map = new Map();
@@ -3089,12 +3490,15 @@
     const emptyRowHtml = (message) =>
       `<tr><td colspan="${visibleColspan()}" class="sharepoint-dialog-empty">${message}</td></tr>`;
 
+    const colResize = bindColumnResize(dialog, SEARCH_PREF.projectColWidths);
+
     const applyHiddenColsToDialog = () => {
       dialog.setAttribute('data-hidden-cols', [...hiddenCols].join(' '));
       columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
         const col = input.getAttribute('data-col-toggle') || '';
         input.checked = !hiddenCols.has(col);
       });
+      colResize.apply();
     };
 
     const setColumnHidden = (col, hide) => {
@@ -3998,12 +4402,15 @@
     const emptyRowHtml = (message) =>
       `<tr><td colspan="${visibleColspan()}" class="sharepoint-dialog-empty">${message}</td></tr>`;
 
+    const colResize = bindColumnResize(dialog, SEARCH_PREF.compareColWidths);
+
     const applyHiddenColsToDialog = () => {
       dialog.setAttribute('data-hidden-cols', [...hiddenCols].join(' '));
       columnsPicker?.querySelectorAll('input[data-col-toggle]').forEach((input) => {
         const col = input.getAttribute('data-col-toggle') || '';
         input.checked = !hiddenCols.has(col);
       });
+      colResize.apply();
     };
 
     const setColumnHidden = (col, hide) => {
@@ -5255,6 +5662,7 @@
     qrButtonHtml,
     bindWorkspaceDialog,
     playWorkspaceDialogEnter,
+    playWorkspaceDialogLeave,
     fileExtension,
     resolveMeta,
     formatModified,
@@ -7993,6 +8401,7 @@
       .join('');
 
     settleProjectResults();
+    applyListColumnOrder();
     bindRowEvents();
     bindQrButtons(tbody);
     syncCompareBar();
