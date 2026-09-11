@@ -8680,7 +8680,6 @@
     }
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`;
     window.history.replaceState(null, '', next);
-    window.RiskRegisterNavMemory?.rememberCurrent?.();
   };
 
   const applySearch = ({ resetPage = true, syncInputs = false } = {}) => {

@@ -1,164 +1,11 @@
 (function () {
     const navKey = 'ra-nav';
-    const LAST_DEST_KEY = 'riskregister_last_nav';
-    const RESUME_COOKIE = 'riskregister_resume';
     const root = document.documentElement;
     const closeTimers = new WeakMap();
 
     const getNavMode = () => {
         const mode = localStorage.getItem(navKey) || 'menu';
         return mode === 'bar' ? 'bar' : 'menu';
-    };
-
-    const destFromLocation = (href) => {
-        try {
-            const url = new URL(href, window.location.href);
-            const path = url.pathname.replace(/\\/g, '/').toLowerCase();
-            const file = path.split('/').pop() || '';
-            const view = (url.searchParams.get('view') || '').toLowerCase();
-            const hash = (url.hash || '').toLowerCase();
-            if (path.includes('/ticket-dossier')) return 'ticket';
-            if (file === 'templates.php') return 'templates';
-            if (file === 'help.php') return 'help';
-            if (path.includes('/admin/')) return 'admin';
-            if (file === 'sharepoint.php' || path.endsWith('/sharepoint.php')) {
-                if (view === 'catalog') return 'catalogs';
-                if (view === 'owners') return 'owners';
-                if (view === 'heatmap') return 'storage';
-                return 'sharepoint';
-            }
-            if (file === 'index.php' || file === '' || path.endsWith('/public/') || path.endsWith('/public')) {
-                if (hash.includes('upload')) return 'upload';
-                return 'find';
-            }
-            return '';
-        } catch {
-            return '';
-        }
-    };
-
-    const isDirectoryLaunch = (href) => {
-        try {
-            const url = new URL(href || window.location.href, window.location.href);
-            const file = (url.pathname.replace(/\\/g, '/').split('/').pop() || '').toLowerCase();
-            return file === '' || file === 'public' || !/\.php$/i.test(file);
-        } catch {
-            return false;
-        }
-    };
-
-    const sanitizeStoredPath = (value) => {
-        const raw = String(value || '').trim();
-        if (!raw || raw.length > 2000) return '';
-        try {
-            const url = new URL(raw, window.location.href);
-            if (url.origin !== window.location.origin) return '';
-            if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
-            ['catalog_shared', 'owners_shared', 'emailed', 'deleted', 'deleted_bulk', 'shared', 'ok', 'flash', 'csrf'].forEach((key) => {
-                url.searchParams.delete(key);
-            });
-            const path = `${url.pathname}${url.search}${url.hash}`;
-            const lower = path.toLowerCase();
-            if (
-                lower.includes('login.php')
-                || lower.includes('logout.php')
-                || lower.includes('catalog-share.php')
-                || lower.includes('javascript:')
-            ) {
-                return '';
-            }
-            return path;
-        } catch {
-            return '';
-        }
-    };
-
-    const toPublicRelative = (storedPath) => {
-        try {
-            const url = new URL(storedPath, window.location.origin);
-            const pathname = url.pathname.replace(/\\/g, '/');
-            const lower = pathname.toLowerCase();
-            let rest = '';
-            const pub = lower.lastIndexOf('/public/');
-            if (pub !== -1) {
-                rest = pathname.slice(pub + '/public/'.length);
-            } else if (lower.includes('/ticket-dossier')) {
-                rest = pathname.slice(lower.lastIndexOf('/ticket-dossier')).replace(/^\/+/, '');
-            } else if (lower.includes('/admin/')) {
-                rest = `admin/${pathname.slice(lower.lastIndexOf('/admin/') + '/admin/'.length)}`;
-            } else {
-                rest = pathname.split('/').pop() || '';
-            }
-            rest = rest.replace(/^\/+/, '');
-            if (!rest || rest.toLowerCase() === 'public') return '';
-            if (/^ticket-dossier\/?$/i.test(rest)) {
-                rest = 'ticket-dossier/';
-            }
-            return `${rest}${url.search}${url.hash}`;
-        } catch {
-            return '';
-        }
-    };
-
-    const setResumeCookie = (relative) => {
-        const value = String(relative || '').trim();
-        if (!value || value.length > 1800) return;
-        const maxAge = 30 * 24 * 60 * 60;
-        const secure = location.protocol === 'https:' ? '; Secure' : '';
-        document.cookie = `${RESUME_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
-    };
-
-    const readLastDest = () => {
-        try {
-            const raw = JSON.parse(localStorage.getItem(LAST_DEST_KEY) || '{}');
-            return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-        } catch {
-            return {};
-        }
-    };
-
-    const rewriteMenuHrefs = () => {
-        const stored = readLastDest();
-        document.querySelectorAll('a.home-link[href], a.topbar-menu-account-card[href]').forEach((link) => {
-            const dest = (link.getAttribute('data-nav-dest') || destFromLocation(link.getAttribute('href') || '')).trim();
-            if (!dest || dest === 'help') return;
-            const saved = sanitizeStoredPath(stored[dest]);
-            if (!saved) return;
-            link.setAttribute('href', saved);
-        });
-    };
-
-    const saveCurrentPage = () => {
-        if (document.getElementById('sharepoint-search')?.getAttribute('data-public') === '1') return;
-        const dest = destFromLocation(window.location.href);
-        if (!dest || dest === 'help') return;
-        const path = sanitizeStoredPath(`${window.location.pathname}${window.location.search}${window.location.hash}`);
-        if (!path) return;
-        const stored = readLastDest();
-        stored[dest] = path;
-        const skipLast = dest === 'find' && isDirectoryLaunch(window.location.href);
-        if (!skipLast) {
-            stored.last = path;
-            const relative = toPublicRelative(path);
-            if (relative) {
-                setResumeCookie(relative);
-            }
-        }
-        try {
-            localStorage.setItem(LAST_DEST_KEY, JSON.stringify(stored));
-        } catch {
-            /* ignore quota */
-        }
-    };
-
-    const rememberCurrent = () => {
-        saveCurrentPage();
-        rewriteMenuHrefs();
-    };
-
-    window.RiskRegisterNavMemory = {
-        rememberCurrent,
-        destFromLocation,
     };
 
     const syncModeButtons = () => {
@@ -248,7 +95,6 @@
         }
         clearCloseTimer(menuRoot);
         closeForeignPanels();
-        rememberCurrent();
         panel.hidden = false;
         // Force a reflow so the fade-in transition runs from opacity 0.
         void panel.offsetWidth;
@@ -345,13 +191,6 @@
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.topbar-menu').forEach((menuRoot) => {
             organizeMenuGroups(menuRoot);
-        });
-
-        rememberCurrent();
-        window.addEventListener('hashchange', rememberCurrent);
-        window.addEventListener('pagehide', saveCurrentPage);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') saveCurrentPage();
         });
 
         applyNavMode(getNavMode());

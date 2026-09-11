@@ -14,7 +14,7 @@ if ($auth->currentUser() !== null && !$auth->needsSetup()) {
     $user = $auth->currentUser();
     $target = $rawNext !== ''
         ? $appModules->resolveNext($rawNext, $user)
-        : $appModules->resumeOrHome($user);
+        : $appModules->homeUrl($user);
     header('Location: ' . $target);
     exit;
 }
@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $target = $rawNext !== ''
                 ? $appModules->resolveNext($rawNext, $user)
-                : $appModules->resumeOrHome($user);
+                : $appModules->homeUrl($user);
             header('Location: ' . $target);
             exit;
         } else {

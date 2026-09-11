@@ -36,7 +36,6 @@ use RiskAssessment\Mail\SmtpSettings;
 
 $currentUser = $auth->requireAuth();
 $appModules = \RiskAssessment\AppModules::instance();
-$appModules->redirectToResumeIfLaunch($currentUser);
 $appModules->require(\RiskAssessment\AppModules::RISK, $currentUser);
 $actor = Actor::fromUser($currentUser);
 $repository = new AssessmentRepository($pdo);
@@ -1785,7 +1784,6 @@ $renderProjectLockBadge = static function (array $project): void {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($branding->documentTitle()) ?></title>
-    <?php require __DIR__ . '/includes/resume-launch-head.php'; ?>
     <?php require __DIR__ . '/includes/theme-head.php'; ?>
     <?php require __DIR__ . '/includes/head-branding.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
