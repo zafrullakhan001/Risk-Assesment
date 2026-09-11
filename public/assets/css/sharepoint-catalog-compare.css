@@ -140,6 +140,28 @@
     box-shadow: inset 3px 0 0 color-mix(in srgb, #d97706 70%, transparent);
 }
 
+#sharepoint-catalog-compare-dialog[data-presence-view="left"] .sharepoint-catalog-compare-grid,
+#sharepoint-catalog-compare-dialog[data-presence-view="right"] .sharepoint-catalog-compare-grid,
+#sharepoint-catalog-compare-dialog[data-presence-view="left"] .sp-cc-row,
+#sharepoint-catalog-compare-dialog[data-presence-view="right"] .sp-cc-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+#sharepoint-catalog-compare-dialog[data-presence-view="left"] #sharepoint-catalog-compare-right-head,
+#sharepoint-catalog-compare-dialog[data-presence-view="right"] #sharepoint-catalog-compare-left-head,
+#sharepoint-catalog-compare-dialog[data-presence-view="left"] .sp-cc-side.is-empty,
+#sharepoint-catalog-compare-dialog[data-presence-view="right"] .sp-cc-side.is-empty {
+    display: none;
+}
+
+#sharepoint-catalog-compare-dialog[data-presence-view="left"] .sp-cc-side:not(.is-empty),
+#sharepoint-catalog-compare-dialog[data-presence-view="right"] .sp-cc-side:not(.is-empty) {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) auto minmax(18rem, 2fr);
+    align-items: center;
+    gap: 0.35rem 0.8rem;
+}
+
 #sharepoint-catalog-compare-dialog .sp-cc-side {
     min-width: 0;
     display: flex;
@@ -225,6 +247,8 @@
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="files"] [data-col="files"],
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="folders"] [data-col="folders"],
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="modified"] [data-col="modified"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="modified_by"] [data-col="modified_by"],
+#sharepoint-catalog-compare-dialog[data-hidden-cols~="created_by"] [data-col="created_by"],
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"] [data-col="diff"],
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="actions"] [data-col="actions"] {
     display: none;
@@ -242,6 +266,13 @@
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-col-head--meta,
 #sharepoint-catalog-compare-dialog[data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-row-tools {
     display: none;
+}
+
+#sharepoint-catalog-compare-dialog[data-presence-view="left"][data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-row,
+#sharepoint-catalog-compare-dialog[data-presence-view="right"][data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sp-cc-row,
+#sharepoint-catalog-compare-dialog[data-presence-view="left"][data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sharepoint-catalog-compare-grid,
+#sharepoint-catalog-compare-dialog[data-presence-view="right"][data-hidden-cols~="diff"][data-hidden-cols~="actions"] .sharepoint-catalog-compare-grid {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 #sharepoint-catalog-compare-dialog .sharepoint-catalog-compare-pager {
@@ -272,5 +303,10 @@
     #sharepoint-catalog-compare-dialog .sp-cc-row-tools {
         flex-wrap: wrap;
         justify-content: flex-start;
+    }
+
+    #sharepoint-catalog-compare-dialog[data-presence-view="left"] .sp-cc-side:not(.is-empty),
+    #sharepoint-catalog-compare-dialog[data-presence-view="right"] .sp-cc-side:not(.is-empty) {
+        display: flex;
     }
 }

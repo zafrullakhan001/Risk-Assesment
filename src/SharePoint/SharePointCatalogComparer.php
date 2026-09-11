@@ -451,7 +451,7 @@ final class SharePointCatalogComparer
 
         $visibleSql = $includeArchived
             ? '1=1'
-            : SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+            : SharePointArchiveRepository::visibleProjectSql('i');
         $placeholders = [];
         $params = [':source_key' => $sourceKey];
         foreach ($names as $index => $name) {
@@ -462,21 +462,50 @@ final class SharePointCatalogComparer
         $inList = implode(',', $placeholders);
         $statement = $this->pdo->prepare(
             "SELECT
-                project_name,
+                i.project_name,
                 COUNT(*) AS item_count,
-                SUM(CASE WHEN LOWER(item_type) = 'file' THEN 1 ELSE 0 END) AS file_count,
-                SUM(CASE WHEN LOWER(item_type) = 'folder' THEN 1 ELSE 0 END) AS folder_count,
-                MAX(last_modified) AS last_modified,
+                SUM(CASE WHEN LOWER(i.item_type) = 'file' THEN 1 ELSE 0 END) AS file_count,
+                SUM(CASE WHEN LOWER(i.item_type) = 'folder' THEN 1 ELSE 0 END) AS folder_count,
+                MAX(i.last_modified) AS last_modified,
+                COALESCE((
+                    SELECT latest.modified_by
+                    FROM sharepoint_items latest
+                    WHERE latest.source_key = i.source_key
+                      AND latest.project_name = i.project_name
+                      AND TRIM(IFNULL(latest.modified_by, '')) != ''
+                    ORDER BY
+                        CASE WHEN IFNULL(latest.last_modified, '') = '' THEN 1 ELSE 0 END ASC,
+                        latest.last_modified DESC,
+                        latest.id DESC
+                    LIMIT 1
+                ), '') AS modified_by,
+                COALESCE((
+                    SELECT creator.person
+                    FROM sharepoint_items creator
+                    WHERE creator.source_key = i.source_key
+                      AND creator.project_name = i.project_name
+                      AND TRIM(IFNULL(creator.person, '')) != ''
+                    ORDER BY
+                        CASE
+                            WHEN LOWER(creator.item_type) = 'folder'
+                             AND (creator.relative_path = '' OR creator.relative_path = creator.project_name OR creator.relative_path = creator.name)
+                            THEN 0 ELSE 1
+                        END ASC,
+                        CASE WHEN IFNULL(creator.date_created, '') = '' THEN 1 ELSE 0 END ASC,
+                        creator.date_created ASC,
+                        creator.id ASC
+                    LIMIT 1
+                ), '') AS created_by,
                 MAX(CASE
-                    WHEN LOWER(item_type) = 'folder'
-                     AND (relative_path = '' OR relative_path = project_name OR relative_path = name)
-                    THEN web_url ELSE ''
+                    WHEN LOWER(i.item_type) = 'folder'
+                     AND (i.relative_path = '' OR i.relative_path = i.project_name OR i.relative_path = i.name)
+                    THEN i.web_url ELSE ''
                 END) AS folder_url
-             FROM sharepoint_items
-             WHERE source_key = :source_key
-               AND project_name IN ({$inList})
+             FROM sharepoint_items i
+             WHERE i.source_key = :source_key
+               AND i.project_name IN ({$inList})
                AND {$visibleSql}
-             GROUP BY project_name"
+             GROUP BY i.project_name"
         );
         $statement->execute($params);
         $out = [];
@@ -491,6 +520,8 @@ final class SharePointCatalogComparer
                 'file_count' => (int) ($row['file_count'] ?? 0),
                 'folder_count' => (int) ($row['folder_count'] ?? 0),
                 'last_modified' => trim((string) ($row['last_modified'] ?? '')),
+                'modified_by' => trim((string) ($row['modified_by'] ?? '')),
+                'created_by' => trim((string) ($row['created_by'] ?? '')),
                 'folder_url' => trim((string) ($row['folder_url'] ?? '')),
             ];
         }
@@ -516,6 +547,8 @@ final class SharePointCatalogComparer
             'file_count' => (int) ($row[$prefix . 'file_count'] ?? 0),
             'folder_count' => (int) ($row[$prefix . 'folder_count'] ?? 0),
             'last_modified' => trim((string) ($row[$prefix . 'modified'] ?? '')),
+            'modified_by' => '',
+            'created_by' => '',
             'folder_url' => '',
         ];
     }

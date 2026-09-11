@@ -44,7 +44,7 @@
   const typeChipsRoot = document.getElementById('sharepoint-catalog-compare-type-chips');
 
   const COLUMN_PREF_KEY = 'riskregister_sp_catalog_compare_columns';
-  const TOGGLE_COLUMNS = ['items', 'files', 'folders', 'modified', 'diff', 'actions'];
+  const TOGGLE_COLUMNS = ['items', 'files', 'folders', 'modified', 'modified_by', 'created_by', 'diff', 'actions'];
   const readHiddenColumns = () => {
     try {
       const saved = JSON.parse(localStorage.getItem(COLUMN_PREF_KEY) || '[]');
@@ -291,6 +291,12 @@
         <span class="sp-cc-field" data-col="files"><b>Files</b> ${Number(side.file_count || 0)}</span>
         <span class="sp-cc-field" data-col="folders"><b>Folders</b> ${Number(side.folder_count || 0)}</span>
         <span class="sp-cc-field" data-col="modified"><b>Modified</b> ${escapeHtml(modified)}</span>
+        <span class="sp-cc-field" data-col="modified_by"><b>Modified By</b> ${escapeHtml(
+          side.modified_by || '—'
+        )}</span>
+        <span class="sp-cc-field" data-col="created_by"><b>Created By</b> ${escapeHtml(
+          side.created_by || '—'
+        )}</span>
       </div>
     </article>`;
   };
@@ -307,10 +313,11 @@
       );
     }
     if (left) {
+      const label = state.presence === 'left' && row.presence === 'left' ? 'Open' : 'Left';
       buttons.push(
         `<button type="button" class="button ghost sp-cc-open" data-side="left" data-project-name="${escapeHtml(
           left.project_name || ''
-        )}" title="Open left project">Left</button>`
+        )}" title="Open left project">${label}</button>`
       );
       if (left.folder_url) {
         buttons.push(
@@ -319,10 +326,11 @@
       }
     }
     if (right) {
+      const label = state.presence === 'right' && row.presence === 'right' ? 'Open' : 'Right';
       buttons.push(
         `<button type="button" class="button ghost sp-cc-open" data-side="right" data-project-name="${escapeHtml(
           right.project_name || ''
-        )}" title="Open right project">Right</button>`
+        )}" title="Open right project">${label}</button>`
       );
       if (right.folder_url) {
         buttons.push(
@@ -344,6 +352,8 @@
     const rightTitle = payload.right?.title || catalogTitle(state.right);
     if (leftHead) leftHead.textContent = leftTitle;
     if (rightHead) rightHead.textContent = rightTitle;
+    const presenceView = payload.presence === 'left' || payload.presence === 'right' ? payload.presence : 'compare';
+    dialog.setAttribute('data-presence-view', presenceView);
     if (!rows.length) {
       rowsEl.innerHTML = `<p class="sharepoint-dialog-empty">No project folders match this comparison.</p>`;
       return;
@@ -539,20 +549,52 @@
     const leftTitle = compareCache.leftMeta?.title || catalogTitle(state.left);
     const rightTitle = compareCache.rightMeta?.title || catalogTitle(state.right);
     const columns = [
-      { key: 'left_project', label: `${leftTitle} project`, value: (row) => row.left?.project_name || '' },
-      { key: 'right_project', label: `${rightTitle} project`, value: (row) => row.right?.project_name || '' },
-      { key: 'left_items', label: `${leftTitle} items`, group: 'items', value: (row) => row.left?.item_count ?? '' },
-      { key: 'right_items', label: `${rightTitle} items`, group: 'items', value: (row) => row.right?.item_count ?? '' },
-      { key: 'left_files', label: `${leftTitle} files`, group: 'files', value: (row) => row.left?.file_count ?? '' },
-      { key: 'right_files', label: `${rightTitle} files`, group: 'files', value: (row) => row.right?.file_count ?? '' },
-      { key: 'left_folders', label: `${leftTitle} folders`, group: 'folders', value: (row) => row.left?.folder_count ?? '' },
-      { key: 'right_folders', label: `${rightTitle} folders`, group: 'folders', value: (row) => row.right?.folder_count ?? '' },
-      { key: 'left_modified', label: `${leftTitle} modified`, group: 'modified', value: (row) => row.left?.last_modified || '' },
-      { key: 'right_modified', label: `${rightTitle} modified`, group: 'modified', value: (row) => row.right?.last_modified || '' },
+      { key: 'left_project', label: `${leftTitle} project`, side: 'left', value: (row) => row.left?.project_name || '' },
+      { key: 'right_project', label: `${rightTitle} project`, side: 'right', value: (row) => row.right?.project_name || '' },
+      { key: 'left_items', label: `${leftTitle} items`, side: 'left', group: 'items', value: (row) => row.left?.item_count ?? '' },
+      { key: 'right_items', label: `${rightTitle} items`, side: 'right', group: 'items', value: (row) => row.right?.item_count ?? '' },
+      { key: 'left_files', label: `${leftTitle} files`, side: 'left', group: 'files', value: (row) => row.left?.file_count ?? '' },
+      { key: 'right_files', label: `${rightTitle} files`, side: 'right', group: 'files', value: (row) => row.right?.file_count ?? '' },
+      { key: 'left_folders', label: `${leftTitle} folders`, side: 'left', group: 'folders', value: (row) => row.left?.folder_count ?? '' },
+      { key: 'right_folders', label: `${rightTitle} folders`, side: 'right', group: 'folders', value: (row) => row.right?.folder_count ?? '' },
+      { key: 'left_modified', label: `${leftTitle} modified`, side: 'left', group: 'modified', value: (row) => row.left?.last_modified || '' },
+      { key: 'right_modified', label: `${rightTitle} modified`, side: 'right', group: 'modified', value: (row) => row.right?.last_modified || '' },
+      {
+        key: 'left_modified_by',
+        label: `${leftTitle} modified by`,
+        side: 'left',
+        group: 'modified_by',
+        value: (row) => row.left?.modified_by || '',
+      },
+      {
+        key: 'right_modified_by',
+        label: `${rightTitle} modified by`,
+        side: 'right',
+        group: 'modified_by',
+        value: (row) => row.right?.modified_by || '',
+      },
+      {
+        key: 'left_created_by',
+        label: `${leftTitle} created by`,
+        side: 'left',
+        group: 'created_by',
+        value: (row) => row.left?.created_by || '',
+      },
+      {
+        key: 'right_created_by',
+        label: `${rightTitle} created by`,
+        side: 'right',
+        group: 'created_by',
+        value: (row) => row.right?.created_by || '',
+      },
       { key: 'diff', label: 'Diff', group: 'diff', value: (row) => presenceLabel(row.presence) },
-      { key: 'left_url', label: `${leftTitle} SharePoint URL`, group: 'actions', value: (row) => row.left?.folder_url || '' },
-      { key: 'right_url', label: `${rightTitle} SharePoint URL`, group: 'actions', value: (row) => row.right?.folder_url || '' },
-    ].filter((column) => !column.group || !hiddenColumns.has(column.group));
+      { key: 'left_url', label: `${leftTitle} SharePoint URL`, side: 'left', group: 'actions', value: (row) => row.left?.folder_url || '' },
+      { key: 'right_url', label: `${rightTitle} SharePoint URL`, side: 'right', group: 'actions', value: (row) => row.right?.folder_url || '' },
+    ].filter(
+      (column) =>
+        (!column.group || !hiddenColumns.has(column.group)) &&
+        (state.presence === 'left' ? column.side !== 'right' : state.presence === 'right' ? column.side !== 'left' : true)
+    );
 
     exportCsvBtn.disabled = true;
     const originalLabel = exportCsvBtn.textContent;

@@ -69,7 +69,10 @@ $cleanup();
 
 try {
     $leftItems = [
-        $item('Encore', 'Encore', 'folder', 'Encore'),
+        $item('Encore', 'Encore', 'folder', 'Encore', '2024-01-02T00:00:00Z', [
+            'date_created' => '2023-06-01T00:00:00Z',
+            'person' => 'Bob Builder',
+        ]),
         $item('Encore', 'Plan.pdf', 'file', 'Encore/Plan.pdf', '2024-01-02T00:00:00Z', [
             'modified_by' => 'Alice Chen',
         ]),
@@ -160,6 +163,8 @@ try {
     $assert(($byKey['encore']['presence'] ?? '') === 'both', 'Encore presence is both');
     $assert(($byKey['encore']['left']['project_name'] ?? '') === 'Encore', 'preserves left Encore casing');
     $assert(($byKey['encore']['right']['project_name'] ?? '') === 'encore', 'preserves right encore casing');
+    $assert(($byKey['encore']['left']['modified_by'] ?? '') === 'Alice Chen', 'includes project modified by');
+    $assert(($byKey['encore']['left']['created_by'] ?? '') === 'Bob Builder', 'includes project creator');
     $assert(($byKey['alpha only']['presence'] ?? '') === 'left', 'Alpha Only is left-only');
     $assert($byKey['alpha only']['right'] === null, 'Alpha Only has no right side');
     $assert(($byKey['bravo only']['presence'] ?? '') === 'right', 'Bravo Only is right-only');

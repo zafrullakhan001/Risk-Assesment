@@ -73,6 +73,8 @@ declare(strict_types=1);
                                         <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="files" checked> Files</label>
                                         <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="folders" checked> Folders</label>
                                         <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified" checked> Modified</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="modified_by" checked> Modified By</label>
+                                        <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="created_by" checked> Created By</label>
                                         <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="diff" checked> Diff</label>
                                         <label class="sp-compare-col-option"><input type="checkbox" data-col-toggle="actions" checked> Actions &amp; links</label>
                                     </div>
