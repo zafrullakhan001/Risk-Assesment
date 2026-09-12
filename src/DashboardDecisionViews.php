@@ -302,6 +302,7 @@ final class DashboardDecisionViews
         $evalUpdatedAt = (string) ($evaluation['updated_at'] ?? '');
         $evalUpdatedBy = (string) ($evaluation['updated_by_label'] ?? '');
         $openExceptions = (int) ($insights['residual']['open_findings'] ?? 0);
+        $dueExceptions = (int) ($insights['residual']['due_findings'] ?? 0);
         $evalSavedLabel = 'Not saved yet';
         // Flip to true when the Owners / timelines / evidence overview is needed again.
         $showWorkspaceTab = false;
@@ -470,6 +471,11 @@ final class DashboardDecisionViews
                         </div>
                         <div class="exception-heading-actions">
                             <span class="result-count result-count-badge" id="exception-open-count"><?= $openExceptions ?> open</span>
+                            <span
+                                class="result-count result-count-badge exception-due-count<?= $dueExceptions > 0 ? ' is-due' : '' ?>"
+                                id="exception-due-count"
+                                <?= $dueExceptions > 0 ? '' : 'hidden' ?>
+                            ><?= $dueExceptions ?> due</span>
                             <?php if ($currentId > 0): ?>
                                 <button type="button" class="button button-secondary exception-add-row" id="exception-add-row">
                                     ➕ Add exception
@@ -491,6 +497,7 @@ final class DashboardDecisionViews
                                         <th>Notes &amp; links</th>
                                         <th>Owner</th>
                                         <th>Timeline</th>
+                                        <th>Expiry</th>
                                         <th class="col-actions">Actions</th>
                                     </tr>
                                 </thead>
@@ -498,7 +505,7 @@ final class DashboardDecisionViews
                             </table>
                         </div>
                     <?php else: ?>
-                        <p class="panel-help">📝 Update status inline, or use ✏️ to add comments and up to 5 ServiceNow links. Add or remove rows as needed.</p>
+                        <p class="panel-help">📝 Update status inline, or use ✏️ to add comments and up to 5 ServiceNow links. Extend due exceptions to a later date when needed.</p>
                         <div class="table-scroll" id="exception-table-wrap">
                             <table id="exception-table">
                                 <thead>
@@ -508,6 +515,7 @@ final class DashboardDecisionViews
                                         <th>Notes &amp; links</th>
                                         <th>Owner</th>
                                         <th>Timeline</th>
+                                        <th>Expiry</th>
                                         <th class="col-actions">Actions</th>
                                     </tr>
                                 </thead>
@@ -552,6 +560,10 @@ final class DashboardDecisionViews
                                     <span class="response-dialog-detail-label">🗓️ Timeline</span>
                                     <span class="response-dialog-detail-value" id="exception-edit-timeline"></span>
                                 </div>
+                                <div class="response-dialog-detail-chip" data-exception-detail="expires" hidden>
+                                    <span class="response-dialog-detail-label">📅 Expiry</span>
+                                    <span class="response-dialog-detail-value" id="exception-edit-expires-label"></span>
+                                </div>
                             </div>
                             <div class="response-dialog-detail-block" data-exception-detail="finding" hidden>
                                 <span class="response-dialog-detail-label">📋 Finding</span>
@@ -574,6 +586,20 @@ final class DashboardDecisionViews
                                 <?php endforeach; ?>
                             </select>
                         </label>
+                        <label class="response-dialog-field">
+                            <span>Expiry date</span>
+                            <input type="date" id="exception-edit-expires" name="expires_at">
+                            <span class="field-hint">Reminders and the exception bell use this date (on/after expiry while Open or Approved).</span>
+                        </label>
+                        <div class="exception-extend-block" id="exception-extend-block" hidden>
+                            <label class="response-dialog-field">
+                                <span>Extend to a later date</span>
+                                <div class="exception-extend-row">
+                                    <input type="date" id="exception-extend-date" min="<?= $this->e(date('Y-m-d', strtotime('+1 day'))) ?>">
+                                    <button type="button" class="button button-secondary" id="exception-extend-save">Extend exception</button>
+                                </div>
+                            </label>
+                        </div>
                         <label class="response-dialog-field">
                             <span>User comments</span>
                             <textarea
@@ -626,6 +652,10 @@ final class DashboardDecisionViews
                             <label>
                                 <span>Timeline</span>
                                 <input type="text" name="timeline" id="exception-add-timeline" maxlength="200" placeholder="e.g. Before go-live">
+                            </label>
+                            <label>
+                                <span>Expiry date</span>
+                                <input type="date" name="expires_at" id="exception-add-expires">
                             </label>
                             <label class="exception-add-full">
                                 <span>Impact</span>
@@ -2004,6 +2034,11 @@ final class DashboardDecisionViews
         $comment = (string) ($finding['comment'] ?? '');
         $links = is_array($finding['servicenow_links'] ?? null) ? $finding['servicenow_links'] : [];
         $links = \RiskAssessment\Repositories\FindingStatusRepository::normalizeLinks($links);
+        $expiresAt = \RiskAssessment\Repositories\FindingStatusRepository::normalizeExpiresAt(
+            isset($finding['expires_at']) ? (string) $finding['expires_at'] : null
+        );
+        $isDue = !empty($finding['is_due'])
+            || \RiskAssessment\Repositories\FindingStatusRepository::isDue($expiresAt, $status);
         $commentPreview = $comment !== ''
             ? (mb_strlen($comment) > 90 ? mb_substr($comment, 0, 87) . '…' : $comment)
             : '';
@@ -2013,11 +2048,13 @@ final class DashboardDecisionViews
         ?>
         <tr
             data-finding-id="<?= $this->e($findingId) ?>"
-            class="exception-row"
+            class="exception-row<?= $isDue ? ' is-due' : '' ?>"
             data-finding-text="<?= $this->e((string) ($finding['finding'] ?? '')) ?>"
             data-policy="<?= $this->e((string) ($finding['policy_reference'] ?? '')) ?>"
             data-owner="<?= $this->e((string) ($finding['owner'] ?? '')) ?>"
             data-timeline="<?= $this->e((string) ($finding['timeline'] ?? '')) ?>"
+            data-expires-at="<?= $this->e((string) ($expiresAt ?? '')) ?>"
+            data-is-due="<?= $isDue ? '1' : '0' ?>"
             data-mitigation="<?= $this->e((string) ($finding['mitigation'] ?? '')) ?>"
             data-impact="<?= $this->e((string) ($finding['impact'] ?? '')) ?>"
             data-comment="<?= $this->e($comment) ?>"
@@ -2056,6 +2093,16 @@ final class DashboardDecisionViews
             </td>
             <td><?= $this->e((string) ($finding['owner'] ?? '')) ?></td>
             <td><?= $this->e((string) ($finding['timeline'] ?? '')) ?></td>
+            <td class="exception-expiry-cell">
+                <?php if ($expiresAt !== null): ?>
+                    <span class="exception-expiry-date<?= $isDue ? ' is-due' : '' ?>"><?= $this->e($expiresAt) ?></span>
+                    <?php if ($isDue): ?>
+                        <span class="exception-due-pill">Due</span>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <span class="exception-expiry-date is-empty">—</span>
+                <?php endif; ?>
+            </td>
             <td class="col-actions">
                 <div class="exception-row-actions">
                     <button
@@ -2065,6 +2112,15 @@ final class DashboardDecisionViews
                         title="Edit exception details"
                         aria-label="Edit exception details"
                     >✏️</button>
+                    <?php if ($isDue): ?>
+                        <button
+                            type="button"
+                            class="button button-secondary exception-extend-row"
+                            data-finding-id="<?= $this->e($findingId) ?>"
+                            title="Extend expiry date"
+                            aria-label="Extend expiry date"
+                        >📅</button>
+                    <?php endif; ?>
                     <button
                         type="button"
                         class="button button-secondary exception-delete-row"

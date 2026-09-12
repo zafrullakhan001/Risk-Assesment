@@ -933,6 +933,61 @@ final class AssessmentRepository
         return $row;
     }
 
+    /**
+     * Sync workbook finding timeline (and adaptive exception expiration_date) to a Y-m-d expiry.
+     */
+    public function updateFindingExpiry(int $assessmentId, string $findingId, string $expiresAt): bool
+    {
+        if ($assessmentId <= 0 || trim($findingId) === '') {
+            return false;
+        }
+        $expiresAt = FindingStatusRepository::normalizeExpiresAt($expiresAt);
+        if ($expiresAt === null) {
+            return false;
+        }
+
+        $findingId = trim($findingId);
+        $workbook = $this->loadWorkbook($assessmentId);
+        $findings = array_values($workbook['findings'] ?? []);
+        $updated = false;
+
+        foreach ($findings as $index => $finding) {
+            if (!is_array($finding)) {
+                continue;
+            }
+            $id = trim((string) ($finding['id'] ?? ('finding-' . $index)));
+            if ($id !== $findingId) {
+                continue;
+            }
+            $findings[$index]['id'] = $id;
+            $findings[$index]['timeline'] = $expiresAt;
+            $updated = true;
+            break;
+        }
+
+        if (!$updated) {
+            return false;
+        }
+
+        $workbook['findings'] = $findings;
+
+        if (isset($workbook['exceptions']) && is_array($workbook['exceptions'])) {
+            foreach ($workbook['exceptions'] as $exIndex => $exception) {
+                if (!is_array($exception)) {
+                    continue;
+                }
+                $exId = trim((string) ($exception['exception_id'] ?? $exception['id'] ?? ''));
+                if ($exId === $findingId) {
+                    $workbook['exceptions'][$exIndex]['expiration_date'] = $expiresAt;
+                }
+            }
+        }
+
+        $this->saveWorkbook($assessmentId, $workbook);
+
+        return true;
+    }
+
     /** @return array<string, mixed>|null Deleted finding, or null if not found */
     public function deleteFinding(int $assessmentId, string $findingId): ?array
     {

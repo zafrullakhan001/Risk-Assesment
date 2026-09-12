@@ -12,6 +12,7 @@ final class UserNotificationRepository
     public const TYPE_EDITOR_GRANTED_SENT = 'editor_granted_sent';
     public const TYPE_OWNERSHIP_RECEIVED = 'ownership_received';
     public const TYPE_OWNERSHIP_SENT = 'ownership_sent';
+    public const TYPE_EXCEPTION_DUE = 'exception_due';
 
     public function __construct(
         private readonly PDO $pdo,

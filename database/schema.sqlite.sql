@@ -142,6 +142,8 @@ CREATE TABLE IF NOT EXISTS finding_statuses (
     status TEXT NOT NULL DEFAULT 'Open',
     comment TEXT NOT NULL DEFAULT '',
     servicenow_links TEXT NOT NULL DEFAULT '[]',
+    expires_at TEXT,
+    reminded_at TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (assessment_id, finding_id),
     FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE

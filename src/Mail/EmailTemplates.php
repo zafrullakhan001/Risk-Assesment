@@ -435,6 +435,63 @@ final class EmailTemplates
     /**
      * @return array{html: string, text: string, subject: string}
      */
+    public function exceptionDue(
+        string $projectName,
+        string $projectUrl,
+        string $findingText,
+        string $expiresAt,
+        string $status = 'Open'
+    ): array {
+        $appName = $this->appName();
+        $accent = $this->accentHex();
+        $projectName = trim($projectName) !== '' ? trim($projectName) : 'a risk project';
+        $findingText = trim($findingText);
+        if (mb_strlen($findingText) > 240) {
+            $findingText = mb_substr($findingText, 0, 237) . '…';
+        }
+        if ($findingText === '') {
+            $findingText = 'Governance exception';
+        }
+        $expiresAt = trim($expiresAt);
+        $status = trim($status) !== '' ? trim($status) : 'Open';
+        $today = date('Y-m-d');
+        $overdue = $expiresAt !== '' && $expiresAt < $today;
+
+        $title = $overdue ? 'Exception overdue' : 'Exception due today';
+        $lead = 'An exception on <strong>' . $this->e($projectName) . '</strong> is '
+            . ($overdue ? 'past its expiry date' : 'due today')
+            . ' and still <strong>' . $this->e($status) . '</strong>.';
+        $detail = 'Finding: ' . $findingText
+            . ($expiresAt !== '' ? ' Expiry: ' . $expiresAt . '.' : '')
+            . ' Open the project to close, approve, or extend the exception.';
+        $textLead = 'An exception on ' . $projectName . ' is '
+            . ($overdue ? 'past its expiry date' : 'due today')
+            . ' and still ' . $status . '.';
+
+        $findingBlock = '<div style="margin:12px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;">'
+            . '<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 6px 0;">Finding</div>'
+            . '<div style="font-size:14px;line-height:1.5;color:#0f172a;">' . $this->e($findingText) . '</div>'
+            . ($expiresAt !== ''
+                ? '<div style="margin-top:8px;font-size:12px;font-family:Consolas,monospace;font-weight:700;color:#b91c1c;">Expiry ' . $this->e($expiresAt) . '</div>'
+                : '')
+            . '</div>';
+
+        return $this->accessMessage(
+            $title,
+            $lead . $findingBlock,
+            $detail,
+            $projectUrl,
+            'Open exception tracker',
+            $textLead . "\n\nFinding: " . $findingText
+                . ($expiresAt !== '' ? "\nExpiry: " . $expiresAt : ''),
+            $appName,
+            $accent
+        );
+    }
+
+    /**
+     * @return array{html: string, text: string, subject: string}
+     */
     private function accessMessage(
         string $title,
         string $leadHtml,

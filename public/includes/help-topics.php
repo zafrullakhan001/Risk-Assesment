@@ -197,7 +197,7 @@ HTML,
 <p>Action tabs:</p>
 <ul>
 <li><strong>Risks / Gaps / TBD</strong> — set Taken care, Ignore, Not applicable, Closed, or leave Open. Add a comment. History is kept per item.</li>
-<li><strong>Exceptions</strong> — accepted exceptions, mitigations, owners, and timelines. On the register, ✏️ adds comments and up to 5 ServiceNow links.</li>
+<li><strong>Exceptions</strong> — accepted exceptions, mitigations, owners, timelines, and expiry dates. Due/overdue items appear on the exception bell; extend the date or close/approve them. On the register, ✏️ adds comments, expiry, and up to 5 ServiceNow links.</li>
 <li><strong>Sign-off</strong> — Final evaluation form: evaluator name, notes, and ready-to-go-live. Go-live gates summarize what still blocks a clean sign-off. Sign-off history is kept.</li>
 <li><strong>Versions</strong> — compare and manage uploads of this solution.</li>
 <li><strong>Access</strong> — owners lock or unlock the project, invite editors, and transfer ownership when leaving the team. Grants and transfers notify both parties in-app (people icon / toaster) and by email when SMTP is configured.</li>

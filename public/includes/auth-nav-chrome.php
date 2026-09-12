@@ -13,6 +13,7 @@ if ($navUser === null) {
 }
 ?>
 <?php require __DIR__ . '/shared-access-nav.php'; ?>
+<?php require __DIR__ . '/exception-bell-nav.php'; ?>
 <?php if (!empty($navUser['is_admin'])): ?>
     <?php
     $notifyBrand = \RiskAssessment\Branding::current();

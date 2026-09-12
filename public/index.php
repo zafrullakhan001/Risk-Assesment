@@ -675,6 +675,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status = (string) ($_POST['status'] ?? 'Open');
             $hasComment = array_key_exists('comment', $_POST);
             $hasLinks = array_key_exists('servicenow_links', $_POST);
+            $hasExpires = array_key_exists('expires_at', $_POST);
             $comment = $hasComment ? (string) ($_POST['comment'] ?? '') : null;
             $links = null;
             if ($hasLinks) {
@@ -695,8 +696,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $requireProjectEdit($targetId);
 
-            if (!$findingStatusRepository->upsert($targetId, $findingId, $status, $comment, $links)) {
+            $expiresAt = $hasExpires ? (string) ($_POST['expires_at'] ?? '') : null;
+            if ($hasExpires && $expiresAt !== '' && FindingStatusRepository::normalizeExpiresAt($expiresAt) === null) {
+                throw new RuntimeException('Invalid expiry date. Use YYYY-MM-DD.');
+            }
+
+            if (!$findingStatusRepository->upsert(
+                $targetId,
+                $findingId,
+                $status,
+                $comment,
+                $links,
+                $hasExpires ? $expiresAt : null,
+                $hasExpires
+            )) {
                 throw new RuntimeException('Unable to save exception status.');
+            }
+
+            if ($hasExpires) {
+                $normalizedExpires = FindingStatusRepository::normalizeExpiresAt($expiresAt);
+                if ($normalizedExpires !== null) {
+                    $repository->updateFindingExpiry($targetId, $findingId, $normalizedExpires);
+                }
             }
 
             $record = $repository->findById($targetId);
@@ -713,6 +734,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'status' => FindingStatusRepository::normalizeStatus($status),
                 'comment' => FindingStatusRepository::normalizeComment((string) ($comment ?? '')),
                 'servicenow_links' => FindingStatusRepository::normalizeLinks($links ?? []),
+                'expires_at' => $hasExpires ? FindingStatusRepository::normalizeExpiresAt($expiresAt) : null,
+                'reminded_at' => null,
             ];
 
             echo json_encode([
@@ -720,6 +743,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'status' => $saved['status'],
                 'comment' => $saved['comment'],
                 'servicenow_links' => $saved['servicenow_links'],
+                'expires_at' => $saved['expires_at'] ?? null,
+                'is_due' => FindingStatusRepository::isDue(
+                    $saved['expires_at'] ?? null,
+                    (string) ($saved['status'] ?? 'Open')
+                ),
+                'gates' => $gate,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            $jsonError($exception);
+        }
+        exit;
+    }
+
+    if ($postedAction === 'extend_exception') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $findingId = trim((string) ($_POST['finding_id'] ?? ''));
+            $expiresAt = (string) ($_POST['expires_at'] ?? '');
+
+            if ($targetId <= 0 || $findingId === '') {
+                throw new RuntimeException('Invalid exception extend payload.');
+            }
+
+            $requireProjectEdit($targetId);
+
+            $normalizedExpires = FindingStatusRepository::normalizeExpiresAt($expiresAt);
+            if ($normalizedExpires === null) {
+                throw new RuntimeException('Choose a valid expiry date (YYYY-MM-DD).');
+            }
+            if ($normalizedExpires <= date('Y-m-d')) {
+                throw new RuntimeException('Extend date must be after today.');
+            }
+
+            if (!$findingStatusRepository->extend($targetId, $findingId, $normalizedExpires)) {
+                throw new RuntimeException('Unable to extend exception.');
+            }
+            $repository->updateFindingExpiry($targetId, $findingId, $normalizedExpires);
+
+            $record = $repository->findById($targetId);
+            if ($record === null) {
+                throw new RuntimeException('Assessment not found.');
+            }
+
+            $responses = $responseRepository->listForAssessment($targetId);
+            $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
+            $evaluation = $evaluationRepository->findByAssessmentId($targetId);
+            $notes = (string) ($evaluation['notes'] ?? '');
+            $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+            $saved = $findingStatuses[$findingId] ?? null;
+
+            echo json_encode([
+                'ok' => true,
+                'finding_id' => $findingId,
+                'status' => $saved['status'] ?? 'Open',
+                'expires_at' => $saved['expires_at'] ?? $normalizedExpires,
+                'is_due' => false,
+                'timeline' => $normalizedExpires,
                 'gates' => $gate,
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
@@ -743,16 +828,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $requireProjectEdit($targetId);
 
             if ($postedAction === 'add_finding') {
+                $timeline = (string) ($_POST['timeline'] ?? '');
+                $expiresRaw = (string) ($_POST['expires_at'] ?? '');
+                $expiresAt = FindingStatusRepository::normalizeExpiresAt($expiresRaw);
+                if ($expiresAt === null && $expiresRaw === '') {
+                    $expiresAt = FindingStatusRepository::parseExpiresAt($timeline);
+                }
+                if ($expiresRaw !== '' && $expiresAt === null) {
+                    throw new RuntimeException('Invalid expiry date. Use YYYY-MM-DD.');
+                }
+                if ($expiresAt !== null && trim($timeline) === '') {
+                    $timeline = $expiresAt;
+                }
+
                 $finding = $repository->addFinding($targetId, [
                     'finding' => (string) ($_POST['finding'] ?? ''),
                     'policy_reference' => (string) ($_POST['policy_reference'] ?? ''),
                     'impact' => (string) ($_POST['impact'] ?? ''),
                     'mitigation' => (string) ($_POST['mitigation'] ?? ''),
                     'owner' => (string) ($_POST['owner'] ?? ''),
-                    'timeline' => (string) ($_POST['timeline'] ?? ''),
+                    'timeline' => $timeline,
                 ]);
                 $findingId = (string) ($finding['id'] ?? '');
-                $findingStatusRepository->upsert($targetId, $findingId, 'Open', '', []);
+                $findingStatusRepository->upsert(
+                    $targetId,
+                    $findingId,
+                    'Open',
+                    '',
+                    [],
+                    $expiresAt,
+                    true
+                );
 
                 $responses = $responseRepository->listForAssessment($targetId);
                 $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
@@ -767,6 +873,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status' => 'Open',
                     'comment' => '',
                     'servicenow_links' => [],
+                    'expires_at' => $expiresAt,
                 ];
 
                 echo json_encode([
@@ -775,6 +882,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'status' => $meta['status'],
                         'comment' => $meta['comment'],
                         'servicenow_links' => $meta['servicenow_links'],
+                        'expires_at' => $meta['expires_at'] ?? $expiresAt,
+                        'is_due' => FindingStatusRepository::isDue(
+                            $meta['expires_at'] ?? $expiresAt,
+                            (string) ($meta['status'] ?? 'Open')
+                        ),
                     ]),
                     'gates' => $gate,
                     'open_findings' => (int) ($gate['residual']['open_findings'] ?? 0),
@@ -1608,6 +1720,11 @@ if ($dashboardHtml === '' && ($_GET['view'] ?? '') === '1') {
                 $findingStatusRepository->copyMissingFromAssessment((int) $prior['id'], $assessmentId);
                 $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             }
+            $findingStatusRepository->seedExpiresFromFindings(
+                $assessmentId,
+                is_array($assessment->workbook['findings'] ?? null) ? $assessment->workbook['findings'] : []
+            );
+            $findingStatuses = $findingStatusRepository->listForAssessment($assessmentId);
             $shareLinks = $projectShareRepository->listForAssessment($assessmentId);
             $sharePointCatalog = $sharePointArchives->applyToAssessmentMatch(
                 $sharePointCatalogRepository->findMatchingProjectAnySource($solutionName),

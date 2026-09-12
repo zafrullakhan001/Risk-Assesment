@@ -139,9 +139,13 @@ final class AssessmentInsights
         $topRisks = array_slice($topRisks, 0, 5);
 
         $openFindings = 0;
+        $dueFindings = 0;
         foreach ($findings as $finding) {
             if (($finding['status'] ?? 'Open') === 'Open') {
                 $openFindings++;
+            }
+            if (!empty($finding['is_due'])) {
+                $dueFindings++;
             }
         }
 
@@ -228,6 +232,7 @@ final class AssessmentInsights
                 'tbd' => $tbd,
                 'gap' => $gap,
                 'open_findings' => $openFindings,
+                'due_findings' => $dueFindings,
             ],
             'findings' => $findings,
             'owners' => $owners,
@@ -287,18 +292,29 @@ final class AssessmentInsights
             $status = trim((string) ($finding['status'] ?? 'Open'));
             $comment = '';
             $links = [];
+            $timeline = trim((string) ($finding['timeline'] ?? ''));
+            $expiresAt = \RiskAssessment\Repositories\FindingStatusRepository::parseExpiresAt(
+                $timeline,
+                (string) ($finding['expiration_date'] ?? '')
+            );
             if (isset($findingStatuses[$findingId])) {
                 $meta = $findingStatuses[$findingId];
                 if (is_array($meta)) {
                     $status = (string) ($meta['status'] ?? $status);
                     $comment = (string) ($meta['comment'] ?? '');
                     $links = is_array($meta['servicenow_links'] ?? null) ? $meta['servicenow_links'] : [];
+                    if (array_key_exists('expires_at', $meta) && $meta['expires_at'] !== null && $meta['expires_at'] !== '') {
+                        $expiresAt = \RiskAssessment\Repositories\FindingStatusRepository::normalizeExpiresAt(
+                            (string) $meta['expires_at']
+                        );
+                    }
                 } else {
                     $status = (string) $meta;
                 }
             }
             $status = \RiskAssessment\Repositories\FindingStatusRepository::normalizeStatus($status);
             $links = \RiskAssessment\Repositories\FindingStatusRepository::normalizeLinks($links);
+            $isDue = \RiskAssessment\Repositories\FindingStatusRepository::isDue($expiresAt, $status);
             $normalized[] = [
                 'id' => $findingId,
                 'finding' => $text,
@@ -306,11 +322,13 @@ final class AssessmentInsights
                 'impact' => trim((string) ($finding['impact'] ?? '')),
                 'mitigation' => trim((string) ($finding['mitigation'] ?? '')),
                 'owner' => trim((string) ($finding['owner'] ?? '')),
-                'timeline' => trim((string) ($finding['timeline'] ?? '')),
+                'timeline' => $timeline,
                 'origin' => trim((string) ($finding['origin'] ?? 'excel')),
                 'status' => $status,
                 'comment' => $comment,
                 'servicenow_links' => $links,
+                'expires_at' => $expiresAt,
+                'is_due' => $isDue,
             ];
         }
 
