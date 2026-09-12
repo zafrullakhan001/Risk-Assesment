@@ -130,7 +130,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                             </label>
                         </div>
                         <div class="smtp-provider-help" id="smtp-help-custom"<?= $formProvider === 'office365' ? ' hidden' : '' ?>>
-                            <p class="settings-hint">Enter your mail server host and port. Username and password are optional — leave them blank for open / internal relays that do not require authentication.</p>
+                            <p class="settings-hint">Enter your mail server host and port. For internal relays on <strong>port 25</strong>, set Encryption to <strong>None</strong>. Username and password are optional — leave blank for open relays. If tests hang or show 421/empty replies, disable antivirus <strong>Mail Shield</strong> outbound SMTP scanning (Avast/AVG/etc.) or exclude your SMTP host.</p>
                         </div>
                         <div class="smtp-provider-help smtp-provider-help-o365" id="smtp-help-office365"<?= $formProvider === 'office365' ? '' : ' hidden' ?>>
                             <p><strong>Office 365:</strong> Uses <code>smtp.office365.com</code> on port <code>587</code> with STARTTLS. Enable Authenticated SMTP for the mailbox in the Microsoft 365 admin center. Username must be the full mailbox email. If MFA is on, use an app password. From address should match that mailbox (or an allowed send-as address).</p>
@@ -235,6 +235,18 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 var actionInput = document.getElementById('smtp-form-action');
                 var saveBtn = document.getElementById('smtp-save-btn');
 
+                function suggestEncryptionForPort() {
+                    if (!port || !encryption || encryption.disabled) return;
+                    var p = parseInt(port.value, 10);
+                    if (p === 25 && encryption.value === 'tls') {
+                        encryption.value = 'none';
+                    } else if (p === 465 && encryption.value === 'none') {
+                        encryption.value = 'ssl';
+                    } else if (p === 587 && encryption.value === 'none') {
+                        encryption.value = 'tls';
+                    }
+                }
+
                 function applyProvider() {
                     var isO365 = provider && provider.value === 'office365';
                     if (helpCustom) helpCustom.hidden = !!isO365;
@@ -249,12 +261,17 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         if (host) host.readOnly = false;
                         if (port) port.readOnly = false;
                         if (encryption) encryption.disabled = false;
+                        suggestEncryptionForPort();
                     }
                 }
 
                 if (provider) {
                     provider.addEventListener('change', applyProvider);
                     applyProvider();
+                }
+                if (port) {
+                    port.addEventListener('change', suggestEncryptionForPort);
+                    port.addEventListener('blur', suggestEncryptionForPort);
                 }
 
                 if (form && actionInput) {
