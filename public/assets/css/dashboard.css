@@ -20679,3 +20679,201 @@ html.is-compact .help-reader-toolbar {
     .sp-duplicates-search { width: 100%; min-width: 0; }
     .sp-owner-storage-toolbar-actions { width: 100%; }
 }
+
+/* Exception Task Scheduler admin panel */
+.scheduler-panel {
+    display: grid;
+    gap: 18px;
+}
+.scheduler-banner {
+    border-radius: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+}
+.scheduler-banner.is-off {
+    background: color-mix(in srgb, var(--risk, #b91c1c) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--risk, #b91c1c) 35%, var(--line));
+}
+.scheduler-banner.is-on {
+    background: color-mix(in srgb, var(--pass, #15803d) 12%, var(--card));
+    border-color: color-mix(in srgb, var(--pass, #15803d) 35%, var(--line));
+}
+.scheduler-banner p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+.scheduler-health {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+.scheduler-health-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: var(--card);
+}
+.scheduler-health-card.is-ok {
+    box-shadow: inset 3px 0 0 var(--pass, #15803d);
+}
+.scheduler-health-card.is-warn {
+    box-shadow: inset 3px 0 0 #ca8a04;
+}
+.scheduler-health-card.is-bad {
+    box-shadow: inset 3px 0 0 var(--risk, #b91c1c);
+}
+.scheduler-health-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+.scheduler-health-value {
+    margin-top: 4px;
+    font-weight: 700;
+}
+.scheduler-health-path {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    word-break: break-all;
+    color: var(--muted);
+}
+.scheduler-task-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+.scheduler-task-card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    background: var(--card);
+    display: grid;
+    gap: 12px;
+}
+.scheduler-task-card.is-enabled {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pass, #15803d) 35%, transparent);
+}
+.scheduler-task-card.is-disabled {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #ca8a04 40%, transparent);
+}
+.scheduler-task-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+}
+.scheduler-task-head h2 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+}
+.scheduler-task-head p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+.scheduler-task-state {
+    flex: 0 0 auto;
+    font-family: var(--font-mono, Consolas, monospace);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 14%, var(--card));
+    color: var(--ink);
+}
+.scheduler-task-card.is-enabled .scheduler-task-state {
+    background: color-mix(in srgb, var(--pass, #15803d) 16%, var(--card));
+    color: var(--pass, #15803d);
+}
+.scheduler-task-card.is-disabled .scheduler-task-state {
+    background: color-mix(in srgb, #ca8a04 18%, var(--card));
+    color: #a16207;
+}
+.scheduler-task-card.is-missing .scheduler-task-state {
+    background: color-mix(in srgb, var(--risk, #b91c1c) 14%, var(--card));
+    color: var(--risk, #b91c1c);
+}
+.scheduler-task-meta {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+}
+.scheduler-task-meta div {
+    display: grid;
+    gap: 2px;
+}
+.scheduler-task-meta dt {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.scheduler-task-meta dd {
+    margin: 0;
+    font-size: 13px;
+}
+.scheduler-task-meta .muted {
+    color: var(--muted);
+    font-size: 12px;
+}
+.scheduler-task-actions,
+.scheduler-global-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: end;
+}
+.scheduler-install-form {
+    display: inline-flex;
+    gap: 8px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+.scheduler-install-form label {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.scheduler-install-form input[type="number"] {
+    width: 96px;
+    height: 36px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0 10px;
+    background: var(--card);
+    color: var(--ink);
+}
+.button-danger {
+    background: color-mix(in srgb, var(--risk, #b91c1c) 12%, var(--card));
+    color: var(--risk, #b91c1c);
+    border: 1px solid color-mix(in srgb, var(--risk, #b91c1c) 40%, var(--line));
+}
+.button-danger:hover {
+    background: color-mix(in srgb, var(--risk, #b91c1c) 20%, var(--card));
+}
+.scheduler-help {
+    margin: 0;
+}
+.scheduler-output {
+    margin: 0;
+    max-height: 280px;
+    overflow: auto;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--ink) 4%, var(--card));
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+@media (max-width: 720px) {
+    .scheduler-install-form {
+        width: 100%;
+    }
+}

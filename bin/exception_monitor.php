@@ -3,14 +3,13 @@
 declare(strict_types=1);
 
 /**
- * Combined exception reminder job (monitor then email sender).
+ * Exception Monitor worker — detect due/overdue exceptions, create in-app notices,
+ * and queue SMTP messages into email_outbox (does not send mail).
  *
- * Prefer the separate Task Scheduler workers:
- *   bin/exception_monitor.php
- *   bin/exception_email_sender.php
+ * Scheduled by Windows Task Scheduler (see scripts/schedule-exception-workers.bat).
  *
  * Usage:
- *   C:\xampp\php\php.exe bin\exception_reminders.php
+ *   C:\xampp\php\php.exe bin\exception_monitor.php
  */
 
 require __DIR__ . '/exception_worker_bootstrap.php';
@@ -19,7 +18,6 @@ $boot = ra_exception_worker_bootstrap();
 $findings = $boot['findings'];
 $notifier = $boot['notifier'];
 $outbox = $boot['outbox'];
-$smtp = $boot['smtp'];
 
 $due = $findings->listDueForReminder(200);
 $total = count($due);
@@ -27,9 +25,9 @@ $notifiedUsers = 0;
 $emailsQueued = 0;
 $marked = 0;
 
-echo 'Exception reminders (monitor+send) @ ' . date('c') . PHP_EOL;
+echo 'Exception monitor @ ' . date('c') . PHP_EOL;
 echo 'Due items pending reminder: ' . $total . PHP_EOL;
-echo 'SMTP enabled: ' . ($smtp->isEnabled() ? 'yes' : 'no') . PHP_EOL;
+echo 'Outbox pending before: ' . $outbox->countPending() . PHP_EOL;
 
 foreach ($due as $item) {
     $result = $notifier->queueDueItem($item);
@@ -49,19 +47,6 @@ foreach ($due as $item) {
     );
 }
 
-echo "Monitor done. marked={$marked} notified_users={$notifiedUsers} emails_queued={$emailsQueued}" . PHP_EOL;
-echo 'Outbox pending: ' . $outbox->countPending() . PHP_EOL;
-
-$send = $notifier->sendPendingEmails($smtp, 50);
-if (!empty($send['skipped_smtp'])) {
-    echo 'Email sender skipped: SMTP disabled.' . PHP_EOL;
-} else {
-    echo sprintf(
-        "Email sender done. attempted=%d sent=%d failed=%d\n",
-        (int) ($send['attempted'] ?? 0),
-        (int) ($send['sent'] ?? 0),
-        (int) ($send['failed'] ?? 0)
-    );
-}
-
+echo 'Outbox pending after: ' . $outbox->countPending() . PHP_EOL;
+echo "Done. marked={$marked} notified_users={$notifiedUsers} emails_queued={$emailsQueued}" . PHP_EOL;
 exit(0);

@@ -1,0 +1,130 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260912060447
+Username: MYAIPC\zafru
+RunAs User: MYAIPC\zafru
+Configuration Name: 
+Machine: MYAIPC (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\schedule-exception-workers.ps1 -Action status
+Process ID: 13076
+PSVersion: 5.1.26100.9444
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9444
+BuildVersion: 10.0.26100.9444
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+=== Preflight (light) ===
+  [INFO] Root: C:\xampp\htdocs\RiskRegister
+  [OK]   ScheduledTasks cmdlets available
+
+=== Task status ===
+PS>TerminatingError(Get-ScheduledTask): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: No MSFT_ScheduledTask objects found with property 'TaskName' equal to 'RiskRegister - Exception Monitor'.  Verify the value of the property and retry."
+PS>TerminatingError(Get-ScheduledTask): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: No MSFT_ScheduledTask objects found with property 'TaskName' equal to 'RiskRegister - Exception Monitor'.  Verify the value of the property and retry."
+  [FAIL] Exception Monitor missing (RiskRegister - Exception Monitor)
+PS>TerminatingError(Get-ScheduledTask): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: No MSFT_ScheduledTask objects found with property 'TaskName' equal to 'RiskRegister - Email Sender'.  Verify the value of the property and retry."
+  [FAIL] Email Sender missing (RiskRegister - Email Sender)
+
+Result: FAILED (exit 1)
+**********************
+Windows PowerShell transcript end
+End time: 20260912060450
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260912060546
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: MYAIPC (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell -NoProfile -ExecutionPolicy Bypass -File C:\xampp\htdocs\RiskRegister\scripts\schedule-exception-workers.ps1 -Action install -IntervalMinutes 60 -Root C:\xampp\htdocs\RiskRegister -SkipSmoke -Php C:\xampp\php\php.exe
+Process ID: 22748
+PSVersion: 5.1.26100.9444
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9444
+BuildVersion: 10.0.26100.9444
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+=== Preflight ===
+  [INFO] Root: C:\xampp\htdocs\RiskRegister
+  [OK]   ScheduledTasks cmdlets available
+  [OK]   PHP: C:\xampp\php\php.exe
+  [OK]   Worker scripts present
+PS>TerminatingError(Get-ScheduledTask): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: No MSFT_ScheduledTask objects found with property 'TaskName' equal to 'RiskRegister - Exception Monitor'.  Verify the value of the property and retry."
+  [INFO] Task names: RiskRegister - Exception Monitor | RiskRegister - Email Sender
+
+=== Install Task Scheduler jobs ===
+PS>TerminatingError(Get-ScheduledTask): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: No MSFT_ScheduledTask objects found with property 'TaskName' equal to 'RiskRegister - Exception Monitor'.  Verify the value of the property and retry."
+  [OK]   Registered: RiskRegister - Exception Monitor as SYSTEM (runs whether anyone is logged on) (every 60 min)
+  [INFO] Program: C:\xampp\php\php.exe
+  [INFO] Args:    "C:\xampp\htdocs\RiskRegister\bin\exception_monitor.php"
+  [INFO] Start in: C:\xampp\htdocs\RiskRegister
+  [OK]   Started RiskRegister - Exception Monitor now
+PS>TerminatingError(Get-ScheduledTask): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: No MSFT_ScheduledTask objects found with property 'TaskName' equal to 'RiskRegister - Email Sender'.  Verify the value of the property and retry."
+  [OK]   Registered: RiskRegister - Email Sender as SYSTEM (runs whether anyone is logged on) (every 60 min)
+  [INFO] Program: C:\xampp\php\php.exe
+  [INFO] Args:    "C:\xampp\htdocs\RiskRegister\bin\exception_email_sender.php"
+  [INFO] Start in: C:\xampp\htdocs\RiskRegister
+  [OK]   Started RiskRegister - Email Sender now
+  [OK]   Exception Monitor OK (enabled)
+  [OK]   Email Sender OK (enabled)
+  [INFO] SkipSmoke set - not running workers now
+
+=== Summary ===
+  [OK]   Install finished.
+  [INFO] Tasks run whether or not a user is logged on (SYSTEM or S4U).
+  [INFO] Task Scheduler names:
+    RiskRegister - Exception Monitor
+    RiskRegister - Email Sender
+  [INFO] Useful commands:
+    scripts\schedule-exception-workers.bat status
+    scripts\schedule-exception-workers.bat verify
+    scripts\schedule-exception-workers.bat run-once
+
+Result: SUCCESS
+**********************
+Windows PowerShell transcript end
+End time: 20260912060554
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260912060707
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: MYAIPC (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell -NoProfile -ExecutionPolicy Bypass -File C:\xampp\htdocs\RiskRegister\scripts\schedule-exception-workers.ps1 -Action uninstall -Root C:\xampp\htdocs\RiskRegister
+Process ID: 23244
+PSVersion: 5.1.26100.9444
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9444
+BuildVersion: 10.0.26100.9444
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+=== Preflight ===
+  [INFO] Root: C:\xampp\htdocs\RiskRegister
+  [OK]   ScheduledTasks cmdlets available
+  [OK]   PHP: C:\xampp\php\php.exe
+  [OK]   Worker scripts present
+  [INFO] Task names: RiskRegister - Exception Monitor | RiskRegister - Email Sender
+
+=== Uninstall ===
+  [OK]   Removed RiskRegister - Exception Monitor
+  [OK]   Removed RiskRegister - Email Sender
+
+Result: SUCCESS
+**********************
+Windows PowerShell transcript end
+End time: 20260912060715
+**********************

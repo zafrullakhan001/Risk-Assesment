@@ -8,13 +8,14 @@ use RiskAssessment\Mail\EmailTemplates;
 use RiskAssessment\Mail\SmtpMailer;
 use RiskAssessment\Mail\SmtpSettings;
 use RiskAssessment\Repositories\AssessmentAccessRepository;
+use RiskAssessment\Repositories\EmailOutboxRepository;
 use RiskAssessment\Repositories\FindingStatusRepository;
 use RiskAssessment\Repositories\UserNotificationRepository;
 use RiskAssessment\Repositories\UserRepository;
 
 /**
- * In-app notices + optional SMTP for due/overdue governance exceptions.
- * Reminder job always commits in-app rows; mail failures never block marking reminded.
+ * In-app notices + email outbox queue for due/overdue governance exceptions.
+ * Monitor never sends SMTP; Email Sender drains the outbox.
  */
 final class ExceptionNotifier
 {
@@ -23,13 +24,13 @@ final class ExceptionNotifier
         private readonly UserNotificationRepository $notifications,
         private readonly AssessmentAccessRepository $access,
         private readonly UserRepository $users,
-        private readonly SmtpSettings $smtp,
+        private readonly EmailOutboxRepository $outbox,
         private readonly Branding $branding,
     ) {
     }
 
     /**
-     * Notify owner + editors for one due exception, then mark reminded_at.
+     * Create in-app notices + queue emails for one due exception, then mark reminded_at.
      *
      * @param array{
      *   assessment_id: int,
@@ -40,9 +41,9 @@ final class ExceptionNotifier
      *   finding_text: string,
      *   owner_user_id: int
      * } $item
-     * @return array{notified_users: int, email_attempted: bool, email_sent: int, marked: bool}
+     * @return array{notified_users: int, emails_queued: int, marked: bool}
      */
-    public function notifyDueItem(array $item): array
+    public function queueDueItem(array $item): array
     {
         $assessmentId = (int) ($item['assessment_id'] ?? 0);
         $findingId = trim((string) ($item['finding_id'] ?? ''));
@@ -57,8 +58,7 @@ final class ExceptionNotifier
         if ($assessmentId <= 0 || $findingId === '' || $expiresAt === '') {
             return [
                 'notified_users' => 0,
-                'email_attempted' => false,
-                'email_sent' => 0,
+                'emails_queued' => 0,
                 'marked' => false,
             ];
         }
@@ -81,11 +81,8 @@ final class ExceptionNotifier
         }
 
         $notified = 0;
-        $emailAttempted = false;
-        $emailSent = 0;
+        $queued = 0;
         $templates = new EmailTemplates($this->branding);
-        $mailer = $this->smtp->isEnabled() ? new SmtpMailer() : null;
-        $config = $mailer !== null ? $this->smtp->mailerConfig() : [];
 
         foreach (array_keys($recipientIds) as $userId) {
             $this->notifications->create(
@@ -105,9 +102,6 @@ final class ExceptionNotifier
             );
             $notified++;
 
-            if ($mailer === null) {
-                continue;
-            }
             $user = $this->users->findById($userId);
             if ($user === null) {
                 continue;
@@ -116,7 +110,6 @@ final class ExceptionNotifier
             if ($email === null) {
                 continue;
             }
-            $emailAttempted = true;
             $message = $templates->exceptionDue(
                 $projectName,
                 $projectUrl,
@@ -124,16 +117,24 @@ final class ExceptionNotifier
                 $expiresAt,
                 $status
             );
-            $result = $mailer->send(
-                [$email],
+            $id = $this->outbox->enqueue(
+                EmailOutboxRepository::KIND_EXCEPTION_DUE,
+                $email,
                 $message['subject'],
                 $message['text'],
-                $config,
-                [],
-                ['html' => $message['html'], 'text' => $message['text']]
+                $message['html'],
+                $userId,
+                $assessmentId,
+                $findingId,
+                [
+                    'project_name' => $projectName,
+                    'finding_text' => $findingText,
+                    'expires_at' => $expiresAt,
+                    'status' => $status,
+                ]
             );
-            if ($result === true) {
-                $emailSent++;
+            if ($id > 0) {
+                $queued++;
             }
         }
 
@@ -141,9 +142,89 @@ final class ExceptionNotifier
 
         return [
             'notified_users' => $notified,
-            'email_attempted' => $emailAttempted,
-            'email_sent' => $emailSent,
+            'emails_queued' => $queued,
             'marked' => $marked,
+        ];
+    }
+
+    /**
+     * Drain pending exception emails via SMTP.
+     *
+     * @return array{attempted: int, sent: int, failed: int, skipped_smtp: bool}
+     */
+    public function sendPendingEmails(SmtpSettings $smtp, int $limit = 25): array
+    {
+        if (!$smtp->isEnabled()) {
+            return [
+                'attempted' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'skipped_smtp' => true,
+            ];
+        }
+
+        $pending = $this->outbox->listPending($limit, EmailOutboxRepository::KIND_EXCEPTION_DUE);
+        if ($pending === []) {
+            return [
+                'attempted' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'skipped_smtp' => false,
+            ];
+        }
+
+        $mailer = new SmtpMailer();
+        $config = $smtp->mailerConfig();
+        $sent = 0;
+        $failed = 0;
+
+        foreach ($pending as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $to = trim((string) ($row['to_email'] ?? ''));
+            if ($id <= 0 || $to === '') {
+                continue;
+            }
+            $result = $mailer->send(
+                [$to],
+                (string) ($row['subject'] ?? ''),
+                (string) ($row['body_text'] ?? ''),
+                $config,
+                [],
+                [
+                    'html' => (string) ($row['body_html'] ?? ''),
+                    'text' => (string) ($row['body_text'] ?? ''),
+                ]
+            );
+            if ($result === true) {
+                $this->outbox->markSent($id);
+                $sent++;
+            } else {
+                $attempts = (int) ($row['attempts'] ?? 0);
+                $backoff = min(240, 15 * (2 ** max(0, $attempts)));
+                $this->outbox->markFailed($id, is_string($result) ? $result : 'Send failed', $backoff);
+                $failed++;
+            }
+        }
+
+        return [
+            'attempted' => count($pending),
+            'sent' => $sent,
+            'failed' => $failed,
+            'skipped_smtp' => false,
+        ];
+    }
+
+    /** @deprecated Use queueDueItem + sendPendingEmails */
+    public function notifyDueItem(array $item): array
+    {
+        $queued = $this->queueDueItem($item);
+
+        return [
+            'notified_users' => $queued['notified_users'],
+            'email_attempted' => $queued['emails_queued'] > 0,
+            'email_sent' => 0,
+            'emails_queued' => $queued['emails_queued'],
+            'marked' => $queued['marked'],
         ];
     }
 

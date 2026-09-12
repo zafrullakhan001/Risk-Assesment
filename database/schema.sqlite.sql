@@ -151,6 +151,30 @@ CREATE TABLE IF NOT EXISTS finding_statuses (
 
 CREATE INDEX IF NOT EXISTS idx_finding_statuses_assessment_id ON finding_statuses (assessment_id);
 
+CREATE TABLE IF NOT EXISTS email_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL DEFAULT 'exception_due',
+    assessment_id INTEGER,
+    finding_id TEXT NOT NULL DEFAULT '',
+    user_id INTEGER,
+    to_email TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '',
+    body_text TEXT NOT NULL DEFAULT '',
+    body_html TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL DEFAULT '{}',
+    send_after TEXT NOT NULL DEFAULT (datetime('now')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sent_at TEXT,
+    FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_outbox_pending ON email_outbox (sent_at, send_after);
+CREATE INDEX IF NOT EXISTS idx_email_outbox_kind ON email_outbox (kind);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

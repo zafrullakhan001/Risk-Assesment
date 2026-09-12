@@ -17,6 +17,7 @@ $canSeeSharePointJump = $navApps->canAccess(is_array($navUser) ? $navUser : null
     <a class="<?= $adminTab === 'authentication' ? 'is-active' : '' ?>" href="authentication.php">Authentication</a>
     <a class="<?= $adminTab === 'branding' ? 'is-active' : '' ?>" href="branding.php">Branding</a>
     <a class="<?= $adminTab === 'email' ? 'is-active' : '' ?>" href="email.php">✉️ Email</a>
+    <a class="<?= $adminTab === 'scheduler' ? 'is-active' : '' ?>" href="scheduler.php">⏱️ Scheduler</a>
     <a class="<?= $adminTab === 'mcp' ? 'is-active' : '' ?>" href="mcp.php">🤖 MCP / AI</a>
     <a class="<?= $adminTab === 'maintenance' ? 'is-active' : '' ?>" href="maintenance.php">🗄️ SQLite</a>
     <a class="<?= $adminTab === 'updates' ? 'is-active' : '' ?>" href="updates.php" data-update-nav="updates">App updates</a>

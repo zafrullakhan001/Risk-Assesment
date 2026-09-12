@@ -41,7 +41,7 @@ $adminTitle = 'Admin';
 $adminTab = 'home';
 $adminEyebrow = 'Control room';
 $adminHeading = 'Install <em>administration</em>';
-$adminIntro = 'User access, which apps are on, branding, email (SMTP), local/LDAP sign-in, SQLite backups, and GitHub updates live here.';
+$adminIntro = 'User access, which apps are on, branding, email (SMTP), exception Task Scheduler, local/LDAP sign-in, SQLite backups, and GitHub updates live here.';
 $smtpEnabled = $settings->get('smtp_enabled', '0') === '1';
 $appModules = \RiskAssessment\AppModules::instance();
 $riskAppOn = $appModules->isEnabled(\RiskAssessment\AppModules::RISK);
@@ -86,6 +86,10 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                     <div class="auth-source-row">
                         <span class="auth-badge <?= $smtpEnabled ? 'is-local' : 'is-off' ?>">SMTP <?= $smtpEnabled ? 'on' : 'off' ?></span>
                     </div>
+                </a>
+                <a class="upload-card admin-tile" href="scheduler.php">
+                    <h2>⏱️ Task Scheduler</h2>
+                    <p>Install Windows tasks that monitor due exceptions and send queued reminder emails.</p>
                 </a>
                 <a class="upload-card admin-tile" href="mcp.php">
                     <h2>🤖 MCP / AI</h2>
