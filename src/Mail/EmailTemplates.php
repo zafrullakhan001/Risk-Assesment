@@ -490,6 +490,197 @@ final class EmailTemplates
     }
 
     /**
+     * Manual exception-details notice from the Exception details dialog.
+     *
+     * @param array{
+     *   project_name?: string,
+     *   project_url?: string,
+     *   finding?: string,
+     *   policy?: string,
+     *   owner?: string,
+     *   timeline?: string,
+     *   expires_at?: string,
+     *   status?: string,
+     *   mitigation?: string,
+     *   impact?: string,
+     *   comment?: string,
+     *   servicenow_links?: list<string>,
+     *   sender_name?: string,
+     *   note?: string,
+     *   subject?: string,
+     *   format?: string
+     * } $details
+     * @return array{html: string, text: string, subject: string}
+     */
+    public function exceptionDetails(array $details): array
+    {
+        $appName = $this->appName();
+        $accent = $this->accentHex();
+        $format = strtolower(trim((string) ($details['format'] ?? 'html'))) === 'plain' ? 'plain' : 'html';
+        $projectName = trim((string) ($details['project_name'] ?? '')) !== ''
+            ? trim((string) $details['project_name'])
+            : 'a risk project';
+        $projectUrl = trim((string) ($details['project_url'] ?? ''));
+        $finding = trim((string) ($details['finding'] ?? ''));
+        if ($finding === '') {
+            $finding = 'Governance exception';
+        }
+        $policy = trim((string) ($details['policy'] ?? ''));
+        $owner = trim((string) ($details['owner'] ?? ''));
+        $timeline = trim((string) ($details['timeline'] ?? ''));
+        $expiresAt = trim((string) ($details['expires_at'] ?? ''));
+        $status = trim((string) ($details['status'] ?? '')) !== ''
+            ? trim((string) $details['status'])
+            : 'Open';
+        $mitigation = trim((string) ($details['mitigation'] ?? ''));
+        $impact = trim((string) ($details['impact'] ?? ''));
+        $comment = trim((string) ($details['comment'] ?? ''));
+        $senderName = trim((string) ($details['sender_name'] ?? ''));
+        $note = trim((string) ($details['note'] ?? ''));
+        if (mb_strlen($note) > 4000) {
+            $note = mb_substr($note, 0, 4000);
+        }
+        $links = [];
+        if (isset($details['servicenow_links']) && is_array($details['servicenow_links'])) {
+            foreach ($details['servicenow_links'] as $link) {
+                $link = trim((string) $link);
+                if ($link !== '' && filter_var($link, FILTER_VALIDATE_URL)) {
+                    $links[] = $link;
+                }
+                if (count($links) >= 10) {
+                    break;
+                }
+            }
+        }
+
+        $defaultSubject = 'Exception: ' . (mb_strlen($finding) > 80 ? mb_substr($finding, 0, 77) . '…' : $finding);
+        $subject = trim((string) ($details['subject'] ?? ''));
+        if ($subject === '') {
+            $subject = $defaultSubject;
+        }
+        if (mb_strlen($subject) > 200) {
+            $subject = mb_substr($subject, 0, 200);
+        }
+
+        $rows = [
+            'Project' => $projectName,
+            'Status' => $status,
+            'Finding' => $finding,
+            'Policy' => $policy,
+            'Owner' => $owner,
+            'Timeline' => $timeline,
+            'Expiry' => $expiresAt,
+            'Impact' => $impact,
+            'Mitigation' => $mitigation,
+            'Comments' => $comment,
+        ];
+
+        $textLines = ['Exception details', ''];
+        if ($senderName !== '') {
+            $textLines[] = $senderName . ' shared an exception from ' . $appName . '.';
+            $textLines[] = '';
+        }
+        if ($note !== '') {
+            $textLines[] = 'Message:';
+            $textLines[] = $note;
+            $textLines[] = '';
+        }
+        foreach ($rows as $label => $value) {
+            if ($value === '') {
+                continue;
+            }
+            $textLines[] = $label . ': ' . $value;
+        }
+        if ($links !== []) {
+            $textLines[] = '';
+            $textLines[] = 'ServiceNow links:';
+            foreach ($links as $link) {
+                $textLines[] = '- ' . $link;
+            }
+        }
+        if ($projectUrl !== '') {
+            $textLines[] = '';
+            $textLines[] = 'Open exception tracker: ' . $projectUrl;
+        }
+        $text = implode("\n", $textLines);
+
+        if ($format === 'plain') {
+            return [
+                'html' => '',
+                'text' => $text,
+                'subject' => $subject,
+            ];
+        }
+
+        $lead = $senderName !== ''
+            ? '<strong>' . $this->e($senderName) . '</strong> shared exception details for <strong>'
+                . $this->e($projectName) . '</strong>.'
+            : 'Exception details for <strong>' . $this->e($projectName) . '</strong>.';
+
+        $noteBlock = '';
+        if ($note !== '') {
+            $noteBlock = '<div style="margin:12px 0;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 16px;">'
+                . '<div style="font-size:12px;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 6px 0;">Message</div>'
+                . '<div style="font-size:14px;line-height:1.55;color:#0f172a;white-space:pre-wrap;">' . $this->e($note) . '</div>'
+                . '</div>';
+        }
+
+        $tableRows = '';
+        foreach ($rows as $label => $value) {
+            if ($value === '') {
+                continue;
+            }
+            $tableRows .= '<tr>'
+                . '<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:800;color:#64748b;width:120px;vertical-align:top;">'
+                . $this->e($label) . '</td>'
+                . '<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:14px;line-height:1.5;color:#0f172a;white-space:pre-wrap;">'
+                . $this->e($value) . '</td>'
+                . '</tr>';
+        }
+
+        $linksHtml = '';
+        if ($links !== []) {
+            $items = '';
+            foreach ($links as $link) {
+                $items .= '<li style="margin:0 0 6px 0;"><a href="' . $this->e($link) . '" style="color:' . $accent
+                    . ';font-weight:700;">' . $this->e($link) . '</a></li>';
+            }
+            $linksHtml = '<div style="margin:12px 0 0;">'
+                . '<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 6px 0;">ServiceNow links</div>'
+                . '<ul style="margin:0;padding-left:18px;">' . $items . '</ul></div>';
+        }
+
+        $inner = '
+      <div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;">
+        <div style="font-size:14px;line-height:1.6;color:#334155;margin:0 0 12px 0;">' . $lead . '</div>
+        ' . $noteBlock . '
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#f8fafc;">
+          ' . $tableRows . '
+        </table>
+        ' . $linksHtml . '
+        <div style="margin-top:16px;">'
+            . ($projectUrl !== '' ? $this->ctaButton($projectUrl, 'Open exception tracker', $accent) : '') .
+        '</div>
+      </div>
+    ';
+
+        $html = $this->baseLayout(
+            'Exception details',
+            $appName,
+            $accent,
+            $inner,
+            'Exception details',
+            $appName
+        );
+
+        return [
+            'html' => $html,
+            'text' => $text,
+            'subject' => $subject,
+        ];
+    }
+
+    /**
      * @return array{html: string, text: string, subject: string}
      */
     private function accessMessage(

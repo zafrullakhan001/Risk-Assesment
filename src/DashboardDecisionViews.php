@@ -529,7 +529,12 @@ final class DashboardDecisionViews
                     <?php endif; ?>
                 </section>
 
-                <dialog class="response-dialog exception-edit-dialog" id="exception-edit-dialog" aria-labelledby="exception-edit-title">
+                <dialog
+                    class="response-dialog exception-edit-dialog"
+                    id="exception-edit-dialog"
+                    aria-labelledby="exception-edit-title"
+                    data-smtp-enabled="<?= $smtpEnabled ? '1' : '0' ?>"
+                >
                     <form method="dialog" class="response-dialog-form" id="exception-edit-form">
                         <div class="response-dialog-head">
                             <div>
@@ -539,28 +544,29 @@ final class DashboardDecisionViews
                             </div>
                             <button type="button" class="button ghost-light response-dialog-close" id="exception-edit-close" aria-label="Close">✕</button>
                         </div>
+
                         <section class="response-dialog-details" id="exception-edit-details">
                             <div class="response-dialog-details-banner">
                                 <span class="response-dialog-details-icon" aria-hidden="true">⚠️</span>
                                 <div>
                                     <strong>Governance finding</strong>
-                                    <p class="response-dialog-details-lead">Record comments and ServiceNow exception links for this finding.</p>
+                                    <p class="response-dialog-details-lead">Review the finding, then update status, comments, links, or notify stakeholders by email.</p>
                                 </div>
                             </div>
                             <div class="response-dialog-details-meta">
-                                <div class="response-dialog-detail-chip" data-exception-detail="policy" hidden>
+                                <div class="response-dialog-detail-chip tone-section" data-exception-detail="policy" hidden>
                                     <span class="response-dialog-detail-label">📜 Policy</span>
                                     <span class="response-dialog-detail-value" id="exception-edit-policy"></span>
                                 </div>
-                                <div class="response-dialog-detail-chip" data-exception-detail="owner" hidden>
+                                <div class="response-dialog-detail-chip tone-owner" data-exception-detail="owner" hidden>
                                     <span class="response-dialog-detail-label">👤 Owner</span>
                                     <span class="response-dialog-detail-value" id="exception-edit-owner"></span>
                                 </div>
-                                <div class="response-dialog-detail-chip" data-exception-detail="timeline" hidden>
+                                <div class="response-dialog-detail-chip tone-timeline" data-exception-detail="timeline" hidden>
                                     <span class="response-dialog-detail-label">🗓️ Timeline</span>
                                     <span class="response-dialog-detail-value" id="exception-edit-timeline"></span>
                                 </div>
-                                <div class="response-dialog-detail-chip" data-exception-detail="expires" hidden>
+                                <div class="response-dialog-detail-chip tone-risk" data-exception-detail="expires" hidden>
                                     <span class="response-dialog-detail-label">📅 Expiry</span>
                                     <span class="response-dialog-detail-value" id="exception-edit-expires-label"></span>
                                 </div>
@@ -578,47 +584,113 @@ final class DashboardDecisionViews
                                 <p class="response-dialog-detail-text" id="exception-edit-impact"></p>
                             </div>
                         </section>
-                        <label class="response-dialog-field">
-                            <span>Status</span>
-                            <select id="exception-edit-status" required>
-                                <?php foreach (\RiskAssessment\Repositories\FindingStatusRepository::STATUSES as $statusOption): ?>
-                                    <option value="<?= $this->e($statusOption) ?>"><?= $this->e($statusOption) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </label>
-                        <label class="response-dialog-field">
-                            <span>Expiry date</span>
-                            <input type="date" id="exception-edit-expires" name="expires_at">
-                            <span class="field-hint">Reminders and the exception bell use this date (on/after expiry while Open or Approved).</span>
-                        </label>
-                        <div class="exception-extend-block" id="exception-extend-block" hidden>
-                            <label class="response-dialog-field">
-                                <span>Extend to a later date</span>
-                                <div class="exception-extend-row">
-                                    <input type="date" id="exception-extend-date" min="<?= $this->e(date('Y-m-d', strtotime('+1 day'))) ?>">
-                                    <button type="button" class="button button-secondary" id="exception-extend-save">Extend exception</button>
-                                </div>
-                            </label>
-                        </div>
-                        <label class="response-dialog-field">
-                            <span>User comments</span>
-                            <textarea
-                                id="exception-edit-comment"
-                                rows="6"
-                                maxlength="<?= (int) \RiskAssessment\Repositories\FindingStatusRepository::MAX_COMMENT_LENGTH ?>"
-                                placeholder="Record notes, decisions, and context for this exception"
-                            ></textarea>
-                        </label>
-                        <div class="exception-sn-block" id="exception-edit-sn-block">
-                            <div class="exception-sn-head">
-                                <span>ServiceNow exception links</span>
-                                <span class="exception-sn-count" id="exception-edit-sn-count">0 / <?= (int) \RiskAssessment\Repositories\FindingStatusRepository::MAX_LINKS ?></span>
+
+                        <section class="exception-edit-section" aria-labelledby="exception-edit-record-heading">
+                            <div class="exception-edit-section-head">
+                                <h4 id="exception-edit-record-heading">📝 Record</h4>
+                                <p>Status, expiry, comments, and ServiceNow links for this exception.</p>
                             </div>
-                            <div class="exception-sn-list" id="exception-edit-sn-list"></div>
-                            <button type="button" class="button button-secondary exception-sn-add" id="exception-edit-sn-add">
-                                ➕ Add link
-                            </button>
-                        </div>
+                            <div class="exception-edit-record-grid">
+                                <label class="response-dialog-field">
+                                    <span>Status</span>
+                                    <select id="exception-edit-status" required>
+                                        <?php foreach (\RiskAssessment\Repositories\FindingStatusRepository::STATUSES as $statusOption): ?>
+                                            <option value="<?= $this->e($statusOption) ?>"><?= $this->e($statusOption) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <label class="response-dialog-field">
+                                    <span>Expiry date</span>
+                                    <input type="date" id="exception-edit-expires" name="expires_at">
+                                </label>
+                            </div>
+                            <p class="field-hint exception-edit-expiry-hint">Reminders and the exception bell use this date (on/after expiry while Open or Approved).</p>
+                            <div class="exception-extend-block" id="exception-extend-block" hidden>
+                                <label class="response-dialog-field">
+                                    <span>Extend to a later date</span>
+                                    <div class="exception-extend-row">
+                                        <input type="date" id="exception-extend-date" min="<?= $this->e(date('Y-m-d', strtotime('+1 day'))) ?>">
+                                        <button type="button" class="button button-secondary" id="exception-extend-save">Extend exception</button>
+                                    </div>
+                                </label>
+                            </div>
+                            <label class="response-dialog-field">
+                                <span>User comments</span>
+                                <textarea
+                                    id="exception-edit-comment"
+                                    rows="5"
+                                    maxlength="<?= (int) \RiskAssessment\Repositories\FindingStatusRepository::MAX_COMMENT_LENGTH ?>"
+                                    placeholder="Record notes, decisions, and context for this exception"
+                                ></textarea>
+                            </label>
+                            <div class="exception-sn-block" id="exception-edit-sn-block">
+                                <div class="exception-sn-head">
+                                    <span>ServiceNow exception links</span>
+                                    <span class="exception-sn-count" id="exception-edit-sn-count">0 / <?= (int) \RiskAssessment\Repositories\FindingStatusRepository::MAX_LINKS ?></span>
+                                </div>
+                                <div class="exception-sn-list" id="exception-edit-sn-list"></div>
+                                <button type="button" class="button button-secondary exception-sn-add" id="exception-edit-sn-add">
+                                    ➕ Add link
+                                </button>
+                            </div>
+                        </section>
+
+                        <section class="exception-edit-section exception-email-section" aria-labelledby="exception-email-heading"<?= $smtpEnabled ? '' : ' data-smtp-off="1"' ?>>
+                            <div class="exception-edit-section-head">
+                                <h4 id="exception-email-heading">✉️ Notify by email</h4>
+                                <p>Send exception details to stakeholders. Recipients are comma or newline separated (max 20 total across To / Cc / Bcc).</p>
+                            </div>
+                            <?php if ($smtpEnabled): ?>
+                                <div class="exception-email-grid">
+                                    <label class="response-dialog-field exception-email-full">
+                                        <span>To</span>
+                                        <textarea id="exception-email-to" rows="2" maxlength="2000" placeholder="owner@example.com, stakeholder@example.com" autocomplete="email"></textarea>
+                                    </label>
+                                    <label class="response-dialog-field">
+                                        <span>Cc</span>
+                                        <textarea id="exception-email-cc" rows="2" maxlength="2000" placeholder="optional@example.com" autocomplete="email"></textarea>
+                                    </label>
+                                    <label class="response-dialog-field">
+                                        <span>Bcc</span>
+                                        <textarea id="exception-email-bcc" rows="2" maxlength="2000" placeholder="optional@example.com" autocomplete="email"></textarea>
+                                    </label>
+                                    <label class="response-dialog-field exception-email-full">
+                                        <span>Subject</span>
+                                        <input type="text" id="exception-email-subject" maxlength="200" placeholder="Exception notice">
+                                    </label>
+                                    <fieldset class="exception-email-format">
+                                        <legend>Message format</legend>
+                                        <label class="exception-email-format-option">
+                                            <input type="radio" name="exception_email_format" value="html" checked>
+                                            <span>HTML (branded)</span>
+                                        </label>
+                                        <label class="exception-email-format-option">
+                                            <input type="radio" name="exception_email_format" value="plain">
+                                            <span>Plain text</span>
+                                        </label>
+                                    </fieldset>
+                                    <label class="response-dialog-field exception-email-full">
+                                        <span>Message</span>
+                                        <textarea
+                                            id="exception-email-message"
+                                            rows="6"
+                                            maxlength="4000"
+                                            placeholder="Optional note included with the exception summary…"
+                                        ></textarea>
+                                        <span class="field-hint">A summary of this exception is always included. Add context or requested actions above.</span>
+                                    </label>
+                                </div>
+                                <div class="exception-email-actions">
+                                    <button type="button" class="button button-secondary" id="exception-email-draft">↻ Refresh draft</button>
+                                    <button type="button" class="button button-primary" id="exception-email-send">📨 Send email</button>
+                                </div>
+                            <?php elseif ($viewerIsAdmin): ?>
+                                <p class="exception-email-hint">To email exception details, configure SMTP under <a href="admin/email.php">Admin → Email</a>.</p>
+                            <?php else: ?>
+                                <p class="exception-email-hint">Outbound email is not enabled. Ask an administrator to configure SMTP.</p>
+                            <?php endif; ?>
+                        </section>
+
                         <p class="response-dialog-status" id="exception-edit-status-msg" hidden></p>
                         <div class="response-dialog-actions">
                             <button type="button" class="button ghost" id="exception-edit-cancel">Cancel</button>

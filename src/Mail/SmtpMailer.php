@@ -22,15 +22,16 @@ final class SmtpMailer
      *   from_name?: string
      * } $config
      * @param list<string> $cc
-     * @param array{html?: string, text?: string, is_html?: bool} $options
+     * @param array{html?: string, text?: string, is_html?: bool, bcc?: list<string>|string} $options
      * @return bool|string True on success, error message on failure
      */
     public function send(string|array $to, string $subject, string $body, array $config, array $cc = [], array $options = []): bool|string
     {
         $toList = SmtpSettings::normalizeRecipients($to);
         $ccList = SmtpSettings::normalizeRecipients($cc);
+        $bccList = SmtpSettings::normalizeRecipients($options['bcc'] ?? []);
 
-        return $this->sendMulti($toList, $ccList, $subject, $body, $config, $options);
+        return $this->sendMulti($toList, $ccList, $subject, $body, $config, $options, $bccList);
     }
 
     /**
@@ -45,17 +46,32 @@ final class SmtpMailer
      *   from_email: string,
      *   from_name?: string
      * } $config
-     * @param array{html?: string, text?: string, is_html?: bool} $options
+     * @param array{html?: string, text?: string, is_html?: bool, bcc?: list<string>|string} $options
+     * @param list<string> $bccList
      * @return bool|string
      */
-    public function sendMulti(array $toList, array $ccList, string $subject, string $body, array $config, array $options = []): bool|string
-    {
+    public function sendMulti(
+        array $toList,
+        array $ccList,
+        string $subject,
+        string $body,
+        array $config,
+        array $options = [],
+        array $bccList = []
+    ): bool|string {
         $toHeader = implode(', ', $toList);
         $ccHeader = implode(', ', $ccList);
-        $allRecipients = array_values(array_unique(array_merge($toList, $ccList)));
+        if ($bccList === [] && isset($options['bcc'])) {
+            $bccList = SmtpSettings::normalizeRecipients($options['bcc']);
+        }
+        $allRecipients = array_values(array_unique(array_merge($toList, $ccList, $bccList)));
 
         if ($allRecipients === []) {
-            return 'No valid recipients (To/CC)';
+            return 'No valid recipients (To/CC/BCC)';
+        }
+        if ($toList === [] && $ccList === [] && $bccList !== []) {
+            // Keep a visible To header when only BCC was provided.
+            $toHeader = 'undisclosed-recipients:;';
         }
 
         $host = trim((string) ($config['host'] ?? ''));

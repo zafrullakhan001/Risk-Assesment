@@ -813,6 +813,175 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($postedAction === 'email_exception_details') {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+                throw new RuntimeException('Invalid form submission. Please refresh and try again.');
+            }
+
+            $targetId = filter_var($_POST['assessment_id'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
+            $findingId = trim((string) ($_POST['finding_id'] ?? ''));
+            if ($targetId <= 0 || $findingId === '') {
+                throw new RuntimeException('Open a saved assessment exception before sending email.');
+            }
+
+            $requireProjectEdit($targetId);
+
+            $smtpSettings = new SmtpSettings($settings, $crypto);
+            if (!$smtpSettings->isEnabled()) {
+                throw new RuntimeException('Outbound email is not enabled. Ask an administrator to configure Admin → Email.');
+            }
+
+            $toList = SmtpSettings::normalizeRecipients((string) ($_POST['email_to'] ?? ''));
+            $ccList = SmtpSettings::normalizeRecipients((string) ($_POST['email_cc'] ?? ''));
+            $bccList = SmtpSettings::normalizeRecipients((string) ($_POST['email_bcc'] ?? ''));
+            $allRecipients = array_values(array_unique(array_merge($toList, $ccList, $bccList)));
+            if ($allRecipients === []) {
+                throw new RuntimeException('Enter at least one valid recipient in To, Cc, or Bcc.');
+            }
+            if (count($allRecipients) > SmtpSettings::MAX_RECIPIENTS) {
+                throw new RuntimeException('Too many recipients (max ' . SmtpSettings::MAX_RECIPIENTS . ' across To, Cc, and Bcc).');
+            }
+            if ($toList === []) {
+                throw new RuntimeException('Enter at least one valid address in To.');
+            }
+
+            $record = $repository->findById($targetId);
+            if ($record === null) {
+                throw new RuntimeException('Assessment not found.');
+            }
+
+            /** @var \RiskAssessment\Models\Assessment $assessment */
+            $assessment = $record['assessment'];
+            $workbook = $assessment->workbook ?? [];
+            $findingRow = null;
+            foreach (($workbook['findings'] ?? []) as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                if (trim((string) ($row['id'] ?? '')) === $findingId) {
+                    $findingRow = $row;
+                    break;
+                }
+            }
+            if ($findingRow === null) {
+                throw new RuntimeException('That exception was not found on this project.');
+            }
+
+            $saved = $findingStatusRepository->findOne($targetId, $findingId) ?? [];
+            $status = trim((string) ($_POST['status'] ?? '')) !== ''
+                ? FindingStatusRepository::normalizeStatus((string) $_POST['status'])
+                : FindingStatusRepository::normalizeStatus((string) ($saved['status'] ?? 'Open'));
+            $comment = array_key_exists('comment', $_POST)
+                ? FindingStatusRepository::normalizeComment((string) $_POST['comment'])
+                : (string) ($saved['comment'] ?? '');
+            $links = FindingStatusRepository::normalizeLinks($saved['servicenow_links'] ?? []);
+            if (array_key_exists('servicenow_links', $_POST)) {
+                $rawLinks = $_POST['servicenow_links'];
+                if (is_string($rawLinks)) {
+                    $decoded = json_decode($rawLinks, true);
+                    $links = FindingStatusRepository::normalizeLinks(is_array($decoded) ? $decoded : []);
+                } elseif (is_array($rawLinks)) {
+                    $links = FindingStatusRepository::normalizeLinks($rawLinks);
+                }
+            }
+            $expiresAt = array_key_exists('expires_at', $_POST)
+                ? (FindingStatusRepository::normalizeExpiresAt((string) $_POST['expires_at']) ?? '')
+                : (string) ($saved['expires_at'] ?? ($findingRow['timeline'] ?? ''));
+
+            $projectName = trim((string) $assessment->getMetadata('solution_name'));
+            if ($projectName === '') {
+                $projectName = 'Untitled project';
+            }
+
+            $senderName = trim((string) ($currentUser['display_name'] ?? ''));
+            if ($senderName === '') {
+                $senderName = trim((string) ($currentUser['username'] ?? ''));
+            }
+
+            $note = trim((string) ($_POST['email_message'] ?? $_POST['email_note'] ?? ''));
+            if (mb_strlen($note) > 4000) {
+                $note = mb_substr($note, 0, 4000);
+            }
+            $format = strtolower(trim((string) ($_POST['email_format'] ?? 'html'))) === 'plain' ? 'plain' : 'html';
+            $subject = trim((string) ($_POST['email_subject'] ?? ''));
+
+            $projectUrl = \RiskAssessment\AppUrl::absolute(
+                'index.php?view=1&id=' . $targetId . '&tab=actions&action_tab=exceptions#exception-tracker'
+            );
+
+            $templates = new EmailTemplates($branding);
+            $message = $templates->exceptionDetails([
+                'project_name' => $projectName,
+                'project_url' => $projectUrl,
+                'finding' => trim((string) ($_POST['finding_text'] ?? ($findingRow['finding'] ?? ''))),
+                'policy' => trim((string) ($_POST['policy'] ?? ($findingRow['policy_reference'] ?? ''))),
+                'owner' => trim((string) ($_POST['owner'] ?? ($findingRow['owner'] ?? ''))),
+                'timeline' => trim((string) ($_POST['timeline'] ?? ($findingRow['timeline'] ?? ''))),
+                'expires_at' => (string) $expiresAt,
+                'status' => $status,
+                'mitigation' => trim((string) ($_POST['mitigation'] ?? ($findingRow['mitigation'] ?? ''))),
+                'impact' => trim((string) ($_POST['impact'] ?? ($findingRow['impact'] ?? ''))),
+                'comment' => $comment,
+                'servicenow_links' => $links,
+                'sender_name' => $senderName,
+                'note' => $note,
+                'subject' => $subject,
+                'format' => $format,
+            ]);
+
+            $mailer = new SmtpMailer();
+            $mailOptions = [
+                'bcc' => $bccList,
+                'text' => $message['text'],
+            ];
+            if ($format === 'html' && $message['html'] !== '') {
+                $mailOptions['html'] = $message['html'];
+            }
+
+            $result = $mailer->send(
+                $toList,
+                $message['subject'],
+                $message['text'],
+                $smtpSettings->mailerConfig(),
+                $ccList,
+                $mailOptions
+            );
+            if ($result !== true) {
+                throw new RuntimeException('Failed to send email: ' . (string) $result);
+            }
+
+            $auth->users()->logAudit(
+                'exception.email',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'assessment_id' => $targetId,
+                    'finding_id' => $findingId,
+                    'to' => count($toList),
+                    'cc' => count($ccList),
+                    'bcc' => count($bccList),
+                    'format' => $format,
+                ]
+            );
+
+            echo json_encode([
+                'ok' => true,
+                'sent' => count($allRecipients),
+                'to' => count($toList),
+                'cc' => count($ccList),
+                'bcc' => count($bccList),
+                'subject' => $message['subject'],
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $exception) {
+            $jsonError($exception);
+        }
+        exit;
+    }
+
     if ($postedAction === 'add_finding' || $postedAction === 'delete_finding') {
         header('Content-Type: application/json; charset=utf-8');
         try {

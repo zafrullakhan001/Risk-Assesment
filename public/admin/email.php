@@ -189,7 +189,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <div class="settings-grid">
                             <label class="settings-field">
                                 <span>From email</span>
-                                <input type="email" name="smtp_from_email" id="smtp_from_email" value="<?= e($formFromEmail) ?>" maxlength="200" placeholder="user@yourdomain.com" autocomplete="off">
+                                <input type="text" name="smtp_from_email" id="smtp_from_email" value="<?= e($formFromEmail) ?>" maxlength="200" placeholder="user@yourdomain.com or user@localhost" inputmode="email" autocomplete="off">
                             </label>
                             <label class="settings-field">
                                 <span>From name</span>

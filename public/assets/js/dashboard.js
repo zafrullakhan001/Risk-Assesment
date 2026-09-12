@@ -1106,11 +1106,86 @@ document.addEventListener('DOMContentLoaded', () => {
     const exceptionEditSnList = document.getElementById('exception-edit-sn-list');
     const exceptionEditStatusMsg = document.getElementById('exception-edit-status-msg');
     const exceptionEditSave = document.getElementById('exception-edit-save');
+    const exceptionEmailTo = document.getElementById('exception-email-to');
+    const exceptionEmailCc = document.getElementById('exception-email-cc');
+    const exceptionEmailBcc = document.getElementById('exception-email-bcc');
+    const exceptionEmailSubject = document.getElementById('exception-email-subject');
+    const exceptionEmailMessage = document.getElementById('exception-email-message');
+    const exceptionEmailSend = document.getElementById('exception-email-send');
+    const exceptionEmailDraft = document.getElementById('exception-email-draft');
     let exceptionEditRow = null;
 
     if (exceptionEditDialog && exceptionEditDialog.parentElement !== document.body) {
         document.body.appendChild(exceptionEditDialog);
     }
+
+    const projectNameFromPage = () => {
+        const title = (document.title || '').split('·')[0].trim();
+        if (title) {
+            return title.replace(/\s*\((shared|view only)\)\s*$/i, '').trim() || 'Risk project';
+        }
+        return 'Risk project';
+    };
+
+    const buildExceptionEmailDraft = (row) => {
+        if (!row) {
+            return { subject: 'Exception notice', message: '' };
+        }
+        const finding = (row.dataset.findingText || '').trim() || 'Governance exception';
+        const expires = exceptionEditExpires?.value || row.dataset.expiresAt || '';
+        const owner = (row.dataset.owner || '').trim();
+        const project = projectNameFromPage();
+        const subjectFinding = finding.length > 80 ? `${finding.slice(0, 77)}…` : finding;
+        const lines = [
+            `Please review the exception on ${project} and confirm next steps.`,
+        ];
+        if (owner) {
+            lines.push(`Owner on record: ${owner}.`);
+        }
+        if (expires) {
+            lines.push(`Current expiry: ${expires}.`);
+        }
+        lines.push('', 'Full exception details are included below.');
+        return {
+            subject: `Exception: ${subjectFinding}`,
+            message: lines.join('\n'),
+        };
+    };
+
+    const fillExceptionEmailFields = (row, force = false) => {
+        if (!exceptionEmailSubject && !exceptionEmailMessage) {
+            return;
+        }
+        const draft = buildExceptionEmailDraft(row);
+        if (exceptionEmailSubject && (force || !exceptionEmailSubject.value.trim())) {
+            exceptionEmailSubject.value = draft.subject;
+        }
+        if (exceptionEmailMessage && (force || !exceptionEmailMessage.value.trim())) {
+            exceptionEmailMessage.value = draft.message;
+        }
+    };
+
+    const resetExceptionEmailFields = () => {
+        if (exceptionEmailTo) {
+            exceptionEmailTo.value = '';
+        }
+        if (exceptionEmailCc) {
+            exceptionEmailCc.value = '';
+        }
+        if (exceptionEmailBcc) {
+            exceptionEmailBcc.value = '';
+        }
+        if (exceptionEmailSubject) {
+            exceptionEmailSubject.value = '';
+        }
+        if (exceptionEmailMessage) {
+            exceptionEmailMessage.value = '';
+        }
+        const htmlFormat = exceptionEditDialog?.querySelector('input[name="exception_email_format"][value="html"]');
+        if (htmlFormat instanceof HTMLInputElement) {
+            htmlFormat.checked = true;
+        }
+    };
 
     const setExceptionEditStatus = (message, isError = false) => {
         if (!exceptionEditStatusMsg) {
@@ -1152,6 +1227,7 @@ document.addEventListener('DOMContentLoaded', () => {
             exceptionEditDialog.close();
         }
         exceptionEditRow = null;
+        resetExceptionEmailFields();
         setExceptionEditStatus('');
     };
 
@@ -1200,6 +1276,8 @@ document.addEventListener('DOMContentLoaded', () => {
             exceptionExtendBlock.hidden = !isExceptionDue(row.dataset.expiresAt || '', status);
         }
         fillExceptionEditSnList(parseExceptionLinks(row.dataset.servicenowLinks || '[]'));
+        resetExceptionEmailFields();
+        fillExceptionEmailFields(row, true);
         setExceptionEditStatus('');
 
         if (typeof exceptionEditDialog.showModal === 'function') {
@@ -1249,6 +1327,81 @@ document.addEventListener('DOMContentLoaded', () => {
     exceptionEditDialog?.addEventListener('cancel', (event) => {
         event.preventDefault();
         closeExceptionEditDialog();
+    });
+
+    exceptionEmailDraft?.addEventListener('click', () => {
+        fillExceptionEmailFields(exceptionEditRow, true);
+        setExceptionEditStatus('Draft refreshed from the current exception details.');
+    });
+
+    exceptionEmailSend?.addEventListener('click', async () => {
+        const row = exceptionEditRow;
+        const findingId = row?.dataset.findingId || '';
+        if (!row || !findingId) {
+            setExceptionEditStatus('Open an exception before sending email.', true);
+            return;
+        }
+        if (Number(assessmentId) <= 0) {
+            setExceptionEditStatus('Save the assessment before sending exception email.', true);
+            return;
+        }
+        const to = (exceptionEmailTo?.value || '').trim();
+        if (!to) {
+            setExceptionEditStatus('Enter at least one address in To.', true);
+            exceptionEmailTo?.focus();
+            return;
+        }
+        const formatInput = exceptionEditDialog?.querySelector('input[name="exception_email_format"]:checked');
+        const format = formatInput instanceof HTMLInputElement ? formatInput.value : 'html';
+        const links = collectExceptionLinks(exceptionEditSnBlock || exceptionEditDialog);
+        setExceptionEditStatus('Sending email…');
+        if (exceptionEmailSend) {
+            exceptionEmailSend.disabled = true;
+        }
+        try {
+            const response = await fetch('index.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: new URLSearchParams({
+                    action: 'email_exception_details',
+                    csrf_token: csrfToken,
+                    assessment_id: String(assessmentId),
+                    finding_id: findingId,
+                    email_to: to,
+                    email_cc: exceptionEmailCc?.value || '',
+                    email_bcc: exceptionEmailBcc?.value || '',
+                    email_subject: exceptionEmailSubject?.value || '',
+                    email_message: exceptionEmailMessage?.value || '',
+                    email_format: format,
+                    status: exceptionEditStatus?.value || 'Open',
+                    comment: exceptionEditComment?.value || '',
+                    expires_at: exceptionEditExpires?.value || '',
+                    servicenow_links: JSON.stringify(links),
+                    finding_text: row.dataset.findingText || '',
+                    policy: row.dataset.policy || '',
+                    owner: row.dataset.owner || '',
+                    timeline: row.dataset.timeline || '',
+                    mitigation: row.dataset.mitigation || '',
+                    impact: row.dataset.impact || '',
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || payload.message || 'Failed to send email.');
+            }
+            const sent = Number(payload.sent || 0);
+            setExceptionEditStatus(
+                sent > 0
+                    ? `Email sent to ${sent} recipient${sent === 1 ? '' : 's'}.`
+                    : 'Email sent.'
+            );
+        } catch (error) {
+            setExceptionEditStatus(error.message || 'Failed to send email.', true);
+        } finally {
+            if (exceptionEmailSend) {
+                exceptionEmailSend.disabled = false;
+            }
+        }
     });
 
     exceptionEditForm?.addEventListener('submit', async (event) => {

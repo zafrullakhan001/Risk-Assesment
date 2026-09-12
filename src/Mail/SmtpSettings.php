@@ -144,7 +144,7 @@ final class SmtpSettings
             if ($host === '') {
                 throw new RuntimeException('SMTP host is required when email is enabled.');
             }
-            if ($fromEmail === '' || !filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+            if ($fromEmail === '' || !self::isValidEmail($fromEmail)) {
                 throw new RuntimeException('A valid From email address is required when email is enabled.');
             }
             if ($port < 1 || $port > 65535) {
@@ -161,7 +161,7 @@ final class SmtpSettings
             }
         }
 
-        if ($fromEmail !== '' && !filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+        if ($fromEmail !== '' && !self::isValidEmail($fromEmail)) {
             throw new RuntimeException('From email address is not valid.');
         }
 
@@ -219,7 +219,7 @@ final class SmtpSettings
         if ($host === '' || $fromEmail === '') {
             throw new RuntimeException('SMTP host and From email are required to send a test.');
         }
-        if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+        if (!self::isValidEmail($fromEmail)) {
             throw new RuntimeException('From email address is not valid.');
         }
         $username = trim((string) ($input['smtp_username'] ?? ''));
@@ -246,6 +246,30 @@ final class SmtpSettings
     }
 
     /**
+     * Accept standard emails and local/dev addresses (e.g. zafar@localhost)
+     * where a TLD (.com / any .domain) is optional.
+     */
+    public static function isValidEmail(string $email): bool
+    {
+        $email = trim($email);
+        if ($email === '' || strlen($email) > 254) {
+            return false;
+        }
+        if (substr_count($email, '@') !== 1) {
+            return false;
+        }
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) !== false) {
+            return true;
+        }
+
+        // Local SMTP / intranet: user@localhost, user@mailhost, user@127.0.0.1
+        return preg_match(
+            '/^[^\s@]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/i',
+            $email
+        ) === 1;
+    }
+
+    /**
      * @return list<string>
      */
     public static function normalizeRecipients(string|array|null $emails): array
@@ -264,12 +288,7 @@ final class SmtpSettings
         $seen = [];
         foreach ($emails as $email) {
             $email = trim((string) $email);
-            if ($email === '') {
-                continue;
-            }
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)
-                && !preg_match('/^[^\s@]+@([^\s@]+\.[^\s@]+|localhost|127\.0\.0\.1)$/i', $email)
-            ) {
+            if ($email === '' || !self::isValidEmail($email)) {
                 continue;
             }
             $key = strtolower($email);
