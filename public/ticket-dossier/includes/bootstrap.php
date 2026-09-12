@@ -25,6 +25,9 @@ require_once __DIR__ . '/ProjectRepository.php';
 require_once __DIR__ . '/ProjectImporter.php';
 require_once __DIR__ . '/ProjectPackager.php';
 require_once __DIR__ . '/ProjectSummaryMapper.php';
+require_once __DIR__ . '/ProjectJsonExport.php';
+require_once __DIR__ . '/OllamaClient.php';
+require_once __DIR__ . '/DossierReasoningService.php';
 
 if (!is_dir(TD_DATABASE_DIR)) {
     mkdir(TD_DATABASE_DIR, 0755, true);

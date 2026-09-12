@@ -507,6 +507,52 @@ final class ProjectRepository
         ]);
     }
 
+    /**
+     * Persist Gemma reasoning payload for a project.
+     *
+     * @param array<string, mixed> $reasoning
+     */
+    public static function saveAiReasoning(int $id, array $reasoning): void
+    {
+        if ($id <= 0) {
+            throw new InvalidArgumentException('Invalid project.');
+        }
+
+        $json = json_encode($reasoning, JSON_UNESCAPED_UNICODE);
+        if (!is_string($json) || $json === '') {
+            throw new RuntimeException('Unable to encode AI reasoning.');
+        }
+
+        $stmt = getDb()->prepare(
+            'UPDATE projects SET ai_reasoning_json = :ai_reasoning_json, updated_at = :updated_at WHERE id = :id'
+        );
+        $stmt->execute([
+            ':ai_reasoning_json' => $json,
+            ':updated_at' => nowUtc(),
+            ':id' => $id,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function getAiReasoning(int $id): ?array
+    {
+        $project = self::find($id);
+        if ($project === null) {
+            return null;
+        }
+
+        $raw = trim((string) ($project['ai_reasoning_json'] ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
     private static function removeStorageDirectory(string $dir): void
     {
         if (!is_dir($dir)) {

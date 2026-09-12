@@ -29,3 +29,17 @@ const TD_ALLOWED_MIME = [
 ];
 
 const TD_SOURCE_KINDS = ['ddr', 'demand', 'story', 'task'];
+
+/** Local LLM via Ollama — used for dossier document reasoning / template fill. */
+const TD_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
+/**
+ * Default local model. qwen3.5:4b — ~3.4GB, 262K-class context, strong structured JSON.
+ * Alternatives: qwen3.5:9b, phi4-mini, gemma4
+ */
+const TD_OLLAMA_MODEL = 'qwen3.5:4b';
+/** @deprecated Use TD_OLLAMA_MODEL */
+const TD_GEMMA_MODEL = TD_OLLAMA_MODEL;
+/** First load / long fills on CPU can take several minutes. */
+const TD_GEMMA_TIMEOUT_SECONDS = 600;
+/** Prefer the complete JSON export text; keep sized for stable local inference. */
+const TD_GEMMA_CONTEXT_CHARS = 12000;

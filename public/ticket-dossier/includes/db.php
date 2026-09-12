@@ -138,6 +138,7 @@ function initSchema(PDO $pdo): void
     ensureTicketDossierColumn($pdo, 'projects', 'owner_username', "TEXT NOT NULL DEFAULT ''");
     ensureTicketDossierColumn($pdo, 'projects', 'owner_display_name', "TEXT NOT NULL DEFAULT ''");
     ensureTicketDossierColumn($pdo, 'projects', 'owner_auth_source', "TEXT NOT NULL DEFAULT ''");
+    ensureTicketDossierColumn($pdo, 'projects', 'ai_reasoning_json', "TEXT NOT NULL DEFAULT ''");
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS project_files (
@@ -166,6 +167,7 @@ function ensureTicketDossierColumn(PDO $pdo, string $table, string $column, stri
         'owner_username' => true,
         'owner_display_name' => true,
         'owner_auth_source' => true,
+        'ai_reasoning_json' => true,
     ];
     if (!isset($allowedTables[$table], $allowedColumns[$column])) {
         return;

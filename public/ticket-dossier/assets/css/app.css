@@ -2103,10 +2103,224 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     line-height: 1.45;
 }
 
+.summary-ai-panel {
+    margin-bottom: 12px;
+}
+
+.summary-ai-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.summary-ai-header h2 {
+    margin-bottom: 4px;
+}
+
+.summary-ai-status {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: 52rem;
+}
+
+.summary-ai-hint {
+    margin: 6px 0 0;
+    color: var(--ink-soft);
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: 52rem;
+}
+
+.summary-ai-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.summary-ai-body {
+    display: grid;
+    gap: 12px;
+}
+
+.summary-ai-grid {
+    display: grid;
+    gap: 12px;
+}
+
+@media (min-width: 900px) {
+    .summary-ai-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.summary-ai-list {
+    margin: 0;
+    padding-left: 1.15rem;
+    display: grid;
+    gap: 6px;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.summary-ai-empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+    font-style: italic;
+}
+
+.summary-ai-meta {
+    margin: 0;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.summary-ai-error {
+    margin: 10px 0 0;
+    padding: 9px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, #b91c1c 35%, var(--line));
+    background: color-mix(in srgb, #fee2e2 55%, var(--card));
+    color: #991b1b;
+    font-size: 13px;
+}
+
+.summary-ai-progress.is-failed {
+    border-color: color-mix(in srgb, #b91c1c 35%, var(--line));
+    background: color-mix(in srgb, #fee2e2 40%, var(--card));
+}
+
+.summary-ai-progress.is-failed .summary-ai-progress-fill {
+    background: #b91c1c;
+}
+
+.summary-ai-progress-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+
+.summary-ai-progress-top strong {
+    font-size: 13px;
+    color: var(--ink);
+}
+
+#gemma-progress-eta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--primary);
+}
+
+.summary-ai-progress-track {
+    height: 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--line) 70%, #fff);
+    overflow: hidden;
+}
+
+.summary-ai-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary), color-mix(in srgb, var(--primary) 55%, #22c55e));
+    transition: width 0.35s ease;
+}
+
+.summary-ai-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.summary-ai-stages {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.summary-ai-stages li {
+    position: relative;
+    padding-left: 16px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.summary-ai-stages li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.45em;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--line-strong);
+}
+
+.summary-ai-stages li.is-active {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.summary-ai-stages li.is-active::before {
+    background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.summary-ai-stages li.is-done {
+    color: var(--pass);
+}
+
+.summary-ai-stages li.is-done::before {
+    background: var(--pass);
+}
+
+.summary-ai-badge {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--line));
+    background: color-mix(in srgb, var(--primary-soft) 70%, #fff);
+    color: var(--primary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.summary-field.is-ai-filled,
+.summary-check.is-ai-filled {
+    border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
+    background: color-mix(in srgb, var(--primary-soft) 35%, var(--card));
+}
+
+.summary-field.is-ai-filled {
+    border-left-color: var(--primary);
+}
+
 @media print {
     .summary-page .topbar,
     .summary-page .hero-edit,
-    .summary-page .site-footer {
+    .summary-page .site-footer,
+    .summary-ai-actions,
+    .summary-ai-progress {
         display: none !important;
     }
     .summary-page .hero {

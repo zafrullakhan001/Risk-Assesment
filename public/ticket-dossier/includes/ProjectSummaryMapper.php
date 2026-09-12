@@ -404,7 +404,216 @@ final class ProjectSummaryMapper
     }
 
     /**
-     * @return array{label: string, value: string, available: bool}
+     * Compact draft for Gemma prompts (label/value only).
+     *
+     * @param array<string, mixed> $mapped
+     * @return array<string, mixed>
+     */
+    public static function toAiHints(array $mapped): array
+    {
+        $out = [];
+        foreach (['product_summary', 'business_requirements', 'goals', 'third_party_review', 'owners'] as $section) {
+            if (!isset($mapped[$section]) || !is_array($mapped[$section])) {
+                continue;
+            }
+            $out[$section] = [];
+            foreach ($mapped[$section] as $key => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $out[$section][$key] = [
+                    'label' => (string) ($field['label'] ?? $key),
+                    'value' => !empty($field['available']) ? (string) ($field['value'] ?? '') : '',
+                    'available' => !empty($field['available']),
+                ];
+            }
+        }
+
+        if (isset($mapped['key_questions']) && is_array($mapped['key_questions'])) {
+            $out['key_questions'] = [];
+            foreach ($mapped['key_questions'] as $i => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $out['key_questions'][] = [
+                    'label' => (string) ($field['label'] ?? ''),
+                    'value' => !empty($field['available']) ? (string) ($field['value'] ?? '') : '',
+                ];
+            }
+        }
+
+        if (isset($mapped['design_includes']) && is_array($mapped['design_includes'])) {
+            $out['design_includes'] = [];
+            foreach ($mapped['design_includes'] as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $out['design_includes'][] = [
+                    'label' => (string) ($field['label'] ?? ''),
+                    'value' => !empty($field['available']) ? (string) ($field['value'] ?? '') : '',
+                ];
+            }
+        }
+
+        if (isset($mapped['integrations']) && is_array($mapped['integrations'])) {
+            $out['integrations'] = [];
+            foreach ($mapped['integrations'] as $i => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $out['integrations'][] = [
+                    'label' => (string) ($field['label'] ?? ''),
+                    'value' => !empty($field['available']) ? (string) ($field['value'] ?? '') : '',
+                ];
+            }
+        }
+
+        if (isset($mapped['vendor_commitments']['items']) && is_array($mapped['vendor_commitments']['items'])) {
+            $out['vendor_commitments'] = [];
+            foreach ($mapped['vendor_commitments']['items'] as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $out['vendor_commitments'][] = [
+                    'label' => (string) ($field['label'] ?? ''),
+                    'value' => !empty($field['available']) ? (string) ($field['value'] ?? '') : '',
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Overlay Gemma template string values onto the rule-mapped summary.
+     * AI values win when non-empty; otherwise keep mapper values.
+     *
+     * @param array<string, mixed> $mapped
+     * @param array<string, mixed>|null $aiTemplate
+     * @return array<string, mixed>
+     */
+    public static function mergeWithAi(array $mapped, ?array $aiTemplate): array
+    {
+        if ($aiTemplate === null || $aiTemplate === []) {
+            return $mapped;
+        }
+
+        $mapField = static function (array $field, string $aiValue): array {
+            $aiValue = trim($aiValue);
+            if ($aiValue === '' || strcasecmp($aiValue, self::MISSING) === 0) {
+                $field['source'] = (string) ($field['source'] ?? 'mapper');
+
+                return $field;
+            }
+
+            return [
+                'label' => (string) ($field['label'] ?? ''),
+                'value' => $aiValue,
+                'available' => true,
+                'source' => 'ai',
+                'tone' => $field['tone'] ?? null,
+            ];
+        };
+
+        $sectionMaps = [
+            'product_summary' => [
+                'product_name' => 'product_name',
+                'purpose' => 'purpose',
+                'core_features' => 'core_features',
+                'value_proposition' => 'value_proposition',
+                'target_audience' => 'target_audience',
+                'app_short_name' => 'app_short_name',
+            ],
+            'business_requirements' => [
+                'business_goals' => 'business_goals',
+                'design_choices' => 'design_choices',
+                'stakeholder_inputs' => 'stakeholder_inputs',
+                'driving_factors' => 'driving_factors',
+                'design_constraints' => 'design_constraints',
+            ],
+            'goals' => [
+                'short_term' => 'short_term',
+                'long_term' => 'long_term',
+            ],
+            'third_party_review' => [
+                'tprm' => 'tprm',
+                'technology_review' => 'technology_review',
+                'grc_profile' => 'grc_profile',
+            ],
+            'owners' => [
+                'product_owner' => 'product_owner',
+                'business_owner' => 'business_owner',
+                'support_owner' => 'support_owner',
+            ],
+        ];
+
+        foreach ($sectionMaps as $section => $keys) {
+            if (!isset($mapped[$section]) || !is_array($mapped[$section])) {
+                continue;
+            }
+            $aiSection = is_array($aiTemplate[$section] ?? null) ? $aiTemplate[$section] : [];
+            foreach ($keys as $mapKey => $aiKey) {
+                if (!isset($mapped[$section][$mapKey]) || !is_array($mapped[$section][$mapKey])) {
+                    continue;
+                }
+                $aiValue = (string) ($aiSection[$aiKey] ?? '');
+                $merged = $mapField($mapped[$section][$mapKey], $aiValue);
+                if (array_key_exists('tone', $merged) && $merged['tone'] === null) {
+                    unset($merged['tone']);
+                }
+                $mapped[$section][$mapKey] = $merged;
+            }
+        }
+
+        $listSpecs = [
+            'key_questions' => ['ad_groups', 'service_accounts', 'security_exceptions', 'web_url_preferences'],
+            'design_includes' => [
+                'project_core', 'locations', 'vlans', 'server_specs', 'user_volume',
+                'vendor_pra', 'install_docs', 'sso', 'aia', 'sla', 'go_live',
+            ],
+            'integrations' => ['emr_epic', 'lis'],
+        ];
+
+        foreach ($listSpecs as $section => $aiKeys) {
+            if (!isset($mapped[$section]) || !is_array($mapped[$section])) {
+                continue;
+            }
+            $aiSection = is_array($aiTemplate[$section] ?? null) ? $aiTemplate[$section] : [];
+            foreach ($mapped[$section] as $i => $field) {
+                if (!is_array($field) || !isset($aiKeys[$i])) {
+                    continue;
+                }
+                $aiValue = (string) ($aiSection[$aiKeys[$i]] ?? '');
+                $merged = $mapField($field, $aiValue);
+                if (($merged['tone'] ?? null) === null) {
+                    unset($merged['tone']);
+                } else {
+                    // checklist keeps tone
+                }
+                if (isset($field['tone'])) {
+                    $merged['tone'] = $field['tone'];
+                }
+                $mapped[$section][$i] = $merged;
+            }
+        }
+
+        if (isset($mapped['vendor_commitments']['items']) && is_array($mapped['vendor_commitments']['items'])) {
+            $aiVendor = is_array($aiTemplate['vendor_commitments'] ?? null) ? $aiTemplate['vendor_commitments'] : [];
+            $vendorKeys = ['vendor_website', 'vendor_support', 'linux_super_user'];
+            foreach ($mapped['vendor_commitments']['items'] as $i => $field) {
+                if (!is_array($field) || !isset($vendorKeys[$i])) {
+                    continue;
+                }
+                $mapped['vendor_commitments']['items'][$i] = $mapField($field, (string) ($aiVendor[$vendorKeys[$i]] ?? ''));
+                unset($mapped['vendor_commitments']['items'][$i]['tone']);
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @return array{label: string, value: string, available: bool, source: string}
      */
     private static function field(string $label, string $value): array
     {
@@ -414,6 +623,7 @@ final class ProjectSummaryMapper
                 'label' => $label,
                 'value' => self::MISSING,
                 'available' => false,
+                'source' => 'mapper',
             ];
         }
 
@@ -421,11 +631,12 @@ final class ProjectSummaryMapper
             'label' => $label,
             'value' => $trimmed,
             'available' => true,
+            'source' => 'mapper',
         ];
     }
 
     /**
-     * @return array{label: string, value: string, available: bool, tone: string}
+     * @return array{label: string, value: string, available: bool, tone: string, source: string}
      */
     private static function checklist(string $label, string $value, string $tone): array
     {
@@ -436,6 +647,7 @@ final class ProjectSummaryMapper
             'value' => $field['value'],
             'available' => $field['available'],
             'tone' => $tone,
+            'source' => $field['source'],
         ];
     }
 

@@ -116,6 +116,13 @@ $ribbon = [
                 class="button ghost home-link"
                 data-menu-group="ticket"
                 data-menu-tone="mint"
+                href="summary.php?id=<?= (int) $id ?>#gemma-reasoning"
+                title="Open AI summary &amp; reasoning for this dossier"
+            ><span class="topbar-menu-emoji" aria-hidden="true">🧠</span>AI Summary</a>
+            <a
+                class="button ghost home-link"
+                data-menu-group="ticket"
+                data-menu-tone="mint"
                 href="export-zip.php?id=<?= (int) $id ?>"
                 title="Download this dossier and its original files as a ZIP backup"
             ><span class="topbar-menu-emoji" aria-hidden="true">📦</span>Export ZIP</a>
