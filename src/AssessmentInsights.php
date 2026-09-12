@@ -292,6 +292,7 @@ final class AssessmentInsights
             $status = trim((string) ($finding['status'] ?? 'Open'));
             $comment = '';
             $links = [];
+            $notifyEmails = [];
             $timeline = trim((string) ($finding['timeline'] ?? ''));
             $expiresAt = \RiskAssessment\Repositories\FindingStatusRepository::parseExpiresAt(
                 $timeline,
@@ -303,6 +304,7 @@ final class AssessmentInsights
                     $status = (string) ($meta['status'] ?? $status);
                     $comment = (string) ($meta['comment'] ?? '');
                     $links = is_array($meta['servicenow_links'] ?? null) ? $meta['servicenow_links'] : [];
+                    $notifyEmails = is_array($meta['notify_emails'] ?? null) ? $meta['notify_emails'] : [];
                     if (array_key_exists('expires_at', $meta) && $meta['expires_at'] !== null && $meta['expires_at'] !== '') {
                         $expiresAt = \RiskAssessment\Repositories\FindingStatusRepository::normalizeExpiresAt(
                             (string) $meta['expires_at']
@@ -314,6 +316,7 @@ final class AssessmentInsights
             }
             $status = \RiskAssessment\Repositories\FindingStatusRepository::normalizeStatus($status);
             $links = \RiskAssessment\Repositories\FindingStatusRepository::normalizeLinks($links);
+            $notifyEmails = \RiskAssessment\Repositories\FindingStatusRepository::normalizeNotifyEmails($notifyEmails);
             $isDue = \RiskAssessment\Repositories\FindingStatusRepository::isDue($expiresAt, $status);
             $normalized[] = [
                 'id' => $findingId,
@@ -327,6 +330,7 @@ final class AssessmentInsights
                 'status' => $status,
                 'comment' => $comment,
                 'servicenow_links' => $links,
+                'notify_emails' => $notifyEmails,
                 'expires_at' => $expiresAt,
                 'is_due' => $isDue,
             ];

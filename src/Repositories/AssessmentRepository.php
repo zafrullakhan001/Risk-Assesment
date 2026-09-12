@@ -934,10 +934,100 @@ final class AssessmentRepository
     }
 
     /**
+     * Update editable governance-finding fields on a workbook finding.
+     *
+     * @param array{
+     *   finding?: string,
+     *   policy_reference?: string,
+     *   impact?: string,
+     *   mitigation?: string,
+     *   owner?: string,
+     *   timeline?: string
+     * } $fields
+     * @return array<string, string>|null
+     */
+    public function updateFinding(int $assessmentId, string $findingId, array $fields): ?array
+    {
+        if ($assessmentId <= 0 || trim($findingId) === '') {
+            return null;
+        }
+
+        $findingId = trim($findingId);
+        $workbook = $this->loadWorkbook($assessmentId);
+        $findings = array_values($workbook['findings'] ?? []);
+        $updated = null;
+
+        foreach ($findings as $index => $finding) {
+            if (!is_array($finding)) {
+                continue;
+            }
+            $id = trim((string) ($finding['id'] ?? ('finding-' . $index)));
+            if ($id !== $findingId) {
+                continue;
+            }
+
+            $text = array_key_exists('finding', $fields)
+                ? trim((string) $fields['finding'])
+                : trim((string) ($finding['finding'] ?? ''));
+            if ($text === '') {
+                throw new \InvalidArgumentException('Finding text is required.');
+            }
+            if (mb_strlen($text) > 4000) {
+                $text = mb_substr($text, 0, 4000);
+            }
+
+            $row = $finding;
+            $row['id'] = $id;
+            $row['finding'] = $text;
+            if (array_key_exists('policy_reference', $fields)) {
+                $row['policy_reference'] = $this->clipField((string) $fields['policy_reference'], 500);
+            }
+            if (array_key_exists('impact', $fields)) {
+                $row['impact'] = $this->clipField((string) $fields['impact'], 2000);
+            }
+            if (array_key_exists('mitigation', $fields)) {
+                $row['mitigation'] = $this->clipField((string) $fields['mitigation'], 2000);
+            }
+            if (array_key_exists('owner', $fields)) {
+                $row['owner'] = $this->clipField((string) $fields['owner'], 200);
+            }
+            if (array_key_exists('timeline', $fields)) {
+                $row['timeline'] = $this->clipField((string) $fields['timeline'], 200);
+            }
+
+            $findings[$index] = $row;
+            $updated = [
+                'id' => $id,
+                'finding' => (string) ($row['finding'] ?? ''),
+                'policy_reference' => (string) ($row['policy_reference'] ?? ''),
+                'impact' => (string) ($row['impact'] ?? ''),
+                'mitigation' => (string) ($row['mitigation'] ?? ''),
+                'owner' => (string) ($row['owner'] ?? ''),
+                'timeline' => (string) ($row['timeline'] ?? ''),
+                'origin' => (string) ($row['origin'] ?? 'excel'),
+            ];
+            break;
+        }
+
+        if ($updated === null) {
+            return null;
+        }
+
+        $workbook['findings'] = $findings;
+        $this->saveWorkbook($assessmentId, $workbook);
+
+        return $updated;
+    }
+
+    /**
      * Sync workbook finding timeline (and adaptive exception expiration_date) to a Y-m-d expiry.
      */
-    public function updateFindingExpiry(int $assessmentId, string $findingId, string $expiresAt): bool
-    {
+    public function updateFindingExpiry(
+        int $assessmentId,
+        string $findingId,
+        string $expiresAt,
+        bool $syncTimeline = true
+    ): bool {
         if ($assessmentId <= 0 || trim($findingId) === '') {
             return false;
         }
@@ -960,7 +1050,9 @@ final class AssessmentRepository
                 continue;
             }
             $findings[$index]['id'] = $id;
-            $findings[$index]['timeline'] = $expiresAt;
+            if ($syncTimeline) {
+                $findings[$index]['timeline'] = $expiresAt;
+            }
             $updated = true;
             break;
         }

@@ -39,7 +39,9 @@ final class ExceptionNotifier
      *   expires_at: string,
      *   project_name: string,
      *   finding_text: string,
-     *   owner_user_id: int
+     *   owner_user_id: int,
+     *   notify_emails?: list<string>|string,
+     *   servicenow_links?: list<string>|string
      * } $item
      * @return array{notified_users: int, emails_queued: int, marked: bool}
      */
@@ -54,6 +56,7 @@ final class ExceptionNotifier
         $findingText = trim((string) ($item['finding_text'] ?? $findingId));
         $status = FindingStatusRepository::normalizeStatus((string) ($item['status'] ?? 'Open'));
         $ownerUserId = (int) ($item['owner_user_id'] ?? 0);
+        $serviceNowLinks = FindingStatusRepository::normalizeLinks($item['servicenow_links'] ?? []);
 
         if ($assessmentId <= 0 || $findingId === '' || $expiresAt === '') {
             return [
@@ -83,6 +86,7 @@ final class ExceptionNotifier
         $notified = 0;
         $queued = 0;
         $templates = new EmailTemplates($this->branding);
+        $queuedEmailKeys = [];
 
         foreach (array_keys($recipientIds) as $userId) {
             $this->notifications->create(
@@ -115,7 +119,8 @@ final class ExceptionNotifier
                 $projectUrl,
                 $findingText,
                 $expiresAt,
-                $status
+                $status,
+                $serviceNowLinks
             );
             $id = $this->outbox->enqueue(
                 EmailOutboxRepository::KIND_EXCEPTION_DUE,
@@ -131,10 +136,53 @@ final class ExceptionNotifier
                     'finding_text' => $findingText,
                     'expires_at' => $expiresAt,
                     'status' => $status,
+                    'servicenow_links' => $serviceNowLinks,
+                    'recipient_kind' => 'project_member',
                 ]
             );
             if ($id > 0) {
                 $queued++;
+                $queuedEmailKeys[strtolower($email)] = true;
+            }
+        }
+
+        $clientEmails = FindingStatusRepository::normalizeNotifyEmails($item['notify_emails'] ?? []);
+        if ($clientEmails !== []) {
+            $message = $templates->exceptionDue(
+                $projectName,
+                $projectUrl,
+                $findingText,
+                $expiresAt,
+                $status,
+                $serviceNowLinks
+            );
+            foreach ($clientEmails as $email) {
+                $key = strtolower($email);
+                if (isset($queuedEmailKeys[$key])) {
+                    continue;
+                }
+                $id = $this->outbox->enqueue(
+                    EmailOutboxRepository::KIND_EXCEPTION_DUE,
+                    $email,
+                    $message['subject'],
+                    $message['text'],
+                    $message['html'],
+                    null,
+                    $assessmentId,
+                    $findingId,
+                    [
+                        'project_name' => $projectName,
+                        'finding_text' => $findingText,
+                        'expires_at' => $expiresAt,
+                        'status' => $status,
+                        'servicenow_links' => $serviceNowLinks,
+                        'recipient_kind' => 'client',
+                    ]
+                );
+                if ($id > 0) {
+                    $queued++;
+                    $queuedEmailKeys[$key] = true;
+                }
             }
         }
 

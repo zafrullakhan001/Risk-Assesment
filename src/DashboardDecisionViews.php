@@ -545,43 +545,39 @@ final class DashboardDecisionViews
                             <button type="button" class="button ghost-light response-dialog-close" id="exception-edit-close" aria-label="Close">✕</button>
                         </div>
 
-                        <section class="response-dialog-details" id="exception-edit-details">
+                        <section class="response-dialog-details exception-edit-content" id="exception-edit-details">
                             <div class="response-dialog-details-banner">
                                 <span class="response-dialog-details-icon" aria-hidden="true">⚠️</span>
                                 <div>
                                     <strong>Governance finding</strong>
-                                    <p class="response-dialog-details-lead">Review the finding, then update status, comments, links, or notify stakeholders by email.</p>
+                                    <p class="response-dialog-details-lead">Correct finding details if anything is off, then update status, comments, links, or notify stakeholders.</p>
                                 </div>
                             </div>
-                            <div class="response-dialog-details-meta">
-                                <div class="response-dialog-detail-chip tone-section" data-exception-detail="policy" hidden>
-                                    <span class="response-dialog-detail-label">📜 Policy</span>
-                                    <span class="response-dialog-detail-value" id="exception-edit-policy"></span>
-                                </div>
-                                <div class="response-dialog-detail-chip tone-owner" data-exception-detail="owner" hidden>
-                                    <span class="response-dialog-detail-label">👤 Owner</span>
-                                    <span class="response-dialog-detail-value" id="exception-edit-owner"></span>
-                                </div>
-                                <div class="response-dialog-detail-chip tone-timeline" data-exception-detail="timeline" hidden>
-                                    <span class="response-dialog-detail-label">🗓️ Timeline</span>
-                                    <span class="response-dialog-detail-value" id="exception-edit-timeline"></span>
-                                </div>
-                                <div class="response-dialog-detail-chip tone-risk" data-exception-detail="expires" hidden>
-                                    <span class="response-dialog-detail-label">📅 Expiry</span>
-                                    <span class="response-dialog-detail-value" id="exception-edit-expires-label"></span>
-                                </div>
-                            </div>
-                            <div class="response-dialog-detail-block" data-exception-detail="finding" hidden>
-                                <span class="response-dialog-detail-label">📋 Finding</span>
-                                <p class="response-dialog-detail-text" id="exception-edit-finding-text"></p>
-                            </div>
-                            <div class="response-dialog-detail-block" data-exception-detail="mitigation" hidden>
-                                <span class="response-dialog-detail-label">🛡️ Mitigation</span>
-                                <p class="response-dialog-detail-text" id="exception-edit-mitigation"></p>
-                            </div>
-                            <div class="response-dialog-detail-block" data-exception-detail="impact" hidden>
-                                <span class="response-dialog-detail-label">💥 Impact</span>
-                                <p class="response-dialog-detail-text" id="exception-edit-impact"></p>
+                            <div class="exception-edit-content-grid">
+                                <label class="response-dialog-field exception-edit-content-full">
+                                    <span>📋 Finding / control</span>
+                                    <textarea id="exception-edit-finding-text" rows="3" maxlength="4000" required placeholder="Describe the exception or control gap"></textarea>
+                                </label>
+                                <label class="response-dialog-field">
+                                    <span>📜 Policy / reference</span>
+                                    <input type="text" id="exception-edit-policy" maxlength="500" placeholder="Policy or control reference">
+                                </label>
+                                <label class="response-dialog-field">
+                                    <span>👤 Owner</span>
+                                    <input type="text" id="exception-edit-owner" maxlength="200" placeholder="Owner">
+                                </label>
+                                <label class="response-dialog-field">
+                                    <span>🗓️ Timeline</span>
+                                    <input type="text" id="exception-edit-timeline" maxlength="200" placeholder="e.g. Before go-live">
+                                </label>
+                                <label class="response-dialog-field exception-edit-content-full">
+                                    <span>💥 Impact</span>
+                                    <textarea id="exception-edit-impact" rows="2" maxlength="2000" placeholder="Business or security impact (optional)"></textarea>
+                                </label>
+                                <label class="response-dialog-field exception-edit-content-full">
+                                    <span>🛡️ Mitigation</span>
+                                    <textarea id="exception-edit-mitigation" rows="2" maxlength="2000" placeholder="Mitigation or compensating control (optional)"></textarea>
+                                </label>
                             </div>
                         </section>
 
@@ -599,21 +595,40 @@ final class DashboardDecisionViews
                                         <?php endforeach; ?>
                                     </select>
                                 </label>
-                                <label class="response-dialog-field">
-                                    <span>Expiry date</span>
-                                    <input type="date" id="exception-edit-expires" name="expires_at">
-                                </label>
+                                <div class="exception-date-field" id="exception-date-field">
+                                    <label class="response-dialog-field exception-date-field-inner" for="exception-edit-expires">
+                                        <span class="exception-date-field-label">
+                                            <span class="exception-date-field-icon" aria-hidden="true">📅</span>
+                                            Expiry date
+                                        </span>
+                                        <input type="date" id="exception-edit-expires" class="exception-date-input" name="expires_at">
+                                    </label>
+                                    <div class="exception-date-meta">
+                                        <span class="exception-date-chip" id="exception-date-chip" hidden></span>
+                                        <p class="field-hint exception-edit-expiry-hint">Reminders and the exception bell use this date while status is Open or Approved.</p>
+                                    </div>
+                                </div>
                             </div>
-                            <p class="field-hint exception-edit-expiry-hint">Reminders and the exception bell use this date (on/after expiry while Open or Approved).</p>
                             <div class="exception-extend-block" id="exception-extend-block" hidden>
                                 <label class="response-dialog-field">
                                     <span>Extend to a later date</span>
                                     <div class="exception-extend-row">
-                                        <input type="date" id="exception-extend-date" min="<?= $this->e(date('Y-m-d', strtotime('+1 day'))) ?>">
+                                        <input type="date" id="exception-extend-date" class="exception-date-input" min="<?= $this->e(date('Y-m-d', strtotime('+1 day'))) ?>">
                                         <button type="button" class="button button-secondary" id="exception-extend-save">Extend exception</button>
                                     </div>
                                 </label>
                             </div>
+                            <label class="response-dialog-field exception-notify-emails-field">
+                                <span>Client reminder emails</span>
+                                <textarea
+                                    id="exception-edit-notify-emails"
+                                    rows="2"
+                                    maxlength="2000"
+                                    placeholder="client@example.com, stakeholder@example.com"
+                                    autocomplete="email"
+                                ></textarea>
+                                <span class="field-hint">Saved with this exception. When it is still Open or Approved on/after expiry, the scheduler emails these addresses (in addition to project owner and editors).</span>
+                            </label>
                             <label class="response-dialog-field">
                                 <span>User comments</span>
                                 <textarea
@@ -638,7 +653,7 @@ final class DashboardDecisionViews
                         <section class="exception-edit-section exception-email-section" aria-labelledby="exception-email-heading"<?= $smtpEnabled ? '' : ' data-smtp-off="1"' ?>>
                             <div class="exception-edit-section-head">
                                 <h4 id="exception-email-heading">✉️ Notify by email</h4>
-                                <p>Send exception details to stakeholders. Recipients are comma or newline separated (max 20 total across To / Cc / Bcc).</p>
+                                <p>Send now, or save client reminder emails in Record so the scheduler can notify them after due date.</p>
                             </div>
                             <?php if ($smtpEnabled): ?>
                                 <div class="exception-email-grid">
@@ -2106,6 +2121,8 @@ final class DashboardDecisionViews
         $comment = (string) ($finding['comment'] ?? '');
         $links = is_array($finding['servicenow_links'] ?? null) ? $finding['servicenow_links'] : [];
         $links = \RiskAssessment\Repositories\FindingStatusRepository::normalizeLinks($links);
+        $notifyEmails = is_array($finding['notify_emails'] ?? null) ? $finding['notify_emails'] : [];
+        $notifyEmails = \RiskAssessment\Repositories\FindingStatusRepository::normalizeNotifyEmails($notifyEmails);
         $expiresAt = \RiskAssessment\Repositories\FindingStatusRepository::normalizeExpiresAt(
             isset($finding['expires_at']) ? (string) $finding['expires_at'] : null
         );
@@ -2115,6 +2132,8 @@ final class DashboardDecisionViews
             ? (mb_strlen($comment) > 90 ? mb_substr($comment, 0, 87) . '…' : $comment)
             : '';
         $linkCount = count($links);
+        $notifyCount = count($notifyEmails);
+        $notifyEmailsJson = json_encode(array_values($notifyEmails), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
 
         ob_start();
         ?>
@@ -2131,6 +2150,7 @@ final class DashboardDecisionViews
             data-impact="<?= $this->e((string) ($finding['impact'] ?? '')) ?>"
             data-comment="<?= $this->e($comment) ?>"
             data-servicenow-links="<?= $this->e(json_encode(array_values($links), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]') ?>"
+            data-notify-emails="<?= $this->e($notifyEmailsJson) ?>"
         >
             <td>
                 <div class="exception-status-wrap">
@@ -2160,6 +2180,11 @@ final class DashboardDecisionViews
                     <?php endif; ?>
                     <span class="exception-link-preview <?= $linkCount === 0 ? 'is-empty' : '' ?>">
                         <?= $linkCount === 0 ? 'No ServiceNow links' : $linkCount . ' ServiceNow link' . ($linkCount === 1 ? '' : 's') ?>
+                    </span>
+                    <span class="exception-notify-preview <?= $notifyCount === 0 ? 'is-empty' : '' ?>">
+                        <?= $notifyCount === 0
+                            ? 'No client reminder emails'
+                            : $notifyCount . ' client email' . ($notifyCount === 1 ? '' : 's') ?>
                     </span>
                 </div>
             </td>

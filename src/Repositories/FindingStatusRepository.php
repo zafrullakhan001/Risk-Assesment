@@ -20,6 +20,8 @@ final class FindingStatusRepository
 
     public const MAX_LINK_LENGTH = 2000;
 
+    public const MAX_NOTIFY_EMAILS = 20;
+
     public function __construct(
         private readonly PDO $pdo,
     ) {
@@ -30,6 +32,7 @@ final class FindingStatusRepository
      *   status: string,
      *   comment: string,
      *   servicenow_links: list<string>,
+     *   notify_emails: list<string>,
      *   expires_at: string|null,
      *   reminded_at: string|null
      * }>
@@ -41,7 +44,7 @@ final class FindingStatusRepository
         }
 
         $statement = $this->pdo->prepare(
-            'SELECT finding_id, status, comment, servicenow_links, expires_at, reminded_at
+            'SELECT finding_id, status, comment, servicenow_links, notify_emails, expires_at, reminded_at
              FROM finding_statuses
              WHERE assessment_id = :assessment_id'
         );
@@ -63,6 +66,7 @@ final class FindingStatusRepository
     /**
      * @param list<string>|string|null $links
      * @param string|null $expiresAt Pass null to leave unchanged; '' to clear; Y-m-d to set
+     * @param list<string>|string|null $notifyEmails Pass null to leave unchanged
      */
     public function upsert(
         int $assessmentId,
@@ -71,7 +75,8 @@ final class FindingStatusRepository
         ?string $comment = null,
         array|string|null $links = null,
         ?string $expiresAt = null,
-        bool $touchExpires = false
+        bool $touchExpires = false,
+        array|string|null $notifyEmails = null
     ): bool {
         if ($assessmentId <= 0 || trim($findingId) === '') {
             return false;
@@ -97,6 +102,10 @@ final class FindingStatusRepository
             ? self::normalizeLinks($links)
             : ($existing['servicenow_links'] ?? []);
         $linksJson = json_encode(array_values($resolvedLinks), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
+        $resolvedNotify = $notifyEmails !== null
+            ? self::normalizeNotifyEmails($notifyEmails)
+            : ($existing['notify_emails'] ?? []);
+        $notifyJson = json_encode(array_values($resolvedNotify), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
 
         $previousExpires = $existing['expires_at'] ?? null;
         if ($touchExpires) {
@@ -110,16 +119,17 @@ final class FindingStatusRepository
 
         $statement = $this->pdo->prepare(
             'INSERT INTO finding_statuses (
-                assessment_id, finding_id, status, comment, servicenow_links,
+                assessment_id, finding_id, status, comment, servicenow_links, notify_emails,
                 expires_at, reminded_at, updated_at
              ) VALUES (
-                :assessment_id, :finding_id, :status, :comment, :servicenow_links,
+                :assessment_id, :finding_id, :status, :comment, :servicenow_links, :notify_emails,
                 :expires_at, :reminded_at, datetime(\'now\')
              )
              ON CONFLICT(assessment_id, finding_id) DO UPDATE SET
                 status = excluded.status,
                 comment = excluded.comment,
                 servicenow_links = excluded.servicenow_links,
+                notify_emails = excluded.notify_emails,
                 expires_at = excluded.expires_at,
                 reminded_at = excluded.reminded_at,
                 updated_at = datetime(\'now\')'
@@ -130,6 +140,7 @@ final class FindingStatusRepository
             ':status' => $status,
             ':comment' => $resolvedComment,
             ':servicenow_links' => $linksJson,
+            ':notify_emails' => $notifyJson,
             ':expires_at' => $resolvedExpires,
             ':reminded_at' => $resolvedReminded,
         ]);
@@ -311,6 +322,8 @@ final class FindingStatusRepository
      *   status: string,
      *   expires_at: string,
      *   comment: string,
+     *   notify_emails: list<string>,
+     *   servicenow_links: list<string>,
      *   project_name: string,
      *   finding_text: string,
      *   owner_user_id: int,
@@ -325,7 +338,8 @@ final class FindingStatusRepository
         $params = array_merge([$today], self::ACTIONABLE_STATUSES, [$limit]);
 
         $sql = "SELECT fs.assessment_id, fs.finding_id, fs.status, fs.comment,
-                       fs.expires_at, a.solution_name, a.owner_user_id, a.workbook_json
+                       fs.expires_at, fs.notify_emails, fs.servicenow_links,
+                       a.solution_name, a.owner_user_id, a.workbook_json
                 FROM finding_statuses fs
                 INNER JOIN assessments a ON a.id = fs.assessment_id
                 WHERE fs.expires_at IS NOT NULL
@@ -363,6 +377,8 @@ final class FindingStatusRepository
                 'status' => self::normalizeStatus((string) ($row['status'] ?? 'Open')),
                 'expires_at' => $expiresAt,
                 'comment' => (string) ($row['comment'] ?? ''),
+                'notify_emails' => self::normalizeNotifyEmails($row['notify_emails'] ?? '[]'),
+                'servicenow_links' => self::normalizeLinks($row['servicenow_links'] ?? '[]'),
                 'project_name' => trim((string) ($row['solution_name'] ?? '')) !== ''
                     ? trim((string) $row['solution_name'])
                     : 'Untitled project',
@@ -473,7 +489,8 @@ final class FindingStatusRepository
                 (string) ($record['comment'] ?? ''),
                 $record['servicenow_links'] ?? [],
                 $record['expires_at'] ?? null,
-                true
+                true,
+                $record['notify_emails'] ?? []
             )) {
                 $copied++;
             }
@@ -487,6 +504,7 @@ final class FindingStatusRepository
      *   status: string,
      *   comment: string,
      *   servicenow_links: list<string>,
+     *   notify_emails: list<string>,
      *   expires_at: string|null,
      *   reminded_at: string|null
      * }|null
@@ -494,7 +512,7 @@ final class FindingStatusRepository
     public function findOne(int $assessmentId, string $findingId): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT status, comment, servicenow_links, expires_at, reminded_at
+            'SELECT status, comment, servicenow_links, notify_emails, expires_at, reminded_at
              FROM finding_statuses
              WHERE assessment_id = :assessment_id AND finding_id = :finding_id
              LIMIT 1'
@@ -570,6 +588,59 @@ final class FindingStatusRepository
             }
             $clean[] = $url;
             if (count($clean) >= self::MAX_LINKS) {
+                break;
+            }
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Client / stakeholder emails for scheduler due reminders.
+     *
+     * @param list<mixed>|string|null $emails
+     * @return list<string>
+     */
+    public static function normalizeNotifyEmails(array|string|null $emails): array
+    {
+        if (is_string($emails)) {
+            $trimmed = trim($emails);
+            if ($trimmed === '') {
+                return [];
+            }
+            if (str_starts_with($trimmed, '[')) {
+                $decoded = json_decode($trimmed, true);
+                $emails = is_array($decoded) ? $decoded : (preg_split('/[,\n;]+/', $trimmed) ?: []);
+            } else {
+                $emails = preg_split('/[,\n;]+/', $trimmed) ?: [];
+            }
+        }
+        if (!is_array($emails)) {
+            return [];
+        }
+
+        $clean = [];
+        $seen = [];
+        foreach ($emails as $email) {
+            if (!is_string($email) && !is_numeric($email)) {
+                continue;
+            }
+            $email = trim((string) $email);
+            if ($email === '') {
+                continue;
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)
+                && !preg_match('/^[^\s@]+@([^\s@]+\.[^\s@]+|localhost|127\.0\.0\.1)$/i', $email)
+            ) {
+                continue;
+            }
+            $key = strtolower($email);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $clean[] = $email;
+            if (count($clean) >= self::MAX_NOTIFY_EMAILS) {
                 break;
             }
         }
@@ -691,6 +762,7 @@ final class FindingStatusRepository
      *   status: string,
      *   comment: string,
      *   servicenow_links: list<string>,
+     *   notify_emails: list<string>,
      *   expires_at: string|null,
      *   reminded_at: string|null
      * }
@@ -701,6 +773,7 @@ final class FindingStatusRepository
             'status' => self::normalizeStatus((string) ($row['status'] ?? 'Open')),
             'comment' => (string) ($row['comment'] ?? ''),
             'servicenow_links' => self::normalizeLinks($row['servicenow_links'] ?? '[]'),
+            'notify_emails' => self::normalizeNotifyEmails($row['notify_emails'] ?? '[]'),
             'expires_at' => self::normalizeExpiresAt(
                 isset($row['expires_at']) && $row['expires_at'] !== null
                     ? (string) $row['expires_at']

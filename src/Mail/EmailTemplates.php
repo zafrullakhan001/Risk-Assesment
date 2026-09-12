@@ -433,6 +433,7 @@ final class EmailTemplates
     }
 
     /**
+     * @param list<string> $serviceNowLinks
      * @return array{html: string, text: string, subject: string}
      */
     public function exceptionDue(
@@ -440,7 +441,8 @@ final class EmailTemplates
         string $projectUrl,
         string $findingText,
         string $expiresAt,
-        string $status = 'Open'
+        string $status = 'Open',
+        array $serviceNowLinks = []
     ): array {
         $appName = $this->appName();
         $accent = $this->accentHex();
@@ -457,16 +459,46 @@ final class EmailTemplates
         $today = date('Y-m-d');
         $overdue = $expiresAt !== '' && $expiresAt < $today;
 
+        $links = [];
+        foreach ($serviceNowLinks as $link) {
+            $link = trim((string) $link);
+            if ($link === '' || filter_var($link, FILTER_VALIDATE_URL) === false) {
+                continue;
+            }
+            $scheme = strtolower((string) (parse_url($link, PHP_URL_SCHEME) ?? ''));
+            if (!in_array($scheme, ['http', 'https'], true)) {
+                continue;
+            }
+            $links[] = $link;
+            if (count($links) >= 10) {
+                break;
+            }
+        }
+
         $title = $overdue ? 'Exception overdue' : 'Exception due today';
         $lead = 'An exception on <strong>' . $this->e($projectName) . '</strong> is '
             . ($overdue ? 'past its expiry date' : 'due today')
             . ' and still <strong>' . $this->e($status) . '</strong>.';
         $detail = 'Finding: ' . $findingText
             . ($expiresAt !== '' ? ' Expiry: ' . $expiresAt . '.' : '')
+            . ($links !== [] ? ' ServiceNow link' . (count($links) === 1 ? '' : 's') . ' included below.' : '')
             . ' Open the project to close, approve, or extend the exception.';
         $textLead = 'An exception on ' . $projectName . ' is '
             . ($overdue ? 'past its expiry date' : 'due today')
             . ' and still ' . $status . '.';
+
+        $linksHtml = '';
+        if ($links !== []) {
+            $items = '';
+            foreach ($links as $link) {
+                $items .= '<li style="margin:0 0 6px 0;"><a href="' . $this->e($link) . '" style="color:' . $accent
+                    . ';font-weight:700;word-break:break-all;">' . $this->e($link) . '</a></li>';
+            }
+            $linksHtml = '<div style="margin-top:12px;">'
+                . '<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 6px 0;">ServiceNow links</div>'
+                . '<ul style="margin:0;padding-left:18px;color:#0f172a;font-size:13px;line-height:1.45;">' . $items . '</ul>'
+                . '</div>';
+        }
 
         $findingBlock = '<div style="margin:12px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;">'
             . '<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 6px 0;">Finding</div>'
@@ -474,7 +506,17 @@ final class EmailTemplates
             . ($expiresAt !== ''
                 ? '<div style="margin-top:8px;font-size:12px;font-family:Consolas,monospace;font-weight:700;color:#b91c1c;">Expiry ' . $this->e($expiresAt) . '</div>'
                 : '')
+            . $linksHtml
             . '</div>';
+
+        $textExtra = "\n\nFinding: " . $findingText
+            . ($expiresAt !== '' ? "\nExpiry: " . $expiresAt : '');
+        if ($links !== []) {
+            $textExtra .= "\n\nServiceNow links:";
+            foreach ($links as $link) {
+                $textExtra .= "\n- " . $link;
+            }
+        }
 
         return $this->accessMessage(
             $title,
@@ -482,8 +524,7 @@ final class EmailTemplates
             $detail,
             $projectUrl,
             'Open exception tracker',
-            $textLead . "\n\nFinding: " . $findingText
-                . ($expiresAt !== '' ? "\nExpiry: " . $expiresAt : ''),
+            $textLead . $textExtra,
             $appName,
             $accent
         );

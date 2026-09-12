@@ -675,6 +675,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status = (string) ($_POST['status'] ?? 'Open');
             $hasComment = array_key_exists('comment', $_POST);
             $hasLinks = array_key_exists('servicenow_links', $_POST);
+            $hasNotifyEmails = array_key_exists('notify_emails', $_POST);
             $hasExpires = array_key_exists('expires_at', $_POST);
             $comment = $hasComment ? (string) ($_POST['comment'] ?? '') : null;
             $links = null;
@@ -689,6 +690,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $links = [];
                 }
             }
+            $notifyEmails = null;
+            if ($hasNotifyEmails) {
+                $rawNotify = $_POST['notify_emails'] ?? '[]';
+                if (is_string($rawNotify)) {
+                    $decodedNotify = json_decode($rawNotify, true);
+                    $notifyEmails = is_array($decodedNotify) ? $decodedNotify : $rawNotify;
+                } elseif (is_array($rawNotify)) {
+                    $notifyEmails = $rawNotify;
+                } else {
+                    $notifyEmails = [];
+                }
+            }
 
             if ($targetId <= 0 || $findingId === '') {
                 throw new RuntimeException('Invalid exception status payload.');
@@ -701,6 +714,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invalid expiry date. Use YYYY-MM-DD.');
             }
 
+            $hasContent = array_key_exists('finding_text', $_POST)
+                || array_key_exists('finding', $_POST)
+                || array_key_exists('policy_reference', $_POST)
+                || array_key_exists('policy', $_POST)
+                || array_key_exists('owner', $_POST)
+                || array_key_exists('timeline', $_POST)
+                || array_key_exists('impact', $_POST)
+                || array_key_exists('mitigation', $_POST);
+
+            $updatedFinding = null;
+            if ($hasContent) {
+                $contentFields = [];
+                if (array_key_exists('finding_text', $_POST) || array_key_exists('finding', $_POST)) {
+                    $contentFields['finding'] = (string) ($_POST['finding_text'] ?? $_POST['finding'] ?? '');
+                }
+                if (array_key_exists('policy_reference', $_POST) || array_key_exists('policy', $_POST)) {
+                    $contentFields['policy_reference'] = (string) ($_POST['policy_reference'] ?? $_POST['policy'] ?? '');
+                }
+                if (array_key_exists('owner', $_POST)) {
+                    $contentFields['owner'] = (string) ($_POST['owner'] ?? '');
+                }
+                if (array_key_exists('timeline', $_POST)) {
+                    $contentFields['timeline'] = (string) ($_POST['timeline'] ?? '');
+                }
+                if (array_key_exists('impact', $_POST)) {
+                    $contentFields['impact'] = (string) ($_POST['impact'] ?? '');
+                }
+                if (array_key_exists('mitigation', $_POST)) {
+                    $contentFields['mitigation'] = (string) ($_POST['mitigation'] ?? '');
+                }
+                try {
+                    $updatedFinding = $repository->updateFinding($targetId, $findingId, $contentFields);
+                } catch (InvalidArgumentException $exception) {
+                    throw new RuntimeException($exception->getMessage());
+                }
+                if ($updatedFinding === null) {
+                    throw new RuntimeException('Unable to update exception details.');
+                }
+            }
+
             if (!$findingStatusRepository->upsert(
                 $targetId,
                 $findingId,
@@ -708,7 +761,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $comment,
                 $links,
                 $hasExpires ? $expiresAt : null,
-                $hasExpires
+                $hasExpires,
+                $notifyEmails
             )) {
                 throw new RuntimeException('Unable to save exception status.');
             }
@@ -716,7 +770,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($hasExpires) {
                 $normalizedExpires = FindingStatusRepository::normalizeExpiresAt($expiresAt);
                 if ($normalizedExpires !== null) {
-                    $repository->updateFindingExpiry($targetId, $findingId, $normalizedExpires);
+                    // Keep the edited timeline text; only sync adaptive expiration_date.
+                    $repository->updateFindingExpiry($targetId, $findingId, $normalizedExpires, !$hasContent);
                 }
             }
 
@@ -734,22 +789,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'status' => FindingStatusRepository::normalizeStatus($status),
                 'comment' => FindingStatusRepository::normalizeComment((string) ($comment ?? '')),
                 'servicenow_links' => FindingStatusRepository::normalizeLinks($links ?? []),
+                'notify_emails' => FindingStatusRepository::normalizeNotifyEmails($notifyEmails ?? []),
                 'expires_at' => $hasExpires ? FindingStatusRepository::normalizeExpiresAt($expiresAt) : null,
                 'reminded_at' => null,
             ];
 
-            echo json_encode([
+            $payload = [
                 'ok' => true,
                 'status' => $saved['status'],
                 'comment' => $saved['comment'],
                 'servicenow_links' => $saved['servicenow_links'],
+                'notify_emails' => $saved['notify_emails'] ?? [],
                 'expires_at' => $saved['expires_at'] ?? null,
                 'is_due' => FindingStatusRepository::isDue(
                     $saved['expires_at'] ?? null,
                     (string) ($saved['status'] ?? 'Open')
                 ),
                 'gates' => $gate,
-            ], JSON_UNESCAPED_UNICODE);
+            ];
+            if ($updatedFinding !== null) {
+                $payload['finding'] = $updatedFinding;
+            }
+
+            echo json_encode($payload, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $exception) {
             $jsonError($exception);
         }

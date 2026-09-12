@@ -179,6 +179,7 @@ final class Database
         self::ensureColumn($pdo, 'finding_statuses', 'servicenow_links', "TEXT NOT NULL DEFAULT '[]'");
         self::ensureColumn($pdo, 'finding_statuses', 'expires_at', 'TEXT');
         self::ensureColumn($pdo, 'finding_statuses', 'reminded_at', 'TEXT');
+        self::ensureColumn($pdo, 'finding_statuses', 'notify_emails', "TEXT NOT NULL DEFAULT '[]'");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_finding_statuses_expires_at ON finding_statuses (expires_at)');
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS email_outbox (

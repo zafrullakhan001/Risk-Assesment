@@ -615,12 +615,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return text.length > 90 ? `${text.slice(0, 87)}…` : text;
     };
 
-    const updateExceptionRowPreview = (row, comment, links) => {
+    const updateExceptionRowPreview = (row, comment, links, notifyEmails = null) => {
         if (!row) {
             return;
         }
         row.dataset.comment = comment || '';
         row.dataset.servicenowLinks = JSON.stringify(Array.isArray(links) ? links : []);
+        if (notifyEmails !== null) {
+            const emails = Array.isArray(notifyEmails) ? notifyEmails : [];
+            row.dataset.notifyEmails = JSON.stringify(emails);
+            const notifyPreview = row.querySelector('.exception-notify-preview');
+            if (notifyPreview) {
+                const count = emails.length;
+                notifyPreview.textContent = count === 0
+                    ? 'No client reminder emails'
+                    : `${count} client email${count === 1 ? '' : 's'}`;
+                notifyPreview.classList.toggle('is-empty', count === 0);
+            }
+        }
         const preview = row.querySelector('.exception-comment-preview');
         if (preview) {
             const short = commentPreviewText(comment);
@@ -635,6 +647,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 : `${count} ServiceNow link${count === 1 ? '' : 's'}`;
             linkPreview.classList.toggle('is-empty', count === 0);
         }
+    };
+
+    const parseNotifyEmails = (raw) => {
+        if (Array.isArray(raw)) {
+            return raw.map((item) => String(item || '').trim()).filter(Boolean);
+        }
+        const text = String(raw || '').trim();
+        if (!text) {
+            return [];
+        }
+        if (text.startsWith('[')) {
+            try {
+                const decoded = JSON.parse(text);
+                if (Array.isArray(decoded)) {
+                    return decoded.map((item) => String(item || '').trim()).filter(Boolean);
+                }
+            } catch (error) {
+                // fall through to split
+            }
+        }
+        return text.split(/[,\n;]+/).map((item) => item.trim()).filter(Boolean);
     };
 
     const todayYmd = () => {
@@ -736,6 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const preview = commentPreviewText(comment);
         const expiresAt = finding.expires_at || '';
         const due = !!finding.is_due || isExceptionDue(expiresAt, status);
+        const notifyEmails = Array.isArray(finding.notify_emails) ? finding.notify_emails : parseNotifyEmails(finding.notify_emails || []);
         const statusOptions = EXCEPTION_STATUSES.map((option) => (
             `<option value="${option}" ${option === status ? 'selected' : ''}>${option}</option>`
         )).join('');
@@ -768,6 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 data-impact="${escapeHtml(finding.impact || '')}"
                 data-comment="${escapeHtml(comment)}"
                 data-servicenow-links="${escapeHtml(JSON.stringify(links))}"
+                data-notify-emails="${escapeHtml(JSON.stringify(notifyEmails))}"
             >
                 <td>
                     <div class="exception-status-wrap">
@@ -787,6 +822,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             links.length === 0
                                 ? 'No ServiceNow links'
                                 : `${links.length} ServiceNow link${links.length === 1 ? '' : 's'}`
+                        }</span>
+                        <span class="exception-notify-preview ${notifyEmails.length ? '' : 'is-empty'}">${
+                            notifyEmails.length === 0
+                                ? 'No client reminder emails'
+                                : `${notifyEmails.length} client email${notifyEmails.length === 1 ? '' : 's'}`
                         }</span>
                     </div>
                 </td>
@@ -845,8 +885,31 @@ document.addEventListener('DOMContentLoaded', () => {
         if (extras && Array.isArray(extras.servicenow_links)) {
             body.set('servicenow_links', JSON.stringify(extras.servicenow_links));
         }
+        if (extras && Array.isArray(extras.notify_emails)) {
+            body.set('notify_emails', JSON.stringify(extras.notify_emails));
+        } else if (extras && typeof extras.notify_emails === 'string') {
+            body.set('notify_emails', extras.notify_emails);
+        }
         if (extras && Object.prototype.hasOwnProperty.call(extras, 'expires_at')) {
             body.set('expires_at', extras.expires_at == null ? '' : String(extras.expires_at));
+        }
+        if (extras && typeof extras.finding_text === 'string') {
+            body.set('finding_text', extras.finding_text);
+        }
+        if (extras && typeof extras.policy === 'string') {
+            body.set('policy', extras.policy);
+        }
+        if (extras && typeof extras.owner === 'string') {
+            body.set('owner', extras.owner);
+        }
+        if (extras && typeof extras.timeline === 'string') {
+            body.set('timeline', extras.timeline);
+        }
+        if (extras && typeof extras.impact === 'string') {
+            body.set('impact', extras.impact);
+        }
+        if (extras && typeof extras.mitigation === 'string') {
+            body.set('mitigation', extras.mitigation);
         }
 
         const response = await fetch('index.php', {
@@ -1087,7 +1150,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const links = Array.isArray(savedExceptions[findingId].servicenow_links)
                 ? savedExceptions[findingId].servicenow_links
                 : [];
-            updateExceptionRowPreview(row, comment, links);
+            const notifyEmails = Array.isArray(savedExceptions[findingId].notify_emails)
+                ? savedExceptions[findingId].notify_emails
+                : parseNotifyEmails(savedExceptions[findingId].notify_emails || []);
+            updateExceptionRowPreview(row, comment, links, notifyEmails);
         }
     };
 
@@ -1113,11 +1179,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const exceptionEmailMessage = document.getElementById('exception-email-message');
     const exceptionEmailSend = document.getElementById('exception-email-send');
     const exceptionEmailDraft = document.getElementById('exception-email-draft');
+    const exceptionEditNotifyEmails = document.getElementById('exception-edit-notify-emails');
+    const exceptionEditFindingText = document.getElementById('exception-edit-finding-text');
+    const exceptionEditPolicy = document.getElementById('exception-edit-policy');
+    const exceptionEditOwner = document.getElementById('exception-edit-owner');
+    const exceptionEditTimeline = document.getElementById('exception-edit-timeline');
+    const exceptionEditImpact = document.getElementById('exception-edit-impact');
+    const exceptionEditMitigation = document.getElementById('exception-edit-mitigation');
+    const exceptionDateField = document.getElementById('exception-date-field');
+    const exceptionDateChip = document.getElementById('exception-date-chip');
     let exceptionEditRow = null;
 
     if (exceptionEditDialog && exceptionEditDialog.parentElement !== document.body) {
         document.body.appendChild(exceptionEditDialog);
     }
+
+    const refreshExceptionDateUi = () => {
+        const expires = exceptionEditExpires?.value || '';
+        const status = exceptionEditStatus?.value || 'Open';
+        const due = isExceptionDue(expires, status);
+        if (exceptionDateField) {
+            exceptionDateField.classList.toggle('is-due', due);
+        }
+        if (!exceptionDateChip) {
+            return;
+        }
+        if (!expires) {
+            exceptionDateChip.hidden = false;
+            exceptionDateChip.textContent = 'No expiry set';
+            exceptionDateChip.classList.add('is-empty');
+            exceptionDateChip.classList.remove('is-due');
+            return;
+        }
+        exceptionDateChip.hidden = false;
+        exceptionDateChip.classList.remove('is-empty');
+        exceptionDateChip.classList.toggle('is-due', due);
+        exceptionDateChip.textContent = due ? 'Due / overdue' : 'Scheduled';
+    };
 
     const projectNameFromPage = () => {
         const title = (document.title || '').split('·')[0].trim();
@@ -1197,17 +1295,71 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setExceptionEditDetail = (key, value) => {
-        const chip = exceptionEditDialog?.querySelector(`[data-exception-detail="${key}"]`);
-        const text = String(value || '').trim();
-        if (!chip) {
+        const map = {
+            finding: exceptionEditFindingText,
+            policy: exceptionEditPolicy,
+            owner: exceptionEditOwner,
+            timeline: exceptionEditTimeline,
+            impact: exceptionEditImpact,
+            mitigation: exceptionEditMitigation,
+        };
+        const field = map[key];
+        if (!field) {
             return false;
         }
-        const valueEl = chip.querySelector('.response-dialog-detail-value, .response-dialog-detail-text');
-        if (valueEl) {
-            valueEl.textContent = text;
+        field.value = String(value || '');
+        return true;
+    };
+
+    const applyExceptionContentToRow = (row, finding) => {
+        if (!row || !finding || typeof finding !== 'object') {
+            return;
         }
-        chip.hidden = text === '';
-        return text !== '';
+        const findingText = finding.finding || '';
+        const policy = finding.policy_reference || finding.policy || '';
+        const owner = finding.owner || '';
+        const timeline = finding.timeline || '';
+        const impact = finding.impact || '';
+        const mitigation = finding.mitigation || '';
+
+        row.dataset.findingText = findingText;
+        row.dataset.policy = policy;
+        row.dataset.owner = owner;
+        row.dataset.timeline = timeline;
+        row.dataset.impact = impact;
+        row.dataset.mitigation = mitigation;
+
+        const findingCell = row.querySelector('.exception-finding-cell');
+        if (findingCell) {
+            const clamp = findingCell.querySelector('.clamp-text[data-expandable]');
+            if (clamp) {
+                clamp.textContent = findingText;
+            }
+            const subtexts = Array.from(findingCell.querySelectorAll('.subtext'));
+            subtexts.forEach((node) => node.remove());
+            if (policy) {
+                const policyEl = document.createElement('div');
+                policyEl.className = 'subtext';
+                policyEl.textContent = `Policy: ${policy}`;
+                findingCell.appendChild(policyEl);
+            }
+            if (mitigation) {
+                const mitigationEl = document.createElement('div');
+                mitigationEl.className = 'subtext clamp-text';
+                mitigationEl.dataset.expandable = '';
+                mitigationEl.textContent = mitigation;
+                findingCell.appendChild(mitigationEl);
+            }
+        }
+
+        const ownerCell = row.children[3];
+        if (ownerCell) {
+            ownerCell.textContent = owner;
+        }
+        const timelineCell = row.children[4];
+        if (timelineCell) {
+            timelineCell.textContent = timeline;
+        }
     };
 
     const fillExceptionEditSnList = (links) => {
@@ -1254,7 +1406,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setExceptionEditDetail('policy', row.dataset.policy || '');
         setExceptionEditDetail('owner', row.dataset.owner || '');
         setExceptionEditDetail('timeline', row.dataset.timeline || '');
-        setExceptionEditDetail('expires', row.dataset.expiresAt || '');
         setExceptionEditDetail('mitigation', row.dataset.mitigation || '');
         setExceptionEditDetail('impact', row.dataset.impact || '');
 
@@ -1267,6 +1418,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (exceptionEditExpires) {
             exceptionEditExpires.value = row.dataset.expiresAt || '';
         }
+        if (exceptionEditNotifyEmails) {
+            const emails = parseNotifyEmails(row.dataset.notifyEmails || '[]');
+            exceptionEditNotifyEmails.value = emails.join(', ');
+        }
         if (exceptionExtendDate) {
             exceptionExtendDate.min = tomorrowYmd();
             exceptionExtendDate.value = '';
@@ -1277,7 +1432,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         fillExceptionEditSnList(parseExceptionLinks(row.dataset.servicenowLinks || '[]'));
         resetExceptionEmailFields();
+        const savedNotify = parseNotifyEmails(row.dataset.notifyEmails || '[]');
+        if (exceptionEmailTo && savedNotify.length > 0) {
+            exceptionEmailTo.value = savedNotify.join(', ');
+        }
         fillExceptionEmailFields(row, true);
+        refreshExceptionDateUi();
         setExceptionEditStatus('');
 
         if (typeof exceptionEditDialog.showModal === 'function') {
@@ -1285,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             exceptionEditDialog.setAttribute('open', 'open');
         }
-        exceptionEditStatus?.focus();
+        exceptionEditFindingText?.focus();
     };
 
     exceptionEditDialog?.addEventListener('click', (event) => {
@@ -1319,6 +1479,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = event.target;
         if (target instanceof Element && target.classList.contains('exception-sn-link')) {
             refreshExceptionSnUi(exceptionEditSnBlock);
+        }
+        if (target === exceptionEditExpires || target === exceptionEditStatus) {
+            refreshExceptionDateUi();
+            if (exceptionExtendBlock && exceptionEditRow) {
+                const status = exceptionEditStatus?.value || 'Open';
+                exceptionExtendBlock.hidden = !isExceptionDue(exceptionEditExpires?.value || '', status);
+            }
+        }
+    });
+
+    exceptionEditStatus?.addEventListener('change', () => {
+        refreshExceptionDateUi();
+        if (exceptionExtendBlock) {
+            const status = exceptionEditStatus?.value || 'Open';
+            exceptionExtendBlock.hidden = !isExceptionDue(exceptionEditExpires?.value || '', status);
         }
     });
 
@@ -1377,12 +1552,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     comment: exceptionEditComment?.value || '',
                     expires_at: exceptionEditExpires?.value || '',
                     servicenow_links: JSON.stringify(links),
-                    finding_text: row.dataset.findingText || '',
-                    policy: row.dataset.policy || '',
-                    owner: row.dataset.owner || '',
-                    timeline: row.dataset.timeline || '',
-                    mitigation: row.dataset.mitigation || '',
-                    impact: row.dataset.impact || '',
+                    finding_text: exceptionEditFindingText?.value || row.dataset.findingText || '',
+                    policy: exceptionEditPolicy?.value || row.dataset.policy || '',
+                    owner: exceptionEditOwner?.value || row.dataset.owner || '',
+                    timeline: exceptionEditTimeline?.value || row.dataset.timeline || '',
+                    mitigation: exceptionEditMitigation?.value || row.dataset.mitigation || '',
+                    impact: exceptionEditImpact?.value || row.dataset.impact || '',
                 }),
             });
             const payload = await response.json().catch(() => ({}));
@@ -1415,6 +1590,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const comment = exceptionEditComment?.value || '';
         const expiresAt = exceptionEditExpires?.value || '';
         const links = collectExceptionLinks(exceptionEditSnBlock || exceptionEditDialog);
+        const notifyEmails = parseNotifyEmails(exceptionEditNotifyEmails?.value || '');
+        const findingText = (exceptionEditFindingText?.value || '').trim();
+        if (!findingText) {
+            setExceptionEditStatus('Finding text is required.', true);
+            exceptionEditFindingText?.focus();
+            return;
+        }
+        const content = {
+            finding_text: findingText,
+            policy: exceptionEditPolicy?.value || '',
+            owner: exceptionEditOwner?.value || '',
+            timeline: exceptionEditTimeline?.value || '',
+            impact: exceptionEditImpact?.value || '',
+            mitigation: exceptionEditMitigation?.value || '',
+        };
         setExceptionEditStatus('Saving…');
         if (exceptionEditSave) {
             exceptionEditSave.disabled = true;
@@ -1424,10 +1614,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const payload = await persistFindingStatus(findingId, status, {
                     comment,
                     servicenow_links: links,
+                    notify_emails: notifyEmails,
                     expires_at: expiresAt,
+                    ...content,
                 });
                 const savedComment = typeof payload.comment === 'string' ? payload.comment : comment;
                 const savedLinks = Array.isArray(payload.servicenow_links) ? payload.servicenow_links : links;
+                const savedNotify = Array.isArray(payload.notify_emails) ? payload.notify_emails : notifyEmails;
                 const savedExpires = Object.prototype.hasOwnProperty.call(payload, 'expires_at')
                     ? (payload.expires_at || '')
                     : expiresAt;
@@ -1437,15 +1630,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (select) {
                     select.value = status;
                 }
-                updateExceptionRowPreview(row, savedComment, savedLinks);
+                applyExceptionContentToRow(row, payload.finding || {
+                    finding: content.finding_text,
+                    policy_reference: content.policy,
+                    owner: content.owner,
+                    timeline: content.timeline,
+                    impact: content.impact,
+                    mitigation: content.mitigation,
+                });
+                updateExceptionRowPreview(row, savedComment, savedLinks, savedNotify);
                 applyExceptionDueState(row, savedExpires, select?.value || status);
-                if (savedExpires) {
-                    row.dataset.timeline = savedExpires;
-                    const timelineCell = row.children[4];
-                    if (timelineCell) {
-                        timelineCell.textContent = savedExpires;
-                    }
-                }
                 updateExceptionOpenCount();
                 updateExecSummaryFromExceptions();
                 if (payload.gates) {
@@ -1458,13 +1652,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (select) {
                     select.value = status;
                 }
-                updateExceptionRowPreview(row, comment, links);
+                applyExceptionContentToRow(row, {
+                    finding: content.finding_text,
+                    policy_reference: content.policy,
+                    owner: content.owner,
+                    timeline: content.timeline,
+                    impact: content.impact,
+                    mitigation: content.mitigation,
+                });
+                updateExceptionRowPreview(row, comment, links, notifyEmails);
                 applyExceptionDueState(row, expiresAt, status);
                 savedExceptions[findingId] = {
                     status,
                     comment,
                     servicenow_links: links,
+                    notify_emails: notifyEmails,
                     expires_at: expiresAt,
+                    ...content,
                 };
                 localStorage.setItem(exceptionKey, JSON.stringify(savedExceptions));
                 updateExceptionOpenCount();
