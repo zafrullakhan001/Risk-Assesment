@@ -20684,146 +20684,205 @@ html.is-compact .help-reader-toolbar {
 .scheduler-panel {
     display: grid;
     gap: 18px;
+    position: relative;
 }
-.scheduler-banner {
+.scheduler-panel.is-busy {
+    pointer-events: none;
+}
+.scheduler-progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
     border-radius: 12px;
-    padding: 14px 16px;
     border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--card) 88%, var(--primary, #0d9488));
+    backdrop-filter: blur(8px);
 }
-.scheduler-banner.is-off {
-    background: color-mix(in srgb, var(--risk, #b91c1c) 10%, var(--card));
-    border-color: color-mix(in srgb, var(--risk, #b91c1c) 35%, var(--line));
+.scheduler-progress-bar[hidden] {
+    display: none !important;
 }
-.scheduler-banner.is-on {
-    background: color-mix(in srgb, var(--pass, #15803d) 12%, var(--card));
-    border-color: color-mix(in srgb, var(--pass, #15803d) 35%, var(--line));
-}
-.scheduler-banner p {
-    margin: 6px 0 0;
-    color: var(--muted);
-    font-size: 13px;
-}
-.scheduler-health {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px;
-}
-.scheduler-health-card {
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 12px 14px;
-    background: var(--card);
-}
-.scheduler-health-card.is-ok {
-    box-shadow: inset 3px 0 0 var(--pass, #15803d);
-}
-.scheduler-health-card.is-warn {
-    box-shadow: inset 3px 0 0 #ca8a04;
-}
-.scheduler-health-card.is-bad {
-    box-shadow: inset 3px 0 0 var(--risk, #b91c1c);
-}
-.scheduler-health-label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-}
-.scheduler-health-value {
-    margin-top: 4px;
-    font-weight: 700;
-}
-.scheduler-health-path {
-    display: block;
-    margin-top: 6px;
-    font-size: 11px;
-    word-break: break-all;
-    color: var(--muted);
-}
-.scheduler-task-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 14px;
-}
-.scheduler-task-card {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 14px;
-    background: var(--card);
-    display: grid;
-    gap: 12px;
-}
-.scheduler-task-card.is-enabled {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pass, #15803d) 35%, transparent);
-}
-.scheduler-task-card.is-disabled {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #ca8a04 40%, transparent);
-}
-.scheduler-task-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    align-items: flex-start;
-}
-.scheduler-task-head h2 {
-    margin: 0 0 4px;
-    font-size: 1.05rem;
-}
-.scheduler-task-head p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 13px;
-}
-.scheduler-task-state {
-    flex: 0 0 auto;
-    font-family: var(--font-mono, Consolas, monospace);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    padding: 4px 8px;
+.scheduler-progress-bar-track {
+    height: 8px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--muted) 14%, var(--card));
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+.scheduler-progress-bar-fill {
+    display: block;
+    height: 100%;
+    width: 40%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary, #0d9488), color-mix(in srgb, var(--primary, #0d9488) 40%, #fff));
+}
+.scheduler-progress-bar-fill.is-indeterminate {
+    animation: scheduler-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes scheduler-indeterminate {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(320%); }
+}
+.scheduler-progress-bar-label {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
     color: var(--ink);
 }
-.scheduler-task-card.is-enabled .scheduler-task-state {
+.scheduler-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.7fr);
+    gap: 18px;
+    align-items: center;
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background:
+        radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--primary, #0d9488) 16%, transparent), transparent 55%),
+        var(--card);
+}
+.scheduler-hero.is-on {
+    border-color: color-mix(in srgb, var(--pass, #15803d) 40%, var(--line));
+}
+.scheduler-hero.is-paused {
+    border-color: color-mix(in srgb, #ca8a04 40%, var(--line));
+}
+.scheduler-hero.is-off {
+    border-color: color-mix(in srgb, var(--risk, #b91c1c) 30%, var(--line));
+}
+.scheduler-hero-kicker {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.scheduler-hero-title {
+    margin: 6px 0 8px;
+    font-size: clamp(1.15rem, 2.4vw, 1.55rem);
+    line-height: 1.25;
+}
+.scheduler-hero-text {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.45;
+    max-width: 52ch;
+}
+.scheduler-hero-meter {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+}
+.scheduler-ring {
+    --pct: 0;
+    width: 108px;
+    height: 108px;
+    border-radius: 50%;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    background:
+        radial-gradient(circle at center, var(--card) 62%, transparent 63%),
+        conic-gradient(var(--primary, #0d9488) calc(var(--pct) * 1%), color-mix(in srgb, var(--ink) 10%, var(--card)) 0);
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+.scheduler-ring strong {
+    font-size: 1.35rem;
+    line-height: 1;
+}
+.scheduler-ring span {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.scheduler-hero-stats {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+.scheduler-hero-stats li {
+    font-size: 12px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ink) 4%, var(--card));
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+.scheduler-hero-stats b {
+    color: var(--ink);
+}
+.scheduler-checks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.scheduler-check {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--card);
+}
+.scheduler-check.is-ok { box-shadow: inset 3px 0 0 var(--pass, #15803d); }
+.scheduler-check.is-warn { box-shadow: inset 3px 0 0 #ca8a04; }
+.scheduler-check.is-bad { box-shadow: inset 3px 0 0 var(--risk, #b91c1c); }
+.scheduler-check-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-content: center;
+    font-weight: 800;
+    font-size: 13px;
+    background: color-mix(in srgb, var(--ink) 6%, var(--card));
+}
+.scheduler-check.is-ok .scheduler-check-mark {
     background: color-mix(in srgb, var(--pass, #15803d) 16%, var(--card));
     color: var(--pass, #15803d);
 }
-.scheduler-task-card.is-disabled .scheduler-task-state {
+.scheduler-check.is-warn .scheduler-check-mark {
     background: color-mix(in srgb, #ca8a04 18%, var(--card));
     color: #a16207;
 }
-.scheduler-task-card.is-missing .scheduler-task-state {
+.scheduler-check.is-bad .scheduler-check-mark {
     background: color-mix(in srgb, var(--risk, #b91c1c) 14%, var(--card));
     color: var(--risk, #b91c1c);
 }
-.scheduler-task-meta {
-    margin: 0;
-    display: grid;
+.scheduler-check-top {
+    display: flex;
+    justify-content: space-between;
     gap: 8px;
+    align-items: baseline;
 }
-.scheduler-task-meta div {
-    display: grid;
-    gap: 2px;
+.scheduler-check-label {
+    font-weight: 700;
+    font-size: 13px;
 }
-.scheduler-task-meta dt {
+.scheduler-check-value {
+    font-family: var(--font-mono, Consolas, monospace);
     font-size: 11px;
     font-weight: 700;
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
 }
-.scheduler-task-meta dd {
-    margin: 0;
-    font-size: 13px;
-}
-.scheduler-task-meta .muted {
+.scheduler-check-detail {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
     color: var(--muted);
-    font-size: 12px;
+    word-break: break-all;
 }
-.scheduler-task-actions,
-.scheduler-global-actions {
+.scheduler-toolbar {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -20850,6 +20909,10 @@ html.is-compact .help-reader-toolbar {
     background: var(--card);
     color: var(--ink);
 }
+.scheduler-btn-start,
+.scheduler-btn-stop {
+    min-width: 120px;
+}
 .button-danger {
     background: color-mix(in srgb, var(--risk, #b91c1c) 12%, var(--card));
     color: var(--risk, #b91c1c);
@@ -20858,22 +20921,216 @@ html.is-compact .help-reader-toolbar {
 .button-danger:hover {
     background: color-mix(in srgb, var(--risk, #b91c1c) 20%, var(--card));
 }
+.scheduler-task-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+.scheduler-task-card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    background: var(--card);
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+}
+.scheduler-task-card.is-enabled {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pass, #15803d) 35%, transparent);
+}
+.scheduler-task-card.is-disabled {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #ca8a04 40%, transparent);
+}
+.scheduler-task-card.is-missing {
+    opacity: 0.92;
+}
+.scheduler-task-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+}
+.scheduler-task-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+}
+.scheduler-task-head h3 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+}
+.scheduler-task-head p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+}
+.scheduler-task-state {
+    flex: 0 0 auto;
+    font-family: var(--font-mono, Consolas, monospace);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 14%, var(--card));
+    color: var(--ink);
+    text-transform: uppercase;
+}
+.scheduler-task-card.is-enabled .scheduler-task-state {
+    background: color-mix(in srgb, var(--pass, #15803d) 16%, var(--card));
+    color: var(--pass, #15803d);
+}
+.scheduler-task-card.is-disabled .scheduler-task-state {
+    background: color-mix(in srgb, #ca8a04 18%, var(--card));
+    color: #a16207;
+}
+.scheduler-task-card.is-missing .scheduler-task-state {
+    background: color-mix(in srgb, var(--risk, #b91c1c) 14%, var(--card));
+    color: var(--risk, #b91c1c);
+}
+.scheduler-task-pulse {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: center;
+}
+.scheduler-pulse-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--muted) 50%, var(--card));
+}
+.scheduler-task-card.is-enabled .scheduler-pulse-dot {
+    background: var(--pass, #15803d);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pass, #15803d) 45%, transparent);
+    animation: scheduler-pulse 1.6s ease-out infinite;
+}
+.scheduler-task-card.is-disabled .scheduler-pulse-dot {
+    background: #ca8a04;
+}
+@keyframes scheduler-pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pass, #15803d) 45%, transparent); }
+    70% { box-shadow: 0 0 0 10px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+.scheduler-pulse-track {
+    height: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+.scheduler-pulse-track i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: color-mix(in srgb, var(--muted) 40%, var(--card));
+}
+.scheduler-task-card.is-enabled .scheduler-pulse-track i {
+    width: 100%;
+    background: linear-gradient(90deg, transparent, var(--pass, #15803d), transparent);
+    background-size: 200% 100%;
+    animation: scheduler-scan 2s linear infinite;
+}
+.scheduler-task-card.is-disabled .scheduler-pulse-track i {
+    width: 35%;
+    background: #ca8a04;
+}
+@keyframes scheduler-scan {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+.scheduler-task-meta {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+}
+.scheduler-task-meta div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+.scheduler-task-meta dt {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.scheduler-task-meta dd {
+    margin: 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.scheduler-task-meta .muted {
+    color: var(--muted);
+    font-size: 12px;
+}
+.scheduler-task-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
 .scheduler-help {
     margin: 0;
 }
+.scheduler-output-wrap {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 12px;
+    background: color-mix(in srgb, var(--ink) 3%, var(--card));
+}
+.scheduler-output-wrap summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+}
 .scheduler-output {
-    margin: 0;
-    max-height: 280px;
+    margin: 8px 0 0;
+    max-height: 240px;
     overflow: auto;
     padding: 12px;
-    border-radius: 10px;
+    border-radius: 8px;
     border: 1px solid var(--line);
     background: color-mix(in srgb, var(--ink) 4%, var(--card));
     font-size: 12px;
     white-space: pre-wrap;
 }
+@media (max-width: 900px) {
+    .scheduler-hero {
+        grid-template-columns: 1fr;
+    }
+    .scheduler-hero-meter {
+        justify-items: start;
+    }
+    .scheduler-hero-stats {
+        justify-content: flex-start;
+    }
+    .scheduler-task-grid,
+    .scheduler-checks {
+        grid-template-columns: 1fr;
+    }
+}
 @media (max-width: 720px) {
-    .scheduler-install-form {
+    .scheduler-toolbar,
+    .scheduler-install-form,
+    .scheduler-task-actions {
         width: 100%;
+    }
+    .scheduler-install-form label,
+    .scheduler-install-form input[type="number"],
+    .scheduler-toolbar .button,
+    .scheduler-task-actions .button {
+        width: 100%;
+    }
+    .scheduler-install-form input[type="number"] {
+        width: 100%;
+    }
+    .scheduler-task-head {
+        flex-direction: column;
     }
 }
