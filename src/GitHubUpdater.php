@@ -252,6 +252,120 @@ final class GitHubUpdater
         $this->settings->delete(self::NOTIFY_CACHE_KEY);
     }
 
+    /**
+     * Record pending GitHub updates as already present on this install without downloading a zip.
+     * Intended for developer checkouts where code is already current via git.
+     *
+     * @return array{ok: bool, sha: string, short: string, message: string}
+     */
+    public function markAlreadyInstalled(string $ref = ''): array
+    {
+        $this->assertCanTalkToGithub();
+        $target = trim($ref);
+        if ($target !== '' && !preg_match('#^[A-Za-z0-9._/-]+$#', $target)) {
+            throw new RuntimeException('Invalid update target.');
+        }
+
+        $check = $this->check(false);
+        $tag = '';
+        $sha = '';
+
+        if ($target !== '') {
+            $isCommit = preg_match('/^[a-f0-9]{7,40}$/i', $target) === 1;
+            $matched = null;
+            foreach ($check['commits'] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $itemSha = trim((string) ($item['sha'] ?? ''));
+                if ($itemSha === '') {
+                    continue;
+                }
+                if (strcasecmp($itemSha, $target) === 0
+                    || ($isCommit && (str_starts_with(strtolower($itemSha), strtolower($target))
+                        || str_starts_with(strtolower($target), strtolower($itemSha))))
+                ) {
+                    $matched = $item;
+                    break;
+                }
+            }
+            $kind = is_array($matched) ? (string) ($matched['kind'] ?? '') : '';
+            if ($kind === 'release' || (!$isCommit && $kind === '')) {
+                $tag = $isCommit ? '' : $target;
+                if ($kind === 'release') {
+                    $tag = trim((string) ($matched['sha'] ?? $target));
+                }
+                $sha = $this->githubRefSha($tag !== '' ? $tag : $target);
+            } else {
+                $sha = strtolower($target);
+                $existingTag = $this->installedTagOrVersion();
+                if ($existingTag !== '' && preg_match('/^[a-f0-9]{7,40}$/i', $existingTag) !== 1) {
+                    $tag = $existingTag;
+                }
+            }
+        } else {
+            foreach ($check['commits'] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $itemSha = trim((string) ($item['sha'] ?? ''));
+                if ($itemSha === '') {
+                    continue;
+                }
+                $kind = (string) ($item['kind'] ?? '');
+                if ($kind === 'release') {
+                    if ($tag === '') {
+                        $tag = $itemSha;
+                    }
+                } elseif ($sha === '') {
+                    $sha = strtolower($itemSha);
+                }
+            }
+
+            if ($tag === '' && $sha === '') {
+                $localSha = $this->capabilities()['gitAvailable'] ? $this->installedCommitFromGit() : '';
+                if ($localSha === '') {
+                    throw new RuntimeException('There are no pending updates to mark as installed.');
+                }
+                $sha = $localSha;
+                $existingTag = $this->installedTagOrVersion();
+                if ($existingTag !== '' && preg_match('/^[a-f0-9]{7,40}$/i', $existingTag) !== 1) {
+                    $tag = $existingTag;
+                }
+            } elseif ($sha === '' && $tag !== '') {
+                $sha = $this->githubRefSha($tag);
+            } elseif ($tag === '' && $sha !== '') {
+                $existingTag = $this->installedTagOrVersion();
+                if ($existingTag !== '' && preg_match('/^[a-f0-9]{7,40}$/i', $existingTag) !== 1) {
+                    $tag = $existingTag;
+                }
+            }
+        }
+
+        if ($sha !== '' && preg_match('/^[a-f0-9]{7,39}$/i', $sha) === 1) {
+            $full = $this->githubRefSha($sha);
+            if ($full !== '') {
+                $sha = $full;
+            }
+        }
+
+        if ($tag === '' && $sha === '') {
+            throw new RuntimeException('Could not resolve a version to mark as installed.');
+        }
+
+        $this->recordApplied($tag, $sha);
+        $this->clearLastLog();
+
+        $label = $tag !== '' ? $tag : substr($sha, 0, 7);
+
+        return [
+            'ok' => true,
+            'sha' => $sha,
+            'short' => $label,
+            'message' => 'Marked ' . $label . ' as already installed on this system (no files downloaded).',
+        ];
+    }
+
     public function apply(string $ref = ''): array
     {
         $this->assertCanApply();

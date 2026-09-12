@@ -48,6 +48,10 @@ The apply step downloads `RiskRegister-*.zip` from the Release when that asset e
 
 If the repository has no newer Release, the page also lists commits on the track branch (and the current git branch, when this folder is a git checkout) that are after the installed version. Those apply via GitHub’s source zipball.
 
+### Developer systems (already current via git)
+
+On a local checkout where the code is already present, use **Mark as already installed** on Admin → App updates, or **Mark complete** on the header update bell. That updates `VERSION.json` without downloading a zip and clears the update badge until newer commits appear on GitHub.
+
 ---
 
 ## Settings

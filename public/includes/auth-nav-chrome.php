@@ -27,6 +27,7 @@ if ($navUser === null) {
         data-updates-url="<?= e($navPrefix) ?>admin/updates.php"
         data-icon-url="<?= e($notifyIcon) ?>"
         data-brand-title="<?= e($notifyBrand->documentTitle()) ?>"
+        data-csrf-token="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
     >
         <button
             type="button"
@@ -53,6 +54,7 @@ if ($navUser === null) {
             <div class="update-bell-actions">
                 <a class="button button-primary" id="update-notify-open" href="<?= e($navPrefix) ?>admin/updates.php">Open App updates</a>
                 <button type="button" class="button ghost" id="update-notify-refresh">Check now</button>
+                <button type="button" class="button ghost" id="update-notify-mark" hidden title="Record these updates as already present on this developer system without downloading files">Mark complete</button>
             </div>
             <div class="update-bell-prefs">
                 <p class="update-bell-prefs-label">Alerts</p>

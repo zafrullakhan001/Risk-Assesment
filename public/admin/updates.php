@@ -88,6 +88,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     . ($checkResult['aheadBy'] === 1 ? '' : 's')
                     . ' remain after this apply.';
             }
+        } elseif ($action === 'mark_installed') {
+            $ref = trim((string) ($_POST['target_ref'] ?? ''));
+            $marked = $updater->markAlreadyInstalled($ref);
+            $auth->users()->logAudit(
+                'updater.mark_installed',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                ['ref' => $ref !== '' ? $ref : (string) ($marked['short'] ?? ''), 'mode' => 'local']
+            );
+            $flash = (string) $marked['message'];
+            $checkResult = $updater->check(false);
+            if ((int) $checkResult['aheadBy'] <= 0) {
+                $flash .= ' This install is recorded as up to date.';
+            }
         } else {
             throw new RuntimeException('Unknown action.');
         }
@@ -222,8 +238,21 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                     </label>
                                 <?php endforeach; ?>
                             </div>
-                            <button type="submit" class="button button-primary">Download and apply</button>
+                            <div class="updater-actions">
+                                <button type="submit" class="button button-primary">Download and apply</button>
+                            </div>
                             <p class="pat-fineprint">The page stays on this screen and then shows success or the error. Wait for it to finish; do not close the tab.</p>
+                        </form>
+                        <form
+                            method="post"
+                            class="updater-mark-installed"
+                            onsubmit="return confirm('Mark these updates as already installed on this system? No files will be downloaded. Use this on a developer machine where the code is already current.');"
+                        >
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="mark_installed">
+                            <input type="hidden" name="target_ref" value="">
+                            <button type="submit" class="button ghost">Mark as already installed</button>
+                            <p class="pat-fineprint">Developer systems: records the latest listed version in <code>VERSION.json</code> without applying a zip. The update bell clears until newer commits appear on GitHub.</p>
                         </form>
                     <?php endif; ?>
                 </section>

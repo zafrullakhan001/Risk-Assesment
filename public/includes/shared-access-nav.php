@@ -35,7 +35,8 @@ try {
 }
 
 $sharedAccessCount = count($sharedAccessProjects);
-$badgeCount = $accessUnreadCount > 0 ? $accessUnreadCount : $sharedAccessCount;
+// Badge is unread notices only — shared project count must not keep the number stuck.
+$badgeCount = $accessUnreadCount;
 $hasActivity = $badgeCount > 0;
 $sharedAccessJs = dirname(__DIR__) . '/assets/js/shared-access.js';
 $accessNotifyJs = dirname(__DIR__) . '/assets/js/access-notifications.js';
@@ -77,6 +78,12 @@ $accessCsrf = (string) ($_SESSION['csrf_token'] ?? '');
         <div class="shared-access-section" id="shared-access-notices-section"<?= $accessNotices === [] ? ' hidden' : '' ?>>
             <div class="shared-access-section-head">
                 <h4>Recent notices</h4>
+                <button
+                    type="button"
+                    class="button ghost shared-access-ack-btn"
+                    id="shared-access-ack"
+                    <?= $accessUnreadCount > 0 ? '' : ' hidden' ?>
+                >Acknowledge</button>
             </div>
             <ul class="update-bell-list shared-access-notices" id="shared-access-notices">
                 <?php foreach ($accessNotices as $notice): ?>

@@ -14,12 +14,14 @@
     const updatesUrl = root.getAttribute('data-updates-url') || '';
     const brandTitle = root.getAttribute('data-brand-title') || 'Risk Register';
     const iconUrl = root.getAttribute('data-icon-url') || '';
+    let csrfToken = root.getAttribute('data-csrf-token') || '';
     const btn = document.getElementById('update-notify-btn');
     const panel = document.getElementById('update-notify-panel');
     const badge = document.getElementById('update-notify-badge');
     const statusEl = document.getElementById('update-notify-status');
     const listEl = document.getElementById('update-notify-list');
     const refreshBtn = document.getElementById('update-notify-refresh');
+    const markBtn = document.getElementById('update-notify-mark');
     const toastPref = document.getElementById('update-notify-toast-pref');
     const desktopPref = document.getElementById('update-notify-desktop-pref');
     const desktopWrap = document.getElementById('update-notify-desktop-wrap');
@@ -203,6 +205,14 @@
                 listEl.hidden = false;
             }
         }
+        if (markBtn) {
+            markBtn.hidden = !available;
+            markBtn.disabled = false;
+        }
+        if (typeof state.csrf_token === 'string' && state.csrf_token !== '') {
+            csrfToken = state.csrf_token;
+            root.setAttribute('data-csrf-token', csrfToken);
+        }
         syncNavBadge(available ? count : 0);
         syncPrefControls();
     };
@@ -377,6 +387,74 @@
         }
     };
 
+    const markComplete = async () => {
+        if (!statusUrl || !csrfToken) {
+            if (statusEl) {
+                statusEl.textContent = 'Could not mark updates complete. Refresh the page and try again.';
+                statusEl.classList.add('is-error');
+            }
+            return;
+        }
+        const confirmed = window.confirm(
+            'Mark these updates as already installed on this system? No files will be downloaded. Use this on a developer machine where the code is already current.'
+        );
+        if (!confirmed) {
+            return;
+        }
+        if (markBtn) {
+            markBtn.disabled = true;
+        }
+        if (statusEl) {
+            statusEl.textContent = 'Marking updates as already installed…';
+            statusEl.classList.remove('is-error', 'is-ready');
+        }
+        try {
+            const response = await fetch(statusUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    action: 'mark_installed',
+                    csrf_token: csrfToken,
+                    target_ref: '',
+                }),
+            });
+            const state = await response.json();
+            if (!response.ok || !state || typeof state !== 'object' || !state.ok) {
+                applyState({
+                    ok: false,
+                    error: (state && state.error) ? state.error : 'Could not mark updates as installed.',
+                    available: false,
+                    aheadBy: 0,
+                    items: [],
+                }, false);
+                return;
+            }
+            hideToast();
+            applyState(state, false);
+            if (statusEl && state.message) {
+                statusEl.textContent = state.message;
+                statusEl.classList.remove('is-error');
+            }
+        } catch (error) {
+            applyState({
+                ok: false,
+                error: error instanceof Error ? error.message : 'Could not mark updates as installed.',
+                available: false,
+                aheadBy: 0,
+                items: [],
+            }, false);
+        } finally {
+            if (markBtn) {
+                markBtn.disabled = false;
+            }
+        }
+    };
+
     if (btn && panel) {
         btn.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -403,6 +481,11 @@
             statusEl.classList.remove('is-error', 'is-ready');
         }
         fetchState(true);
+    });
+    markBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        markComplete();
     });
     toastPref?.addEventListener('change', () => {
         storeFlag(STORAGE_TOAST, Boolean(toastPref.checked));

@@ -238,21 +238,30 @@
         togglePanel();
     });
 
-    panel?.addEventListener('click', (event) => {
-        event.stopPropagation();
+    root.querySelectorAll('[data-exception-bell-close]').forEach((closeBtn) => {
+        closeBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closePanel();
+            btn?.focus();
+        });
     });
 
     document.addEventListener('click', (event) => {
+        if (!panel || panel.hidden) {
+            return;
+        }
         const target = event.target;
-        if (!(target instanceof Element)) {
+        if (!(target instanceof Node) || root.contains(target)) {
             return;
         }
-        if (target.closest('[data-exception-bell-close]')) {
+        closePanel();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && panel && !panel.hidden) {
             closePanel();
-            return;
-        }
-        if (!target.closest('#exception-bell-root')) {
-            closePanel();
+            btn?.focus();
         }
     });
 

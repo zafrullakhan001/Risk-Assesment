@@ -737,6 +737,7 @@ HTML,
 <li>Save a GitHub personal access token when the badge says token needed (classic <code>repo</code> scope for private repos).</li>
 <li><strong>Check for updates</strong> lists newer <strong>GitHub Releases</strong>. If none are ahead, it also lists commits on the track branch (and the current git branch, when this folder is a checkout) after the installed version.</li>
 <li><strong>Download and apply</strong> prefers a packaged <code>RiskRegister-*.zip</code> Release asset; otherwise it uses GitHub’s source zipball. PHP <code>curl</code> and <code>zip</code> must be enabled.</li>
+<li><strong>Mark as already installed</strong> (or <strong>Mark complete</strong> on the header bell) records the listed version in <code>VERSION.json</code> without downloading files — use this on a developer machine where the code is already current via git.</li>
 <li>Installed version comes from <code>VERSION.json</code>. Keep the tab open until apply finishes and redirects — do not treat a garbled download as a failed page.</li>
 <li>Admins also see a header <strong>bell</strong> when a newer build is available. The bell menu can turn <strong>toast</strong> and <strong>browser</strong> notifications on or off (browser alerts need localhost or HTTPS).</li>
 </ul>

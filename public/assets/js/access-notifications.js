@@ -12,10 +12,11 @@
     const panel = document.getElementById('shared-access-panel');
     const noticesList = document.getElementById('shared-access-notices');
     const noticesSection = document.getElementById('shared-access-notices-section');
-    const sharedCountFallback = Number(root.querySelectorAll('.shared-access-item').length || 0);
+    const ackBtn = document.getElementById('shared-access-ack');
     let unreadCount = Number(root.getAttribute('data-unread-count') || 0);
     let toastTimer = 0;
     let markedPanelRead = false;
+    let ackInFlight = false;
 
     const escapeHtml = (value) => String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -24,8 +25,15 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
+    const setAckVisible = (visible) => {
+        if (!ackBtn) {
+            return;
+        }
+        ackBtn.hidden = !visible;
+    };
+
     const setBadge = (count) => {
-        const display = count > 0 ? count : sharedCountFallback;
+        const display = Math.max(0, Number(count) || 0);
         if (!badge) {
             return;
         }
@@ -36,10 +44,9 @@
         } else {
             badge.hidden = true;
             badge.textContent = '0';
-            if (sharedCountFallback <= 0) {
-                btn?.classList.remove('has-shared');
-            }
+            btn?.classList.remove('has-shared');
         }
+        setAckVisible(display > 0);
     };
 
     const postJson = async (payload) => {
@@ -134,20 +141,30 @@
         });
     };
 
-    const markPanelRead = async () => {
-        if (markedPanelRead || unreadCount <= 0) {
+    const markAllRead = async () => {
+        if (unreadCount <= 0 || ackInFlight) {
             return;
         }
-        markedPanelRead = true;
+        ackInFlight = true;
         try {
             const data = await postJson({ action: 'mark_all_read' });
             unreadCount = Number(data.unread_count || 0);
             root.setAttribute('data-unread-count', String(unreadCount));
             clearNewChips();
             setBadge(unreadCount);
+            markedPanelRead = true;
         } catch {
-            markedPanelRead = false;
+            // Soft-fail: caller may retry.
+        } finally {
+            ackInFlight = false;
         }
+    };
+
+    const markPanelRead = async () => {
+        if (markedPanelRead || unreadCount <= 0) {
+            return;
+        }
+        await markAllRead();
     };
 
     const markToastRead = async (ids) => {
@@ -217,6 +234,12 @@
             window.setTimeout(originalClick, 0);
         });
     };
+
+    ackBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        markAllRead();
+    });
 
     observePanel();
     setBadge(unreadCount);
