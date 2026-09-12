@@ -178,7 +178,7 @@ HTML,
 <li><strong>Actions</strong> — responses, exceptions, Sign-off, versions, access (owner), and share (owner).</li>
 <li><strong>Diagram &amp; links</strong> — Mermaid diagrams, pictures, and project URLs.</li>
 <li><strong>Governance summary</strong> — classification, exceptions, ADRs, or JSON diligence fields when the workbook has them.</li>
-<li><strong>Scoring legend</strong> — status meanings, risk guidance, and evidence checklist.</li>
+<li><strong>Scoring legend</strong> — status meanings, risk guidance, evidence checklist, and (adaptive) material finding types with the materiality gate.</li>
 </ul>
 <p>Charts and KPI chips sit above the register. Click a chip or chart slice to filter the table.</p>
 HTML,

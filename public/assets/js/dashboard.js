@@ -687,6 +687,40 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${y}-${m}-${day}`;
     };
 
+    const addMonthsYmd = (baseYmd, months) => {
+        const base = /^\d{4}-\d{2}-\d{2}$/.test(String(baseYmd || '')) ? String(baseYmd) : todayYmd();
+        const parts = base.split('-').map(Number);
+        const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+        const day = d.getDate();
+        d.setMonth(d.getMonth() + Number(months || 0));
+        if (d.getDate() < day) {
+            d.setDate(0);
+        }
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+    };
+
+    const applyExceptionExtendPreset = (months) => {
+        if (!exceptionExtendDate) {
+            return;
+        }
+        const today = todayYmd();
+        const current = exceptionEditExpires?.value || exceptionEditRow?.dataset.expiresAt || '';
+        const base = current > today ? current : today;
+        let next = addMonthsYmd(base, months);
+        if (next <= today) {
+            next = addMonthsYmd(today, Math.max(1, Number(months) || 1));
+        }
+        exceptionExtendDate.min = tomorrowYmd();
+        exceptionExtendDate.value = next;
+        exceptionExtendBlock?.querySelectorAll('.exception-extend-preset').forEach((btnEl) => {
+            btnEl.classList.toggle('is-active', Number(btnEl.getAttribute('data-months') || 0) === Number(months));
+        });
+        exceptionExtendDate.focus();
+    };
+
     const isExceptionDue = (expiresAt, status) => {
         if (!expiresAt) {
             return false;
@@ -836,6 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="col-actions">
                     <div class="exception-row-actions">
                         <button type="button" class="button button-secondary exception-edit-row" data-finding-id="${id}" title="Edit exception details" aria-label="Edit exception details">✏️</button>
+                        <button type="button" class="button button-secondary exception-clone-row" data-finding-id="${id}" title="Clone as custom exception" aria-label="Clone as custom exception">⧉</button>
                         ${extendBtn}
                         <button type="button" class="button button-secondary exception-delete-row" data-finding-id="${id}" title="Delete exception" aria-label="Delete exception">🗑️</button>
                     </div>
@@ -1744,6 +1779,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    exceptionExtendBlock?.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+        const presetBtn = target.closest('.exception-extend-preset');
+        if (!presetBtn) {
+            return;
+        }
+        event.preventDefault();
+        const months = Number(presetBtn.getAttribute('data-months') || 0);
+        if (months > 0) {
+            applyExceptionExtendPreset(months);
+        }
+    });
+
     const exceptionTracker = document.getElementById('exception-tracker');
     exceptionTracker?.addEventListener('click', async (event) => {
         const target = event.target;
@@ -1756,6 +1807,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = editBtn.closest('tr.exception-row');
             if (row) {
                 openExceptionEditDialog(row);
+            }
+            return;
+        }
+
+        const cloneBtn = target.closest('.exception-clone-row');
+        if (cloneBtn) {
+            const row = cloneBtn.closest('tr.exception-row');
+            if (row) {
+                cloneExceptionFromRow(row, cloneBtn);
             }
             return;
         }
@@ -1837,6 +1897,107 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.alert(error.message || 'Delete failed');
                 deleteBtn.disabled = false;
             }
+        }
+    });
+
+    const insertClonedExceptionRow = (finding) => {
+        const tbody = document.querySelector('#exception-table tbody');
+        if (!tbody || !finding || !finding.id) {
+            return null;
+        }
+        const empty = tbody.querySelector('.empty-row');
+        if (empty) {
+            empty.remove();
+        }
+        tbody.insertAdjacentHTML('beforeend', buildExceptionRowHtml(finding));
+        const newRow = tbody.querySelector(`tr[data-finding-id="${CSS.escape(finding.id)}"]`);
+        if (newRow) {
+            bindExceptionRow(newRow);
+        }
+        updateExceptionTabCount();
+        updateExceptionOpenCount();
+        updateExecSummaryFromExceptions();
+        if (typeof window.refreshExceptionBell === 'function') {
+            window.refreshExceptionBell();
+        }
+        return newRow;
+    };
+
+    const cloneExceptionFromRow = async (row, triggerBtn = null) => {
+        const findingId = row?.dataset.findingId || '';
+        if (!row || !findingId) {
+            return;
+        }
+        if (Number(assessmentId) <= 0) {
+            window.alert('Open a saved assessment before cloning exceptions.');
+            return;
+        }
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+        }
+        if (exceptionEditClone) {
+            exceptionEditClone.disabled = true;
+        }
+        setExceptionEditStatus(exceptionEditDialog?.open ? 'Cloning…' : '');
+        try {
+            const body = new URLSearchParams({
+                action: 'clone_finding',
+                csrf_token: csrfToken,
+                assessment_id: String(assessmentId),
+                finding_id: findingId,
+            });
+            const response = await fetch('index.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body,
+            });
+            const text = await response.text();
+            let payload = {};
+            try {
+                payload = text ? JSON.parse(text) : {};
+            } catch (error) {
+                throw new Error('Clone failed');
+            }
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || 'Clone failed');
+            }
+            if (payload.gates) {
+                applyGoliveGates(payload.gates);
+            } else {
+                refreshGoliveGates();
+            }
+            const newRow = insertClonedExceptionRow(payload.finding);
+            closeExceptionEditDialog();
+            if (newRow) {
+                openExceptionEditDialog(newRow);
+                setExceptionEditStatus('Cloned as a custom exception. Review and save any changes.');
+            }
+        } catch (error) {
+            const message = error.message || 'Clone failed';
+            if (exceptionEditDialog?.open) {
+                setExceptionEditStatus(message, true);
+            } else {
+                window.alert(message);
+            }
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+            }
+            if (exceptionEditClone) {
+                exceptionEditClone.disabled = false;
+            }
+        }
+    };
+
+    const exceptionEditClone = document.getElementById('exception-edit-clone');
+    exceptionEditClone?.addEventListener('click', () => {
+        if (exceptionEditRow) {
+            cloneExceptionFromRow(exceptionEditRow, exceptionEditClone);
         }
     });
 

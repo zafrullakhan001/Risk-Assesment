@@ -52,8 +52,8 @@ $tomorrowMin = date('Y-m-d', strtotime('+1 day'));
         aria-controls="exception-bell-panel"
         title="Exceptions due or overdue"
     >
-        <svg class="update-bell-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm6.7-6.2V11a6.7 6.7 0 0 0-5.2-6.5V3.8a1.5 1.5 0 1 0-3 0v.7A6.7 6.7 0 0 0 5.3 11v4.8L4 17.1V18h16v-.9l-1.3-1.3Z"/>
+        <svg class="update-bell-icon exception-shield-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M12 2 4 5v6.2c0 5.05 3.4 9.75 8 11 4.6-1.25 8-5.95 8-11V5l-8-3Zm0 11.2-3.2-3.2 1.15-1.15L12 10.9l4.05-4.05 1.15 1.15L12 13.2Z"/>
         </svg>
         <?php if ($exceptionDueCount > 0): ?>
             <span class="update-bell-badge exception-bell-badge" id="exception-bell-badge"><?= $exceptionDueCount > 99 ? '99+' : (string) $exceptionDueCount ?></span>
@@ -101,8 +101,18 @@ $tomorrowMin = date('Y-m-d', strtotime('+1 day'));
                     </div>
                     <?php if ($canEdit): ?>
                         <div class="exception-bell-extend-inline" hidden>
-                            <input type="date" min="<?= e($tomorrowMin) ?>" aria-label="New expiry date">
-                            <button type="button" class="button button-primary exception-bell-extend-save">Save</button>
+                            <div class="exception-extend-presets" role="group" aria-label="Extend by">
+                                <button type="button" class="exception-extend-preset" data-months="1">1 mo</button>
+                                <button type="button" class="exception-extend-preset" data-months="3">3 mo</button>
+                                <button type="button" class="exception-extend-preset" data-months="6">6 mo</button>
+                                <button type="button" class="exception-extend-preset" data-months="9">9 mo</button>
+                                <button type="button" class="exception-extend-preset" data-months="12">1 yr</button>
+                                <button type="button" class="exception-extend-preset" data-months="24">2 yr</button>
+                            </div>
+                            <div class="exception-bell-extend-date-row">
+                                <input type="date" min="<?= e($tomorrowMin) ?>" aria-label="New expiry date">
+                                <button type="button" class="button button-primary exception-bell-extend-save">Save</button>
+                            </div>
                         </div>
                     <?php endif; ?>
                 </li>

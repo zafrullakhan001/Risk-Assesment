@@ -24,6 +24,62 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
+    const todayYmd = () => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    const addMonthsYmd = (baseYmd, months) => {
+        const base = /^\d{4}-\d{2}-\d{2}$/.test(String(baseYmd || '')) ? String(baseYmd) : todayYmd();
+        const parts = base.split('-').map(Number);
+        const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+        const day = d.getDate();
+        d.setMonth(d.getMonth() + Number(months || 0));
+        // Keep end-of-month stable when source day overflows (e.g. Jan 31 + 1 mo).
+        if (d.getDate() < day) {
+            d.setDate(0);
+        }
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+    };
+
+    const applyExtendPreset = (container, months) => {
+        if (!container) {
+            return;
+        }
+        const dateInput = container.querySelector('input[type="date"]');
+        if (!(dateInput instanceof HTMLInputElement)) {
+            return;
+        }
+        const today = todayYmd();
+        let next = addMonthsYmd(today, months);
+        if (next <= today) {
+            next = addMonthsYmd(today, Math.max(1, Number(months) || 1));
+        }
+        dateInput.min = minExtend || today;
+        dateInput.value = next;
+        container.querySelectorAll('.exception-extend-preset').forEach((btnEl) => {
+            btnEl.classList.toggle('is-active', Number(btnEl.getAttribute('data-months') || 0) === Number(months));
+        });
+        dateInput.focus();
+    };
+
+    const extendPresetsHtml = () => `
+        <div class="exception-extend-presets" role="group" aria-label="Extend by">
+            <button type="button" class="exception-extend-preset" data-months="1">1 mo</button>
+            <button type="button" class="exception-extend-preset" data-months="3">3 mo</button>
+            <button type="button" class="exception-extend-preset" data-months="6">6 mo</button>
+            <button type="button" class="exception-extend-preset" data-months="9">9 mo</button>
+            <button type="button" class="exception-extend-preset" data-months="12">1 yr</button>
+            <button type="button" class="exception-extend-preset" data-months="24">2 yr</button>
+        </div>
+    `;
+
     const setBadge = (count) => {
         dueCount = Math.max(0, Number(count) || 0);
         root.setAttribute('data-due-count', String(dueCount));
@@ -116,8 +172,11 @@
                 </div>
                 ${canEdit ? `
                     <div class="exception-bell-extend-inline" hidden>
-                        <input type="date" min="${escapeHtml(minExtend)}" aria-label="New expiry date">
-                        <button type="button" class="button button-primary exception-bell-extend-save">Save</button>
+                        ${extendPresetsHtml()}
+                        <div class="exception-bell-extend-date-row">
+                            <input type="date" min="${escapeHtml(minExtend)}" aria-label="New expiry date">
+                            <button type="button" class="button button-primary exception-bell-extend-save">Save</button>
+                        </div>
                     </div>
                 ` : ''}
             `;
@@ -216,6 +275,16 @@
             }
             return;
         }
+        const presetBtn = target.closest('.exception-extend-preset');
+        if (presetBtn) {
+            const months = Number(presetBtn.getAttribute('data-months') || 0);
+            const inline = item.querySelector('.exception-bell-extend-inline');
+            if (months > 0 && inline) {
+                inline.hidden = false;
+                applyExtendPreset(inline, months);
+            }
+            return;
+        }
         const saveBtn = target.closest('.exception-bell-extend-save');
         if (!saveBtn) {
             return;
@@ -225,6 +294,11 @@
         const dateInput = item.querySelector('.exception-bell-extend-inline input[type="date"]');
         const expiresAt = dateInput?.value || '';
         if (!assessmentId || !findingId || !expiresAt) {
+            window.alert('Choose a new expiry date after today.');
+            dateInput?.focus();
+            return;
+        }
+        if (expiresAt <= todayYmd()) {
             window.alert('Choose a new expiry date after today.');
             dateInput?.focus();
             return;

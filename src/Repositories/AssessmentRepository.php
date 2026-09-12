@@ -1020,6 +1020,67 @@ final class AssessmentRepository
     }
 
     /**
+     * Clone a workbook finding as a new manual/custom exception.
+     *
+     * @return array<string, string>|null
+     */
+    public function cloneFinding(int $assessmentId, string $sourceFindingId): ?array
+    {
+        if ($assessmentId <= 0 || trim($sourceFindingId) === '') {
+            return null;
+        }
+
+        $sourceFindingId = trim($sourceFindingId);
+        $workbook = $this->loadWorkbook($assessmentId);
+        $findings = array_values($workbook['findings'] ?? []);
+        $source = null;
+
+        foreach ($findings as $index => $finding) {
+            if (!is_array($finding)) {
+                continue;
+            }
+            $id = trim((string) ($finding['id'] ?? ('finding-' . $index)));
+            if ($id === $sourceFindingId) {
+                $source = $finding;
+                $source['id'] = $id;
+                break;
+            }
+        }
+
+        if ($source === null) {
+            return null;
+        }
+
+        $text = trim((string) ($source['finding'] ?? ''));
+        if ($text === '') {
+            throw new \InvalidArgumentException('Source exception has no finding text.');
+        }
+        if (!preg_match('/\s*\(copy\)\s*$/i', $text)) {
+            $text .= ' (copy)';
+        }
+        if (mb_strlen($text) > 4000) {
+            $text = mb_substr($text, 0, 4000);
+        }
+
+        $row = [
+            'id' => 'manual-' . bin2hex(random_bytes(8)),
+            'finding' => $text,
+            'policy_reference' => $this->clipField((string) ($source['policy_reference'] ?? ''), 500),
+            'impact' => $this->clipField((string) ($source['impact'] ?? ''), 2000),
+            'mitigation' => $this->clipField((string) ($source['mitigation'] ?? ''), 2000),
+            'owner' => $this->clipField((string) ($source['owner'] ?? ''), 200),
+            'timeline' => $this->clipField((string) ($source['timeline'] ?? ''), 200),
+            'origin' => 'manual',
+            'cloned_from' => $sourceFindingId,
+        ];
+        $findings[] = $row;
+        $workbook['findings'] = $findings;
+        $this->saveWorkbook($assessmentId, $workbook);
+
+        return $row;
+    }
+
+    /**
      * Sync workbook finding timeline (and adaptive exception expiration_date) to a Y-m-d expiry.
      */
     public function updateFindingExpiry(

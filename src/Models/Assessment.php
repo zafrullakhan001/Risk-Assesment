@@ -185,6 +185,9 @@ final class Assessment
                 'checklist' => array_values($workbook['legend']['checklist'] ?? []),
                 'routing' => array_values($workbook['legend']['routing'] ?? []),
                 'finding_types' => array_values($workbook['legend']['finding_types'] ?? []),
+                'materiality_gate' => array_values($workbook['legend']['materiality_gate'] ?? []),
+                'materiality_guidance' => array_values($workbook['legend']['materiality_guidance'] ?? []),
+                'materiality_notes' => array_values($workbook['legend']['materiality_notes'] ?? []),
             ],
         ];
 

@@ -326,7 +326,7 @@ final class DashboardRenderer
                     <button type="button" class="dash-tab dash-tab-theme-governance" role="tab" aria-selected="false" data-tab="governance" data-tooltip="View governance fields, documented exceptions, and recommended compliance actions.">⚖️ Governance summary</button>
                 <?php endif; ?>
                 <?php if ($hasLegend): ?>
-                    <button type="button" class="dash-tab dash-tab-theme-legend" role="tab" aria-selected="false" data-tab="legend" data-tooltip="Reference status meanings, risk-level guidance, and the minimum evidence checklist.">📊 Scoring legend</button>
+                    <button type="button" class="dash-tab dash-tab-theme-legend" role="tab" aria-selected="false" data-tab="legend" data-tooltip="<?= $isAdaptive ? 'Routing decisions, score bands, material finding types, and the materiality gate for Risk Register rows.' : 'Reference status meanings, risk-level guidance, and the minimum evidence checklist.' ?>">📊 Scoring legend</button>
                 <?php endif; ?>
             </nav>
 
@@ -420,7 +420,7 @@ final class DashboardRenderer
 
             <?php if ($hasLegend): ?>
                 <div class="dash-panel dash-panel-theme-legend" data-panel="legend" hidden>
-                    <?= $this->renderPanelIntro('📊', 'Scoring reference', 'Scoring legend', $isAdaptive ? 'Routing decisions, score bands (Low/Moderate/High/Critical), and materiality guidance.' : 'Status meanings, risk level guidance, and minimum evidence checklist from the workbook.') ?>
+                    <?= $this->renderPanelIntro('📊', 'Scoring reference', 'Scoring legend', $isAdaptive ? 'Routing decisions, score bands (Low/Moderate/High/Critical), material finding types, and the materiality gate for Risk Register rows.' : 'Status meanings, risk level guidance, and minimum evidence checklist from the workbook.') ?>
                     <?= $this->renderLegendPanel($workbook['legend'] ?? []) ?>
                     <?php if ($adaptiveViews !== null): ?>
                         <?= $adaptiveViews->renderAdaptiveLegendExtras($workbook['legend'] ?? []) ?>

@@ -612,6 +612,14 @@ final class DashboardDecisionViews
                             <div class="exception-extend-block" id="exception-extend-block" hidden>
                                 <label class="response-dialog-field">
                                     <span>Extend to a later date</span>
+                                    <div class="exception-extend-presets" role="group" aria-label="Extend by">
+                                        <button type="button" class="exception-extend-preset" data-months="1">1 mo</button>
+                                        <button type="button" class="exception-extend-preset" data-months="3">3 mo</button>
+                                        <button type="button" class="exception-extend-preset" data-months="6">6 mo</button>
+                                        <button type="button" class="exception-extend-preset" data-months="9">9 mo</button>
+                                        <button type="button" class="exception-extend-preset" data-months="12">1 yr</button>
+                                        <button type="button" class="exception-extend-preset" data-months="24">2 yr</button>
+                                    </div>
                                     <div class="exception-extend-row">
                                         <input type="date" id="exception-extend-date" class="exception-date-input" min="<?= $this->e(date('Y-m-d', strtotime('+1 day'))) ?>">
                                         <button type="button" class="button button-secondary" id="exception-extend-save">Extend exception</button>
@@ -709,6 +717,7 @@ final class DashboardDecisionViews
                         <p class="response-dialog-status" id="exception-edit-status-msg" hidden></p>
                         <div class="response-dialog-actions">
                             <button type="button" class="button ghost" id="exception-edit-cancel">Cancel</button>
+                            <button type="button" class="button button-secondary" id="exception-edit-clone" title="Clone as a new custom exception">⧉ Clone as custom</button>
                             <button type="submit" class="button button-primary" id="exception-edit-save">💾 Save exception</button>
                         </div>
                     </form>
@@ -2209,6 +2218,13 @@ final class DashboardDecisionViews
                         title="Edit exception details"
                         aria-label="Edit exception details"
                     >✏️</button>
+                    <button
+                        type="button"
+                        class="button button-secondary exception-clone-row"
+                        data-finding-id="<?= $this->e($findingId) ?>"
+                        title="Clone as custom exception"
+                        aria-label="Clone as custom exception"
+                    >⧉</button>
                     <?php if ($isDue): ?>
                         <button
                             type="button"

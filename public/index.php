@@ -1044,7 +1044,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($postedAction === 'add_finding' || $postedAction === 'delete_finding') {
+    if ($postedAction === 'add_finding' || $postedAction === 'delete_finding' || $postedAction === 'clone_finding') {
         header('Content-Type: application/json; charset=utf-8');
         try {
             if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
@@ -1057,6 +1057,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $requireProjectEdit($targetId);
+
+            if ($postedAction === 'clone_finding') {
+                $sourceFindingId = trim((string) ($_POST['finding_id'] ?? ''));
+                if ($sourceFindingId === '') {
+                    throw new RuntimeException('Choose an exception to clone.');
+                }
+
+                $sourceMeta = $findingStatusRepository->findOne($targetId, $sourceFindingId) ?? [];
+                try {
+                    $finding = $repository->cloneFinding($targetId, $sourceFindingId);
+                } catch (InvalidArgumentException $exception) {
+                    throw new RuntimeException($exception->getMessage());
+                }
+                if ($finding === null) {
+                    throw new RuntimeException('Exception not found.');
+                }
+
+                $newFindingId = (string) ($finding['id'] ?? '');
+                $expiresAt = $sourceMeta['expires_at'] ?? null;
+                $findingStatusRepository->upsert(
+                    $targetId,
+                    $newFindingId,
+                    'Open',
+                    (string) ($sourceMeta['comment'] ?? ''),
+                    $sourceMeta['servicenow_links'] ?? [],
+                    $expiresAt,
+                    true,
+                    $sourceMeta['notify_emails'] ?? []
+                );
+
+                $responses = $responseRepository->listForAssessment($targetId);
+                $findingStatuses = $findingStatusRepository->listForAssessment($targetId);
+                $record = $repository->findById($targetId);
+                if ($record === null) {
+                    throw new RuntimeException('Assessment not found.');
+                }
+                $evaluation = $evaluationRepository->findByAssessmentId($targetId);
+                $notes = (string) ($evaluation['notes'] ?? '');
+                $gate = $goliveGate->evaluate($record['assessment'], $responses, $findingStatuses, $notes);
+                $meta = $findingStatuses[$newFindingId] ?? [
+                    'status' => 'Open',
+                    'comment' => (string) ($sourceMeta['comment'] ?? ''),
+                    'servicenow_links' => FindingStatusRepository::normalizeLinks($sourceMeta['servicenow_links'] ?? []),
+                    'notify_emails' => FindingStatusRepository::normalizeNotifyEmails($sourceMeta['notify_emails'] ?? []),
+                    'expires_at' => $expiresAt,
+                ];
+
+                echo json_encode([
+                    'ok' => true,
+                    'cloned_from' => $sourceFindingId,
+                    'finding' => array_merge($finding, [
+                        'status' => $meta['status'] ?? 'Open',
+                        'comment' => $meta['comment'] ?? '',
+                        'servicenow_links' => $meta['servicenow_links'] ?? [],
+                        'notify_emails' => $meta['notify_emails'] ?? [],
+                        'expires_at' => $meta['expires_at'] ?? $expiresAt,
+                        'is_due' => FindingStatusRepository::isDue(
+                            $meta['expires_at'] ?? $expiresAt,
+                            (string) ($meta['status'] ?? 'Open')
+                        ),
+                    ]),
+                    'gates' => $gate,
+                    'open_findings' => (int) ($gate['residual']['open_findings'] ?? 0),
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
 
             if ($postedAction === 'add_finding') {
                 $timeline = (string) ($_POST['timeline'] ?? '');

@@ -3860,11 +3860,15 @@ html[data-size="xxl"] .login-card {
     font-size: 13px;
 }
 .exception-bell-extend-inline {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+.exception-bell-extend-date-row {
     display: flex;
     gap: 6px;
     align-items: center;
     flex-wrap: wrap;
-    margin-top: 8px;
 }
 .exception-bell-extend-inline input[type="date"] {
     height: 32px;
@@ -3873,6 +3877,38 @@ html[data-size="xxl"] .login-card {
     padding: 0 8px;
     background: var(--card);
     color: var(--ink);
+}
+.exception-extend-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.exception-extend-preset {
+    appearance: none;
+    margin: 0;
+    padding: 4px 8px;
+    min-height: 28px;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card) 88%, var(--primary-soft));
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+}
+.exception-extend-preset:hover {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    background: color-mix(in srgb, var(--primary-soft) 70%, var(--card));
+}
+.exception-extend-preset.is-active {
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--line));
+    background: color-mix(in srgb, var(--primary) 16%, var(--card));
+    color: var(--primary);
+}
+.exception-extend-block .exception-extend-presets {
+    margin: 2px 0 8px;
 }
 .exception-finding-cell {
     min-width: 220px;
@@ -4200,9 +4236,13 @@ html[data-size="xxl"] .login-card {
     padding: 0 6px;
 }
 #exception-table .col-actions {
-    width: 88px;
+    width: 120px;
     text-align: center;
     vertical-align: top;
+}
+.exception-edit-dialog .response-dialog-actions {
+    flex-wrap: wrap;
+    gap: 8px;
 }
 .exception-add-dialog {
     width: min(640px, calc(100vw - 24px));
@@ -9373,6 +9413,163 @@ html.is-compact .site-footer {
     padding: 12px 18px 16px;
     display: grid;
     gap: 6px;
+}
+
+.legend-section-lede {
+    margin: 0 18px 12px;
+    max-width: 78ch;
+    color: var(--muted);
+    line-height: 1.45;
+    font-size: 0.95rem;
+}
+
+.legend-section-lede-tight {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+}
+
+.legend-section-lede strong {
+    color: var(--text);
+    font-weight: 650;
+}
+
+.materiality-legend .table-scroll {
+    padding: 0 10px 4px;
+}
+
+.materiality-types-table td:nth-child(2),
+.materiality-types-table td:nth-child(3) {
+    max-width: 36ch;
+    line-height: 1.4;
+}
+
+.materiality-block {
+    margin: 8px 14px 14px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, #7c3aed 18%, var(--line));
+    background: linear-gradient(160deg, color-mix(in srgb, #7c3aed 6%, var(--card)), var(--card));
+}
+
+.materiality-block-title {
+    margin: 0 0 6px;
+    font-family: var(--font-display);
+    font-size: 1.02rem;
+}
+
+.materiality-gate-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+}
+
+.materiality-gate-list li {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--paper) 70%, var(--card));
+    border: 1px solid var(--line);
+}
+
+.materiality-gate-list strong {
+    font-size: 0.86rem;
+    letter-spacing: 0.01em;
+}
+
+.materiality-gate-list span {
+    color: var(--muted);
+    line-height: 1.4;
+    font-size: 0.92rem;
+}
+
+.materiality-guidance-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.materiality-guidance-item {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--card);
+}
+
+.materiality-guidance-action {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.materiality-guidance-when {
+    color: var(--muted);
+    line-height: 1.4;
+    font-size: 0.92rem;
+}
+
+.materiality-guidance-item.tone-deny {
+    border-color: color-mix(in srgb, #be123c 22%, var(--line));
+    background: color-mix(in srgb, #be123c 5%, var(--card));
+}
+
+.materiality-guidance-item.tone-deny .materiality-guidance-action {
+    color: #be123c;
+}
+
+.materiality-guidance-item.tone-adr {
+    border-color: color-mix(in srgb, #0284c7 24%, var(--line));
+    background: color-mix(in srgb, #0284c7 6%, var(--card));
+}
+
+.materiality-guidance-item.tone-adr .materiality-guidance-action {
+    color: #0369a1;
+}
+
+.materiality-guidance-item.tone-exception {
+    border-color: color-mix(in srgb, #c2410c 24%, var(--line));
+    background: color-mix(in srgb, #c2410c 6%, var(--card));
+}
+
+.materiality-guidance-item.tone-exception .materiality-guidance-action {
+    color: #c2410c;
+}
+
+.materiality-notes-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.materiality-note-card {
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--paper) 65%, var(--card));
+}
+
+.materiality-note-card .eyebrow {
+    margin-bottom: 4px;
+}
+
+.materiality-note-card p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.4;
+    font-size: 0.92rem;
+}
+
+.pill.violet {
+    background: color-mix(in srgb, #7c3aed 14%, var(--card));
+    color: #6d28d9;
 }
 
 @media (max-width: 900px) {

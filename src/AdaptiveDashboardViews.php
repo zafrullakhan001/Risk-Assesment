@@ -705,15 +705,30 @@ final class AdaptiveDashboardViews
     public function renderAdaptiveLegendExtras(array $legend): string
     {
         $routing = array_values($legend['routing'] ?? []);
-        $findingTypes = array_values($legend['finding_types'] ?? []);
-        if ($routing === [] && $findingTypes === []) {
+        $findingTypes = $this->normalizeFindingTypes(array_values($legend['finding_types'] ?? []));
+        $materialityGate = array_values($legend['materiality_gate'] ?? []);
+        $materialityGuidance = array_values($legend['materiality_guidance'] ?? []);
+        $materialityNotes = array_values($legend['materiality_notes'] ?? []);
+
+        if ($materialityGate === []) {
+            $materialityGate = $this->fallbackMaterialityGate();
+        }
+        if ($materialityGuidance === []) {
+            $materialityGuidance = $this->fallbackMaterialityGuidance();
+        }
+        if ($materialityNotes === []) {
+            $materialityNotes = $this->fallbackMaterialityNotes();
+        }
+
+        $hasMateriality = $findingTypes !== [] || $materialityGate !== [] || $materialityGuidance !== [];
+        if ($routing === [] && !$hasMateriality) {
             return '';
         }
 
         ob_start();
         ?>
         <?php if ($routing !== []): ?>
-            <section class="table-card table-card-uplift" style="margin-top:10px;">
+            <section class="table-card table-card-uplift chart-card-tone-legend" style="margin-top:10px;">
                 <div class="card-heading card-heading-uplift">
                     <div class="card-heading-with-icon">
                         <span class="card-icon" aria-hidden="true">🧭</span>
@@ -723,6 +738,7 @@ final class AdaptiveDashboardViews
                         </div>
                     </div>
                 </div>
+                <p class="legend-section-lede">Route scenarios before scoring. Excluded questions are not deficiencies; selected scenarios without enough evidence stay pending unless the missing decision itself creates material exposure.</p>
                 <div class="table-scroll">
                     <table>
                         <thead>
@@ -750,8 +766,8 @@ final class AdaptiveDashboardViews
                 </div>
             </section>
         <?php endif; ?>
-        <?php if ($findingTypes !== []): ?>
-            <section class="table-card table-card-uplift" style="margin-top:10px;">
+        <?php if ($hasMateriality): ?>
+            <section class="table-card table-card-uplift chart-card-tone-legend materiality-legend" style="margin-top:10px;">
                 <div class="card-heading card-heading-uplift">
                     <div class="card-heading-with-icon">
                         <span class="card-icon" aria-hidden="true">🏷️</span>
@@ -761,15 +777,250 @@ final class AdaptiveDashboardViews
                         </div>
                     </div>
                 </div>
-                <ul class="legend-checklist">
-                    <?php foreach ($findingTypes as $type): ?>
-                        <li><?= $this->e((string) $type) ?></li>
-                    <?php endforeach; ?>
-                </ul>
+                <p class="legend-section-lede">
+                    The Architecture Risk Register holds <strong>material design findings only</strong>—not every routed scenario.
+                    Create a row when a selected scenario produces a Gap, Risk, or Decision Required that clears the materiality gate below.
+                    Routine evidence gaps belong in Due Diligence; trade-offs belong in ADRs; policy deviations belong in the Exception Register.
+                </p>
+
+                <?php if ($findingTypes !== []): ?>
+                    <div class="table-scroll">
+                        <table class="materiality-types-table">
+                            <thead>
+                                <tr>
+                                    <th>Finding type</th>
+                                    <th>Meaning</th>
+                                    <th>When to put it on the register</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($findingTypes as $row): ?>
+                                    <tr>
+                                        <td><?= $this->findingTypePill((string) ($row['type'] ?? '')) ?></td>
+                                        <td><?= $this->e((string) ($row['meaning'] ?? '')) ?></td>
+                                        <td><?= $this->e((string) ($row['register_action'] ?? '')) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($materialityGate !== []): ?>
+                    <div class="materiality-block">
+                        <h4 class="materiality-block-title">Materiality gate</h4>
+                        <p class="legend-section-lede legend-section-lede-tight">
+                            Use all six checks before writing a Risk Register row. If any check fails, keep the outcome in the Question Router (or move it to ADR / Exception) instead of inflating the register.
+                        </p>
+                        <ol class="materiality-gate-list">
+                            <?php foreach ($materialityGate as $gate): ?>
+                                <?php if (!is_array($gate)) {
+                                    continue;
+                                } ?>
+                                <li>
+                                    <strong><?= $this->e((string) ($gate['step'] ?? '')) ?></strong>
+                                    <span><?= $this->e((string) ($gate['criterion'] ?? '')) ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ol>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($materialityGuidance !== []): ?>
+                    <div class="materiality-block">
+                        <h4 class="materiality-block-title">What belongs elsewhere</h4>
+                        <p class="legend-section-lede legend-section-lede-tight">
+                            Not every issue is a register finding. Prefer the lightest correct artifact so the register stays a decision-ready view of material exposure.
+                        </p>
+                        <ul class="materiality-guidance-list">
+                            <?php foreach ($materialityGuidance as $item): ?>
+                                <?php if (!is_array($item)) {
+                                    continue;
+                                } ?>
+                                <?php
+                                $action = (string) ($item['action'] ?? '');
+                                $tone = str_contains(strtolower($action), 'do not') ? 'deny'
+                                    : (str_contains(strtolower($action), 'adr') ? 'adr' : 'exception');
+                                ?>
+                                <li class="materiality-guidance-item tone-<?= $this->e($tone) ?>">
+                                    <span class="materiality-guidance-action"><?= $this->e($action) ?></span>
+                                    <span class="materiality-guidance-when"><?= $this->e((string) ($item['when'] ?? '')) ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($materialityNotes !== []): ?>
+                    <div class="materiality-block materiality-notes">
+                        <h4 class="materiality-block-title">Writing and closing findings</h4>
+                        <div class="materiality-notes-grid">
+                            <?php foreach ($materialityNotes as $note): ?>
+                                <?php if (!is_array($note)) {
+                                    continue;
+                                } ?>
+                                <div class="materiality-note-card">
+                                    <div class="eyebrow"><?= $this->e((string) ($note['label'] ?? '')) ?></div>
+                                    <p><?= $this->e((string) ($note['guidance'] ?? '')) ?></p>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </section>
         <?php endif; ?>
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    /**
+     * @param list<mixed> $raw
+     * @return list<array{type: string, meaning: string, register_action: string}>
+     */
+    private function normalizeFindingTypes(array $raw): array
+    {
+        $catalog = $this->fallbackFindingTypeCatalog();
+        $out = [];
+
+        foreach ($raw as $entry) {
+            if (is_string($entry) && trim($entry) !== '') {
+                $type = trim($entry);
+                $meta = $catalog[$type] ?? [
+                    'meaning' => 'Material architecture finding recorded on the Risk Register.',
+                    'register_action' => 'Record when material and actionable.',
+                ];
+                $out[] = [
+                    'type' => $type,
+                    'meaning' => $meta['meaning'],
+                    'register_action' => $meta['register_action'],
+                ];
+                continue;
+            }
+            if (!is_array($entry)) {
+                continue;
+            }
+            $type = trim((string) ($entry['type'] ?? $entry['finding_type'] ?? ''));
+            if ($type === '') {
+                continue;
+            }
+            $meta = $catalog[$type] ?? null;
+            $out[] = [
+                'type' => $type,
+                'meaning' => trim((string) ($entry['meaning'] ?? '')) !== ''
+                    ? (string) $entry['meaning']
+                    : (string) ($meta['meaning'] ?? 'Material architecture finding recorded on the Risk Register.'),
+                'register_action' => trim((string) ($entry['register_action'] ?? '')) !== ''
+                    ? (string) $entry['register_action']
+                    : (string) ($meta['register_action'] ?? 'Record when material and actionable.'),
+            ];
+        }
+
+        if ($out === [] && $catalog !== []) {
+            foreach ($catalog as $type => $meta) {
+                $out[] = [
+                    'type' => $type,
+                    'meaning' => $meta['meaning'],
+                    'register_action' => $meta['register_action'],
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, array{meaning: string, register_action: string}>
+     */
+    private function fallbackFindingTypeCatalog(): array
+    {
+        return [
+            'Gap' => [
+                'meaning' => 'A selected scenario\'s design or control expectation is not met. The shortfall is design-specific and creates a credible consequence for a named objective.',
+                'register_action' => 'Create a Risk Register row when the gap clears the materiality gate. Treat or remediate with an owner and evidence trail.',
+            ],
+            'Risk' => [
+                'meaning' => 'Credible exposure remains for the actual architecture—even when some controls exist. Score inherent likelihood × impact before treatment.',
+                'register_action' => 'Create a Risk Register row for material exposure. Track treatment, acceptance, or escalation until residual can be verified.',
+            ],
+            'Decision Required' => [
+                'meaning' => 'An architecture choice, ownership call, or acceptance must be resolved before the scenario can close. Uncertainty itself may be material.',
+                'register_action' => 'Create a Risk Register row when the open decision creates exposure. Prefer an ADR when the issue is a trade-off among options.',
+            ],
+            'Accepted Risk' => [
+                'meaning' => 'Material exposure is formally accepted with rationale, residual conditions, and named decision authority—not silently left open.',
+                'register_action' => 'Record acceptance on the register (and Exception Register when policy/control deviation applies). Keep residual conditions visible.',
+            ],
+            'Closed' => [
+                'meaning' => 'Treatment or decision is implemented and verified with observable evidence. The finding no longer represents open material exposure.',
+                'register_action' => 'Mark closed only when closure evidence exists. Set residual score after verification; do not close on intent alone.',
+            ],
+        ];
+    }
+
+    /**
+     * @return list<array{step: string, criterion: string}>
+     */
+    private function fallbackMaterialityGate(): array
+    {
+        return [
+            ['step' => '1. Applicable', 'criterion' => 'Scenario is selected for a detected type or evidenced trigger.'],
+            ['step' => '2. Design-specific', 'criterion' => 'Finding explains the actual component, boundary, dependency or workflow.'],
+            ['step' => '3. Credible consequence', 'criterion' => 'There is a plausible impact to a named objective.'],
+            ['step' => '4. Actionable', 'criterion' => 'A decision, treatment or acceptance is required.'],
+            ['step' => '5. Owned', 'criterion' => 'An accountable owner and decision/closure authority can be named.'],
+            ['step' => '6. Traceable', 'criterion' => 'Source scenario and evidence IDs are linked.'],
+        ];
+    }
+
+    /**
+     * @return list<array{action: string, when: string}>
+     */
+    private function fallbackMaterialityGuidance(): array
+    {
+        return [
+            ['action' => 'Do not create', 'when' => 'A copied DD/control question.'],
+            ['action' => 'Do not create', 'when' => 'A generic best-practice statement with no design condition.'],
+            ['action' => 'Do not create', 'when' => 'An N/A/excluded scenario.'],
+            ['action' => 'Do not create', 'when' => 'A missing document with no demonstrated material consequence.'],
+            ['action' => 'Use ADR', 'when' => 'A material choice among options/trade-offs.'],
+            ['action' => 'Use Exception', 'when' => 'A formal policy/control deviation needing approval.'],
+        ];
+    }
+
+    /**
+     * @return list<array{label: string, guidance: string}>
+     */
+    private function fallbackMaterialityNotes(): array
+    {
+        return [
+            [
+                'label' => 'Risk statement',
+                'guidance' => 'Because [design condition], when [trigger/dependency fails], [credible consequence], affecting [objective].',
+            ],
+            [
+                'label' => 'Closure',
+                'guidance' => 'Observable evidence proves treatment/decision is implemented.',
+            ],
+            [
+                'label' => 'Residual score',
+                'guidance' => 'Leave blank until closure evidence is implemented and verified.',
+            ],
+        ];
+    }
+
+    private function findingTypePill(string $type): string
+    {
+        $normalized = strtolower(preg_replace('/\s+/', '', $type) ?? '');
+        $class = match ($normalized) {
+            'gap' => 'amber',
+            'risk' => 'coral',
+            'decisionrequired' => 'violet',
+            'acceptedrisk' => 'teal',
+            'closed' => 'gray',
+            default => 'gray',
+        };
+
+        return sprintf('<span class="pill %s">%s</span>', $this->e($class), $this->e($type));
     }
 }

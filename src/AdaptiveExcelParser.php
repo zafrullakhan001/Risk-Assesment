@@ -804,7 +804,16 @@ final class AdaptiveExcelParser
     }
 
     /**
-     * @return array{statuses: list<array<string, string>>, risk_levels: list<array<string, string>>, checklist: list<string>, routing?: list<array<string, string>>, finding_types?: list<string>}
+     * @return array{
+     *   statuses: list<array<string, string>>,
+     *   risk_levels: list<array<string, string>>,
+     *   checklist: list<string>,
+     *   routing?: list<array<string, string>>,
+     *   finding_types?: list<array{type: string, meaning: string, register_action: string}>,
+     *   materiality_gate?: list<array{step: string, criterion: string}>,
+     *   materiality_guidance?: list<array{action: string, when: string}>,
+     *   materiality_notes?: list<array{label: string, guidance: string}>
+     * }
      */
     private function parseScoringLegend(?Worksheet $sheet): array
     {
@@ -814,6 +823,9 @@ final class AdaptiveExcelParser
             'checklist' => [],
             'routing' => [],
             'finding_types' => [],
+            'materiality_gate' => [],
+            'materiality_guidance' => [],
+            'materiality_notes' => [],
         ];
 
         if ($sheet === null) {
@@ -856,12 +868,90 @@ final class AdaptiveExcelParser
             ];
         }
 
-        // Material finding types L11:L15
+        // Material finding types L11:L15 — enrich with standard meanings from the workbook model
+        $typeCatalog = $this->defaultFindingTypeCatalog();
         for ($row = 11; $row <= 15; $row++) {
             $type = $this->cellValue($sheet, 'L', $row);
-            if ($type !== '' && strcasecmp($type, 'Material Finding Type') !== 0) {
-                $legend['finding_types'][] = $type;
+            if ($type === '' || strcasecmp($type, 'Material Finding Type') === 0) {
+                continue;
             }
+            $meta = $typeCatalog[$type] ?? [
+                'meaning' => 'Material architecture finding recorded on the Risk Register.',
+                'register_action' => 'Record when material and actionable.',
+            ];
+            $legend['finding_types'][] = [
+                'type' => $type,
+                'meaning' => $meta['meaning'],
+                'register_action' => $meta['register_action'],
+            ];
+        }
+        if ($legend['finding_types'] === []) {
+            foreach ($typeCatalog as $type => $meta) {
+                $legend['finding_types'][] = [
+                    'type' => $type,
+                    'meaning' => $meta['meaning'],
+                    'register_action' => $meta['register_action'],
+                ];
+            }
+        }
+
+        // Materiality gate pairs A13:B14, C13:D14, E13:F14 (and row 14)
+        $gatePairs = [
+            ['A', 'B', 13], ['C', 'D', 13], ['E', 'F', 13],
+            ['A', 'B', 14], ['C', 'D', 14], ['E', 'F', 14],
+        ];
+        foreach ($gatePairs as [$labelCol, $textCol, $row]) {
+            $step = $this->cellValue($sheet, $labelCol, $row);
+            $criterion = $this->cellValue($sheet, $textCol, $row);
+            if ($step === '' || $criterion === '') {
+                continue;
+            }
+            $legend['materiality_gate'][] = [
+                'step' => $step,
+                'criterion' => $criterion,
+            ];
+        }
+        if ($legend['materiality_gate'] === []) {
+            $legend['materiality_gate'] = $this->defaultMaterialityGate();
+        }
+
+        // Do-not-create / use-ADR / use-Exception guidance A15:F16
+        $guidancePairs = [
+            ['A', 'B', 15], ['C', 'D', 15], ['E', 'F', 15],
+            ['A', 'B', 16], ['C', 'D', 16], ['E', 'F', 16],
+        ];
+        foreach ($guidancePairs as [$actionCol, $whenCol, $row]) {
+            $action = $this->cellValue($sheet, $actionCol, $row);
+            $when = $this->cellValue($sheet, $whenCol, $row);
+            if ($action === '' || $when === '') {
+                continue;
+            }
+            $legend['materiality_guidance'][] = [
+                'action' => $action,
+                'when' => $when,
+            ];
+        }
+        if ($legend['materiality_guidance'] === []) {
+            $legend['materiality_guidance'] = $this->defaultMaterialityGuidance();
+        }
+
+        // Risk statement / closure / residual notes A17:F17
+        $notePairs = [
+            ['A', 'B', 17], ['C', 'D', 17], ['E', 'F', 17],
+        ];
+        foreach ($notePairs as [$labelCol, $textCol, $row]) {
+            $label = $this->cellValue($sheet, $labelCol, $row);
+            $guidance = $this->cellValue($sheet, $textCol, $row);
+            if ($label === '' || $guidance === '') {
+                continue;
+            }
+            $legend['materiality_notes'][] = [
+                'label' => $label,
+                'guidance' => $guidance,
+            ];
+        }
+        if ($legend['materiality_notes'] === []) {
+            $legend['materiality_notes'] = $this->defaultMaterialityNotes();
         }
 
         $legend['checklist'] = [
@@ -873,6 +963,86 @@ final class AdaptiveExcelParser
         ];
 
         return $legend;
+    }
+
+    /**
+     * @return array<string, array{meaning: string, register_action: string}>
+     */
+    private function defaultFindingTypeCatalog(): array
+    {
+        return [
+            'Gap' => [
+                'meaning' => 'A selected scenario\'s design or control expectation is not met. The shortfall is design-specific and creates a credible consequence for a named objective.',
+                'register_action' => 'Create a Risk Register row when the gap clears the materiality gate. Treat or remediate with an owner and evidence trail.',
+            ],
+            'Risk' => [
+                'meaning' => 'Credible exposure remains for the actual architecture—even when some controls exist. Score inherent likelihood × impact before treatment.',
+                'register_action' => 'Create a Risk Register row for material exposure. Track treatment, acceptance, or escalation until residual can be verified.',
+            ],
+            'Decision Required' => [
+                'meaning' => 'An architecture choice, ownership call, or acceptance must be resolved before the scenario can close. Uncertainty itself may be material.',
+                'register_action' => 'Create a Risk Register row when the open decision creates exposure. Prefer an ADR when the issue is a trade-off among options.',
+            ],
+            'Accepted Risk' => [
+                'meaning' => 'Material exposure is formally accepted with rationale, residual conditions, and named decision authority—not silently left open.',
+                'register_action' => 'Record acceptance on the register (and Exception Register when policy/control deviation applies). Keep residual conditions visible.',
+            ],
+            'Closed' => [
+                'meaning' => 'Treatment or decision is implemented and verified with observable evidence. The finding no longer represents open material exposure.',
+                'register_action' => 'Mark closed only when closure evidence exists. Set residual score after verification; do not close on intent alone.',
+            ],
+        ];
+    }
+
+    /**
+     * @return list<array{step: string, criterion: string}>
+     */
+    private function defaultMaterialityGate(): array
+    {
+        return [
+            ['step' => '1. Applicable', 'criterion' => 'Scenario is selected for a detected type or evidenced trigger.'],
+            ['step' => '2. Design-specific', 'criterion' => 'Finding explains the actual component, boundary, dependency or workflow.'],
+            ['step' => '3. Credible consequence', 'criterion' => 'There is a plausible impact to a named objective.'],
+            ['step' => '4. Actionable', 'criterion' => 'A decision, treatment or acceptance is required.'],
+            ['step' => '5. Owned', 'criterion' => 'An accountable owner and decision/closure authority can be named.'],
+            ['step' => '6. Traceable', 'criterion' => 'Source scenario and evidence IDs are linked.'],
+        ];
+    }
+
+    /**
+     * @return list<array{action: string, when: string}>
+     */
+    private function defaultMaterialityGuidance(): array
+    {
+        return [
+            ['action' => 'Do not create', 'when' => 'A copied DD/control question.'],
+            ['action' => 'Do not create', 'when' => 'A generic best-practice statement with no design condition.'],
+            ['action' => 'Do not create', 'when' => 'An N/A/excluded scenario.'],
+            ['action' => 'Do not create', 'when' => 'A missing document with no demonstrated material consequence.'],
+            ['action' => 'Use ADR', 'when' => 'A material choice among options/trade-offs.'],
+            ['action' => 'Use Exception', 'when' => 'A formal policy/control deviation needing approval.'],
+        ];
+    }
+
+    /**
+     * @return list<array{label: string, guidance: string}>
+     */
+    private function defaultMaterialityNotes(): array
+    {
+        return [
+            [
+                'label' => 'Risk statement',
+                'guidance' => 'Because [design condition], when [trigger/dependency fails], [credible consequence], affecting [objective].',
+            ],
+            [
+                'label' => 'Closure',
+                'guidance' => 'Observable evidence proves treatment/decision is implemented.',
+            ],
+            [
+                'label' => 'Residual score',
+                'guidance' => 'Leave blank until closure evidence is implemented and verified.',
+            ],
+        ];
     }
 
     /**
