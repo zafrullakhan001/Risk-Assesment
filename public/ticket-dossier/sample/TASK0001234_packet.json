@@ -1,0 +1,122 @@
+{
+  "format": "architecture-risk.servicenow-task-packet.v1",
+  "instance": "https://example.service-now.com",
+  "exported_at": "2026-09-13T12:00:00Z",
+  "root_number": "TASK0001234",
+  "root_sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "relationships": [
+    {
+      "parent": "TASK0001234",
+      "child": "STRY0005678",
+      "type": "Contains::Task of",
+      "parent_sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "child_sys_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "parent": "DMND0009999",
+      "child": "TASK0001234",
+      "type": "Task of::Contains",
+      "parent_sys_id": "cccccccccccccccccccccccccccccccc",
+      "child_sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "parent": "TASK0001234",
+      "child": "TASK0002222",
+      "type": "Related",
+      "parent_sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "child_sys_id": "dddddddddddddddddddddddddddddddd"
+    }
+  ],
+  "tickets": [
+    {
+      "number": "TASK0001234",
+      "sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sys_class_name": "sc_task",
+      "table": "sc_task",
+      "state": "Work in Progress",
+      "short_description": "Architecture review task",
+      "description": "Complete architecture risk review for vendor onboarding.",
+      "fields": {
+        "Number": "TASK0001234",
+        "State": "Work in Progress",
+        "Short description": "Architecture review task",
+        "Assignment group": "Architecture",
+        "Assignee": "Ada Lovelace"
+      },
+      "journal": [
+        {
+          "element": "work_notes",
+          "value": "Started review.",
+          "created": "2026-09-01 10:00:00",
+          "created_by": "ada"
+        }
+      ],
+      "attachments": [
+        {
+          "sys_id": "att111111111111111111111111111111",
+          "file_name": "scope.pdf",
+          "content_type": "application/pdf",
+          "size_bytes": 1024,
+          "relative_path": "attachments/TASK0001234/scope.pdf"
+        }
+      ]
+    },
+    {
+      "number": "STRY0005678",
+      "sys_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sys_class_name": "rm_story",
+      "table": "rm_story",
+      "state": "Ready",
+      "short_description": "Story for architecture packet",
+      "description": "Parent story.",
+      "fields": {
+        "Number": "STRY0005678",
+        "State": "Ready",
+        "Short description": "Story for architecture packet"
+      },
+      "journal": [],
+      "attachments": []
+    },
+    {
+      "number": "DMND0009999",
+      "sys_id": "cccccccccccccccccccccccccccccccc",
+      "sys_class_name": "dmn_demand",
+      "table": "dmn_demand",
+      "state": "Approved",
+      "short_description": "Demand for vendor product",
+      "description": "Business demand.",
+      "fields": {
+        "Number": "DMND0009999",
+        "State": "Approved",
+        "Short description": "Demand for vendor product",
+        "Business Case": "Reduce manual intake."
+      },
+      "journal": [],
+      "attachments": []
+    },
+    {
+      "number": "TASK0002222",
+      "sys_id": "dddddddddddddddddddddddddddddddd",
+      "sys_class_name": "sc_task",
+      "table": "sc_task",
+      "state": "Closed",
+      "short_description": "Sibling related task",
+      "description": "Related catalog task.",
+      "fields": {
+        "Number": "TASK0002222",
+        "State": "Closed",
+        "Short description": "Sibling related task"
+      },
+      "journal": [],
+      "attachments": [
+        {
+          "sys_id": "att222222222222222222222222222222",
+          "file_name": "notes.txt",
+          "content_type": "text/plain",
+          "size_bytes": 32,
+          "relative_path": "attachments/TASK0002222/notes.txt"
+        }
+      ]
+    }
+  ]
+}

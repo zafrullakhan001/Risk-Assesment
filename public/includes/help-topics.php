@@ -291,6 +291,26 @@ HTML,
 HTML,
                 ],
                 [
+                    'id' => 'dossier-servicenow-console',
+                    'title' => 'Console pull from ServiceNow',
+                    'html' => <<<'HTML'
+<p>On the Ticket Dossier home page, open <strong>Console pull from ServiceNow</strong> to fetch a TASK plus its direct <strong>Task Relationships</strong> and attachments — without storing a ServiceNow password in Risk Register.</p>
+<ol>
+<li>Enter your ServiceNow instance URL (for example <code>https://yourcompany.service-now.com</code>) and a task number like <code>TASK0123456</code>.</li>
+<li>Click <strong>Prepare + copy + open</strong>. Risk Register issues a short-lived token (about 30 minutes), copies a console script, and opens ServiceNow.</li>
+<li>Sign in on that tab if needed. Open F12 → Console, paste the script, and press Enter. An overlay appears on the page.</li>
+<li>Click <strong>Export packet</strong> on the overlay (required so the browser can ask for a save folder). Choose a folder. The script writes <code>TASK…/TASK….json</code> and an <code>attachments/</code> tree, then imports the packet into Ticket Dossier.</li>
+</ol>
+<ul>
+<li>Only the starting task’s relationship list is walked — not related-of-related.</li>
+<li>Caps: 50 related tickets, 100 attachments, 25 MB per file.</li>
+<li>If your browser cannot pick a folder (for example some Firefox builds), the script falls back to downloading the JSON and files, and still imports into Ticket Dossier.</li>
+<li>You can also upload a completed task-packet JSON later; attachments only arrive with the console pull (or a ZIP backup).</li>
+</ul>
+<p>This mirrors SharePoint’s MFA console sync: your signed-in ServiceNow session does the API calls; Risk Register only receives the packet through a one-time token.</p>
+HTML,
+                ],
+                [
                     'id' => 'dossier-list',
                     'title' => 'Find dossier projects',
                     'html' => <<<'HTML'
@@ -312,6 +332,7 @@ HTML,
 <ul>
 <li><strong>Overview</strong> — owner (who created the dossier), description, business case (from demand), vendor, and ticket numbers / states. Use <strong>Edit details</strong> to change the project name, vendor, or owner if something was missed.</li>
 <li><strong>Demand / Story / Task</strong> — parsed fields, related records, and long text such as description or business case.</li>
+<li><strong>Related tickets</strong> — extra tickets from a ServiceNow console packet’s Task Relationships list (when present).</li>
 <li><strong>Due Diligence</strong> — DDR fields from the JSON export.</li>
 <li><strong>Vendor</strong> — third-party fields when the DDR includes them.</li>
 <li><strong>Assessments</strong> — external and internal questionnaires, with progress, a question search, and an “Answered only” toggle.</li>

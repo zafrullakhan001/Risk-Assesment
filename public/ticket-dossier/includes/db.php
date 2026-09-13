@@ -156,6 +156,26 @@ function initSchema(PDO $pdo): void
         'CREATE INDEX IF NOT EXISTS idx_project_files_project
          ON project_files(project_id)'
     );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS servicenow_browser_sync (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT NOT NULL UNIQUE,
+            instance_origin TEXT NOT NULL,
+            task_number TEXT NOT NULL,
+            owner_user_id INTEGER,
+            owner_username TEXT NOT NULL DEFAULT \'\',
+            owner_display_name TEXT NOT NULL DEFAULT \'\',
+            owner_auth_source TEXT NOT NULL DEFAULT \'\',
+            project_id INTEGER,
+            expires_at INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )'
+    );
+    $pdo->exec(
+        'CREATE INDEX IF NOT EXISTS idx_sn_browser_sync_expires
+         ON servicenow_browser_sync(expires_at)'
+    );
 }
 
 function ensureTicketDossierColumn(PDO $pdo, string $table, string $column, string $definition): void

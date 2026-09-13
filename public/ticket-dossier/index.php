@@ -256,6 +256,58 @@ $projectSourcesMeta = static function (array $project): array {
             </form>
         </section>
 
+        <details class="upload-card" id="servicenow-console-pull">
+            <summary class="upload-card-summary">
+                <h2>🔐 Console pull from ServiceNow</h2>
+            </summary>
+            <p class="context-note">
+                Same idea as SharePoint console sync: paste a script into a <strong>signed-in ServiceNow</strong> tab.
+                It pulls the TASK, its direct <strong>Task Relationships</strong>, and attachments — writes a local folder, then creates a Ticket Dossier here.
+                No ServiceNow password is stored in Risk Register.
+            </p>
+            <div
+                id="servicenow-console-sync"
+                class="servicenow-console-sync"
+                data-csrf="<?= e($token) ?>"
+            >
+                <ol class="servicenow-console-steps">
+                    <li>Enter your instance URL and TASK number, then <strong>Prepare + copy + open</strong>.</li>
+                    <li>Sign in on the ServiceNow tab if needed, open F12 → Console, paste the script, press Enter.</li>
+                    <li>On the overlay, click <strong>Export packet</strong>, choose a save folder, and wait for import to finish.</li>
+                </ol>
+                <div class="details-form-grid">
+                    <label class="field">
+                        <span>ServiceNow instance URL</span>
+                        <input
+                            type="url"
+                            id="servicenow-console-instance"
+                            name="instance_url"
+                            placeholder="https://yourcompany.service-now.com"
+                            autocomplete="url"
+                        >
+                    </label>
+                    <label class="field">
+                        <span>Task number</span>
+                        <input
+                            type="text"
+                            id="servicenow-console-task"
+                            name="task_number"
+                            placeholder="TASK0123456"
+                            pattern="TASK\d+"
+                            autocomplete="off"
+                        >
+                    </label>
+                </div>
+                <div class="servicenow-console-actions">
+                    <button type="button" class="button button-primary" id="servicenow-console-prepare">🔐 Prepare + copy + open</button>
+                    <a class="button ghost-light" id="servicenow-console-open" href="#" target="_blank" rel="noopener noreferrer" hidden>📂 Open ServiceNow</a>
+                    <button type="button" class="button ghost" id="servicenow-console-copy" disabled>📋 Copy script again</button>
+                </div>
+                <p class="panel-help" id="servicenow-console-status" aria-live="polite">Not prepared yet.</p>
+                <textarea id="servicenow-console-script" class="servicenow-console-script" readonly hidden rows="6" aria-label="ServiceNow console sync script"></textarea>
+            </div>
+        </details>
+
         <details class="upload-card" id="import-zip">
             <summary class="upload-card-summary">
                 <h2>📦 Import ZIP</h2>
@@ -569,5 +621,7 @@ $projectSourcesMeta = static function (array $project): array {
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/project-list.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/servicenow-console-sync.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/servicenow-console-ui.js?v=<?= e($jsV) ?>"></script>
 </body>
 </html>

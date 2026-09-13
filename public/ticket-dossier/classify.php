@@ -72,7 +72,7 @@ for ($i = 0; $i < $count; $i++) {
     $kind = $byContent ?? $byName;
 
     if ($kind === null) {
-        $item['message'] = 'Unrecognized — not a Demand, Story, Task, or DDR export';
+        $item['message'] = 'Unrecognized — not a Demand, Story, Task, DDR, or task packet export';
         $results[] = $item;
         continue;
     }

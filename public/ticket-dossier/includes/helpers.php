@@ -230,6 +230,9 @@ function kindLabel(string $kind): string
         'demand' => 'Demand',
         'story' => 'Story',
         'task' => 'Task',
+        'packet' => 'Task packet',
+        'attachment' => 'Attachment',
+        'related' => 'Related tickets',
         default => ucfirst($kind),
     };
 }
@@ -241,6 +244,9 @@ function kindEmoji(string $kind): string
         'demand' => '🎯',
         'story' => '📖',
         'task' => '✅',
+        'packet' => '📦',
+        'attachment' => '📎',
+        'related' => '🔗',
         'vendor' => '🏢',
         'assessments' => '📝',
         'overview' => '🔭',
@@ -259,6 +265,7 @@ function sectionTitle(string $section): string
         'ddr' => kindEmoji('ddr') . ' Due Diligence',
         'vendor' => kindEmoji('vendor') . ' Vendor',
         'assessments' => kindEmoji('assessments') . ' Assessments',
+        'related' => kindEmoji('related') . ' Related tickets',
         'files' => kindEmoji('files') . ' Original files',
         default => kindEmoji($section) . ' ' . ucfirst($section),
     };
@@ -288,6 +295,9 @@ function availableSections(array $parsed): array
                 $sections[] = $key;
             }
         }
+    }
+    if (!empty($parsed['related_tickets']) && is_array($parsed['related_tickets'])) {
+        $sections[] = 'related';
     }
     $sections[] = 'files';
 

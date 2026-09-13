@@ -6,7 +6,7 @@ final class FileClassifier
     /**
      * Prefer content detection; fall back to filename hints.
      *
-     * @return 'ddr'|'demand'|'story'|'task'|null
+     * @return 'ddr'|'demand'|'story'|'task'|'packet'|null
      */
     public static function classify(string $path, string $originalName): ?string
     {
@@ -19,7 +19,7 @@ final class FileClassifier
     }
 
     /**
-     * @return 'ddr'|'demand'|'story'|'task'|null
+     * @return 'ddr'|'demand'|'story'|'task'|'packet'|null
      */
     public static function classifyByContent(string $path, string $originalName = ''): ?string
     {
@@ -36,7 +36,10 @@ final class FileClassifier
             if (self::looksLikeDdrJson($path)) {
                 return 'ddr';
             }
-            // JSON that is not a DDR export is rejected.
+            if (ServicenowTaskPacketParser::looksLikePacket($path)) {
+                return 'packet';
+            }
+            // JSON that is not a DDR or task packet is rejected.
             if ($ext === 'json') {
                 return null;
             }
@@ -50,13 +53,19 @@ final class FileClassifier
     }
 
     /**
-     * @return 'ddr'|'demand'|'story'|'task'|null
+     * @return 'ddr'|'demand'|'story'|'task'|'packet'|null
      */
     public static function classifyByFilename(string $originalName): ?string
     {
         $base = strtolower(safeBasename($originalName));
 
         if (str_ends_with($base, '.json')) {
+            // Content detection already ran; filename-only JSON defaults to DDR
+            // unless the name clearly looks like a TASK packet.
+            if (preg_match('/\btask\d+\.json$/i', $base) || str_contains($base, 'task-packet') || str_contains($base, 'servicenow-task')) {
+                return 'packet';
+            }
+
             return 'ddr';
         }
         if (str_contains($base, 'ddr_') || preg_match('/\bddr\d+/', $base)) {

@@ -446,6 +446,136 @@ $ribbon = [
             </section>
         <?php endforeach; ?>
 
+        <?php
+        $relatedTickets = is_array($parsed['related_tickets'] ?? null) ? $parsed['related_tickets'] : [];
+        if ($relatedTickets !== []):
+        ?>
+            <section class="panel panel-tone-task" id="section-related">
+                <div class="section-head">
+                    <h2><?= sectionTitle('related') ?>
+                        <span class="pill gray"><?= count($relatedTickets) ?></span>
+                    </h2>
+                </div>
+                <p class="context-note">Tickets from the root task’s <strong>Task Relationships</strong> list (direct only), excluding the Demand/Story already shown above when present.</p>
+                <?php foreach ($relatedTickets as $relIdx => $relTicket): ?>
+                    <?php
+                    if (!is_array($relTicket)) {
+                        continue;
+                    }
+                    $relFields = is_array($relTicket['fields'] ?? null) ? $relTicket['fields'] : [];
+                    $relAtts = is_array($relTicket['attachments'] ?? null) ? $relTicket['attachments'] : [];
+                    $relJournal = is_array($relTicket['journal'] ?? null) ? $relTicket['journal'] : [];
+                    $relNumber = (string) ($relTicket['number'] ?? '');
+                    $relKind = (string) ($relTicket['kind'] ?? 'task');
+                    ?>
+                    <article class="related-ticket-card" id="related-ticket-<?= (int) $relIdx ?>">
+                        <div class="section-head">
+                            <h3>
+                                <?= kindEmoji($relKind) ?>
+                                <code><?= e($relNumber !== '' ? $relNumber : 'Unknown') ?></code>
+                                <?php if (!empty($relTicket['sys_class_name'])): ?>
+                                    <span class="muted"><?= e((string) $relTicket['sys_class_name']) ?></span>
+                                <?php endif; ?>
+                            </h3>
+                            <?php if (!empty($relTicket['state'])): ?>
+                                <span class="pill gray">📌 <?= e((string) $relTicket['state']) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (!empty($relTicket['title']) || !empty($relTicket['short_description'])): ?>
+                            <p><strong><?= e((string) ($relTicket['title'] ?? $relTicket['short_description'] ?? '')) ?></strong></p>
+                        <?php endif; ?>
+                        <?php if (!empty($relTicket['description'])): ?>
+                            <div class="prose-block">
+                                <h4>📝 Description</h4>
+                                <p><?= nl2br(e((string) $relTicket['description'])) ?></p>
+                            </div>
+                        <?php endif; ?>
+                        <?php if (!empty($relTicket['related']) && is_array($relTicket['related'])): ?>
+                            <div class="related-list">
+                                <h4>🔗 Relationships</h4>
+                                <ul>
+                                    <?php foreach ($relTicket['related'] as $rel): ?>
+                                        <li>
+                                            <code><?= e((string) ($rel['parent'] ?? '')) ?></code>
+                                            →
+                                            <code><?= e((string) ($rel['child'] ?? '')) ?></code>
+                                            <span class="muted"><?= e((string) ($rel['type'] ?? '')) ?></span>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($relAtts !== []): ?>
+                            <div class="related-attachments">
+                                <h4>📎 Attachments</h4>
+                                <ul class="file-list">
+                                    <?php foreach ($relAtts as $att): ?>
+                                        <?php
+                                        $attName = (string) ($att['file_name'] ?? $att['filename'] ?? '');
+                                        $attPath = (string) ($att['relative_path'] ?? '');
+                                        $matchFile = null;
+                                        foreach ($files as $file) {
+                                            $orig = (string) ($file['original_name'] ?? '');
+                                            if (
+                                                $attName !== ''
+                                                && (
+                                                    $orig === $relNumber . '/' . $attName
+                                                    || str_ends_with($orig, '/' . $attName)
+                                                    || $orig === $attName
+                                                )
+                                            ) {
+                                                $matchFile = $file;
+                                                break;
+                                            }
+                                        }
+                                        ?>
+                                        <li>
+                                            <?php if ($matchFile !== null): ?>
+                                                <a href="download.php?project_id=<?= (int) $id ?>&amp;file_id=<?= (int) $matchFile['id'] ?>">
+                                                    ⬇️ <?= e($relNumber !== '' ? $relNumber . '/' . $attName : $attName) ?>
+                                                </a>
+                                            <?php else: ?>
+                                                <span><?= e($attName !== '' ? $attName : 'attachment') ?></span>
+                                                <?php if ($attPath !== ''): ?>
+                                                    <span class="muted"><?= e($attPath) ?></span>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                            <?php if (!empty($att['size_bytes'])): ?>
+                                                <span class="muted"><?= number_format((int) $att['size_bytes'] / 1024, 1) ?> KB</span>
+                                            <?php endif; ?>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($relJournal !== []): ?>
+                            <details class="journal-details">
+                                <summary>🗒️ Work notes / comments (<?= count($relJournal) ?>)</summary>
+                                <ul class="journal-list">
+                                    <?php foreach ($relJournal as $entry): ?>
+                                        <li>
+                                            <span class="muted">
+                                                <?= e((string) ($entry['element'] ?? '')) ?>
+                                                · <?= e((string) ($entry['created'] ?? '')) ?>
+                                                · <?= e((string) ($entry['created_by'] ?? '')) ?>
+                                            </span>
+                                            <div><?= nl2br(e((string) ($entry['value'] ?? ''))) ?></div>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </details>
+                        <?php endif; ?>
+                        <div class="fields-wrap" data-fields>
+                            <?php renderFieldGrid($relFields, false); ?>
+                        </div>
+                        <div class="fields-wrap fields-all hidden" data-fields-all>
+                            <?php renderFieldGrid($relFields, true); ?>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
+            </section>
+        <?php endif; ?>
+
         <?php if (!empty($parsed['ddr']) && is_array($parsed['ddr'])): ?>
             <?php $ddr = $parsed['ddr']; $ddrFields = is_array($ddr['fields'] ?? null) ? $ddr['fields'] : []; ?>
             <section class="panel panel-tone-ddr" id="section-ddr">

@@ -261,7 +261,8 @@
         'section-demand': 1,
         'section-story': 2,
         'section-task': 3,
-        'section-ddr': 4
+        'section-related': 4,
+        'section-ddr': 5
     };
     var toggleBtn = document.getElementById('toggle-all-fields');
     var sectionDupsBtn = document.getElementById('toggle-section-dups');
@@ -313,7 +314,7 @@
         }
 
         var groups = {};
-        document.querySelectorAll('#section-demand, #section-story, #section-task, #section-ddr').forEach(function (section) {
+        document.querySelectorAll('#section-demand, #section-story, #section-task, #section-related, #section-ddr').forEach(function (section) {
             var sectionId = section.id || '';
             var order = SOURCE_SECTION_ORDER[sectionId];
             if (!order) return;
@@ -506,8 +507,9 @@
         'section-ddr': 4,
         'section-story': 5,
         'section-task': 6,
-        'section-assessments': 7,
-        'section-files': 8
+        'section-related': 7,
+        'section-assessments': 8,
+        'section-files': 9
     };
     var ROLE_SHORTCUTS = [
         { id: 'vendor', label: 'Vendor', emoji: '🏢', aliases: ['vendor', 'third party vendor'] },
@@ -533,7 +535,7 @@
         { id: 'tprm', label: 'TPRM', emoji: '🛡️', query: 'TPRM', aliases: ['tprm recommendation'] },
         { id: 'risk', label: 'Risk', emoji: '⚠️', query: 'risk' },
         { id: 'description', label: 'Desc', emoji: '📄', aliases: ['description'] },
-        { id: 'related', label: 'Related', emoji: '🔗', query: 'related', sectionId: 'section-demand' },
+        { id: 'related', label: 'Related', emoji: '🔗', query: 'related', sectionId: 'section-related' },
         { id: 'ddr', label: 'DDR', emoji: '🛡️', query: 'DDR', sectionId: 'section-ddr' },
         { id: 'exceptions', label: 'Exceptions', emoji: '⛔', query: 'exception', aliases: ['exception', 'exceptions', 'exception status'] }
     ];

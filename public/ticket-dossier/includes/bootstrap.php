@@ -20,6 +20,7 @@ require_once __DIR__ . '/view.php';
 require_once __DIR__ . '/FileClassifier.php';
 require_once __DIR__ . '/parsers/DdrJsonParser.php';
 require_once __DIR__ . '/parsers/ServicenowPdfParser.php';
+require_once __DIR__ . '/parsers/ServicenowTaskPacketParser.php';
 require_once __DIR__ . '/PaginationPreference.php';
 require_once __DIR__ . '/ProjectRepository.php';
 require_once __DIR__ . '/ProjectImporter.php';

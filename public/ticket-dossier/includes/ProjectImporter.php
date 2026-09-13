@@ -116,13 +116,14 @@ final class ProjectImporter
                 throw new InvalidArgumentException($name . ' failed security checks.');
             }
 
-            $kind = isset($upload['forced_kind']) && in_array($upload['forced_kind'], TD_SOURCE_KINDS, true)
+            $kind = isset($upload['forced_kind'])
+                && in_array($upload['forced_kind'], array_merge(TD_SOURCE_KINDS, ['packet']), true)
                 ? (string) $upload['forced_kind']
                 : FileClassifier::classify($tmp, $name);
 
             if ($kind === null) {
                 throw new InvalidArgumentException(
-                    $name . ' was not recognized. Use DDR JSON or demand/story/task ServiceNow PDF exports.'
+                    $name . ' was not recognized. Use DDR JSON, a ServiceNow task packet JSON, or demand/story/task PDF exports.'
                 );
             }
 
@@ -140,6 +141,27 @@ final class ProjectImporter
 
         if ($classified === []) {
             throw new InvalidArgumentException('No recognized ServiceNow files found.');
+        }
+
+        // Console / manual task packet JSON — dedicated import path.
+        if (isset($classified['packet'])) {
+            $packetFile = $classified['packet'];
+            $packetData = ServicenowTaskPacketParser::parse($packetFile['tmp_name']);
+            $owner = projectOwnerFromUser($ownerUser);
+            $result = self::importServiceNowPacket($packetData, $owner, $optionalTitle, [
+                'tmp_name' => $packetFile['tmp_name'],
+                'name' => $packetFile['name'],
+                'size' => $packetFile['size'],
+                'is_local' => !empty($packetFile['is_local']),
+            ]);
+            foreach ($classified as $kind => $file) {
+                if ($kind === 'packet') {
+                    continue;
+                }
+                $result['warnings'][] = 'Extra ' . kindLabel($kind) . ' file ignored when importing a task packet (' . $file['name'] . ').';
+            }
+
+            return $result;
         }
 
         $parsed = [
@@ -482,13 +504,14 @@ final class ProjectImporter
                 throw new InvalidArgumentException($name . ' failed security checks.');
             }
 
-            $kind = isset($upload['forced_kind']) && in_array($upload['forced_kind'], TD_SOURCE_KINDS, true)
+            $kind = isset($upload['forced_kind'])
+                && in_array($upload['forced_kind'], array_merge(TD_SOURCE_KINDS, ['packet']), true)
                 ? (string) $upload['forced_kind']
                 : FileClassifier::classify($tmp, $name);
 
             if ($kind === null) {
                 throw new InvalidArgumentException(
-                    $name . ' was not recognized. Use DDR JSON or demand/story/task ServiceNow PDF exports.'
+                    $name . ' was not recognized. Use DDR JSON, a ServiceNow task packet JSON, or demand/story/task PDF exports.'
                 );
             }
 
@@ -505,6 +528,168 @@ final class ProjectImporter
         }
 
         return ['files' => $classified, 'warnings' => $warnings];
+    }
+
+    /**
+     * Import a ServiceNow console task packet (parsed array) into a new dossier.
+     *
+     * @param array<string, mixed> $packet Parsed packet or raw packet array
+     * @param array{
+     *   owner_user_id?: int|null,
+     *   owner_username?: string,
+     *   owner_display_name?: string,
+     *   owner_auth_source?: string
+     * } $owner
+     * @param array{tmp_name: string, name: string, size?: int, is_local?: bool}|null $packetFile Optional source JSON to store
+     * @return array{project_id: int, warnings: list<string>}
+     */
+    public static function importServiceNowPacket(
+        array $packet,
+        array $owner = [],
+        ?string $optionalTitle = null,
+        ?array $packetFile = null
+    ): array {
+        // Accept either already-mapped parser output or a raw packet body.
+        if (isset($packet['task']) && is_array($packet['task']) && ($packet['kind'] ?? '') === 'packet') {
+            $mapped = $packet;
+        } else {
+            $mapped = ServicenowTaskPacketParser::parseArray($packet);
+        }
+
+        $parsed = [
+            'demand' => $mapped['demand'] ?? null,
+            'story' => $mapped['story'] ?? null,
+            'task' => $mapped['task'] ?? null,
+            'ddr' => null,
+            'vendor' => null,
+            'assessments' => ['external' => [], 'internal' => []],
+            'overview' => is_array($mapped['overview'] ?? null) ? $mapped['overview'] : [
+                'title' => '',
+                'vendor' => '',
+                'description' => '',
+                'business_case' => '',
+            ],
+            'related_tickets' => is_array($mapped['related_tickets'] ?? null) ? $mapped['related_tickets'] : [],
+            'packet_meta' => is_array($mapped['packet_meta'] ?? null) ? $mapped['packet_meta'] : [],
+            'relationships' => is_array($mapped['relationships'] ?? null) ? $mapped['relationships'] : [],
+        ];
+
+        $sources = [
+            'ddr' => false,
+            'demand' => !empty($parsed['demand']),
+            'story' => !empty($parsed['story']),
+            'task' => !empty($parsed['task']),
+            'packet' => true,
+        ];
+
+        $meta = self::deriveProjectMeta($parsed, $optionalTitle);
+        if (trim((string) ($parsed['overview']['title'] ?? '')) === '') {
+            $parsed['overview']['title'] = $meta['title'];
+        }
+        if (trim((string) ($parsed['overview']['description'] ?? '')) === '') {
+            $parsed['overview']['description'] = $meta['_overview_description'];
+        }
+        $parsed['overview']['vendor'] = $meta['vendor'];
+
+        $projectId = ProjectRepository::create([
+            'title' => $meta['title'],
+            'vendor' => $meta['vendor'],
+            'demand_number' => $meta['demand_number'],
+            'story_number' => $meta['story_number'],
+            'task_number' => $meta['task_number'],
+            'ddr_number' => $meta['ddr_number'],
+            'demand_state' => $meta['demand_state'],
+            'story_state' => $meta['story_state'],
+            'task_state' => $meta['task_state'],
+            'ddr_state' => $meta['ddr_state'],
+            'sources' => $sources,
+            'parsed' => $parsed,
+            'owner_user_id' => $owner['owner_user_id'] ?? null,
+            'owner_username' => (string) ($owner['owner_username'] ?? ''),
+            'owner_display_name' => (string) ($owner['owner_display_name'] ?? ''),
+            'owner_auth_source' => (string) ($owner['owner_auth_source'] ?? ''),
+        ], []);
+
+        $storageDir = TD_STORAGE_DIR . '/' . $projectId;
+        if (!is_dir($storageDir) && !mkdir($storageDir, 0755, true) && !is_dir($storageDir)) {
+            ProjectRepository::delete($projectId);
+            throw new RuntimeException('Could not create storage directory.');
+        }
+
+        $warnings = [];
+        try {
+            $jsonBody = json_encode(
+                [
+                    'format' => ServicenowTaskPacketParser::FORMAT,
+                    'instance' => (string) ($mapped['instance'] ?? ''),
+                    'exported_at' => (string) ($mapped['exported_at'] ?? gmdate('c')),
+                    'root_number' => (string) ($mapped['root_number'] ?? $meta['task_number']),
+                    'root_sys_id' => (string) ($mapped['root_sys_id'] ?? ''),
+                    'relationships' => $parsed['relationships'],
+                    'tickets' => is_array($mapped['tickets'] ?? null) ? $mapped['tickets'] : [],
+                ],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+            );
+
+            $packetName = (string) ($meta['task_number'] !== '' ? $meta['task_number'] : 'TASK') . '.json';
+            if ($packetFile !== null && is_readable((string) $packetFile['tmp_name'])) {
+                $ext = extensionOf((string) $packetFile['name']);
+                if ($ext !== 'json') {
+                    $ext = 'json';
+                }
+                $storedName = 'packet_' . bin2hex(random_bytes(8)) . '.' . $ext;
+                $dest = $storageDir . '/' . $storedName;
+                if (!empty($packetFile['is_local'])) {
+                    if (!copy((string) $packetFile['tmp_name'], $dest)) {
+                        throw new RuntimeException('Could not copy packet JSON.');
+                    }
+                } else {
+                    if (!@copy((string) $packetFile['tmp_name'], $dest) && !move_uploaded_file((string) $packetFile['tmp_name'], $dest)) {
+                        // Console import posts JSON in body — write encoded packet instead.
+                        if (@file_put_contents($dest, $jsonBody) === false) {
+                            throw new RuntimeException('Could not store packet JSON.');
+                        }
+                    }
+                }
+                $size = (int) ($packetFile['size'] ?? filesize($dest) ?: strlen($jsonBody));
+                $originalName = safeBasename((string) ($packetFile['name'] ?? $packetName));
+            } else {
+                $storedName = 'packet_' . bin2hex(random_bytes(8)) . '.json';
+                $dest = $storageDir . '/' . $storedName;
+                if (@file_put_contents($dest, $jsonBody) === false) {
+                    throw new RuntimeException('Could not store packet JSON.');
+                }
+                $size = strlen($jsonBody);
+                $originalName = $packetName;
+            }
+
+            $db = getDb();
+            $stmt = $db->prepare(
+                'INSERT INTO project_files (project_id, kind, original_name, stored_name, size_bytes, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                $projectId,
+                'packet',
+                $originalName,
+                $storedName,
+                $size,
+                nowUtc(),
+            ]);
+        } catch (Throwable $e) {
+            ProjectRepository::delete($projectId);
+            throw $e;
+        }
+
+        $relCount = count($parsed['related_tickets'] ?? []);
+        if ($relCount > 0) {
+            $warnings[] = 'Imported ' . $relCount . ' related ticket(s) alongside the root task.';
+        }
+
+        return [
+            'project_id' => $projectId,
+            'warnings' => $warnings,
+        ];
     }
 
     /**
@@ -556,6 +741,30 @@ final class ProjectImporter
                 if ($numbers[$key] === '' && !empty($related[$key])) {
                     $numbers[$key] = (string) $related[$key];
                 }
+            }
+        }
+
+        // Also pull numbers from related_tickets in a console packet.
+        $relatedTickets = is_array($parsed['related_tickets'] ?? null) ? $parsed['related_tickets'] : [];
+        foreach ($relatedTickets as $relTicket) {
+            if (!is_array($relTicket)) {
+                continue;
+            }
+            $num = strtoupper(trim((string) ($relTicket['number'] ?? '')));
+            if ($num === '') {
+                continue;
+            }
+            if ($numbers['demand'] === '' && str_starts_with($num, 'DMND')) {
+                $numbers['demand'] = $num;
+            }
+            if ($numbers['story'] === '' && str_starts_with($num, 'STRY')) {
+                $numbers['story'] = $num;
+            }
+            if ($numbers['task'] === '' && str_starts_with($num, 'TASK')) {
+                $numbers['task'] = $num;
+            }
+            if ($numbers['ddr'] === '' && str_starts_with($num, 'DDR')) {
+                $numbers['ddr'] = $num;
             }
         }
 

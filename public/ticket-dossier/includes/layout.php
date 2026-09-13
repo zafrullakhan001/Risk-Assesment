@@ -60,6 +60,8 @@ function jsVersion(): string
     $paths = [
         TD_ROOT . '/assets/js/app.js',
         TD_ROOT . '/assets/js/project-list.js',
+        TD_ROOT . '/assets/js/servicenow-console-sync.js',
+        TD_ROOT . '/assets/js/servicenow-console-ui.js',
     ];
     $mtime = 0;
     foreach ($paths as $path) {
@@ -81,6 +83,8 @@ function pillClassForKind(string $kind): string
         'story' => 'pill amber',
         'task' => 'pill gray',
         'ddr' => 'pill teal',
+        'packet' => 'pill teal',
+        'attachment' => 'pill gray',
         'vendor' => 'pill gray',
         default => 'pill gray',
     };
