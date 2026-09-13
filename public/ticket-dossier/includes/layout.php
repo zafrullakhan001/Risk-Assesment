@@ -59,7 +59,9 @@ function jsVersion(): string
 {
     $paths = [
         TD_ROOT . '/assets/js/app.js',
+        TD_ROOT . '/assets/js/field-editor.js',
         TD_ROOT . '/assets/js/project-list.js',
+        TD_ROOT . '/assets/js/local-time.js',
         TD_ROOT . '/assets/js/servicenow-console-sync.js',
         TD_ROOT . '/assets/js/servicenow-console-ui.js',
     ];

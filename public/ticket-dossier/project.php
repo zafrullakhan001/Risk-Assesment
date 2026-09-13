@@ -138,7 +138,7 @@ $ribbon = [
             <div class="hero-main">
                 <div class="hero-intro">
                     <p class="eyebrow">Project dossier</p>
-                    <h2><?= e((string) $project['title']) ?></h2>
+                    <h2><?php renderEditableValue((string) $project['title'], ['overview', 'title'], 'Project name'); ?></h2>
                     <?php if (!empty($overview['description'])): ?>
                         <p><?= e(strlen((string) $overview['description']) > 420 ? substr((string) $overview['description'], 0, 417) . '…' : (string) $overview['description']) ?></p>
                     <?php endif; ?>
@@ -372,17 +372,17 @@ $ribbon = [
             <div class="overview-grid">
                 <article class="overview-card">
                     <h3>📝 Description</h3>
-                    <p><?= !empty($overview['description']) ? nl2br(e((string) $overview['description'])) : '<span class="muted">No description available.</span>' ?></p>
+                    <p><?php renderEditableValue((string) ($overview['description'] ?? ''), ['overview', 'description'], 'Overview description', true); ?></p>
                 </article>
                 <article class="overview-card">
                     <h3>💡 Business case</h3>
-                    <p><?= !empty($overview['business_case']) ? nl2br(e((string) $overview['business_case'])) : '<span class="muted">Not available (upload demand PDF for business case).</span>' ?></p>
+                    <p><?php renderEditableValue((string) ($overview['business_case'] ?? ''), ['overview', 'business_case'], 'Overview business case', true); ?></p>
                 </article>
                 <article class="overview-card meta-card">
                     <h3>🔑 Key facts</h3>
                     <dl class="kv">
-                        <div><dt>Owner</dt><dd><span class="kv-value" data-search-label="Owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></span></dd></div>
-                        <div><dt>Vendor</dt><dd><span class="kv-value" data-search-label="Vendor"><?= e((string) ($overview['vendor'] ?: ($project['vendor'] ?: '—'))) ?></span></dd></div>
+                        <div><dt>Owner</dt><dd><span class="kv-value" data-search-label="Owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></span> <a class="field-edit-pencil" href="project.php?id=<?= (int) $id ?>&amp;edit=1#edit-details" aria-label="Edit owner" title="Edit owner"></a></dd></div>
+                        <div><dt>Vendor</dt><dd><span class="kv-value" data-search-label="Vendor"><?php renderEditableValue((string) ($overview['vendor'] ?? $project['vendor'] ?? ''), ['overview', 'vendor'], 'Vendor'); ?></span></dd></div>
                         <div><dt>Demand</dt><dd><span class="kv-value"><?= e((string) ($project['demand_number'] ?: '—')) ?></span><?= $project['demand_state'] ? ' <span class="pill teal">' . e((string) $project['demand_state']) . '</span>' : '' ?></dd></div>
                         <div><dt>Story</dt><dd><span class="kv-value"><?= e((string) ($project['story_number'] ?: '—')) ?></span><?= $project['story_state'] ? ' <span class="pill amber">' . e((string) $project['story_state']) . '</span>' : '' ?></dd></div>
                         <div><dt>Task</dt><dd><span class="kv-value"><?= e((string) ($project['task_number'] ?: '—')) ?></span><?= $project['task_state'] ? ' <span class="pill gray">' . e((string) $project['task_state']) . '</span>' : '' ?></dd></div>
@@ -403,45 +403,45 @@ $ribbon = [
                 <div class="section-head">
                     <h2><?= kindEmoji($kind) ?> <?= e(kindLabel($kind)) ?>
                         <?php if (!empty($section['number'])): ?>
-                            <span class="<?= e(pillClassForKind($kind)) ?>"><?= e((string) $section['number']) ?></span>
+                            <span class="<?= e(pillClassForKind($kind)) ?>"><?php renderEditableValue((string) $section['number'], [$kind, 'number'], kindLabel($kind) . ' number'); ?></span>
                         <?php endif; ?>
                     </h2>
                     <?php if (!empty($section['state'])): ?>
-                        <span class="pill gray">📌 <?= e((string) $section['state']) ?></span>
+                        <span class="pill gray">📌 <?php renderEditableValue((string) $section['state'], [$kind, 'state'], kindLabel($kind) . ' state'); ?></span>
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($section['description'])): ?>
                     <div class="prose-block">
                         <h3>📝 Description</h3>
-                        <p><?= nl2br(e((string) $section['description'])) ?></p>
+                        <p><?php renderEditableValue((string) $section['description'], [$kind, 'description'], kindLabel($kind) . ' description', true); ?></p>
                     </div>
                 <?php endif; ?>
                 <?php if ($kind === 'demand' && !empty($section['business_case'])): ?>
                     <div class="prose-block">
                         <h3>💡 Business case</h3>
-                        <p><?= nl2br(e((string) $section['business_case'])) ?></p>
+                        <p><?php renderEditableValue((string) $section['business_case'], [$kind, 'business_case'], 'Demand business case', true); ?></p>
                     </div>
                 <?php endif; ?>
                 <?php if (!empty($section['related']) && is_array($section['related'])): ?>
                     <div class="related-list">
                         <h3>🔗 Related records</h3>
                         <ul>
-                            <?php foreach ($section['related'] as $rel): ?>
+                            <?php foreach ($section['related'] as $relIdx => $rel): ?>
                                 <li>
-                                    <code><?= e((string) ($rel['parent'] ?? '')) ?></code>
+                                    <code><?php renderEditableValue((string) ($rel['parent'] ?? ''), [$kind, 'related', $relIdx, 'parent'], 'Relationship parent'); ?></code>
                                     →
-                                    <code><?= e((string) ($rel['child'] ?? '')) ?></code>
-                                    <span class="muted"><?= e((string) ($rel['type'] ?? '')) ?></span>
+                                    <code><?php renderEditableValue((string) ($rel['child'] ?? ''), [$kind, 'related', $relIdx, 'child'], 'Relationship child'); ?></code>
+                                    <span class="muted"><?php renderEditableValue((string) ($rel['type'] ?? ''), [$kind, 'related', $relIdx, 'type'], 'Relationship type'); ?></span>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
                     </div>
                 <?php endif; ?>
                 <div class="fields-wrap" data-fields>
-                    <?php renderFieldGrid($fields, false); ?>
+                    <?php renderFieldGrid($fields, false, '', [$kind, 'fields']); ?>
                 </div>
                 <div class="fields-wrap fields-all hidden" data-fields-all>
-                    <?php renderFieldGrid($fields, true); ?>
+                    <?php renderFieldGrid($fields, true, '', [$kind, 'fields']); ?>
                 </div>
             </section>
         <?php endforeach; ?>
@@ -472,34 +472,35 @@ $ribbon = [
                         <div class="section-head">
                             <h3>
                                 <?= kindEmoji($relKind) ?>
-                                <code><?= e($relNumber !== '' ? $relNumber : 'Unknown') ?></code>
+                                <code><?php renderEditableValue($relNumber, ['related_tickets', $relIdx, 'number'], 'Related ticket number'); ?></code>
                                 <?php if (!empty($relTicket['sys_class_name'])): ?>
-                                    <span class="muted"><?= e((string) $relTicket['sys_class_name']) ?></span>
+                                    <span class="muted"><?php renderEditableValue((string) $relTicket['sys_class_name'], ['related_tickets', $relIdx, 'sys_class_name'], 'Related ticket class'); ?></span>
                                 <?php endif; ?>
                             </h3>
                             <?php if (!empty($relTicket['state'])): ?>
-                                <span class="pill gray">📌 <?= e((string) $relTicket['state']) ?></span>
+                                <span class="pill gray">📌 <?php renderEditableValue((string) $relTicket['state'], ['related_tickets', $relIdx, 'state'], 'Related ticket state'); ?></span>
                             <?php endif; ?>
                         </div>
                         <?php if (!empty($relTicket['title']) || !empty($relTicket['short_description'])): ?>
-                            <p><strong><?= e((string) ($relTicket['title'] ?? $relTicket['short_description'] ?? '')) ?></strong></p>
+                            <?php $relTitleKey = array_key_exists('title', $relTicket) ? 'title' : 'short_description'; ?>
+                            <p><strong><?php renderEditableValue((string) ($relTicket[$relTitleKey] ?? ''), ['related_tickets', $relIdx, $relTitleKey], 'Related ticket title'); ?></strong></p>
                         <?php endif; ?>
                         <?php if (!empty($relTicket['description'])): ?>
                             <div class="prose-block">
                                 <h4>📝 Description</h4>
-                                <p><?= nl2br(e((string) $relTicket['description'])) ?></p>
+                                <p><?php renderEditableValue((string) $relTicket['description'], ['related_tickets', $relIdx, 'description'], 'Related ticket description', true); ?></p>
                             </div>
                         <?php endif; ?>
                         <?php if (!empty($relTicket['related']) && is_array($relTicket['related'])): ?>
                             <div class="related-list">
                                 <h4>🔗 Relationships</h4>
                                 <ul>
-                                    <?php foreach ($relTicket['related'] as $rel): ?>
+                                    <?php foreach ($relTicket['related'] as $ticketRelIdx => $rel): ?>
                                         <li>
-                                            <code><?= e((string) ($rel['parent'] ?? '')) ?></code>
+                                            <code><?php renderEditableValue((string) ($rel['parent'] ?? ''), ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'parent'], 'Relationship parent'); ?></code>
                                             →
-                                            <code><?= e((string) ($rel['child'] ?? '')) ?></code>
-                                            <span class="muted"><?= e((string) ($rel['type'] ?? '')) ?></span>
+                                            <code><?php renderEditableValue((string) ($rel['child'] ?? ''), ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'child'], 'Relationship child'); ?></code>
+                                            <span class="muted"><?php renderEditableValue((string) ($rel['type'] ?? ''), ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'type'], 'Relationship type'); ?></span>
                                         </li>
                                     <?php endforeach; ?>
                                 </ul>
@@ -552,24 +553,24 @@ $ribbon = [
                             <details class="journal-details">
                                 <summary>🗒️ Work notes / comments (<?= count($relJournal) ?>)</summary>
                                 <ul class="journal-list">
-                                    <?php foreach ($relJournal as $entry): ?>
+                                    <?php foreach ($relJournal as $journalIdx => $entry): ?>
                                         <li>
                                             <span class="muted">
-                                                <?= e((string) ($entry['element'] ?? '')) ?>
-                                                · <?= e((string) ($entry['created'] ?? '')) ?>
-                                                · <?= e((string) ($entry['created_by'] ?? '')) ?>
+                                                <?php renderEditableValue((string) ($entry['element'] ?? ''), ['related_tickets', $relIdx, 'journal', $journalIdx, 'element'], 'Journal type'); ?>
+                                                · <?php renderEditableValue((string) ($entry['created'] ?? ''), ['related_tickets', $relIdx, 'journal', $journalIdx, 'created'], 'Journal date'); ?>
+                                                · <?php renderEditableValue((string) ($entry['created_by'] ?? ''), ['related_tickets', $relIdx, 'journal', $journalIdx, 'created_by'], 'Journal author'); ?>
                                             </span>
-                                            <div><?= nl2br(e((string) ($entry['value'] ?? ''))) ?></div>
+                                            <div><?php renderEditableValue((string) ($entry['value'] ?? ''), ['related_tickets', $relIdx, 'journal', $journalIdx, 'value'], 'Journal entry', true); ?></div>
                                         </li>
                                     <?php endforeach; ?>
                                 </ul>
                             </details>
                         <?php endif; ?>
                         <div class="fields-wrap" data-fields>
-                            <?php renderFieldGrid($relFields, false); ?>
+                            <?php renderFieldGrid($relFields, false, '', ['related_tickets', $relIdx, 'fields']); ?>
                         </div>
                         <div class="fields-wrap fields-all hidden" data-fields-all>
-                            <?php renderFieldGrid($relFields, true); ?>
+                            <?php renderFieldGrid($relFields, true, '', ['related_tickets', $relIdx, 'fields']); ?>
                         </div>
                     </article>
                 <?php endforeach; ?>
@@ -582,24 +583,24 @@ $ribbon = [
                 <div class="section-head">
                     <h2><?= kindEmoji('ddr') ?> Due Diligence
                         <?php if (!empty($ddr['number'])): ?>
-                            <span class="pill teal"><?= e((string) $ddr['number']) ?></span>
+                            <span class="pill teal"><?php renderEditableValue((string) $ddr['number'], ['ddr', 'number'], 'DDR number'); ?></span>
                         <?php endif; ?>
                     </h2>
                     <?php if (!empty($ddr['state'])): ?>
-                        <span class="pill gray">📌 <?= e((string) $ddr['state']) ?></span>
+                        <span class="pill gray">📌 <?php renderEditableValue((string) $ddr['state'], ['ddr', 'state'], 'DDR state'); ?></span>
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($ddr['description'])): ?>
                     <div class="prose-block">
                         <h3>📝 Description</h3>
-                        <p><?= nl2br(e((string) $ddr['description'])) ?></p>
+                        <p><?php renderEditableValue((string) $ddr['description'], ['ddr', 'description'], 'DDR description', true); ?></p>
                     </div>
                 <?php endif; ?>
                 <div class="fields-wrap" data-fields>
-                    <?php renderFieldGrid($ddrFields, false); ?>
+                    <?php renderFieldGrid($ddrFields, false, '', ['ddr', 'fields']); ?>
                 </div>
                 <div class="fields-wrap fields-all hidden" data-fields-all>
-                    <?php renderFieldGrid($ddrFields, true); ?>
+                    <?php renderFieldGrid($ddrFields, true, '', ['ddr', 'fields']); ?>
                 </div>
             </section>
         <?php endif; ?>
@@ -619,10 +620,10 @@ $ribbon = [
             <section class="panel panel-tone-vendor" id="section-vendor">
                 <h2><?= sectionTitle('vendor') ?></h2>
                 <div class="fields-wrap" data-fields>
-                    <?php renderFieldGrid($vendorFields, false); ?>
+                    <?php renderFieldGrid($vendorFields, false, '', isset($parsed['vendor']['fields']) ? ['vendor', 'fields'] : ['vendor']); ?>
                 </div>
                 <div class="fields-wrap fields-all hidden" data-fields-all>
-                    <?php renderFieldGrid($vendorFields, true); ?>
+                    <?php renderFieldGrid($vendorFields, true, '', isset($parsed['vendor']['fields']) ? ['vendor', 'fields'] : ['vendor']); ?>
                 </div>
             </section>
         <?php endif; ?>
@@ -654,11 +655,12 @@ $ribbon = [
                         continue;
                     } ?>
                     <h3 class="assess-group"><?= e($groupLabel) ?> assessments</h3>
-                    <?php foreach ($group as $assessment): ?>
+                    <?php foreach ($group as $assessmentIdx => $assessment): ?>
                         <?php
                         if (!is_array($assessment)) {
                             continue;
                         }
+                        $assessmentGroup = $groupLabel === '🌐 External' ? 'external' : 'internal';
                         $questionnaires = is_array($assessment['questionnaires'] ?? null) ? $assessment['questionnaires'] : [];
                         $allQa = [];
                         foreach ($questionnaires as $q) {
@@ -674,12 +676,13 @@ $ribbon = [
                         <details class="assess-card" open>
                             <summary>
                                 <div>
-                                    <strong>📋 <?= e((string) ($assessment['name'] ?: ($assessment['number'] ?: 'Assessment'))) ?></strong>
+                                    <?php $assessmentNameKey = !empty($assessment['name']) ? 'name' : 'number'; ?>
+                                    <strong>📋 <?php renderEditableValue((string) ($assessment[$assessmentNameKey] ?? ''), ['assessments', $assessmentGroup, $assessmentIdx, $assessmentNameKey], 'Assessment name'); ?></strong>
                                     <?php if (!empty($assessment['number'])): ?>
-                                        <span class="pill teal"><?= e((string) $assessment['number']) ?></span>
+                                        <span class="pill teal"><?php renderEditableValue((string) $assessment['number'], ['assessments', $assessmentGroup, $assessmentIdx, 'number'], 'Assessment number'); ?></span>
                                     <?php endif; ?>
                                     <?php if (!empty($assessment['state'])): ?>
-                                        <span class="pill gray"><?= e((string) $assessment['state']) ?></span>
+                                        <span class="pill gray"><?php renderEditableValue((string) $assessment['state'], ['assessments', $assessmentGroup, $assessmentIdx, 'state'], 'Assessment state'); ?></span>
                                     <?php endif; ?>
                                 </div>
                                 <div class="progress-wrap">
@@ -693,26 +696,26 @@ $ribbon = [
                             if ($aFields !== []):
                                 ?>
                                 <div class="fields-wrap" data-fields>
-                                    <?php renderFieldGrid($aFields, false); ?>
+                                    <?php renderFieldGrid($aFields, false, '', ['assessments', $assessmentGroup, $assessmentIdx, 'fields']); ?>
                                 </div>
                                 <div class="fields-wrap fields-all hidden" data-fields-all>
-                                    <?php renderFieldGrid($aFields, true); ?>
+                                    <?php renderFieldGrid($aFields, true, '', ['assessments', $assessmentGroup, $assessmentIdx, 'fields']); ?>
                                 </div>
                             <?php endif; ?>
 
-                            <?php foreach ($questionnaires as $questionnaire): ?>
+                            <?php foreach ($questionnaires as $questionnaireIdx => $questionnaire): ?>
                                 <?php
                                 $instances = is_array($questionnaire['instances'] ?? null) ? $questionnaire['instances'] : [];
-                                foreach ($instances as $instance):
+                                foreach ($instances as $instanceIdx => $instance):
                                     $qaList = is_array($instance['qa'] ?? null) ? $instance['qa'] : [];
                                     if ($qaList === []) {
                                         continue;
                                     }
                                     ?>
                                     <div class="qa-block">
-                                        <h4>🧾 <?= e((string) ($questionnaire['name'] ?? 'Questionnaire')) ?></h4>
+                                        <h4>🧾 <?php renderEditableValue((string) ($questionnaire['name'] ?? ''), ['assessments', $assessmentGroup, $assessmentIdx, 'questionnaires', $questionnaireIdx, 'name'], 'Questionnaire name'); ?></h4>
                                         <div class="qa-list">
-                                            <?php foreach ($qaList as $qaItem): ?>
+                                            <?php foreach ($qaList as $qaIdx => $qaItem): ?>
                                                 <?php
                                                 $q = (string) ($qaItem['question'] ?? '');
                                                 $a = (string) ($qaItem['answer'] ?? '');
@@ -720,8 +723,8 @@ $ribbon = [
                                                 ?>
                                                 <article class="qa-item<?= $answered ? ' answered' : ' unanswered' ?>"
                                                          data-q="<?= e(strtolower($q . ' ' . $a)) ?>">
-                                                    <p class="q"><?= e($q) ?></p>
-                                                    <p class="a"><?= $answered ? nl2br(e($a)) : '<span class="muted">No answer</span>' ?></p>
+                                                    <p class="q"><?php renderEditableValue($q, ['assessments', $assessmentGroup, $assessmentIdx, 'questionnaires', $questionnaireIdx, 'instances', $instanceIdx, 'qa', $qaIdx, 'question'], 'Assessment question', true); ?></p>
+                                                    <p class="a"><?php renderEditableValue($a, ['assessments', $assessmentGroup, $assessmentIdx, 'questionnaires', $questionnaireIdx, 'instances', $instanceIdx, 'qa', $qaIdx, 'answer'], 'Assessment answer', true); ?></p>
                                                 </article>
                                             <?php endforeach; ?>
                                         </div>
@@ -751,25 +754,100 @@ $ribbon = [
             <?php if ($files === []): ?>
                 <p class="muted">No files stored.</p>
             <?php else: ?>
-                <ul class="file-list">
-                    <?php foreach ($files as $file): ?>
-                        <li>
-                            <span class="<?= e(pillClassForKind((string) $file['kind'])) ?>"><?= kindEmoji((string) $file['kind']) ?> <?= e(kindLabel((string) $file['kind'])) ?></span>
-                            <a href="download.php?project_id=<?= $id ?>&amp;file_id=<?= (int) $file['id'] ?>">
-                                ⬇️ <?= e((string) $file['original_name']) ?>
-                            </a>
-                            <span class="muted"><?= number_format((int) $file['size_bytes'] / 1024, 1) ?> KB</span>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+                <form method="post" action="file-actions.php" class="dossier-file-manager" id="dossier-file-manager">
+                    <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
+                    <input type="hidden" name="project_id" value="<?= (int) $id ?>">
+                    <div class="dossier-file-actions">
+                        <label class="check">
+                            <input type="checkbox" id="dossier-files-select-all">
+                            Select all
+                        </label>
+                        <button type="submit" class="button button-small" name="file_action" value="reparse">
+                            🔄 Reparse selected
+                        </button>
+                        <button
+                            type="submit"
+                            class="button ghost is-danger button-small"
+                            name="file_action"
+                            value="delete"
+                            onclick="return confirm('Delete the selected files from this dossier? Parsed information already in the dossier will be retained.');"
+                        >🗑️ Delete selected</button>
+                    </div>
+                    <p class="context-note">
+                        Reparse ticket PDFs, the task packet JSON, or DDR JSON/text attachments to refresh dossier fields.
+                        Deleting a file removes only the stored file; information already parsed into the dossier is retained.
+                    </p>
+                    <ul class="file-list file-list-manage">
+                        <?php foreach ($files as $file): ?>
+                            <?php
+                            $fileName = (string) $file['original_name'];
+                            $lowerFileName = strtolower($fileName);
+                            $isReparsable = (string) $file['kind'] === 'packet'
+                                || str_ends_with($lowerFileName, '.pdf')
+                                || str_contains($lowerFileName, 'ddr');
+                            ?>
+                            <li>
+                                <label class="dossier-file-select" title="Select <?= e($fileName) ?>">
+                                    <input type="checkbox" name="file_ids[]" value="<?= (int) $file['id'] ?>">
+                                    <span class="visually-hidden">Select</span>
+                                </label>
+                                <span class="<?= e(pillClassForKind((string) $file['kind'])) ?>"><?= kindEmoji((string) $file['kind']) ?> <?= e(kindLabel((string) $file['kind'])) ?></span>
+                                <a href="download.php?project_id=<?= $id ?>&amp;file_id=<?= (int) $file['id'] ?>">
+                                    ⬇️ <?= e($fileName) ?>
+                                </a>
+                                <span class="muted"><?= number_format((int) $file['size_bytes'] / 1024, 1) ?> KB</span>
+                                <?php if ($isReparsable): ?>
+                                    <span class="file-reparse-ready" title="This file can refresh dossier data">Reparsable</span>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </form>
             <?php endif; ?>
         </section>
     </main>
+    <dialog class="field-editor-dialog" id="dossier-field-editor" aria-labelledby="field-editor-title">
+        <form method="post" action="field-edit.php">
+            <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
+            <input type="hidden" name="project_id" value="<?= (int) $id ?>">
+            <input type="hidden" name="field_path" id="field-editor-path" value="">
+            <div class="field-editor-head">
+                <div>
+                    <p class="eyebrow">Correct parsed value</p>
+                    <h2 id="field-editor-title">✏️ Edit field</h2>
+                </div>
+                <button type="button" class="field-editor-close" id="field-editor-cancel" aria-label="Cancel editing" title="Cancel">×</button>
+            </div>
+            <label class="field">
+                <span id="field-editor-label">Dossier field</span>
+                <textarea name="field_value" id="field-editor-value" maxlength="50000" rows="5"></textarea>
+            </label>
+            <p class="context-note">This changes the dossier copy only. Replacing or reparsing its source file may replace this correction.</p>
+            <div class="field-editor-actions">
+                <button type="button" class="button ghost" onclick="document.getElementById('field-editor-cancel').click()">Cancel</button>
+                <button type="submit" class="button button-primary">💾 Save correction</button>
+            </div>
+        </form>
+    </dialog>
     <?php require dirname(__DIR__) . '/includes/site-footer.php'; ?>
 </div>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/fuzzy-search.js?v=<?= e(fuzzySearchJsVersion()) ?>"></script>
 <script src="assets/js/floating-search.js?v=<?= e($floatingJsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/field-editor.js?v=<?= e($jsV) ?>"></script>
+<script>
+(() => {
+    const all = document.getElementById('dossier-files-select-all');
+    const form = document.getElementById('dossier-file-manager');
+    if (!all || !form) return;
+    const boxes = Array.from(form.querySelectorAll('input[name="file_ids[]"]'));
+    all.addEventListener('change', () => boxes.forEach((box) => { box.checked = all.checked; }));
+    boxes.forEach((box) => box.addEventListener('change', () => {
+        all.checked = boxes.length > 0 && boxes.every((item) => item.checked);
+        all.indeterminate = !all.checked && boxes.some((item) => item.checked);
+    }));
+})();
+</script>
 </body>
 </html>

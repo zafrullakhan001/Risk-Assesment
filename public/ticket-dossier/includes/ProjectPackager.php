@@ -8,6 +8,13 @@ declare(strict_types=1);
 final class ProjectPackager
 {
     public const FORMAT = 'architecture-risk.ticket-dossier.zip.v1';
+    private const ARCHIVE_FILE_EXTENSIONS = [
+        'pdf', 'json', 'txt', 'log', 'csv',
+        'docx', 'xlsx', 'pptx',
+        'png', 'jpg', 'jpeg',
+    ];
+    private const MAX_ARCHIVE_FILE_BYTES = 25 * 1024 * 1024;
+    private const ARCHIVE_FILE_KINDS = ['ddr', 'demand', 'story', 'task', 'packet', 'attachment'];
 
     /**
      * Stream a ZIP of one project (id > 0) or every project (id = 0).
@@ -318,14 +325,14 @@ final class ProjectPackager
             'INSERT INTO project_files (project_id, kind, original_name, stored_name, size_bytes, created_at)
              VALUES (?, ?, ?, ?, ?, ?)'
         );
-        $seenKinds = [];
-
+        $importedFileCount = 0;
         foreach ($listed as $file) {
             if (!is_array($file)) {
                 continue;
             }
             $kind = (string) ($file['kind'] ?? '');
-            if (!in_array($kind, TD_SOURCE_KINDS, true) || isset($seenKinds[$kind])) {
+            if (!in_array($kind, self::ARCHIVE_FILE_KINDS, true)) {
+                $warnings[] = 'Skipped a file with an unknown type in ' . $title . '.';
                 continue;
             }
             $fromName = safeBasename((string) ($file['stored_name'] ?? ''));
@@ -335,13 +342,17 @@ final class ProjectPackager
                 $warnings[] = 'Missing file for ' . $title . ' (' . $kind . ').';
                 continue;
             }
-            $ext = extensionOf($original !== 'file' ? $original : $fromName);
-            if (!in_array($ext, TD_ALLOWED_EXTENSIONS, true)) {
+            $archiveExt = extensionOf($fromName);
+            $originalExt = extensionOf($original);
+            if (!in_array($archiveExt, self::ARCHIVE_FILE_EXTENSIONS, true)) {
                 $warnings[] = 'Skipped disallowed file type in ' . $title . '.';
                 continue;
             }
+            $ext = in_array($originalExt, self::ARCHIVE_FILE_EXTENSIONS, true)
+                ? $originalExt
+                : $archiveExt;
             $size = (int) filesize($src);
-            if ($size <= 0 || $size > TD_MAX_UPLOAD_BYTES) {
+            if ($size <= 0 || $size > self::MAX_ARCHIVE_FILE_BYTES) {
                 $warnings[] = 'Skipped oversized file in ' . $title . '.';
                 continue;
             }
@@ -354,11 +365,13 @@ final class ProjectPackager
             }
 
             $stmt->execute([$projectId, $kind, $original, $storedName, $size, $now]);
-            $seenKinds[$kind] = true;
-            $sources[$kind] = true;
+            $importedFileCount++;
+            if (in_array($kind, TD_SOURCE_KINDS, true)) {
+                $sources[$kind] = true;
+            }
         }
 
-        if ($seenKinds !== []) {
+        if ($importedFileCount > 0) {
             ProjectRepository::updateParsed($projectId, [
                 'title' => $title,
                 'vendor' => $vendor,
@@ -452,7 +465,7 @@ final class ProjectPackager
         if (preg_match('#^projects/[0-9A-Za-z._-]{1,80}/files/[0-9A-Za-z._-]{1,160}$#', $name) === 1) {
             $ext = extensionOf($name);
 
-            return in_array($ext, TD_ALLOWED_EXTENSIONS, true);
+            return in_array($ext, self::ARCHIVE_FILE_EXTENSIONS, true);
         }
 
         return false;

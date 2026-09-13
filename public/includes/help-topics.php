@@ -296,18 +296,22 @@ HTML,
                     'html' => <<<'HTML'
 <p>On the Ticket Dossier home page, open <strong>Console pull from ServiceNow</strong> to fetch a TASK plus its direct <strong>Task Relationships</strong> and attachments — without storing a ServiceNow password in Risk Register.</p>
 <ol>
+<li>Install the bundled extension once: open <code>edge://extensions</code> or <code>chrome://extensions</code>, enable Developer mode, click <strong>Load unpacked</strong>, and select <code>C:\xampp\htdocs\RiskRegister\extensions\servicenow-ticket-dossier</code>.</li>
 <li>Enter your ServiceNow instance URL (for example <code>https://yourcompany.service-now.com</code>) and a task number like <code>TASK0123456</code>.</li>
-<li>Click <strong>Prepare + copy + open</strong>. Risk Register issues a short-lived token (about 30 minutes), copies a console script, and opens ServiceNow.</li>
-<li>Sign in on that tab if needed. Open F12 → Console, paste the script, and press Enter. An overlay appears on the page.</li>
+<li>The ServiceNow URL persists automatically. Leave <strong>Remember and reuse the selected folder</strong> enabled to also persist the browser’s secure folder handle. Only the TASK number must be entered for each export. If folder permission is unavailable, the browser asks you to choose a folder.</li>
+<li>Click <strong>Prepare + open automatically</strong>. Risk Register issues a short-lived token (about 30 minutes) and opens ServiceNow.</li>
+<li>Sign in on that tab if needed. The extension starts the exporter and an overlay appears—no F12 console paste is needed.</li>
 <li>Click <strong>Export packet</strong> on the overlay (required so the browser can ask for a save folder). Choose a folder. The script writes <code>TASK…/TASK….json</code> and an <code>attachments/</code> tree, then imports the packet into Ticket Dossier.</li>
 </ol>
 <ul>
+<li>If the extension is not installed or automatic start fails, Risk Register copies the script so the existing F12 console workflow remains available as a fallback.</li>
+<li>Chrome/Edge briefly displays a debugger notification while the extension starts the exporter, then the extension immediately detaches.</li>
 <li>Only the starting task’s relationship list is walked — not related-of-related.</li>
 <li>Caps: 50 related tickets, 100 attachments, 25 MB per file.</li>
 <li>If your browser cannot pick a folder (for example some Firefox builds), the script falls back to downloading the JSON and files, and still imports into Ticket Dossier.</li>
 <li>You can also upload a completed task-packet JSON later; attachments only arrive with the console pull (or a ZIP backup).</li>
 </ul>
-<p>This mirrors SharePoint’s MFA console sync: your signed-in ServiceNow session does the API calls; Risk Register only receives the packet through a one-time token.</p>
+<p>Your signed-in ServiceNow session does the API calls; Risk Register only receives the packet through a one-time token. ServiceNow OAuth can be added later without changing packet import.</p>
 HTML,
                 ],
                 [
@@ -338,6 +342,7 @@ HTML,
 <li><strong>Assessments</strong> — external and internal questionnaires, with progress, a question search, and an “Answered only” toggle.</li>
 <li><strong>Original files</strong> — download each stored PDF or JSON.</li>
 </ul>
+<p>Under <strong>Original files</strong>, select one or more files and use <strong>Reparse selected</strong> to refresh Demand, Story, Task, related-ticket, or DDR information. Ticket PDFs exported by console sync are also parsed automatically when received. Use <strong>Delete selected</strong> to remove files you do not need; already-parsed dossier information is retained.</p>
 <p>Use the page search box to find any on-screen text, including misspellings. Ranked snippets jump to the matching field. Shortcut chips appear when Vendor, Owner, Business Owner, Executive Sponsor, Product Owner, Product Manager, Demand Manager, Requested by, or Assignee are present. Use <strong>+ Custom preset</strong> to save your own jump/search chips in this browser. <strong>Hide section dups</strong> hides fields that repeat with the same value across Demand, Story, Task, and DDR (keeping the earliest section). <strong>Show all fields</strong> reveals empty values that are hidden by default. Jump between chapters with the section nav.</p>
 HTML,
                 ],

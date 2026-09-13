@@ -575,7 +575,7 @@ final class ProjectImporter
         ];
 
         $sources = [
-            'ddr' => false,
+            'ddr' => !empty($parsed['ddr']),
             'demand' => !empty($parsed['demand']),
             'story' => !empty($parsed['story']),
             'task' => !empty($parsed['task']),

@@ -21,7 +21,7 @@ final class ServicenowTaskPacketParser
      *   demand: array<string, mixed>|null,
      *   story: array<string, mixed>|null,
      *   task: array<string, mixed>|null,
-     *   ddr: null,
+     *   ddr: array<string, mixed>|null,
      *   vendor: null,
      *   assessments: array{external: list, internal: list},
      *   overview: array{title: string, vendor: string, description: string, business_case: string},
@@ -115,6 +115,7 @@ final class ServicenowTaskPacketParser
         $relatedTickets = [];
         $story = null;
         $demand = null;
+        $ddr = null;
 
         foreach ($tickets as $ticket) {
             if (strcasecmp((string) $ticket['number'], $rootNumber) === 0) {
@@ -129,12 +130,17 @@ final class ServicenowTaskPacketParser
                 $demand = $ticket;
                 continue;
             }
+            if ($kind === 'ddr' && $ddr === null) {
+                $ddr = $ticket;
+                continue;
+            }
             $relatedTickets[] = $ticket;
         }
 
         $taskSection = self::toSection($root, 'task', $relationships);
         $storySection = $story !== null ? self::toSection($story, 'story', $relationships) : null;
         $demandSection = $demand !== null ? self::toSection($demand, 'demand', $relationships) : null;
+        $ddrSection = $ddr !== null ? self::toSection($ddr, 'ddr', $relationships) : null;
 
         $relatedSections = [];
         foreach ($relatedTickets as $ticket) {
@@ -159,7 +165,7 @@ final class ServicenowTaskPacketParser
             'demand' => $demandSection,
             'story' => $storySection,
             'task' => $taskSection,
-            'ddr' => null,
+            'ddr' => $ddrSection,
             'vendor' => null,
             'assessments' => ['external' => [], 'internal' => []],
             'overview' => [
@@ -312,8 +318,10 @@ final class ServicenowTaskPacketParser
         }
 
         $relatedNumbers = extractRecordNumbers($number . ' ' . implode(' ', array_column($relatedForTicket, 'parent')) . ' ' . implode(' ', array_column($relatedForTicket, 'child')));
+        $parsedKind = self::kindFromNumber($number, (string) ($ticket['sys_class_name'] ?? $ticket['table'] ?? ''));
 
         return [
+            'kind' => (string) ($ticket['kind'] ?? $parsedKind),
             'number' => $number,
             'sys_id' => (string) ($ticket['sys_id'] ?? ''),
             'sys_class_name' => (string) ($ticket['sys_class_name'] ?? $ticket['table'] ?? ''),

@@ -507,6 +507,56 @@ final class ProjectRepository
         ]);
     }
 
+    /**
+     * Persist one parsed-field correction and any denormalized project columns
+     * that represent the same value.
+     *
+     * @param array<string, mixed> $parsed
+     * @param array<string, string> $columns
+     */
+    public static function updateFieldCorrection(int $id, array $parsed, array $columns = []): void
+    {
+        if ($id <= 0) {
+            throw new InvalidArgumentException('Invalid project.');
+        }
+
+        $allowed = [
+            'title' => true,
+            'vendor' => true,
+            'demand_number' => true,
+            'story_number' => true,
+            'task_number' => true,
+            'ddr_number' => true,
+            'demand_state' => true,
+            'story_state' => true,
+            'task_state' => true,
+            'ddr_state' => true,
+        ];
+        $set = ['parsed_json = :parsed_json', 'updated_at = :updated_at'];
+        $params = [
+            ':parsed_json' => json_encode(
+                $parsed,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+            ),
+            ':updated_at' => nowUtc(),
+            ':id' => $id,
+        ];
+
+        foreach ($columns as $column => $value) {
+            if (!isset($allowed[$column])) {
+                throw new InvalidArgumentException('Invalid project field.');
+            }
+            $placeholder = ':' . $column;
+            $set[] = $column . ' = ' . $placeholder;
+            $params[$placeholder] = $value;
+        }
+
+        $stmt = getDb()->prepare(
+            'UPDATE projects SET ' . implode(', ', $set) . ' WHERE id = :id'
+        );
+        $stmt->execute($params);
+    }
+
     private static function removeStorageDirectory(string $dir): void
     {
         if (!is_dir($dir)) {

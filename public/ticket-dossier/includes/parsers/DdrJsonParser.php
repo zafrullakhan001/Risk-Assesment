@@ -27,6 +27,9 @@ final class DdrJsonParser
         if (strlen($raw) > TD_MAX_UPLOAD_BYTES) {
             throw new RuntimeException('DDR JSON file is too large.');
         }
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
+        }
 
         $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($data)) {

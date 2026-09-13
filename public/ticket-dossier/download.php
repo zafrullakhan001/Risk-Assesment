@@ -30,7 +30,17 @@ if (!is_file($path)) {
 
 $original = safeBasename((string) $file['original_name']);
 $ext = extensionOf($original);
-$mime = $ext === 'json' ? 'application/json' : 'application/pdf';
+$mime = match ($ext) {
+    'pdf' => 'application/pdf',
+    'json' => 'application/json',
+    'txt', 'log', 'csv' => 'text/plain; charset=utf-8',
+    'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'png' => 'image/png',
+    'jpg', 'jpeg' => 'image/jpeg',
+    default => 'application/octet-stream',
+};
 
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . (string) filesize($path));

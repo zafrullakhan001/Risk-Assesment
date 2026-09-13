@@ -261,7 +261,7 @@ $projectSourcesMeta = static function (array $project): array {
                 <h2>🔐 Console pull from ServiceNow</h2>
             </summary>
             <p class="context-note">
-                Same idea as SharePoint console sync: paste a script into a <strong>signed-in ServiceNow</strong> tab.
+                With the optional browser extension, the exporter starts automatically in a <strong>signed-in ServiceNow</strong> tab.
                 It pulls the TASK, its direct <strong>Task Relationships</strong>, and attachments — writes a local folder, then creates a Ticket Dossier here.
                 No ServiceNow password is stored in Risk Register.
             </p>
@@ -271,10 +271,20 @@ $projectSourcesMeta = static function (array $project): array {
                 data-csrf="<?= e($token) ?>"
             >
                 <ol class="servicenow-console-steps">
-                    <li>Enter your instance URL and TASK number, then <strong>Prepare + copy + open</strong>.</li>
-                    <li>Sign in on the ServiceNow tab if needed, open F12 → Console, paste the script, press Enter.</li>
+                    <li>Install the extension once from <code>extensions/servicenow-ticket-dossier</code> using Edge/Chrome <strong>Load unpacked</strong>.</li>
+                    <li>Enter your instance URL and TASK number, then <strong>Prepare + open automatically</strong>.</li>
+                    <li>Sign in on the ServiceNow tab if needed. The extension starts the exporter without F12 or pasting.</li>
                     <li>On the overlay, click <strong>Export packet</strong>, choose a save folder, and wait for import to finish.</li>
                 </ol>
+                <details class="servicenow-extension-install">
+                    <summary>One-time extension installation</summary>
+                    <p>
+                        Open <code>edge://extensions</code> or <code>chrome://extensions</code>, enable Developer mode,
+                        choose <strong>Load unpacked</strong>, and select
+                        <code>C:\xampp\htdocs\RiskRegister\extensions\servicenow-ticket-dossier</code>.
+                        Approve the debugger permission. Reload the extension after application updates.
+                    </p>
+                </details>
                 <div class="details-form-grid">
                     <label class="field">
                         <span>ServiceNow instance URL</span>
@@ -296,6 +306,19 @@ $projectSourcesMeta = static function (array $project): array {
                             pattern="TASK\d+"
                             autocomplete="off"
                         >
+                    </label>
+                    <label class="field">
+                        <span>Package folder</span>
+                        <span class="check">
+                            <input type="checkbox" id="servicenow-console-remember-folder" checked>
+                            Remember and reuse the selected folder
+                        </span>
+                        <small>
+                            The ServiceNow URL persists in this browser. When enabled, the selected folder permission also persists;
+                            only the TASK number must be entered each time.
+                            The browser does not expose the full Windows path.
+                            If no permitted folder is saved, ServiceNow prompts you to choose one.
+                        </small>
                     </label>
                 </div>
                 <div class="servicenow-console-actions">
@@ -429,7 +452,7 @@ $projectSourcesMeta = static function (array $project): array {
                                 <?php endforeach; ?>
                             </div>
                             <div class="card-meta">
-                                <span>🗓️ Updated <?= e((string) $project['updated_at']) ?> UTC · <?= $presentCount ?>/4 sources</span>
+                                <span>🗓️ Updated <time class="js-local-time" datetime="<?= e(dossierUtcIso((string) $project['updated_at'])) ?>"><?= e((string) $project['updated_at']) ?> UTC</time> · <?= $presentCount ?>/4 sources</span>
                                 <div class="card-actions">
                                     <a class="button button-primary button-small" href="project.php?id=<?= (int) $project['id'] ?>">Open →</a>
                                     <a class="button ghost button-small" href="export-zip.php?id=<?= (int) $project['id'] ?>" title="Export this project as ZIP">📦 ZIP</a>
@@ -542,7 +565,7 @@ $projectSourcesMeta = static function (array $project): array {
                                         <td class="project-table-ticket"><?= e((string) (($project['story_number'] ?? '') !== '' ? $project['story_number'] : '—')) ?></td>
                                         <td class="project-table-ticket"><?= e((string) (($project['task_number'] ?? '') !== '' ? $project['task_number'] : '—')) ?></td>
                                         <td class="project-table-ticket"><?= e((string) (($project['ddr_number'] ?? '') !== '' ? $project['ddr_number'] : '—')) ?></td>
-                                        <td class="project-table-date"><?= e((string) $project['updated_at']) ?></td>
+                                        <td class="project-table-date"><time class="js-local-time" datetime="<?= e(dossierUtcIso((string) $project['updated_at'])) ?>"><?= e((string) $project['updated_at']) ?> UTC</time></td>
                                         <td class="project-table-actions">
                                             <div class="project-table-action-row">
                                                 <a class="button button-primary button-small" href="project.php?id=<?= (int) $project['id'] ?>">Open</a>
@@ -619,6 +642,7 @@ $projectSourcesMeta = static function (array $project): array {
     <?php require dirname(__DIR__) . '/includes/site-footer.php'; ?>
 </div>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
+<script src="assets/js/local-time.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/project-list.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/servicenow-console-sync.js?v=<?= e($jsV) ?>"></script>

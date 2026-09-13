@@ -147,6 +147,30 @@ function nowUtc(): string
     return gmdate('Y-m-d H:i:s');
 }
 
+/**
+ * Convert a stored UTC "Y-m-d H:i:s" value to an unambiguous ISO-8601 UTC string for <time datetime>.
+ */
+function dossierUtcIso(?string $utc): string
+{
+    $utc = trim((string) $utc);
+    if ($utc === '') {
+        return '';
+    }
+
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $utc, new DateTimeZone('UTC'));
+    if ($dt instanceof DateTimeImmutable) {
+        return $dt->format('Y-m-d\TH:i:s\Z');
+    }
+
+    // Already ISO-ish with Z or offset — pass through when parseable.
+    try {
+        $parsed = new DateTimeImmutable($utc);
+        return $parsed->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
 function dossierFilenameSlug(string $title, string $fallback = 'dossier'): string
 {
     $slug = preg_replace('/[^A-Za-z0-9._-]+/', '-', $title) ?? $fallback;

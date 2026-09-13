@@ -87,9 +87,19 @@ final class FileClassifier
 
     public static function looksLikeDdrJson(string $path): bool
     {
-        $raw = @file_get_contents($path, false, null, 0, 200000);
+        $size = @filesize($path);
+        if ($size !== false && ($size <= 0 || $size > TD_MAX_UPLOAD_BYTES)) {
+            return false;
+        }
+
+        // JSON cannot be decoded from a truncated prefix. DDR exports commonly
+        // exceed 200 KB once questionnaires and assessment answers are included.
+        $raw = @file_get_contents($path);
         if ($raw === false || $raw === '') {
             return false;
+        }
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
         }
 
         $data = json_decode($raw, true);

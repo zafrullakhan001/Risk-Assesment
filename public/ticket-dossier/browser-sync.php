@@ -24,6 +24,7 @@ require_once __DIR__ . '/includes/parsers/ServicenowPdfParser.php';
 require_once __DIR__ . '/includes/parsers/ServicenowTaskPacketParser.php';
 require_once __DIR__ . '/includes/ProjectRepository.php';
 require_once __DIR__ . '/includes/ProjectImporter.php';
+require_once __DIR__ . '/includes/DossierFileManager.php';
 
 if (!is_dir(TD_DATABASE_DIR)) {
     mkdir(TD_DATABASE_DIR, 0755, true);
@@ -210,6 +211,13 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
                     $originalName = $base;
                 }
             }
+            if (
+                preg_match('/DDR\d+/i', $originalName)
+                && preg_match('/\.json\.txt$/i', $originalName)
+            ) {
+                $originalName = (string) preg_replace('/\.txt$/i', '', $originalName);
+                $relativePath = (string) preg_replace('/\.txt$/i', '', $relativePath);
+            }
 
             $displayName = $ticketNumber !== ''
                 ? $ticketNumber . '/' . $originalName
@@ -220,8 +228,16 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
                 $kind = 'story';
             } elseif (preg_match('/^DMND\d+$/i', $ticketNumber)) {
                 $kind = 'demand';
+            } elseif (preg_match('/^DDR\d+$/i', $ticketNumber)) {
+                $kind = 'ddr';
             } elseif (preg_match('/^TASK\d+$/i', $ticketNumber)) {
                 $kind = 'task';
+            }
+            if (
+                preg_match('/DDR\d+/i', $originalName)
+                && preg_match('/\.json(?:\.txt)?$/i', $originalName)
+            ) {
+                $kind = 'ddr';
             }
 
             $storageDir = TD_STORAGE_DIR . '/' . $projectId;
@@ -235,8 +251,16 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
             }
             $storedName = 'att_' . bin2hex(random_bytes(8)) . '.' . $ext;
             $dest = $storageDir . '/' . $storedName;
-            if (!move_uploaded_file($tmp, $dest)) {
+            // Create a new destination instead of renaming PHP's temporary file.
+            // On Windows, rename/move can preserve a restrictive temp-directory
+            // ACL and make the stored attachment unreadable after this request.
+            if (!copy($tmp, $dest)) {
                 throw new RuntimeException('Could not store attachment.');
+            }
+            @chmod($dest, 0644);
+            if (!is_file($dest) || (int) filesize($dest) !== $size) {
+                @unlink($dest);
+                throw new RuntimeException('Stored attachment failed size verification.');
             }
 
             $db = getDb();
@@ -252,12 +276,24 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
                 $size,
                 nowUtc(),
             ]);
+            $fileId = (int) $db->lastInsertId();
+            $reparseMessage = '';
+            if (
+                str_starts_with(str_replace('\\', '/', $relativePath), 'pdf/')
+                || $kind === 'ddr'
+            ) {
+                // Ticket PDFs and DDR JSON/text attachments enrich the dossier
+                // as soon as the console sync stores them.
+                $reparseMessage = DossierFileManager::reparseFile($projectId, $fileId);
+            }
 
             $jsonOut([
                 'ok' => true,
-                'file_id' => (int) $db->lastInsertId(),
+                'file_id' => $fileId,
                 'original_name' => $displayName,
                 'size_bytes' => $size,
+                'reparsed' => $reparseMessage !== '',
+                'reparse_message' => $reparseMessage,
             ]);
         }
 

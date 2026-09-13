@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RiskRegister ServiceNow Sync</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1>RiskRegister ServiceNow Sync</h1>
+    <p id="status">Checking status…</p>
+    <dl id="details" hidden>
+      <div><dt>Task</dt><dd id="task">—</dd></div>
+      <div><dt>Instance</dt><dd id="instance">—</dd></div>
+      <div><dt>Expires</dt><dd id="expires">—</dd></div>
+    </dl>
+    <p id="error" class="error" hidden></p>
+    <button type="button" id="clear" hidden>Clear pending export</button>
+    <p class="help">
+      Prepare a console pull in Ticket Dossier. The extension will start it
+      automatically when the matching ServiceNow tab opens.
+    </p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

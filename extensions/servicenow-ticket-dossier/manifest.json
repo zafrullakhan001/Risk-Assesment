@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "RiskRegister ServiceNow Dossier Sync",
+  "short_name": "RR SN Sync",
+  "version": "1.0.0",
+  "description": "Automatically starts the RiskRegister task-packet exporter in an authorized ServiceNow tab.",
+  "author": "RiskRegister",
+  "minimum_chrome_version": "109",
+  "permissions": [
+    "debugger",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://servicenow.adventhealth.com/*",
+    "https://*.service-now.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "RiskRegister ServiceNow Dossier Sync",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/RiskRegister/*",
+        "http://localhost/riskregister/*",
+        "http://127.0.0.1/RiskRegister/*",
+        "http://127.0.0.1/riskregister/*"
+      ],
+      "js": [
+        "riskregister-bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://servicenow.adventhealth.com/*",
+        "https://*.service-now.com/*"
+      ],
+      "js": [
+        "servicenow-bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -23,7 +23,9 @@ require_once __DIR__ . '/parsers/ServicenowPdfParser.php';
 require_once __DIR__ . '/parsers/ServicenowTaskPacketParser.php';
 require_once __DIR__ . '/PaginationPreference.php';
 require_once __DIR__ . '/ProjectRepository.php';
+require_once __DIR__ . '/DossierFieldEditor.php';
 require_once __DIR__ . '/ProjectImporter.php';
+require_once __DIR__ . '/DossierFileManager.php';
 require_once __DIR__ . '/ProjectPackager.php';
 require_once __DIR__ . '/ProjectSummaryMapper.php';
 

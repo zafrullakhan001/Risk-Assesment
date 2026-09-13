@@ -313,6 +313,30 @@
     gap: 8px;
     align-items: center;
 }
+.servicenow-extension-install {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--primary-soft) 35%, var(--card));
+}
+.servicenow-extension-install summary {
+    cursor: pointer;
+    color: var(--ink);
+    font-weight: 650;
+    font-size: 12px;
+}
+.servicenow-extension-install p {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.servicenow-extension-install code {
+    overflow-wrap: anywhere;
+}
+.has-servicenow-extension .servicenow-extension-install {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+}
 #servicenow-console-status.is-ok {
     color: var(--ok, #047857);
 }
@@ -1305,6 +1329,44 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
 }
 .related-list ul { margin: 0; padding-left: 1.1rem; }
 
+.dossier-file-manager {
+    display: grid;
+    gap: 10px;
+}
+.dossier-file-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.file-list-manage li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.dossier-file-select {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+.dossier-file-select input {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--primary);
+}
+.file-reparse-ready {
+    margin-left: auto;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-soft) 72%, var(--card));
+    color: var(--primary);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
 .field-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -1337,6 +1399,106 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     word-wrap: break-word;
     hyphens: auto;
     white-space: normal;
+}
+
+.editable-value {
+    white-space: inherit;
+}
+.field-edit-pencil {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-left: 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    text-decoration: none;
+    vertical-align: middle;
+    cursor: pointer;
+    opacity: 0.58;
+}
+.field-edit-pencil::before {
+    content: "✏️";
+}
+.field-item:hover .field-edit-pencil,
+.field-edit-pencil:hover,
+.field-edit-pencil:focus-visible {
+    border-color: var(--line);
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    opacity: 1;
+}
+.field-edit-pencil:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
+}
+.pill .field-edit-pencil {
+    width: 20px;
+    height: 20px;
+    margin: -3px -5px -3px 2px;
+    font-size: 10px;
+}
+.field-editor-dialog {
+    width: min(620px, calc(100vw - 28px));
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.35);
+}
+html.field-editor-open,
+body.field-editor-open {
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+.field-editor-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
+}
+.field-editor-dialog form {
+    display: grid;
+    gap: 14px;
+    padding: 20px;
+}
+.field-editor-head,
+.field-editor-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.field-editor-head h2,
+.field-editor-head p {
+    margin: 0;
+}
+.field-editor-close {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--paper);
+    color: var(--muted);
+    font-size: 22px;
+    cursor: pointer;
+}
+.field-editor-dialog textarea {
+    width: 100%;
+    min-height: 78px;
+    max-height: 50vh;
+    resize: vertical;
+}
+.field-editor-actions {
+    justify-content: flex-end;
 }
 
 .assess-toolbar {

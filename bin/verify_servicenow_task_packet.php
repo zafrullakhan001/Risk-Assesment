@@ -74,6 +74,27 @@ try {
 $safe = ServiceNowBrowserSync::sanitizeStoredFilename('../evil/report.pdf');
 $assert($safe === 'report.pdf', 'sanitizeStoredFilename strips path');
 
+$ddrFixture = $root . '/public/ticket-dossier/sample/DDR_DDR0005151.json';
+$largeDdrPath = sys_get_temp_dir() . '/DDR_DDR0005151.json.txt';
+try {
+    $largeDdr = json_decode((string) file_get_contents($ddrFixture), true, 512, JSON_THROW_ON_ERROR);
+    $largeDdr['_verification_padding'] = str_repeat('x', 210000);
+    file_put_contents($largeDdrPath, json_encode($largeDdr, JSON_THROW_ON_ERROR));
+    $assert(filesize($largeDdrPath) > 200000, 'large DDR JSON/text fixture exceeds old detection limit');
+    $assert(
+        FileClassifier::classify($largeDdrPath, 'DDR_DDR0005151.json.txt') === 'ddr',
+        'FileClassifier recognizes large DDR .json.txt content'
+    );
+    $largeParsed = DdrJsonParser::parse($largeDdrPath);
+    $assert(($largeParsed['number'] ?? '') === 'DDR0005151', 'DdrJsonParser parses large DDR .json.txt content');
+} catch (Throwable $e) {
+    $assert(false, 'large DDR JSON/text verification: ' . $e->getMessage());
+} finally {
+    if (is_file($largeDdrPath)) {
+        @unlink($largeDdrPath);
+    }
+}
+
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} assertion(s) failed.\n");
     exit(1);
