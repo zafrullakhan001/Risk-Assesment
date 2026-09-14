@@ -18,6 +18,56 @@
 
     return `void (async function () {
   const CFG = ${configJson};
+  if (window.__rrSharePointSyncRunning) {
+    console.warn("RiskRegister SharePoint sync is already running.");
+    return;
+  }
+  window.__rrSharePointSyncRunning = true;
+
+  const existingToast = document.getElementById("rr-sharepoint-sync-toast");
+  if (existingToast) existingToast.remove();
+  const toast = document.createElement("div");
+  toast.id = "rr-sharepoint-sync-toast";
+  toast.setAttribute(
+    "style",
+    "position:fixed;z-index:2147483646;right:16px;bottom:16px;width:360px;max-width:calc(100vw - 24px);" +
+      "background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:12px;padding:14px 16px;" +
+      "font:14px/1.4 system-ui,Segoe UI,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.35);"
+  );
+  toast.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+      '<strong style="color:#5eead4">RiskRegister · SharePoint sync</strong>' +
+      '<button id="rr-sp-sync-close" type="button" aria-label="Close progress" ' +
+        'style="border:0;background:transparent;color:#94a3b8;font-size:20px;line-height:1;cursor:pointer;padding:0">×</button>' +
+    "</div>" +
+    '<div id="rr-sp-sync-status" role="status" aria-live="polite" style="margin-top:8px;color:#99f6e4">Starting…</div>' +
+    '<div style="height:6px;background:#334155;border-radius:999px;overflow:hidden;margin-top:10px">' +
+      '<div id="rr-sp-sync-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="2" ' +
+        'style="height:100%;width:2%;background:#14b8a6;border-radius:999px;transition:width .25s ease,background-color .25s ease"></div>' +
+    "</div>" +
+    '<div id="rr-sp-sync-detail" style="margin-top:8px;font-size:12px;color:#94a3b8">Preparing crawler…</div>';
+  document.documentElement.appendChild(toast);
+
+  const toastStatus = document.getElementById("rr-sp-sync-status");
+  const toastProgress = document.getElementById("rr-sp-sync-progress");
+  const toastDetail = document.getElementById("rr-sp-sync-detail");
+  const toastClose = document.getElementById("rr-sp-sync-close");
+  if (toastClose) toastClose.addEventListener("click", () => toast.remove());
+
+  const setProgress = (message, detail, percent, state) => {
+    if (toastStatus) {
+      toastStatus.textContent = message;
+      toastStatus.style.color = state === "error" ? "#fca5a5" : state === "done" ? "#86efac" : "#99f6e4";
+    }
+    if (toastDetail) toastDetail.textContent = detail || "";
+    if (toastProgress) {
+      const value = Math.max(0, Math.min(100, Number(percent) || 0));
+      toastProgress.style.width = value + "%";
+      toastProgress.style.backgroundColor = state === "error" ? "#ef4444" : state === "done" ? "#22c55e" : "#14b8a6";
+      toastProgress.setAttribute("aria-valuenow", String(value));
+    }
+  };
+
   const rows = [];
   const seen = new Set();
   const visitedFolders = new Set();
@@ -291,6 +341,11 @@
         "| visio",
         visioFound
       );
+      setProgress(
+        "Scanning SharePoint library…",
+        "Page " + page + " · " + rows.length + " items · " + filesFound + " files · " + foldersDone + " folders",
+        Math.min(70, 12 + page * 6)
+      );
 
       const next =
         (payload && payload.NextHref) ||
@@ -441,21 +496,30 @@
 
       if (foldersDone === 1 || foldersDone % 10 === 0) {
         console.log("…folder walk:", foldersDone, "folders |", filesFound, "files | visio", visioFound);
+        setProgress(
+          "Walking SharePoint folders…",
+          foldersDone + " folders · " + filesFound + " files · " + rows.length + " total items",
+          Math.min(75, 15 + foldersDone)
+        );
       }
     }
   };
 
   console.log("%cRiskRegister MFA deep sync starting…", "color:#0f766e;font-weight:bold;font-size:14px");
   console.log("Includes Visio (.vsdx/.vsd/…). Root:", CFG.rootServerRelative);
+  setProgress("Connecting to SharePoint…", "Root: " + CFG.rootServerRelative, 5);
   try {
     let usedList = false;
     try {
+      setProgress("Scanning SharePoint library…", "Starting recursive list crawl", 10);
       usedList = await crawlViaList();
       console.log(usedList ? "List RecursiveAll crawl finished." : "List crawl returned 0 rows — falling back to folder walk.");
     } catch (listError) {
       console.warn("List crawl failed, falling back to folder walk:", listError && listError.message);
+      setProgress("Switching to folder-by-folder scan…", "The recursive list query was unavailable", 15);
     }
     if (!usedList || filesFound === 0) {
+      setProgress("Walking SharePoint folders…", "Starting folder scan", 18);
       await crawlViaFolders();
     }
     console.log(
@@ -469,6 +533,11 @@
         visioFound +
         " Visio). Posting…",
       "color:#0f766e;font-weight:bold"
+    );
+    setProgress(
+      "Uploading catalog to RiskRegister…",
+      rows.length + " items · " + filesFound + " files · " + foldersDone + " folders · " + visioFound + " Visio",
+      88
     );
     const response = await fetch(CFG.importUrl, {
       method: "POST",
@@ -484,11 +553,25 @@
     if (!response.ok || !json.ok) {
       throw new Error(json.error || ("Import failed HTTP " + response.status));
     }
+    setProgress(
+      "✅ Sync complete",
+      (json.message || (rows.length + " items imported")) + " · " + visioFound + " Visio files",
+      100,
+      "done"
+    );
     console.log("%c✅ Sync complete: " + json.message + " | Visio files: " + visioFound, "color:#047857;font-weight:bold;font-size:14px");
     alert("RiskRegister sync complete:\\n" + json.message + "\\nVisio (.vsdx) files found: " + visioFound + "\\n\\nReturn to the catalog page and refresh.");
   } catch (error) {
     console.error("%c❌ Sync failed", "color:#b91c1c;font-weight:bold", error);
+    setProgress(
+      "❌ Sync failed",
+      error && error.message ? error.message : String(error),
+      100,
+      "error"
+    );
     alert("RiskRegister sync failed: " + (error && error.message ? error.message : error));
+  } finally {
+    window.__rrSharePointSyncRunning = false;
   }
 })();`;
   }
