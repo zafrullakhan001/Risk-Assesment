@@ -64,6 +64,7 @@ function jsVersion(): string
         TD_ROOT . '/assets/js/local-time.js',
         TD_ROOT . '/assets/js/servicenow-console-sync.js',
         TD_ROOT . '/assets/js/servicenow-console-ui.js',
+        TD_ROOT . '/assets/js/servicenow-record-links.js',
     ];
     $mtime = 0;
     foreach ($paths as $path) {

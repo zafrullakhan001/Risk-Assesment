@@ -30,6 +30,11 @@ $ownerUsers = [];
 if (isset($users) && $users instanceof \RiskAssessment\Repositories\UserRepository) {
     $ownerUsers = $users->listApprovedActive();
 }
+$snInstance = servicenowInstanceOriginFromParsed($parsed);
+$snTickets = servicenowTicketLookup($parsed);
+$snMeta = static function (string $number, string $kind = '', string $sysId = '', string $table = '') use ($snTickets): array {
+    return servicenowTicketMeta($snTickets, $number, $kind, $sysId, $table);
+};
 $editDetailsOpen = $ownerName === '' || isset($_GET['edit']);
 $flash = flashTake();
 $token = csrfToken();
@@ -77,7 +82,7 @@ $ribbon = [
 ];
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme="teal">
+<html lang="en" data-theme="teal"<?= $snInstance !== '' ? ' data-sn-instance="' . e($snInstance) . '"' : '' ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -154,9 +159,16 @@ $ribbon = [
                     <?php endif; ?>
                     <?php foreach ($ribbon as $node): ?>
                         <?php if ($node['number'] !== ''): ?>
-                            <span class="pill <?= $node['key'] === 'story' ? 'amber' : ($node['key'] === 'task' ? 'gray' : 'teal') ?>">
-                                <?= kindEmoji($node['key']) ?> <?= e($node['number']) ?>
-                            </span>
+                            <?php
+                            $ticketMeta = $snMeta($node['number'], $node['key']);
+                            renderServicenowTicketPill($node['number'], [
+                                'kind' => $node['key'],
+                                'instance' => $snInstance,
+                                'sys_id' => $ticketMeta['sys_id'],
+                                'table' => $ticketMeta['table'],
+                                'prefix' => kindEmoji($node['key']),
+                            ]);
+                            ?>
                         <?php endif; ?>
                         <?php if ($node['state'] !== ''): ?>
                             <span class="pill gray"><?= e($node['label']) ?>: <?= e($node['state']) ?></span>
@@ -383,10 +395,19 @@ $ribbon = [
                     <dl class="kv">
                         <div><dt>Owner</dt><dd><span class="kv-value" data-search-label="Owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></span> <a class="field-edit-pencil" href="project.php?id=<?= (int) $id ?>&amp;edit=1#edit-details" aria-label="Edit owner" title="Edit owner"></a></dd></div>
                         <div><dt>Vendor</dt><dd><span class="kv-value" data-search-label="Vendor"><?php renderEditableValue((string) ($overview['vendor'] ?? $project['vendor'] ?? ''), ['overview', 'vendor'], 'Vendor'); ?></span></dd></div>
-                        <div><dt>Demand</dt><dd><span class="kv-value"><?= e((string) ($project['demand_number'] ?: '—')) ?></span><?= $project['demand_state'] ? ' <span class="pill teal">' . e((string) $project['demand_state']) . '</span>' : '' ?></dd></div>
-                        <div><dt>Story</dt><dd><span class="kv-value"><?= e((string) ($project['story_number'] ?: '—')) ?></span><?= $project['story_state'] ? ' <span class="pill amber">' . e((string) $project['story_state']) . '</span>' : '' ?></dd></div>
-                        <div><dt>Task</dt><dd><span class="kv-value"><?= e((string) ($project['task_number'] ?: '—')) ?></span><?= $project['task_state'] ? ' <span class="pill gray">' . e((string) $project['task_state']) . '</span>' : '' ?></dd></div>
-                        <div><dt>DDR</dt><dd><span class="kv-value"><?= e((string) ($project['ddr_number'] ?: '—')) ?></span><?= $project['ddr_state'] ? ' <span class="pill teal">' . e((string) $project['ddr_state']) . '</span>' : '' ?></dd></div>
+                        <?php foreach (['demand' => 'Demand', 'story' => 'Story', 'task' => 'Task', 'ddr' => 'DDR'] as $kind => $kindTitle): ?>
+                            <?php
+                            $ticketNumber = (string) ($project[$kind . '_number'] ?? '');
+                            $ticketState = (string) ($project[$kind . '_state'] ?? '');
+                            $ticketMeta = $snMeta($ticketNumber, $kind);
+                            ?>
+                            <div><dt><?= e($kindTitle) ?></dt><dd><span class="kv-value"><?php renderServicenowTicketNumber($ticketNumber, [
+                                'kind' => $kind,
+                                'instance' => $snInstance,
+                                'sys_id' => $ticketMeta['sys_id'],
+                                'table' => $ticketMeta['table'],
+                            ]); ?></span><?= $ticketState !== '' ? ' <span class="' . e(pillClassForKind($kind)) . '">' . e($ticketState) . '</span>' : '' ?></dd></div>
+                        <?php endforeach; ?>
                     </dl>
                 </article>
             </div>
@@ -403,7 +424,17 @@ $ribbon = [
                 <div class="section-head">
                     <h2><?= kindEmoji($kind) ?> <?= e(kindLabel($kind)) ?>
                         <?php if (!empty($section['number'])): ?>
-                            <span class="<?= e(pillClassForKind($kind)) ?>"><?php renderEditableValue((string) $section['number'], [$kind, 'number'], kindLabel($kind) . ' number'); ?></span>
+                            <?php
+                            $ticketMeta = $snMeta((string) $section['number'], $kind, (string) ($section['sys_id'] ?? ''), (string) ($section['table'] ?? $section['sys_class_name'] ?? ''));
+                            renderServicenowTicketPill((string) $section['number'], [
+                                'kind' => $kind,
+                                'instance' => $snInstance,
+                                'sys_id' => $ticketMeta['sys_id'],
+                                'table' => $ticketMeta['table'],
+                                'path' => [$kind, 'number'],
+                                'label' => kindLabel($kind) . ' number',
+                            ]);
+                            ?>
                         <?php endif; ?>
                     </h2>
                     <?php if (!empty($section['state'])): ?>
@@ -427,10 +458,30 @@ $ribbon = [
                         <h3>🔗 Related records</h3>
                         <ul>
                             <?php foreach ($section['related'] as $relIdx => $rel): ?>
+                                <?php
+                                $parentNumber = (string) ($rel['parent'] ?? '');
+                                $childNumber = (string) ($rel['child'] ?? '');
+                                $parentMeta = $snMeta($parentNumber, '', (string) ($rel['parent_sys_id'] ?? ''));
+                                $childMeta = $snMeta($childNumber, '', (string) ($rel['child_sys_id'] ?? ''));
+                                ?>
                                 <li>
-                                    <code><?php renderEditableValue((string) ($rel['parent'] ?? ''), [$kind, 'related', $relIdx, 'parent'], 'Relationship parent'); ?></code>
+                                    <code><?php renderServicenowTicketNumber($parentNumber, [
+                                        'kind' => $parentMeta['kind'],
+                                        'instance' => $snInstance,
+                                        'sys_id' => $parentMeta['sys_id'],
+                                        'table' => $parentMeta['table'],
+                                        'path' => [$kind, 'related', $relIdx, 'parent'],
+                                        'label' => 'Relationship parent',
+                                    ]); ?></code>
                                     →
-                                    <code><?php renderEditableValue((string) ($rel['child'] ?? ''), [$kind, 'related', $relIdx, 'child'], 'Relationship child'); ?></code>
+                                    <code><?php renderServicenowTicketNumber($childNumber, [
+                                        'kind' => $childMeta['kind'],
+                                        'instance' => $snInstance,
+                                        'sys_id' => $childMeta['sys_id'],
+                                        'table' => $childMeta['table'],
+                                        'path' => [$kind, 'related', $relIdx, 'child'],
+                                        'label' => 'Relationship child',
+                                    ]); ?></code>
                                     <span class="muted"><?php renderEditableValue((string) ($rel['type'] ?? ''), [$kind, 'related', $relIdx, 'type'], 'Relationship type'); ?></span>
                                 </li>
                             <?php endforeach; ?>
@@ -472,7 +523,17 @@ $ribbon = [
                         <div class="section-head">
                             <h3>
                                 <?= kindEmoji($relKind) ?>
-                                <code><?php renderEditableValue($relNumber, ['related_tickets', $relIdx, 'number'], 'Related ticket number'); ?></code>
+                                <code><?php
+                                $ticketMeta = $snMeta($relNumber, $relKind, (string) ($relTicket['sys_id'] ?? ''), (string) ($relTicket['table'] ?? $relTicket['sys_class_name'] ?? ''));
+                                renderServicenowTicketNumber($relNumber, [
+                                    'kind' => $relKind,
+                                    'instance' => $snInstance,
+                                    'sys_id' => $ticketMeta['sys_id'],
+                                    'table' => $ticketMeta['table'],
+                                    'path' => ['related_tickets', $relIdx, 'number'],
+                                    'label' => 'Related ticket number',
+                                ]);
+                                ?></code>
                                 <?php if (!empty($relTicket['sys_class_name'])): ?>
                                     <span class="muted"><?php renderEditableValue((string) $relTicket['sys_class_name'], ['related_tickets', $relIdx, 'sys_class_name'], 'Related ticket class'); ?></span>
                                 <?php endif; ?>
@@ -496,10 +557,30 @@ $ribbon = [
                                 <h4>🔗 Relationships</h4>
                                 <ul>
                                     <?php foreach ($relTicket['related'] as $ticketRelIdx => $rel): ?>
+                                        <?php
+                                        $parentNumber = (string) ($rel['parent'] ?? '');
+                                        $childNumber = (string) ($rel['child'] ?? '');
+                                        $parentMeta = $snMeta($parentNumber, '', (string) ($rel['parent_sys_id'] ?? ''));
+                                        $childMeta = $snMeta($childNumber, '', (string) ($rel['child_sys_id'] ?? ''));
+                                        ?>
                                         <li>
-                                            <code><?php renderEditableValue((string) ($rel['parent'] ?? ''), ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'parent'], 'Relationship parent'); ?></code>
+                                            <code><?php renderServicenowTicketNumber($parentNumber, [
+                                                'kind' => $parentMeta['kind'],
+                                                'instance' => $snInstance,
+                                                'sys_id' => $parentMeta['sys_id'],
+                                                'table' => $parentMeta['table'],
+                                                'path' => ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'parent'],
+                                                'label' => 'Relationship parent',
+                                            ]); ?></code>
                                             →
-                                            <code><?php renderEditableValue((string) ($rel['child'] ?? ''), ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'child'], 'Relationship child'); ?></code>
+                                            <code><?php renderServicenowTicketNumber($childNumber, [
+                                                'kind' => $childMeta['kind'],
+                                                'instance' => $snInstance,
+                                                'sys_id' => $childMeta['sys_id'],
+                                                'table' => $childMeta['table'],
+                                                'path' => ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'child'],
+                                                'label' => 'Relationship child',
+                                            ]); ?></code>
                                             <span class="muted"><?php renderEditableValue((string) ($rel['type'] ?? ''), ['related_tickets', $relIdx, 'related', $ticketRelIdx, 'type'], 'Relationship type'); ?></span>
                                         </li>
                                     <?php endforeach; ?>
@@ -583,7 +664,17 @@ $ribbon = [
                 <div class="section-head">
                     <h2><?= kindEmoji('ddr') ?> Due Diligence
                         <?php if (!empty($ddr['number'])): ?>
-                            <span class="pill teal"><?php renderEditableValue((string) $ddr['number'], ['ddr', 'number'], 'DDR number'); ?></span>
+                            <?php
+                            $ticketMeta = $snMeta((string) $ddr['number'], 'ddr', (string) ($ddr['sys_id'] ?? ''), (string) ($ddr['table'] ?? $ddr['sys_class_name'] ?? ''));
+                            renderServicenowTicketPill((string) $ddr['number'], [
+                                'kind' => 'ddr',
+                                'instance' => $snInstance,
+                                'sys_id' => $ticketMeta['sys_id'],
+                                'table' => $ticketMeta['table'],
+                                'path' => ['ddr', 'number'],
+                                'label' => 'DDR number',
+                            ]);
+                            ?>
                         <?php endif; ?>
                     </h2>
                     <?php if (!empty($ddr['state'])): ?>
@@ -835,6 +926,7 @@ $ribbon = [
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/fuzzy-search.js?v=<?= e(fuzzySearchJsVersion()) ?>"></script>
 <script src="assets/js/floating-search.js?v=<?= e($floatingJsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/servicenow-record-links.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/field-editor.js?v=<?= e($jsV) ?>"></script>
 <script>
 (() => {

@@ -334,7 +334,7 @@ HTML,
                     'html' => <<<'HTML'
 <p>An open dossier shows a Demand → Story → Task → DDR ribbon (present or not uploaded), then only the chapters that have data:</p>
 <ul>
-<li><strong>Overview</strong> — owner (who created the dossier), description, business case (from demand), vendor, and ticket numbers / states. Use <strong>Edit details</strong> to change the project name, vendor, or owner if something was missed.</li>
+<li><strong>Overview</strong> — owner (who created the dossier), description, business case (from demand), vendor, and ticket numbers / states. Demand, Story, Task, and DDR numbers are links that open that record in ServiceNow when the packet includes the instance URL (or when this browser has a saved ServiceNow URL from Console pull). Use <strong>Edit details</strong> to change the project name, vendor, or owner if something was missed.</li>
 <li><strong>Demand / Story / Task</strong> — parsed fields, related records, and long text such as description or business case.</li>
 <li><strong>Related tickets</strong> — extra tickets from a ServiceNow console packet’s Task Relationships list (when present).</li>
 <li><strong>Due Diligence</strong> — DDR fields from the JSON export.</li>

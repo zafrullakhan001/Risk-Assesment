@@ -50,6 +50,36 @@ $assert(is_array($parsed['related_tickets'] ?? null) && count($parsed['related_t
 $assert(($parsed['related_tickets'][0]['number'] ?? '') === 'TASK0002222', 'related TASK0002222 kept');
 $assert(count($parsed['relationships'] ?? []) === 3, 'three relationships');
 $assert(($parsed['packet_meta']['attachment_count'] ?? 0) === 2, 'attachment_count meta');
+$assert(($parsed['instance'] ?? '') === 'https://example.service-now.com', 'packet instance origin');
+$assert(($parsed['task']['table'] ?? '') === 'sc_task', 'task section keeps table');
+$assert(($parsed['story']['sys_id'] ?? '') === 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'story sys_id');
+$assert(
+    servicenowInstanceOriginFromParsed($parsed) === 'https://example.service-now.com',
+    'instance origin from parsed packet'
+);
+$storyUrl = servicenowRecordUrl(
+    (string) $parsed['instance'],
+    (string) $parsed['story']['number'],
+    (string) $parsed['story']['sys_id'],
+    (string) $parsed['story']['table'],
+    'story'
+);
+$assert(
+    $storyUrl === 'https://example.service-now.com/nav_to.do?uri=rm_story.do?sys_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    'story ServiceNow URL uses sys_id'
+);
+$demandUrl = servicenowRecordUrl('https://example.service-now.com', 'DMND0009999', '', '', 'demand');
+$assert(
+    $demandUrl === 'https://example.service-now.com/nav_to.do?uri=dmn_demand.do?sysparm_query=number=DMND0009999',
+    'demand ServiceNow URL falls back to number query'
+);
+$ddrUrl = servicenowRecordUrl('https://example.service-now.com', 'DDR0005151', '', '', 'ddr');
+$assert(
+    $ddrUrl === 'https://example.service-now.com/nav_to.do?uri=sn_tprm_dd_request.do?sysparm_query=number=DDR0005151',
+    'DDR ServiceNow URL uses diligence table'
+);
+$assert(servicenowRecordUrl('javascript:alert(1)', 'TASK0001234') === '', 'rejects non-http instance');
+$assert(servicenowRecordUrl('https://example.service-now.com', 'INC0001') === '', 'rejects non ticket numbers');
 
 $sections = availableSections($parsed);
 $assert(in_array('related', $sections, true), 'availableSections includes related');

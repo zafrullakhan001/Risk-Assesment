@@ -313,6 +313,8 @@ final class ServicenowTaskPacketParser
                     'parent' => $rel['parent'],
                     'child' => $rel['child'],
                     'type' => $rel['type'],
+                    'parent_sys_id' => (string) ($rel['parent_sys_id'] ?? ''),
+                    'child_sys_id' => (string) ($rel['child_sys_id'] ?? ''),
                 ];
             }
         }
@@ -356,6 +358,8 @@ final class ServicenowTaskPacketParser
                     'parent' => $rel['parent'],
                     'child' => $rel['child'],
                     'type' => $rel['type'],
+                    'parent_sys_id' => (string) ($rel['parent_sys_id'] ?? ''),
+                    'child_sys_id' => (string) ($rel['child_sys_id'] ?? ''),
                 ];
             }
         }
@@ -365,6 +369,7 @@ final class ServicenowTaskPacketParser
             'number' => $number,
             'sys_id' => (string) ($ticket['sys_id'] ?? ''),
             'sys_class_name' => (string) ($ticket['sys_class_name'] ?? ''),
+            'table' => (string) ($ticket['table'] ?? $ticket['sys_class_name'] ?? ''),
             'state' => (string) ($ticket['state'] ?? ''),
             'title' => (string) ($ticket['title'] ?? $ticket['short_description'] ?? ''),
             'description' => (string) ($ticket['description'] ?? ''),

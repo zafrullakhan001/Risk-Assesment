@@ -142,6 +142,180 @@ function extractRecordNumbers(string $text): array
     return $found;
 }
 
+function servicenowKindFromNumber(string $number): string
+{
+    $number = strtoupper(trim($number));
+    if (str_starts_with($number, 'DMND')) {
+        return 'demand';
+    }
+    if (str_starts_with($number, 'STRY')) {
+        return 'story';
+    }
+    if (str_starts_with($number, 'TASK')) {
+        return 'task';
+    }
+    if (str_starts_with($number, 'DDR')) {
+        return 'ddr';
+    }
+
+    return '';
+}
+
+function servicenowNormalizeInstanceOrigin(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+
+    try {
+        return \RiskAssessment\ServiceNow\ServiceNowBrowserSync::normalizeInstanceOrigin($url);
+    } catch (Throwable) {
+        return '';
+    }
+}
+
+/**
+ * @param array<string, mixed> $parsed
+ */
+function servicenowInstanceOriginFromParsed(array $parsed): string
+{
+    $packetMeta = is_array($parsed['packet_meta'] ?? null) ? $parsed['packet_meta'] : [];
+    $candidates = [
+        (string) ($packetMeta['instance'] ?? ''),
+        (string) ($parsed['instance'] ?? ''),
+    ];
+    foreach ($candidates as $candidate) {
+        $origin = servicenowNormalizeInstanceOrigin($candidate);
+        if ($origin !== '') {
+            return $origin;
+        }
+    }
+
+    return '';
+}
+
+function servicenowTableForRecord(string $kind = '', string $table = '', string $sysClass = '', string $number = ''): string
+{
+    foreach ([$table, $sysClass] as $candidate) {
+        $name = strtolower(trim($candidate));
+        if ($name !== '' && preg_match('/^[a-z][a-z0-9_]*$/', $name) === 1) {
+            return $name;
+        }
+    }
+
+    $resolvedKind = $kind !== '' ? $kind : servicenowKindFromNumber($number);
+
+    return match ($resolvedKind) {
+        'demand' => 'dmn_demand',
+        'story' => 'rm_story',
+        'ddr' => 'sn_tprm_dd_request',
+        default => 'task',
+    };
+}
+
+function servicenowRecordUrl(
+    string $instance,
+    string $number,
+    string $sysId = '',
+    string $table = '',
+    string $kind = ''
+): string {
+    $origin = servicenowNormalizeInstanceOrigin($instance);
+    $number = strtoupper(trim($number));
+    if ($origin === '' || $number === '' || preg_match('/^(?:DMND|STRY|TASK|DDR)\d+$/', $number) !== 1) {
+        return '';
+    }
+
+    $tableName = servicenowTableForRecord($kind, $table, '', $number);
+    $uri = $tableName . '.do';
+    $sysId = strtolower(trim($sysId));
+    if ($sysId !== '' && preg_match('/^[0-9a-f]{32}$/', $sysId) === 1) {
+        $uri .= '?sys_id=' . rawurlencode($sysId);
+    } else {
+        $uri .= '?sysparm_query=number=' . rawurlencode($number);
+    }
+
+    return $origin . '/nav_to.do?uri=' . $uri;
+}
+
+/**
+ * @param array<string, mixed> $parsed
+ * @return array<string, array{kind: string, sys_id: string, table: string}>
+ */
+function servicenowTicketLookup(array $parsed): array
+{
+    $out = [];
+    $add = static function (array $ticket, string $fallbackKind = '') use (&$out): void {
+        $number = strtoupper(trim((string) ($ticket['number'] ?? '')));
+        if ($number === '') {
+            return;
+        }
+        $kind = (string) ($ticket['kind'] ?? '');
+        if ($kind === '') {
+            $kind = $fallbackKind !== '' ? $fallbackKind : servicenowKindFromNumber($number);
+        }
+        $table = (string) ($ticket['table'] ?? $ticket['sys_class_name'] ?? '');
+        $sysId = trim((string) ($ticket['sys_id'] ?? ''));
+        $existing = $out[$number] ?? ['kind' => '', 'sys_id' => '', 'table' => ''];
+        $out[$number] = [
+            'kind' => $kind !== '' ? $kind : $existing['kind'],
+            'sys_id' => $sysId !== '' ? $sysId : $existing['sys_id'],
+            'table' => $table !== '' ? $table : $existing['table'],
+        ];
+    };
+
+    foreach (['demand', 'story', 'task', 'ddr'] as $kind) {
+        if (is_array($parsed[$kind] ?? null)) {
+            $add($parsed[$kind], $kind);
+        }
+    }
+    if (is_array($parsed['related_tickets'] ?? null)) {
+        foreach ($parsed['related_tickets'] as $ticket) {
+            if (is_array($ticket)) {
+                $add($ticket);
+            }
+        }
+    }
+    if (is_array($parsed['tickets'] ?? null)) {
+        foreach ($parsed['tickets'] as $ticket) {
+            if (is_array($ticket)) {
+                $add($ticket);
+            }
+        }
+    }
+
+    $ddr = is_array($parsed['ddr'] ?? null) ? $parsed['ddr'] : [];
+    $exportMeta = is_array($ddr['export_meta'] ?? null) ? $ddr['export_meta'] : [];
+    $ddrNumber = strtoupper(trim((string) ($ddr['number'] ?? '')));
+    if ($ddrNumber !== '') {
+        $add([
+            'number' => $ddrNumber,
+            'kind' => 'ddr',
+            'sys_id' => (string) ($exportMeta['root_sys_id'] ?? $ddr['sys_id'] ?? ''),
+            'table' => (string) ($exportMeta['root_table'] ?? $ddr['table'] ?? $ddr['sys_class_name'] ?? ''),
+        ], 'ddr');
+    }
+
+    return $out;
+}
+
+/**
+ * @param array<string, array{kind: string, sys_id: string, table: string}> $lookup
+ * @return array{kind: string, sys_id: string, table: string}
+ */
+function servicenowTicketMeta(array $lookup, string $number, string $kind = '', string $sysId = '', string $table = ''): array
+{
+    $number = strtoupper(trim($number));
+    $hit = $lookup[$number] ?? ['kind' => '', 'sys_id' => '', 'table' => ''];
+
+    return [
+        'kind' => $kind !== '' ? $kind : (string) ($hit['kind'] !== '' ? $hit['kind'] : servicenowKindFromNumber($number)),
+        'sys_id' => $sysId !== '' ? $sysId : (string) $hit['sys_id'],
+        'table' => $table !== '' ? $table : (string) $hit['table'],
+    ];
+}
+
 function nowUtc(): string
 {
     return gmdate('Y-m-d H:i:s');

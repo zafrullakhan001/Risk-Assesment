@@ -535,6 +535,29 @@
 .pill.coral { background: var(--risk-soft); color: var(--risk); }
 .pill.gray { background: var(--tbd-soft); color: var(--tbd); }
 
+a.sn-record-link,
+a.pill.sn-record-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+    cursor: pointer;
+}
+a.sn-record-link:hover,
+a.pill.sn-record-link:hover {
+    text-decoration-thickness: 2px;
+}
+.hero a.pill.sn-record-link,
+.chip-row a.pill.sn-record-link {
+    text-decoration-color: currentColor;
+}
+.project-table-ticket .editable-value {
+    white-space: nowrap;
+}
+.project-table-ticket a.sn-record-link {
+    font-family: inherit;
+}
+
 .chip-row,
 .source-row {
     display: flex;

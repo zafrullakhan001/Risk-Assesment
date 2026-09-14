@@ -62,6 +62,11 @@ $projects = ProjectRepository::search(
 );
 $searchFrom = $searchTotal === 0 ? 0 : (($searchPage - 1) * $searchPerPage) + 1;
 $searchTo = min($searchTotal, $searchPage * $searchPerPage);
+$projectSnInstances = [];
+foreach ($projects as $project) {
+    $decoded = json_decode((string) ($project['parsed_json'] ?? ''), true);
+    $projectSnInstances[(int) $project['id']] = is_array($decoded) ? servicenowInstanceOriginFromParsed($decoded) : '';
+}
 
 $projectListQueryParams = static function (
     array $overrides = []
@@ -439,7 +444,13 @@ $projectSourcesMeta = static function (array $project): array {
                             <div class="chip-row">
                                 <?php foreach (['demand' => 'demand_number', 'story' => 'story_number', 'task' => 'task_number', 'ddr' => 'ddr_number'] as $kind => $col): ?>
                                     <?php if (!empty($project[$col])): ?>
-                                        <span class="<?= e(pillClassForKind($kind)) ?>"><?= kindEmoji($kind) ?> <?= e((string) $project[$col]) ?></span>
+                                        <?php
+                                        renderServicenowTicketPill((string) $project[$col], [
+                                            'kind' => $kind,
+                                            'instance' => $projectSnInstances[(int) $project['id']] ?? '',
+                                            'prefix' => kindEmoji($kind),
+                                        ]);
+                                        ?>
                                     <?php endif; ?>
                                 <?php endforeach; ?>
                             </div>
@@ -561,10 +572,50 @@ $projectSourcesMeta = static function (array $project): array {
                                         </td>
                                         <td><?= e((string) (($project['vendor'] ?? '') !== '' ? $project['vendor'] : '—')) ?></td>
                                         <td class="project-table-owner"<?= $ownerTitle !== '' ? ' title="' . e($ownerTitle) . '"' : '' ?>><?= e($ownerName !== '' ? $ownerName : '—') ?></td>
-                                        <td class="project-table-ticket"><?= e((string) (($project['demand_number'] ?? '') !== '' ? $project['demand_number'] : '—')) ?></td>
-                                        <td class="project-table-ticket"><?= e((string) (($project['story_number'] ?? '') !== '' ? $project['story_number'] : '—')) ?></td>
-                                        <td class="project-table-ticket"><?= e((string) (($project['task_number'] ?? '') !== '' ? $project['task_number'] : '—')) ?></td>
-                                        <td class="project-table-ticket"><?= e((string) (($project['ddr_number'] ?? '') !== '' ? $project['ddr_number'] : '—')) ?></td>
+                                        <td class="project-table-ticket"><?php
+                                            $ticketNumber = (string) (($project['demand_number'] ?? '') !== '' ? $project['demand_number'] : '');
+                                            if ($ticketNumber === '') {
+                                                echo '—';
+                                            } else {
+                                                renderServicenowTicketNumber($ticketNumber, [
+                                                    'kind' => 'demand',
+                                                    'instance' => $projectSnInstances[(int) $project['id']] ?? '',
+                                                ]);
+                                            }
+                                        ?></td>
+                                        <td class="project-table-ticket"><?php
+                                            $ticketNumber = (string) (($project['story_number'] ?? '') !== '' ? $project['story_number'] : '');
+                                            if ($ticketNumber === '') {
+                                                echo '—';
+                                            } else {
+                                                renderServicenowTicketNumber($ticketNumber, [
+                                                    'kind' => 'story',
+                                                    'instance' => $projectSnInstances[(int) $project['id']] ?? '',
+                                                ]);
+                                            }
+                                        ?></td>
+                                        <td class="project-table-ticket"><?php
+                                            $ticketNumber = (string) (($project['task_number'] ?? '') !== '' ? $project['task_number'] : '');
+                                            if ($ticketNumber === '') {
+                                                echo '—';
+                                            } else {
+                                                renderServicenowTicketNumber($ticketNumber, [
+                                                    'kind' => 'task',
+                                                    'instance' => $projectSnInstances[(int) $project['id']] ?? '',
+                                                ]);
+                                            }
+                                        ?></td>
+                                        <td class="project-table-ticket"><?php
+                                            $ticketNumber = (string) (($project['ddr_number'] ?? '') !== '' ? $project['ddr_number'] : '');
+                                            if ($ticketNumber === '') {
+                                                echo '—';
+                                            } else {
+                                                renderServicenowTicketNumber($ticketNumber, [
+                                                    'kind' => 'ddr',
+                                                    'instance' => $projectSnInstances[(int) $project['id']] ?? '',
+                                                ]);
+                                            }
+                                        ?></td>
                                         <td class="project-table-date"><time class="js-local-time" datetime="<?= e(dossierUtcIso((string) $project['updated_at'])) ?>"><?= e((string) $project['updated_at']) ?> UTC</time></td>
                                         <td class="project-table-actions">
                                             <div class="project-table-action-row">
@@ -645,6 +696,7 @@ $projectSourcesMeta = static function (array $project): array {
 <script src="assets/js/local-time.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/project-list.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/servicenow-record-links.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/servicenow-console-sync.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/servicenow-console-ui.js?v=<?= e($jsV) ?>"></script>
 </body>

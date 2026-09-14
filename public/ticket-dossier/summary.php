@@ -19,6 +19,8 @@ if (!is_array($parsed)) {
 $summary = ProjectSummaryMapper::map($project, $parsed);
 $ownerName = projectOwnerName($project);
 $ownerTitle = projectOwnerTitle($project);
+$snInstance = servicenowInstanceOriginFromParsed($parsed);
+$snTickets = servicenowTicketLookup($parsed);
 $cssV = cssVersion();
 $jsV = jsVersion();
 
@@ -36,7 +38,7 @@ function renderSummaryField(array $field, string $extraClass = ''): void
 }
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme="teal">
+<html lang="en" data-theme="teal"<?= $snInstance !== '' ? ' data-sn-instance="' . e($snInstance) . '"' : '' ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -86,12 +88,22 @@ function renderSummaryField(array $field, string $extraClass = ''): void
                     <?php if (!empty($project['vendor'])): ?>
                         <span class="pill gray">🏢 <?= e((string) $project['vendor']) ?></span>
                     <?php endif; ?>
-                    <?php if (!empty($project['demand_number'])): ?>
-                        <span class="pill teal">🎯 <?= e((string) $project['demand_number']) ?></span>
-                    <?php endif; ?>
-                    <?php if (!empty($project['ddr_number'])): ?>
-                        <span class="pill teal">🛡 <?= e((string) $project['ddr_number']) ?></span>
-                    <?php endif; ?>
+                    <?php
+                    foreach (['demand' => '🎯', 'story' => '📖', 'task' => '✅', 'ddr' => '🛡'] as $kind => $emoji) {
+                        $ticketNumber = (string) ($project[$kind . '_number'] ?? '');
+                        if ($ticketNumber === '') {
+                            continue;
+                        }
+                        $ticketMeta = servicenowTicketMeta($snTickets, $ticketNumber, $kind);
+                        renderServicenowTicketPill($ticketNumber, [
+                            'kind' => $kind,
+                            'instance' => $snInstance,
+                            'sys_id' => $ticketMeta['sys_id'],
+                            'table' => $ticketMeta['table'],
+                            'prefix' => $emoji,
+                        ]);
+                    }
+                    ?>
                 </div>
             </div>
         </section>
@@ -192,5 +204,6 @@ function renderSummaryField(array $field, string $extraClass = ''): void
     <?php require dirname(__DIR__) . '/includes/site-footer.php'; ?>
 </div>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
+<script src="assets/js/servicenow-record-links.js?v=<?= e($jsV) ?>"></script>
 </body>
 </html>
