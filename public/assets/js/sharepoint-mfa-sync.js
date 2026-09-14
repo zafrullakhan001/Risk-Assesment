@@ -560,7 +560,6 @@
       "done"
     );
     console.log("%c✅ Sync complete: " + json.message + " | Visio files: " + visioFound, "color:#047857;font-weight:bold;font-size:14px");
-    alert("RiskRegister sync complete:\\n" + json.message + "\\nVisio (.vsdx) files found: " + visioFound + "\\n\\nReturn to the catalog page and refresh.");
   } catch (error) {
     console.error("%c❌ Sync failed", "color:#b91c1c;font-weight:bold", error);
     setProgress(
@@ -569,7 +568,6 @@
       100,
       "error"
     );
-    alert("RiskRegister sync failed: " + (error && error.message ? error.message : error));
   } finally {
     window.__rrSharePointSyncRunning = false;
   }
