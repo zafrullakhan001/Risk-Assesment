@@ -12622,7 +12622,8 @@ body.is-public-catalog-share .topbar-actions {
     font-size: 0.95rem;
     border-radius: 8px;
 }
-.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-compare-bar {
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-compare-bar,
+.sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-favorites-bar {
     display: none;
 }
 .sharepoint-catalog-page .sharepoint-catalog-table-shell:not([open]) .sharepoint-table-toolbar {
@@ -14551,6 +14552,13 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"
         flex: 1 1 auto;
         justify-content: center;
     }
+    .sharepoint-favorites-bar {
+        width: 100%;
+    }
+    .sharepoint-favorites-bar .button {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
     /* Essentials only: select · project · actions (+ modified on tablet) */
     .sharepoint-projects-table [data-col="match"],
     .sharepoint-projects-table [data-col="items"],
@@ -14678,6 +14686,43 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"
 .sharepoint-compare-hint {
     font-size: 0.82rem;
     color: var(--muted, #64748b);
+}
+.sharepoint-favorites-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.65rem;
+}
+.sharepoint-favorites-bar.is-hidden,
+.sharepoint-favorites-bar[hidden] {
+    display: none !important;
+}
+.sharepoint-compare-bar.is-hidden,
+.sharepoint-compare-bar[hidden] {
+    display: none !important;
+}
+.sharepoint-favorites-hint {
+    font-size: 0.82rem;
+    color: var(--muted, #64748b);
+}
+.sharepoint-favorites-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    color: var(--text, #0f172a);
+    cursor: pointer;
+    user-select: none;
+}
+.sharepoint-favorites-select-all input {
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--accent, #0f766e);
+    cursor: pointer;
+}
+.sharepoint-folders-clear-favs.is-hidden,
+.sharepoint-folders-clear-favs[hidden] {
+    display: none !important;
 }
 .sharepoint-select-col {
     width: 2.25rem;

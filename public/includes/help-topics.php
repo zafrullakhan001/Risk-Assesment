@@ -393,6 +393,7 @@ HTML,
 <li><strong>Deep files</strong> — walk every cataloged file alongside the folder (names and paths, not file contents).</li>
 <li><strong>Suggest</strong> — show query suggestions while typing.</li>
 <li><strong>AND / OR</strong> — require every word or any word.</li>
+<li><strong>★ Fav</strong> — show only project folders you starred. In search results, select rows and use <strong>Add selected</strong> (or Select all) to favorite projects in bulk. While Fav is on, use <strong>Remove selected</strong> or <strong>Clear all</strong>. Star folder cards the same way; use <strong>Clear starred</strong> on the folders panel to drop all starred catalogs.</li>
 <li><strong>Show archived</strong> (admins) — include catalogs, projects, and files you hid so you can restore them.</li>
 <li><strong>Recent</strong> — browser-local chips for recent queries.</li>
 </ul>

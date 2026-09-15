@@ -694,6 +694,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        // Bulk favorite — any signed-in user (not admin-only).
+        if ($action === 'set_favorites') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $userId = (int) $currentUser['id'];
+            $rawItems = $_POST['items'] ?? '[]';
+            if (is_string($rawItems)) {
+                $decoded = json_decode($rawItems, true);
+                $items = is_array($decoded) ? $decoded : [];
+            } elseif (is_array($rawItems)) {
+                $items = $rawItems;
+            } else {
+                $items = [];
+            }
+            if ($items === []) {
+                throw new RuntimeException('Select at least one project to favorite.');
+            }
+            $added = $favorites->setMany($userId, $items);
+            $favoriteIndex = $favorites->indexForUser($userId);
+            $payload = [
+                'ok' => true,
+                'added' => $added,
+                'favorite_count' => count($favoriteIndex['projects']),
+                'favorite_sources' => array_values(array_keys($favoriteIndex['sources'])),
+            ];
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = $added === 1
+                ? 'Added 1 favorite.'
+                : ('Added ' . $added . ' favorites.');
+            header('Location: sharepoint.php?source=' . rawurlencode($activeSourceKey) . '#sharepoint-search');
+            exit;
+        }
+
+        // Bulk unfavorite — any signed-in user (not admin-only).
+        if ($action === 'unset_favorites') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $mode = strtolower(trim((string) ($_POST['mode'] ?? 'selected')));
+            $userId = (int) $currentUser['id'];
+            if ($mode === 'all') {
+                $clearScope = strtolower(trim((string) ($_POST['scope'] ?? 'project')));
+                if (!in_array($clearScope, ['project', 'source', 'all'], true)) {
+                    throw new RuntimeException('Invalid favorites scope.');
+                }
+                $removed = $favorites->unsetAllForUser($userId, $clearScope);
+            } elseif ($mode === 'selected') {
+                $rawItems = $_POST['items'] ?? '[]';
+                if (is_string($rawItems)) {
+                    $decoded = json_decode($rawItems, true);
+                    $items = is_array($decoded) ? $decoded : [];
+                } elseif (is_array($rawItems)) {
+                    $items = $rawItems;
+                } else {
+                    $items = [];
+                }
+                if ($items === []) {
+                    throw new RuntimeException('Select at least one favorite to remove.');
+                }
+                $removed = $favorites->unsetMany($userId, $items);
+            } else {
+                throw new RuntimeException('Invalid favorites mode.');
+            }
+            $favoriteIndex = $favorites->indexForUser($userId);
+            $payload = [
+                'ok' => true,
+                'removed' => $removed,
+                'favorite_count' => count($favoriteIndex['projects']),
+                'favorite_sources' => array_values(array_keys($favoriteIndex['sources'])),
+            ];
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = $removed === 1
+                ? 'Removed 1 favorite.'
+                : ('Removed ' . $removed . ' favorites.');
+            header('Location: sharepoint.php?source=' . rawurlencode($activeSourceKey) . '#sharepoint-sources');
+            exit;
+        }
+
         if (!$isAdmin) {
             throw new RuntimeException('Only administrators can manage the SharePoint catalog.');
         }
@@ -1357,7 +1442,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'prepare_browser_sync' || $action === 'delegated_sync'
             || $action === 'create_search_tag' || $action === 'delete_search_tag'
             || $action === 'save_project_tags' || $action === 'save_item_tags'
-            || $action === 'set_archive' || $action === 'set_favorite') {
+            || $action === 'set_archive' || $action === 'set_favorite'
+            || $action === 'set_favorites' || $action === 'unset_favorites') {
             $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
                 || (string) ($_POST['ajax'] ?? '') === '1'
                 || $action === 'prepare_browser_sync'
@@ -1910,6 +1996,7 @@ $soloPageClass = $ownerSolo
                                 <button type="button" class="sp-view-btn" data-folders-view="table" aria-pressed="false" title="Table view">Table</button>
                             </div>
                             <button type="button" class="sp-view-btn sharepoint-folders-fav-toggle" id="sharepoint-folders-fav-toggle" title="Show only folders you starred" aria-pressed="false">★ Fav</button>
+                            <button type="button" class="sp-view-btn sharepoint-folders-clear-favs is-hidden" id="sharepoint-folders-clear-favs" hidden title="Remove all starred folders from favorites">Clear starred</button>
                             <?php if ($foldersSolo): ?>
                                 <a class="button ghost" href="sharepoint.php?source=<?= e($activeSourceKey) ?>">← SharePoint</a>
                             <?php else: ?>
@@ -2743,9 +2830,17 @@ $soloPageClass = $ownerSolo
                         <?php require __DIR__ . '/includes/sharepoint-list-columns-picker.php'; ?>
                         <?php require __DIR__ . '/includes/sharepoint-list-animation-button.php'; ?>
                         <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
+                            <button type="button" class="button ghost is-hidden" id="sharepoint-compare-select-all" hidden title="Select all projects in the current filtered results">Select all</button>
                             <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
                             <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
+                            <button type="button" class="button ghost is-hidden" id="sharepoint-favorites-add" hidden disabled title="Add the selected projects to favorites">★ Add selected</button>
                             <button type="button" class="button ghost" id="sharepoint-compare-clear" hidden>Clear selection</button>
+                        </div>
+                        <div class="sharepoint-favorites-bar is-hidden" id="sharepoint-favorites-bar" hidden>
+                            <button type="button" class="button ghost" id="sharepoint-favorites-select-all" title="Select all filtered favorites">Select all</button>
+                            <span class="sharepoint-favorites-hint" id="sharepoint-favorites-hint">0 selected</span>
+                            <button type="button" class="button ghost is-danger" id="sharepoint-favorites-remove" disabled title="Remove the selected project favorites">Remove selected</button>
+                            <button type="button" class="button ghost is-danger" id="sharepoint-favorites-clear-all" title="Remove every project favorite">Clear all</button>
                         </div>
                         <?php if (!$catalogSolo): ?>
                             <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>

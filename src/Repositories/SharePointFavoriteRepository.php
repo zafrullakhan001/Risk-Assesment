@@ -187,6 +187,161 @@ final class SharePointFavoriteRepository
         $statement->execute([':source_key' => $sourceKey]);
     }
 
+    /**
+     * Add selected favorites for one user (upsert). Cap at 500.
+     *
+     * @param list<array{scope?: string, source_key?: string, project_name?: string}> $items
+     * @return int Number of rows inserted or refreshed
+     */
+    public function setMany(int $userId, array $items): int
+    {
+        if ($userId <= 0) {
+            throw new \RuntimeException('Sign in to manage favorites.');
+        }
+
+        $added = 0;
+        $seen = [];
+        $limit = 500;
+        $statement = $this->pdo->prepare(
+            'INSERT INTO user_catalog_favorites (
+                user_id, scope, source_key, project_name, created_at
+             ) VALUES (
+                :user_id, :scope, :source_key, :project_name, datetime(\'now\')
+             )
+             ON CONFLICT(user_id, scope, source_key, project_name) DO UPDATE SET
+                created_at = excluded.created_at'
+        );
+
+        foreach ($items as $item) {
+            if ($added >= $limit) {
+                break;
+            }
+            if (!is_array($item)) {
+                continue;
+            }
+            $sourceKey = trim((string) ($item['source_key'] ?? ''));
+            if ($sourceKey === '') {
+                continue;
+            }
+            $scope = $this->normalizeScope((string) ($item['scope'] ?? self::SCOPE_PROJECT));
+            $projectName = $scope === self::SCOPE_SOURCE
+                ? ''
+                : trim((string) ($item['project_name'] ?? ''));
+            if ($scope === self::SCOPE_PROJECT && $projectName === '') {
+                continue;
+            }
+            $dedupe = $scope . "\0" . $sourceKey . "\0" . $projectName;
+            if (isset($seen[$dedupe])) {
+                continue;
+            }
+            $seen[$dedupe] = true;
+            $statement->execute([
+                ':user_id' => $userId,
+                ':scope' => $scope,
+                ':source_key' => $sourceKey,
+                ':project_name' => $projectName,
+            ]);
+            $added += 1;
+        }
+
+        return $added;
+    }
+
+    /**
+     * Remove selected favorites for one user. Does not require the SharePoint
+     * source/project to still exist (orphaned stars can be cleared).
+     *
+     * @param list<array{scope?: string, source_key?: string, project_name?: string}> $items
+     * @return int Number of rows deleted
+     */
+    public function unsetMany(int $userId, array $items): int
+    {
+        if ($userId <= 0) {
+            throw new \RuntimeException('Sign in to manage favorites.');
+        }
+
+        $removed = 0;
+        $seen = [];
+        $limit = 500;
+        $statement = $this->pdo->prepare(
+            'DELETE FROM user_catalog_favorites
+             WHERE user_id = :user_id
+               AND scope = :scope
+               AND source_key = :source_key
+               AND project_name = :project_name'
+        );
+
+        foreach ($items as $item) {
+            if ($removed >= $limit) {
+                break;
+            }
+            if (!is_array($item)) {
+                continue;
+            }
+            $sourceKey = trim((string) ($item['source_key'] ?? ''));
+            if ($sourceKey === '') {
+                continue;
+            }
+            $scope = $this->normalizeScope((string) ($item['scope'] ?? self::SCOPE_PROJECT));
+            $projectName = $scope === self::SCOPE_SOURCE
+                ? ''
+                : trim((string) ($item['project_name'] ?? ''));
+            if ($scope === self::SCOPE_PROJECT && $projectName === '') {
+                continue;
+            }
+            $dedupe = $scope . "\0" . $sourceKey . "\0" . $projectName;
+            if (isset($seen[$dedupe])) {
+                continue;
+            }
+            $seen[$dedupe] = true;
+            $statement->execute([
+                ':user_id' => $userId,
+                ':scope' => $scope,
+                ':source_key' => $sourceKey,
+                ':project_name' => $projectName,
+            ]);
+            $removed += (int) $statement->rowCount();
+        }
+
+        return $removed;
+    }
+
+    /**
+     * Clear all favorites for one user, optionally limited by scope.
+     *
+     * @param 'project'|'source'|'all' $scope
+     * @return int Number of rows deleted
+     */
+    public function unsetAllForUser(int $userId, string $scope = 'all'): int
+    {
+        if ($userId <= 0) {
+            throw new \RuntimeException('Sign in to manage favorites.');
+        }
+
+        $scope = strtolower(trim($scope));
+        if ($scope === 'all' || $scope === '') {
+            $statement = $this->pdo->prepare(
+                'DELETE FROM user_catalog_favorites WHERE user_id = :user_id'
+            );
+            $statement->execute([':user_id' => $userId]);
+
+            return (int) $statement->rowCount();
+        }
+
+        $normalized = $this->normalizeScope($scope);
+        $statement = $this->pdo->prepare(
+            'DELETE FROM user_catalog_favorites
+             WHERE user_id = :user_id
+               AND scope = :scope'
+        );
+        $statement->execute([
+            ':user_id' => $userId,
+            ':scope' => $normalized,
+        ]);
+
+        return (int) $statement->rowCount();
+    }
+
     private function normalizeScope(string $scope): string
     {
         $scope = strtolower(trim($scope));

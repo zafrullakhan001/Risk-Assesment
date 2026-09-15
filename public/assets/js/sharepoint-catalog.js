@@ -5836,9 +5836,17 @@
   const recentClearBtn = document.getElementById('sharepoint-recent-clear');
   const headingEl = document.getElementById('sharepoint-search-heading');
   const scopesRoot = document.getElementById('sharepoint-search-scopes');
+  const compareBarEl = document.getElementById('sharepoint-compare-bar');
   const compareOpenBtn = document.getElementById('sharepoint-compare-open');
   const compareClearBtn = document.getElementById('sharepoint-compare-clear');
   const compareHintEl = document.getElementById('sharepoint-compare-hint');
+  const compareSelectAllBtn = document.getElementById('sharepoint-compare-select-all');
+  const favoritesAddBtn = document.getElementById('sharepoint-favorites-add');
+  const favoritesBarEl = document.getElementById('sharepoint-favorites-bar');
+  const favoritesSelectAllBtn = document.getElementById('sharepoint-favorites-select-all');
+  const favoritesHintEl = document.getElementById('sharepoint-favorites-hint');
+  const favoritesRemoveBtn = document.getElementById('sharepoint-favorites-remove');
+  const favoritesClearAllBtn = document.getElementById('sharepoint-favorites-clear-all');
   const listTable = document.getElementById('sharepoint-projects-table');
   const resultCard = document.getElementById('sharepoint-table-card');
   const listFilterRow = document.getElementById('sharepoint-table-filters');
@@ -5846,6 +5854,7 @@
   const listFilterClear = document.getElementById('sharepoint-filters-clear');
   const MAX_COMPARE = 3;
   const MIN_COMPARE = 2;
+  const MAX_FAVORITE_BULK = 500;
 
   let availableSources = [];
   try {
@@ -6033,6 +6042,12 @@
     indexBySource: {},
   };
   catalogSearchState = state;
+
+  const favoritesSelectionMode = () =>
+    !publicShare && !!state.showFavorites && catalogCanFavorite() && !!favoritesBarEl;
+
+  /** Unlimited row selection for bulk favorite add/remove (compare still needs 2–3). */
+  const unlimitedProjectSelection = () => !publicShare && catalogCanFavorite();
 
   /** @type {AbortController|null} */
   let peerIndexAbort = null;
@@ -6961,8 +6976,48 @@
 
   const syncCompareBar = () => {
     const count = state.selected.size;
+    const canFavSelect = unlimitedProjectSelection() && !favoritesSelectionMode();
+    if (compareSelectAllBtn) {
+      compareSelectAllBtn.hidden = !canFavSelect;
+      compareSelectAllBtn.classList.toggle('is-hidden', !canFavSelect);
+      if (canFavSelect) {
+        const filteredKeys = filteredProjects().map((row) =>
+          selectionKey(String(row.project?.source_key || ''), String(row.project?.project_name || ''))
+        );
+        const filteredTotal = filteredKeys.length;
+        const selectedInFilter = filteredKeys.filter((key) => state.selected.has(key)).length;
+        const allSelected = filteredTotal > 0 && selectedInFilter === filteredTotal;
+        compareSelectAllBtn.disabled = filteredTotal === 0;
+        compareSelectAllBtn.textContent = allSelected ? 'Deselect all' : 'Select all';
+        compareSelectAllBtn.setAttribute(
+          'title',
+          allSelected
+            ? 'Deselect all projects'
+            : 'Select all projects in the current filtered results'
+        );
+        compareSelectAllBtn.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+        compareSelectAllBtn.classList.toggle('is-active', allSelected);
+      }
+    }
+    if (favoritesAddBtn) {
+      favoritesAddBtn.hidden = !canFavSelect;
+      favoritesAddBtn.classList.toggle('is-hidden', !canFavSelect);
+      favoritesAddBtn.disabled = count === 0;
+      favoritesAddBtn.textContent =
+        count > 0 ? `★ Add selected (${count})` : '★ Add selected';
+    }
     if (compareHintEl) {
-      if (count === 0) {
+      if (canFavSelect) {
+        if (count === 0) {
+          compareHintEl.textContent = 'Select projects to favorite, or pick 2–3 to compare';
+        } else if (count === 1) {
+          compareHintEl.textContent = '1 selected — add to favorites, or pick 1–2 more to compare';
+        } else if (count >= MIN_COMPARE && count <= MAX_COMPARE) {
+          compareHintEl.textContent = `${count} selected — compare or add to favorites`;
+        } else {
+          compareHintEl.textContent = `${count} selected — add to favorites (compare needs 2–3)`;
+        }
+      } else if (count === 0) {
         compareHintEl.textContent = 'Select 2–3 folders to compare side by side';
       } else if (count === 1) {
         compareHintEl.textContent = '1 selected — pick 1 or 2 more catalog folders';
@@ -6984,6 +7039,81 @@
     }
   };
 
+  const syncFavoritesBar = () => {
+    const favMode = favoritesSelectionMode();
+    if (compareBarEl) {
+      compareBarEl.hidden = favMode;
+      compareBarEl.classList.toggle('is-hidden', favMode);
+    }
+    if (favoritesBarEl) {
+      favoritesBarEl.hidden = !favMode;
+      favoritesBarEl.classList.toggle('is-hidden', !favMode);
+    }
+    if (!favMode) return;
+
+    const count = state.selected.size;
+    const filteredFavKeys = filteredProjects().map((row) =>
+      selectionKey(String(row.project?.source_key || ''), String(row.project?.project_name || ''))
+    );
+    const filteredTotal = filteredFavKeys.length;
+    const selectedInFilter = filteredFavKeys.filter((key) => state.selected.has(key)).length;
+    if (favoritesHintEl) {
+      favoritesHintEl.textContent =
+        count === 0
+          ? filteredTotal
+            ? `0 selected · ${filteredTotal} favorite${filteredTotal === 1 ? '' : 's'} listed`
+            : '0 selected'
+          : `${count} selected`;
+    }
+    if (favoritesRemoveBtn) {
+      favoritesRemoveBtn.disabled = count === 0;
+      favoritesRemoveBtn.textContent =
+        count > 0 ? `Remove selected (${count})` : 'Remove selected';
+    }
+    if (favoritesClearAllBtn) {
+      const totalFavs = Math.max(0, Number(state.favoriteCount) || 0);
+      favoritesClearAllBtn.disabled = totalFavs === 0;
+      favoritesClearAllBtn.textContent =
+        totalFavs > 0 ? `Clear all (${totalFavs})` : 'Clear all';
+    }
+    if (favoritesSelectAllBtn) {
+      const allSelected = filteredTotal > 0 && selectedInFilter === filteredTotal;
+      favoritesSelectAllBtn.disabled = filteredTotal === 0;
+      favoritesSelectAllBtn.textContent = allSelected ? 'Deselect all' : 'Select all';
+      favoritesSelectAllBtn.setAttribute(
+        'title',
+        allSelected ? 'Deselect all filtered favorites' : 'Select all filtered favorites'
+      );
+      favoritesSelectAllBtn.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+      favoritesSelectAllBtn.classList.toggle('is-active', allSelected);
+    }
+  };
+
+  const syncSelectionBars = () => {
+    syncCompareBar();
+    syncFavoritesBar();
+  };
+
+  const refreshRowSelectionUi = () => {
+    const favMode = favoritesSelectionMode();
+    const canFavSelect = unlimitedProjectSelection();
+    tbody.querySelectorAll('.sharepoint-compare-check').forEach((input) => {
+      input.checked = state.selected.has(input.value);
+      input.closest('.sharepoint-project-row')?.classList.toggle('is-compare-selected', input.checked);
+      const name = input.getAttribute('data-project-name') || 'project';
+      let label = `Select ${name} for compare`;
+      if (favMode) label = `Select ${name} to remove from favorites`;
+      else if (canFavSelect) label = `Select ${name} to favorite or compare`;
+      input.setAttribute('aria-label', label);
+    });
+  };
+
+  const clearRowSelection = () => {
+    state.selected.clear();
+    refreshRowSelectionUi();
+    syncSelectionBars();
+  };
+
   const parseSelectionValue = (value) => {
     const raw = String(value || '');
     const sep = raw.indexOf('::');
@@ -6999,21 +7129,96 @@
     const parsed = parseSelectionValue(value);
     if (!parsed) return;
     if (checked) {
-      if (state.selected.size >= MAX_COMPARE && !state.selected.has(parsed.key)) {
+      if (
+        !unlimitedProjectSelection() &&
+        state.selected.size >= MAX_COMPARE &&
+        !state.selected.has(parsed.key)
+      ) {
         // Drop oldest selection so the newest two stay selected.
         const firstKey = state.selected.keys().next().value;
         if (firstKey) state.selected.delete(firstKey);
+      }
+      if (
+        unlimitedProjectSelection() &&
+        state.selected.size >= MAX_FAVORITE_BULK &&
+        !state.selected.has(parsed.key)
+      ) {
+        window.alert(`You can select up to ${MAX_FAVORITE_BULK} projects at once.`);
+        refreshRowSelectionUi();
+        return;
       }
       state.selected.set(parsed.key, parsed);
     } else {
       state.selected.delete(parsed.key);
     }
-    syncCompareBar();
-    // Refresh checkbox checked state for rows that may have been auto-deselected.
-    tbody.querySelectorAll('.sharepoint-compare-check').forEach((input) => {
-      input.checked = state.selected.has(input.value);
-      input.closest('.sharepoint-project-row')?.classList.toggle('is-compare-selected', input.checked);
+    refreshRowSelectionUi();
+    syncSelectionBars();
+  };
+
+  const applyProjectFavoriteLocal = (sourceKey, projectName, favorited) => {
+    const key = String(sourceKey || '');
+    const name = String(projectName || '');
+    state.projects.forEach((project) => {
+      if (
+        String(project.project_name || '') === name &&
+        String(project.source_key || '') === key
+      ) {
+        project.favorited = !!favorited;
+      }
     });
+    if (!favorited) {
+      state.selected.delete(selectionKey(key, name));
+    }
+  };
+
+  const applyFavoritePayload = (
+    payload,
+    { clearedProjects = null, clearedAllProjects = false, addedProjects = null } = {}
+  ) => {
+    if (typeof payload?.favorite_count === 'number') {
+      state.favoriteCount = Math.max(0, Number(payload.favorite_count) || 0);
+      updateFavoriteToggleText();
+    }
+    if (Array.isArray(payload?.favorite_sources)) {
+      setFavoriteSources(payload.favorite_sources);
+    }
+    if (clearedAllProjects) {
+      state.projects.forEach((project) => {
+        project.favorited = false;
+      });
+      state.selected.clear();
+    } else if (Array.isArray(clearedProjects)) {
+      clearedProjects.forEach((item) => {
+        applyProjectFavoriteLocal(item.sourceKey, item.projectName, false);
+      });
+    }
+    if (Array.isArray(addedProjects)) {
+      addedProjects.forEach((item) => {
+        applyProjectFavoriteLocal(item.sourceKey, item.projectName, true);
+      });
+    }
+  };
+
+  const selectFilteredProjects = (checked) => {
+    const rows = filteredProjects();
+    if (checked) {
+      state.selected.clear();
+      for (const row of rows) {
+        if (state.selected.size >= MAX_FAVORITE_BULK) {
+          window.alert(`Selected the first ${MAX_FAVORITE_BULK} projects (limit per request).`);
+          break;
+        }
+        const sourceKey = String(row.project?.source_key || '');
+        const projectName = String(row.project?.project_name || '');
+        if (!sourceKey || !projectName) continue;
+        const key = selectionKey(sourceKey, projectName);
+        state.selected.set(key, { key, sourceKey, projectName });
+      }
+    } else {
+      state.selected.clear();
+    }
+    refreshRowSelectionUi();
+    syncSelectionBars();
   };
 
   const bindRowEvents = () => {
@@ -7101,6 +7306,10 @@
             }
           }
           bumpFavoriteCount(nextFavorited);
+          if (!nextFavorited) {
+            state.selected.delete(selectionKey(sourceKey, projectName));
+          }
+          syncSelectionBars();
           if (state.showFavorites && !nextFavorited) {
             applySearch({ resetPage: false });
           }
@@ -8467,7 +8676,7 @@
               ? `No projects matched <strong>${escapeHtml(state.query.trim() || 'filters')}</strong> in the selected catalog${state.scopeKeys.length === 1 ? '' : 's'}. ${useDeep ? 'Try Fuzzy, OR mode, or another file or folder name.' : 'Turn on Deep files to search nested files, or try Fuzzy / OR mode.'}`
               : 'No projects to show.'
       }</td></tr>`;
-      syncCompareBar();
+      syncSelectionBars();
       finishSearchTiming(searching, queryMs);
       renderMeta(total);
       renderStats(rows);
@@ -8490,7 +8699,7 @@
         return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}${project.archived ? ' is-archived' : ''}${project.favorited ? ' is-favorite' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
           <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
             <label class="sharepoint-row-select">
-              <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(name)} for compare">
+              <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="${escapeHtml(favoritesSelectionMode() ? `Select ${name} to remove from favorites` : unlimitedProjectSelection() ? `Select ${name} to favorite or compare` : `Select ${name} for compare`)}">
             </label>
           </td>
           <td data-col="name">
@@ -8552,7 +8761,7 @@
     applyListColumnOrder();
     bindRowEvents();
     bindQrButtons(tbody);
-    syncCompareBar();
+    syncSelectionBars();
     finishSearchTiming(searching, queryMs);
     renderMeta(total);
     renderStats(rows);
@@ -8989,6 +9198,7 @@
     } catch {
       /* ignore */
     }
+    clearRowSelection();
     applySearch({ resetPage: true });
   });
 
@@ -9229,12 +9439,121 @@
   });
 
   compareClearBtn?.addEventListener('click', () => {
-    state.selected.clear();
-    tbody.querySelectorAll('.sharepoint-compare-check').forEach((input) => {
-      input.checked = false;
-      input.closest('.sharepoint-project-row')?.classList.remove('is-compare-selected');
-    });
-    syncCompareBar();
+    clearRowSelection();
+  });
+
+  const toggleSelectAllFiltered = () => {
+    const filteredKeys = filteredProjects().map((row) =>
+      selectionKey(String(row.project?.source_key || ''), String(row.project?.project_name || ''))
+    );
+    const selectedInFilter = filteredKeys.filter((key) => state.selected.has(key)).length;
+    const allSelected = filteredKeys.length > 0 && selectedInFilter === filteredKeys.length;
+    selectFilteredProjects(!allSelected);
+  };
+
+  compareSelectAllBtn?.addEventListener('click', () => {
+    if (!unlimitedProjectSelection() || favoritesSelectionMode()) return;
+    toggleSelectAllFiltered();
+  });
+
+  favoritesAddBtn?.addEventListener('click', async () => {
+    if (!unlimitedProjectSelection() || favoritesSelectionMode() || favoritesAddBtn.disabled) return;
+    const picks = [...state.selected.values()].slice(0, MAX_FAVORITE_BULK);
+    if (!picks.length) return;
+    if (
+      !window.confirm(
+        picks.length === 1
+          ? 'Add this project to favorites?'
+          : `Add ${picks.length} projects to favorites?`
+      )
+    ) {
+      return;
+    }
+    favoritesAddBtn.disabled = true;
+    try {
+      const payload = await postCatalogAction('set_favorites', {
+        items: JSON.stringify(
+          picks.map((pick) => ({
+            scope: 'project',
+            source_key: pick.sourceKey,
+            project_name: pick.projectName,
+          }))
+        ),
+      });
+      applyFavoritePayload(payload, { addedProjects: picks });
+      clearRowSelection();
+      applySearch({ resetPage: false });
+      syncSelectionBars();
+    } catch (error) {
+      window.alert(error.message || 'Unable to add favorites.');
+      syncSelectionBars();
+    }
+  });
+
+  favoritesSelectAllBtn?.addEventListener('click', () => {
+    if (!favoritesSelectionMode()) return;
+    toggleSelectAllFiltered();
+  });
+
+  favoritesRemoveBtn?.addEventListener('click', async () => {
+    if (!favoritesSelectionMode() || favoritesRemoveBtn.disabled) return;
+    const picks = [...state.selected.values()];
+    if (!picks.length) return;
+    if (
+      !window.confirm(
+        picks.length === 1
+          ? 'Remove this project from favorites?'
+          : `Remove ${picks.length} projects from favorites?`
+      )
+    ) {
+      return;
+    }
+    favoritesRemoveBtn.disabled = true;
+    try {
+      const payload = await postCatalogAction('unset_favorites', {
+        mode: 'selected',
+        items: JSON.stringify(
+          picks.map((pick) => ({
+            scope: 'project',
+            source_key: pick.sourceKey,
+            project_name: pick.projectName,
+          }))
+        ),
+      });
+      applyFavoritePayload(payload, { clearedProjects: picks });
+      applySearch({ resetPage: false });
+      syncSelectionBars();
+    } catch (error) {
+      window.alert(error.message || 'Unable to remove favorites.');
+      syncSelectionBars();
+    }
+  });
+
+  favoritesClearAllBtn?.addEventListener('click', async () => {
+    if (!favoritesSelectionMode() || favoritesClearAllBtn.disabled) return;
+    const total = Math.max(0, Number(state.favoriteCount) || 0);
+    if (
+      !window.confirm(
+        total === 1
+          ? 'Clear your only project favorite?'
+          : `Clear all ${total} project favorites?`
+      )
+    ) {
+      return;
+    }
+    favoritesClearAllBtn.disabled = true;
+    try {
+      const payload = await postCatalogAction('unset_favorites', {
+        mode: 'all',
+        scope: 'project',
+      });
+      applyFavoritePayload(payload, { clearedAllProjects: true });
+      applySearch({ resetPage: true });
+      syncSelectionBars();
+    } catch (error) {
+      window.alert(error.message || 'Unable to clear favorites.');
+      syncSelectionBars();
+    }
   });
 
   perPageSelect?.addEventListener('change', () => {
@@ -9266,7 +9585,7 @@
   controls.hidden = false;
   syncScopeChips();
   window.dispatchEvent(new CustomEvent('riskregister:sp-scopes', { detail: { keys: [...state.scopeKeys] } }));
-  syncCompareBar();
+  syncSelectionBars();
   syncActiveCatalogChrome();
   if (state.query.trim().length >= RECENT_MIN_LEN) {
     rememberRecentSearch(state.query);
@@ -9368,8 +9687,23 @@
   const tableWrap = document.getElementById('sharepoint-sources-table-wrap');
   const toggle = panel?.querySelector('.sharepoint-folders-view-toggle');
   const favToggle = document.getElementById('sharepoint-folders-fav-toggle');
+  const clearFavsBtn = document.getElementById('sharepoint-folders-clear-favs');
   const favEmpty = document.getElementById('sharepoint-folders-fav-empty');
   const foldersSolo = panel?.getAttribute('data-solo') === '1';
+
+  const syncFoldersClearFavsButton = () => {
+    if (!clearFavsBtn || !panel) return;
+    const count = panel.querySelectorAll(
+      '.sharepoint-source-card[data-source-key][data-favorited="1"]'
+    ).length;
+    const show = count > 0;
+    clearFavsBtn.hidden = !show;
+    clearFavsBtn.classList.toggle('is-hidden', !show);
+    clearFavsBtn.disabled = !show;
+    clearFavsBtn.textContent = show
+      ? `Clear starred (${count})`
+      : 'Clear starred';
+  };
 
   const foldersPageUrl = () => {
     const url = new URL('sharepoint.php', window.location.href);
@@ -9425,6 +9759,7 @@
     } catch {
       /* ignore */
     }
+    syncFoldersClearFavsButton();
   };
 
   const applyFoldersFavFilter = (showFav) => {
@@ -9540,12 +9875,62 @@
     }
   })();
   applyFoldersFavFilter(savedFav);
+  syncFoldersClearFavsButton();
 
   favToggle?.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
     const next = favToggle.getAttribute('aria-pressed') !== 'true';
     applyFoldersFavFilter(next);
+  });
+
+  clearFavsBtn?.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (clearFavsBtn.disabled || !foldersCsrf()) return;
+    const keys = [
+      ...panel.querySelectorAll('.sharepoint-source-card[data-source-key][data-favorited="1"]'),
+    ].map((el) => el.getAttribute('data-source-key') || '').filter(Boolean);
+    const count = keys.length;
+    if (!count) return;
+    if (
+      !window.confirm(
+        count === 1
+          ? 'Remove this starred folder from favorites?'
+          : `Remove all ${count} starred folders from favorites?`
+      )
+    ) {
+      return;
+    }
+    clearFavsBtn.disabled = true;
+    try {
+      const body = new URLSearchParams();
+      body.set('csrf_token', foldersCsrf());
+      body.set('action', 'unset_favorites');
+      body.set('ajax', '1');
+      body.set('mode', 'all');
+      body.set('scope', 'source');
+      const response = await fetch('sharepoint.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        },
+        body: body.toString(),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || 'Unable to clear starred folders.');
+      }
+      keys.forEach((sourceKey) => applySourceFavoriteUi(sourceKey, false));
+      const showingFav = panel.getAttribute('data-folders-fav') === '1';
+      if (showingFav) applyFoldersFavFilter(true);
+      syncFoldersClearFavsButton();
+    } catch (error) {
+      window.alert(error.message || 'Unable to clear starred folders.');
+      syncFoldersClearFavsButton();
+    }
   });
 
   panel?.addEventListener('click', async (event) => {
