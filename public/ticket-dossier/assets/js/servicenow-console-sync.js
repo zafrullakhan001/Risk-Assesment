@@ -98,6 +98,26 @@
     if (!el) return;
     el.textContent = msg;
     el.style.color = isError ? "#b91c1c" : "#0f766e";
+    const panel = document.getElementById("rr-sn-packet-overlay");
+    if (!panel) return;
+    const lower = String(msg || "").toLowerCase();
+    const isDone = lower.indexOf("done.") === 0 || lower.indexOf("✅") !== -1;
+    const isRunning = !isError && !isDone && (
+      lower.indexOf("looking up") !== -1 ||
+      lower.indexOf("loading") !== -1 ||
+      lower.indexOf("fetching") !== -1 ||
+      lower.indexOf("downloading") !== -1 ||
+      lower.indexOf("exporting") !== -1 ||
+      lower.indexOf("writing") !== -1 ||
+      lower.indexOf("importing") !== -1 ||
+      lower.indexOf("uploading") !== -1 ||
+      lower.indexOf("finalizing") !== -1 ||
+      lower.indexOf("attachments") !== -1 ||
+      lower.indexOf("checking linked") !== -1
+    );
+    panel.classList.toggle("is-running", isRunning);
+    panel.classList.toggle("is-done", isDone && !isError);
+    panel.classList.toggle("is-error", !!isError);
   };
 
   const sanitizeFileName = (name) => {
@@ -951,10 +971,42 @@
   // Inject overlay (user gesture for showDirectoryPicker).
   const existing = document.getElementById("rr-sn-packet-overlay");
   if (existing) existing.remove();
+  const existingStyle = document.getElementById("rr-sn-packet-style");
+  if (existingStyle) existingStyle.remove();
+
+  const style = document.createElement("style");
+  style.id = "rr-sn-packet-style";
+  style.textContent =
+    "@keyframes rrSnToastIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}" +
+    "@keyframes rrSnPulse{0%,100%{box-shadow:0 12px 40px rgba(0,0,0,.35)}50%{box-shadow:0 12px 40px rgba(20,184,166,.28)}}" +
+    "@keyframes rrSnShimmer{0%{transform:translateX(-120%)}100%{transform:translateX(220%)}}" +
+    "@keyframes rrSnFlow{0%{left:0;opacity:0}12%{opacity:1}88%{opacity:1}100%{left:calc(100% - 18px);opacity:0}}" +
+    "@keyframes rrSnNodePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}" +
+    "@keyframes rrSnLane{0%{background-position:0 0}100%{background-position:24px 0}}" +
+    "#rr-sn-packet-overlay{animation:rrSnToastIn .45s cubic-bezier(.22,1,.36,1) both}" +
+    "#rr-sn-packet-overlay.is-running{animation:rrSnPulse 2.2s ease-in-out infinite}" +
+    "#rr-sn-packet-overlay .rr-sn-flow{margin:10px 0;padding:10px 8px;border-radius:10px;background:rgba(15,23,42,.65);border:1px solid #334155}" +
+    "#rr-sn-packet-overlay .rr-sn-flow-row{display:flex;align-items:center;justify-content:space-between;gap:6px}" +
+    "#rr-sn-packet-overlay .rr-sn-node{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:64px;font-size:10px;color:#94a3b8}" +
+    "#rr-sn-packet-overlay .rr-sn-node-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;background:#1e293b;border:1px solid #475569}" +
+    "#rr-sn-packet-overlay.is-running .rr-sn-node-icon{animation:rrSnNodePulse 1.6s ease-in-out infinite}" +
+    "#rr-sn-packet-overlay .rr-sn-lane{position:relative;flex:1;height:28px;margin:0 4px;overflow:hidden;border-radius:999px;background:linear-gradient(90deg,#1e293b,#0f766e33,#1e293b);background-size:24px 100%}" +
+    "#rr-sn-packet-overlay.is-running .rr-sn-lane{animation:rrSnLane 1s linear infinite}" +
+    "#rr-sn-packet-overlay .rr-sn-packet{position:absolute;top:4px;left:0;width:18px;font-size:14px;line-height:1;opacity:0;pointer-events:none;will-change:left,opacity}" +
+    "#rr-sn-packet-overlay.is-running .rr-sn-packet{animation:rrSnFlow 2.1s ease-in-out infinite}" +
+    "#rr-sn-packet-overlay.is-running .rr-sn-packet:nth-child(2){animation-delay:.7s}" +
+    "#rr-sn-packet-overlay.is-running .rr-sn-packet:nth-child(3){animation-delay:1.4s}" +
+    "#rr-sn-packet-overlay.is-done .rr-sn-node-rr .rr-sn-node-icon{border-color:#22c55e;background:#14532d}" +
+    "#rr-sn-packet-overlay.is-error .rr-sn-lane{background:#7f1d1d}" +
+    "#rr-sn-packet-overlay .rr-sn-status-wrap{position:relative;overflow:hidden}" +
+    "#rr-sn-packet-overlay.is-running .rr-sn-status-wrap::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(94,234,212,.12),transparent);animation:rrSnShimmer 1.4s ease-in-out infinite;pointer-events:none}" +
+    "@media (prefers-reduced-motion:reduce){#rr-sn-packet-overlay,#rr-sn-packet-overlay.is-running,#rr-sn-packet-overlay .rr-sn-packet,#rr-sn-packet-overlay .rr-sn-node-icon,#rr-sn-packet-overlay .rr-sn-lane,#rr-sn-packet-overlay.is-running .rr-sn-status-wrap::after{animation:none!important}}";
+  document.documentElement.appendChild(style);
+
   const overlay = document.createElement("div");
   overlay.id = "rr-sn-packet-overlay";
   overlay.setAttribute("style",
-    "position:fixed;z-index:2147483646;right:16px;bottom:16px;width:360px;max-width:calc(100vw - 24px);" +
+    "position:fixed;z-index:2147483646;right:16px;bottom:16px;width:380px;max-width:calc(100vw - 24px);" +
     "background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:12px;padding:14px 16px;" +
     "font:14px/1.4 system-ui,Segoe UI,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.35);"
   );
@@ -963,6 +1015,17 @@
     '<div style="opacity:.9;margin-bottom:10px;font-size:13px">Task <code style="color:#a5f3fc">' +
     String(CFG.taskNumber).replace(/</g, "") +
     "</code> · direct Task Relationships + attachments. A saved folder is reused when permitted.</div>" +
+    '<div class="rr-sn-flow" aria-hidden="true">' +
+      '<div class="rr-sn-flow-row">' +
+        '<div class="rr-sn-node"><span class="rr-sn-node-icon">🎫</span><span>ServiceNow</span></div>' +
+        '<div class="rr-sn-lane">' +
+          '<span class="rr-sn-packet">📎</span>' +
+          '<span class="rr-sn-packet">📄</span>' +
+          '<span class="rr-sn-packet">🗂️</span>' +
+        "</div>" +
+        '<div class="rr-sn-node rr-sn-node-rr"><span class="rr-sn-node-icon">🛡️</span><span>RiskRegister</span></div>' +
+      "</div>" +
+    "</div>" +
     '<button id="rr-sn-export-btn" type="button" style="background:#0d9488;color:#fff;border:0;border-radius:8px;' +
     'padding:8px 12px;font-weight:600;cursor:pointer;margin-right:8px">Export packet</button>' +
     (CFG.rememberFolder
@@ -971,7 +1034,7 @@
       : "") +
     '<button id="rr-sn-close-btn" type="button" style="background:transparent;color:#94a3b8;border:1px solid #475569;' +
     'border-radius:8px;padding:8px 12px;cursor:pointer">Close</button>' +
-    '<div id="rr-sn-status" style="margin-top:10px;font-size:12px;color:#99f6e4;white-space:pre-wrap"></div>';
+    '<div class="rr-sn-status-wrap"><div id="rr-sn-status" style="margin-top:10px;font-size:12px;color:#99f6e4;white-space:pre-wrap"></div></div>';
   document.documentElement.appendChild(overlay);
   const statusEl = document.getElementById("rr-sn-status");
   const btn = document.getElementById("rr-sn-export-btn");
