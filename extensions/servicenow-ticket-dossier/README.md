@@ -1,7 +1,7 @@
-# RiskRegister ServiceNow Dossier Sync extension
+# RiskRegister Browser Sync extension
 
 Chrome/Edge Manifest V3 extension that removes the F12 console-paste step from
-Ticket Dossier's ServiceNow browser sync.
+the read-only SharePoint catalog sync and Ticket Dossier's ServiceNow export.
 
 ## Install once
 
@@ -24,7 +24,21 @@ Ticket Dossier's ServiceNow browser sync.
 
 After code updates, use **Reload** on the extension card.
 
-## Use
+## Use with SharePoint
+
+1. Open RiskRegister → SharePoint Catalog.
+2. Click **Console sync** for a configured source.
+3. The extension stores the prepared sync for at most 30 minutes, opens the
+   matching SharePoint folder, and opens the read-only sync toaster.
+4. Click **Start sync** in the toaster. Scanning does not begin before this
+   confirmation.
+5. The toaster reports progress, local catalog changes, and completion.
+
+The SharePoint integration is strictly read-only. It requests
+`Sites.Read.All`, uses only SharePoint read/query endpoints, and writes results
+only to the local RiskRegister catalog.
+
+## Use with ServiceNow
 
 1. Open RiskRegister → Ticket Dossier → **Console pull from ServiceNow**.
 2. Enter the ServiceNow instance and TASK number.
@@ -42,8 +56,12 @@ the existing copy/paste console fallback.
 ## Security model
 
 - ServiceNow credentials and cookies never leave the ServiceNow tab.
+- SharePoint credentials and cookies never leave the SharePoint tab.
+- SharePoint access is read-only; the extension does not create, edit, move, or
+  delete SharePoint content.
 - The extension accepts prepare messages only from local RiskRegister paths.
-- It injects only into the exact ServiceNow origin prepared by RiskRegister.
+- It injects only into the exact ServiceNow or SharePoint origin prepared by
+  RiskRegister.
 - Prepared scripts expire with the server token (about 30 minutes).
 - The extension detaches the debugger immediately after evaluation.
 - Pending state can be inspected or cleared from the extension popup.
@@ -57,6 +75,7 @@ The packaged manifest currently matches:
 - equivalent `127.0.0.1` paths
 - `https://servicenow.adventhealth.com/*`
 - `https://*.service-now.com/*`
+- `https://*.sharepoint.com/*`
 
 For a deployed RiskRegister hostname/path, add its URL pattern to both
 `host_permissions` and the first `content_scripts.matches` list in

@@ -45,18 +45,44 @@
       '<div id="rr-sp-sync-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="2" ' +
         'style="height:100%;width:2%;background:#14b8a6;border-radius:999px;transition:width .25s ease,background-color .25s ease"></div>' +
     "</div>" +
-    '<div id="rr-sp-sync-detail" style="margin-top:8px;font-size:12px;color:#94a3b8">Preparing crawler…</div>';
+    '<div id="rr-sp-sync-detail" style="margin-top:8px;font-size:12px;color:#94a3b8">Ready for confirmation.</div>' +
+    '<button id="rr-sp-sync-start" type="button" style="margin-top:12px;background:#0d9488;color:#fff;border:0;' +
+      'border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer">Start sync</button>';
   document.documentElement.appendChild(toast);
 
   const toastStatus = document.getElementById("rr-sp-sync-status");
   const toastProgress = document.getElementById("rr-sp-sync-progress");
   const toastDetail = document.getElementById("rr-sp-sync-detail");
+  const toastStart = document.getElementById("rr-sp-sync-start");
   const toastClose = document.getElementById("rr-sp-sync-close");
-  const syncStartedAt = Date.now();
-  if (toastClose) toastClose.addEventListener("click", () => toast.remove());
+  let syncStartedAt = 0;
+
+  const waitForStart = () => new Promise((resolve) => {
+    let settled = false;
+    const finish = (shouldStart) => {
+      if (settled) return;
+      settled = true;
+      resolve(shouldStart);
+    };
+    if (toastStart) {
+      toastStart.addEventListener("click", () => {
+        toastStart.disabled = true;
+        toastStart.style.display = "none";
+        finish(true);
+      }, { once: true });
+    } else {
+      finish(false);
+    }
+    if (toastClose) {
+      toastClose.addEventListener("click", () => {
+        toast.remove();
+        finish(false);
+      }, { once: true });
+    }
+  });
 
   const formatElapsed = () => {
-    const totalSeconds = Math.max(0, Math.round((Date.now() - syncStartedAt) / 1000));
+    const totalSeconds = Math.max(0, Math.round((Date.now() - (syncStartedAt || Date.now())) / 1000));
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return minutes > 0 ? minutes + "m " + seconds + "s" : seconds + "s";
@@ -519,6 +545,19 @@
     }
   };
 
+  setProgress(
+    "Ready to start read-only sync",
+    "No SharePoint content will be changed. Click Start sync to continue.",
+    2
+  );
+  const shouldStart = await waitForStart();
+  if (!shouldStart) {
+    window.__rrSharePointSyncRunning = false;
+    console.log("RiskRegister SharePoint sync cancelled before start.");
+    return;
+  }
+  syncStartedAt = Date.now();
+
   console.log("%cRiskRegister MFA deep sync starting…", "color:#0f766e;font-weight:bold;font-size:14px");
   console.log("Includes Visio (.vsdx/.vsd/…). Root:", CFG.rootServerRelative);
   setProgress("Connecting to SharePoint…", "Root: " + CFG.rootServerRelative, 5);
@@ -584,6 +623,11 @@
       "done"
     );
     console.log("%c✅ Sync complete: " + json.message + " | Visio files: " + visioFound, "color:#047857;font-weight:bold;font-size:14px");
+    window.postMessage({
+      source: "riskregister-sharepoint-sync",
+      type: "RR_SP_SYNC_COMPLETE",
+      sourceKey: CFG.sourceKey
+    }, window.location.origin);
   } catch (error) {
     console.error("%c❌ Sync failed", "color:#b91c1c;font-weight:bold", error);
     setProgress(

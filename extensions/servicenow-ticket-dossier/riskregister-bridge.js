@@ -7,10 +7,12 @@
 
 const PAGE_SOURCE = 'riskregister-servicenow-page';
 const EXTENSION_SOURCE = 'riskregister-servicenow-extension';
+const SHAREPOINT_PAGE_SOURCE = 'riskregister-sharepoint-page';
+const SHAREPOINT_EXTENSION_SOURCE = 'riskregister-sharepoint-extension';
 
-function postToPage(type, payload) {
+function postToPage(type, payload, source = EXTENSION_SOURCE) {
   window.postMessage({
-    source: EXTENSION_SOURCE,
+    source,
     type,
     ...(payload || {}),
   }, window.location.origin);
@@ -19,32 +21,52 @@ function postToPage(type, payload) {
 window.addEventListener('message', (event) => {
   if (event.source !== window || event.origin !== window.location.origin) return;
   const data = event.data;
-  if (!data || data.source !== PAGE_SOURCE) return;
+  if (!data) return;
 
-  if (data.type === 'RR_SN_EXTENSION_PING') {
+  if (data.source === PAGE_SOURCE && data.type === 'RR_SN_EXTENSION_PING') {
     postToPage('RR_SN_EXTENSION_READY', { version: chrome.runtime.getManifest().version });
     return;
   }
 
-  if (data.type !== 'RR_SN_PREPARE') return;
+  if (data.source === SHAREPOINT_PAGE_SOURCE && data.type === 'RR_SP_EXTENSION_PING') {
+    postToPage(
+      'RR_SP_EXTENSION_READY',
+      { version: chrome.runtime.getManifest().version },
+      SHAREPOINT_EXTENSION_SOURCE
+    );
+    return;
+  }
+
+  const isServiceNowPrepare = data.source === PAGE_SOURCE && data.type === 'RR_SN_PREPARE';
+  const isSharePointPrepare =
+    data.source === SHAREPOINT_PAGE_SOURCE && data.type === 'RR_SP_PREPARE';
+  if (!isServiceNowPrepare && !isSharePointPrepare) return;
 
   const requestId = String(data.requestId || '');
   chrome.runtime.sendMessage({
-    type: 'RR_SN_PREPARE',
+    type: isSharePointPrepare ? 'RR_SP_PREPARE' : 'RR_SN_PREPARE',
     config: data.config,
   }, (response) => {
     if (chrome.runtime.lastError) {
-      postToPage('RR_SN_EXTENSION_PREPARE_RESULT', {
-        requestId,
-        ok: false,
-        error: chrome.runtime.lastError.message,
-      });
+      postToPage(
+        isSharePointPrepare ? 'RR_SP_EXTENSION_PREPARE_RESULT' : 'RR_SN_EXTENSION_PREPARE_RESULT',
+        {
+          requestId,
+          ok: false,
+          error: chrome.runtime.lastError.message,
+        },
+        isSharePointPrepare ? SHAREPOINT_EXTENSION_SOURCE : EXTENSION_SOURCE
+      );
       return;
     }
-    postToPage('RR_SN_EXTENSION_PREPARE_RESULT', {
-      requestId,
-      ...(response || { ok: false, error: 'Extension did not respond.' }),
-    });
+    postToPage(
+      isSharePointPrepare ? 'RR_SP_EXTENSION_PREPARE_RESULT' : 'RR_SN_EXTENSION_PREPARE_RESULT',
+      {
+        requestId,
+        ...(response || { ok: false, error: 'Extension did not respond.' }),
+      },
+      isSharePointPrepare ? SHAREPOINT_EXTENSION_SOURCE : EXTENSION_SOURCE
+    );
   });
 });
 
@@ -55,7 +77,19 @@ chrome.runtime.onMessage.addListener((message) => {
       message: String(message.message || ''),
       taskNumber: String(message.taskNumber || ''),
     });
+    return;
+  }
+  if (type === 'RR_SP_EXTENSION_INJECTED' || type === 'RR_SP_EXTENSION_ERROR') {
+    postToPage(type, {
+      message: String(message.message || ''),
+      sourceKey: String(message.sourceKey || ''),
+    }, SHAREPOINT_EXTENSION_SOURCE);
   }
 });
 
 postToPage('RR_SN_EXTENSION_READY', { version: chrome.runtime.getManifest().version });
+postToPage(
+  'RR_SP_EXTENSION_READY',
+  { version: chrome.runtime.getManifest().version },
+  SHAREPOINT_EXTENSION_SOURCE
+);

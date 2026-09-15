@@ -1,11 +1,12 @@
 /**
- * RiskRegister ServiceNow Dossier Sync — MV3 service worker.
+ * RiskRegister Browser Sync — MV3 service worker.
  *
- * Stores one short-lived prepared export and evaluates it in the matching
- * ServiceNow tab through CDP, then immediately detaches the debugger.
+ * Stores short-lived prepared scripts and evaluates them only in the matching
+ * ServiceNow or SharePoint tab, then immediately detaches the debugger.
  */
 
 const STORAGE_KEY = 'riskregisterServiceNowPendingV1';
+const SHAREPOINT_STORAGE_KEY = 'riskregisterSharePointPendingV1';
 const MAX_SCRIPT_BYTES = 250000;
 const MAX_TTL_SECONDS = 35 * 60;
 const DEBUGGER_VERSION = '1.3';
@@ -95,6 +96,17 @@ function isServiceNowOrigin(origin) {
   );
 }
 
+function isSharePointOrigin(origin) {
+  const parsed = parseUrl(origin);
+  const hostname = parsed ? parsed.hostname.toLowerCase() : '';
+  return !!(
+    parsed
+    && parsed.protocol === 'https:'
+    && hostname.endsWith('.sharepoint.com')
+    && parsed.origin === String(origin || '').replace(/\/$/, '')
+  );
+}
+
 function validatePrepared(message, sender) {
   if (!isRiskRegisterPage(sender && sender.url)) {
     throw new Error('Prepare messages are accepted only from the local RiskRegister application.');
@@ -149,6 +161,61 @@ function validatePrepared(message, sender) {
   };
 }
 
+function validateSharePointPrepared(message, sender) {
+  if (!isRiskRegisterPage(sender && sender.url)) {
+    throw new Error('Prepare messages are accepted only from the local RiskRegister application.');
+  }
+
+  const config = message && message.config;
+  if (!config || typeof config !== 'object') {
+    throw new Error('Missing prepared SharePoint sync configuration.');
+  }
+
+  const script = String(config.script || '');
+  const sharePointOrigin = String(config.sharePointOrigin || '').replace(/\/$/, '');
+  const sourceKey = String(config.sourceKey || '').trim();
+  const expiresAt = Number(config.expiresAt || 0);
+
+  if (
+    script.length < 1000
+    || script.length > MAX_SCRIPT_BYTES
+    || !script.startsWith('void (async function () {')
+    || !script.includes('RiskRegister · SharePoint sync')
+  ) {
+    throw new Error('Prepared SharePoint script failed validation.');
+  }
+  if (!isSharePointOrigin(sharePointOrigin)) {
+    throw new Error('Prepared SharePoint origin is not allowed.');
+  }
+  if (!sourceKey || sourceKey.length > 190 || !script.includes(sourceKey)) {
+    throw new Error('Prepared SharePoint source key failed validation.');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (expiresAt <= now || expiresAt > now + MAX_TTL_SECONDS) {
+    throw new Error('Prepared sync token is expired or has an invalid lifetime.');
+  }
+
+  const senderOrigin = parseUrl(sender.url).origin;
+  const endpointMarker =
+    senderOrigin.toLowerCase() + '/riskregister/public/sharepoint.php?action=browser_sync_import';
+  if (!script.toLowerCase().includes(endpointMarker)) {
+    throw new Error('SharePoint sync return endpoint does not match this RiskRegister origin.');
+  }
+
+  return {
+    script,
+    sharePointOrigin,
+    sourceKey,
+    expiresAt,
+    preparedAt: Date.now(),
+    riskRegisterTabId: sender.tab && Number.isInteger(sender.tab.id) ? sender.tab.id : null,
+    lastDocumentId: '',
+    lastStatus: 'Prepared; waiting for matching SharePoint tab.',
+    lastError: '',
+  };
+}
+
 async function notifyRiskRegister(pending, type, message) {
   if (!pending || !Number.isInteger(pending.riskRegisterTabId)) return;
   try {
@@ -159,6 +226,77 @@ async function notifyRiskRegister(pending, type, message) {
     });
   } catch (_error) {
     // The preparing tab may have refreshed or closed.
+  }
+}
+
+async function injectSharePointPrepared(sender) {
+  const stored = await storageGet(SHAREPOINT_STORAGE_KEY);
+  const pending = stored[SHAREPOINT_STORAGE_KEY];
+  if (!pending) {
+    return { ok: false, waiting: true, error: 'No prepared RiskRegister SharePoint sync is waiting.' };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (Number(pending.expiresAt || 0) <= now) {
+    await storageRemove(SHAREPOINT_STORAGE_KEY);
+    return { ok: false, error: 'The prepared RiskRegister token expired. Prepare again.' };
+  }
+
+  const tabId = sender && sender.tab && sender.tab.id;
+  const tabUrl = sender && sender.tab && sender.tab.url;
+  const parsed = parseUrl(tabUrl);
+  if (!Number.isInteger(tabId) || !parsed || parsed.origin !== pending.sharePointOrigin) {
+    return { ok: false, waiting: true, error: 'This SharePoint tab does not match the prepared source.' };
+  }
+
+  const documentId = String(sender.documentId || '');
+  if (documentId !== '' && pending.lastDocumentId === documentId) {
+    return { ok: true, alreadyInjected: true };
+  }
+
+  const target = { tabId };
+  let attached = false;
+  try {
+    pending.lastStatus = 'Starting read-only sync in SharePoint…';
+    pending.lastError = '';
+    await storageSet({ [SHAREPOINT_STORAGE_KEY]: pending });
+
+    await debuggerAttach(target);
+    attached = true;
+    const result = await debuggerCommand(target, 'Runtime.evaluate', {
+      expression: pending.script,
+      awaitPromise: false,
+      returnByValue: true,
+      userGesture: true,
+    });
+    if (result && result.exceptionDetails) {
+      const detail = result.exceptionDetails.exception
+        && result.exceptionDetails.exception.description;
+      throw new Error(detail || result.exceptionDetails.text || 'SharePoint script evaluation failed.');
+    }
+
+    pending.lastDocumentId = documentId;
+    pending.lastStatus = 'SharePoint sync prompt opened; waiting for Start sync.';
+    pending.lastError = '';
+    await storageSet({ [SHAREPOINT_STORAGE_KEY]: pending });
+    await notifyRiskRegister(pending, 'RR_SP_EXTENSION_INJECTED', pending.lastStatus);
+
+    return { ok: true, injected: true, sourceKey: pending.sourceKey };
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    pending.lastStatus = 'Automatic SharePoint injection failed.';
+    pending.lastError = message;
+    await storageSet({ [SHAREPOINT_STORAGE_KEY]: pending });
+    await notifyRiskRegister(
+      pending,
+      'RR_SP_EXTENSION_ERROR',
+      'Automatic SharePoint start failed: ' + message + ' Use the copied console script as fallback.'
+    );
+    return { ok: false, error: message };
+  } finally {
+    if (attached) {
+      await debuggerDetach(target);
+    }
   }
 }
 
@@ -249,8 +387,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (type === 'RR_SP_PREPARE') {
+    (async () => {
+      try {
+        const pending = validateSharePointPrepared(message, sender);
+        await storageSet({ [SHAREPOINT_STORAGE_KEY]: pending });
+        sendResponse({ ok: true, sourceKey: pending.sourceKey });
+      } catch (error) {
+        sendResponse({ ok: false, error: error && error.message ? error.message : String(error) });
+      }
+    })();
+    return true;
+  }
+
   if (type === 'RR_SN_TAB_READY') {
     injectPrepared(sender).then(sendResponse);
+    return true;
+  }
+
+  if (type === 'RR_SP_TAB_READY') {
+    injectSharePointPrepared(sender).then(sendResponse);
     return true;
   }
 
@@ -278,6 +434,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (type === 'RR_SP_SYNC_COMPLETE') {
+    (async () => {
+      const stored = await storageGet(SHAREPOINT_STORAGE_KEY);
+      const pending = stored[SHAREPOINT_STORAGE_KEY];
+      const senderOrigin = parseUrl(sender && sender.url);
+      const sourceKey = String(message.sourceKey || '').trim();
+      if (
+        pending
+        && senderOrigin
+        && senderOrigin.origin === pending.sharePointOrigin
+        && sourceKey === pending.sourceKey
+      ) {
+        await notifyRiskRegister(
+          pending,
+          'RR_SP_EXTENSION_INJECTED',
+          'SharePoint sync completed and the pending extension state was cleared.'
+        );
+        await storageRemove(SHAREPOINT_STORAGE_KEY);
+      }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
   if (type === 'RR_SN_GET_STATUS') {
     storageGet(STORAGE_KEY).then((stored) => {
       const pending = stored[STORAGE_KEY] || null;
@@ -288,6 +468,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (type === 'RR_SN_CLEAR') {
     storageRemove(STORAGE_KEY).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (type === 'RR_SP_GET_STATUS') {
+    storageGet(SHAREPOINT_STORAGE_KEY).then((stored) => {
+      const pending = stored[SHAREPOINT_STORAGE_KEY] || null;
+      sendResponse({ ok: true, pending });
+    });
+    return true;
+  }
+
+  if (type === 'RR_SP_CLEAR') {
+    storageRemove(SHAREPOINT_STORAGE_KEY).then(() => sendResponse({ ok: true }));
     return true;
   }
 

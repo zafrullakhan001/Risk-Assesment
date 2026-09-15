@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>RiskRegister ServiceNow Sync</title>
+  <title>RiskRegister Browser Sync</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main>
-    <h1>RiskRegister ServiceNow Sync</h1>
+    <h1>RiskRegister Browser Sync</h1>
     <p id="status">Checking status…</p>
     <dl id="details" hidden>
-      <div><dt>Task</dt><dd id="task">—</dd></div>
-      <div><dt>Instance</dt><dd id="instance">—</dd></div>
+      <div><dt>Type</dt><dd id="kind">—</dd></div>
+      <div><dt>Source</dt><dd id="source">—</dd></div>
+      <div><dt>Target</dt><dd id="target">—</dd></div>
       <div><dt>Expires</dt><dd id="expires">—</dd></div>
     </dl>
     <p id="error" class="error" hidden></p>
-    <button type="button" id="clear" hidden>Clear pending export</button>
+    <button type="button" id="clear" hidden>Clear pending sync</button>
     <p class="help">
-      Prepare a console pull in Ticket Dossier. The extension will start it
-      automatically when the matching ServiceNow tab opens.
+      Prepare a sync in SharePoint Catalog or Ticket Dossier. The extension
+      starts it automatically when the matching browser tab opens.
     </p>
   </main>
   <script src="popup.js"></script>
