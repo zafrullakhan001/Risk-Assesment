@@ -23,7 +23,7 @@ final class SharePointListingImporter
      * Expected flexible headers: Name, Path/Folder, Type, URL/Link.
      *
      * @param array{source_key?: string, site_host?: string, site_path?: string, folder_path?: string}|null $source
-     * @return array{ok: bool, count: int, projects: int, message: string, source_key: string}
+     * @return array{ok: bool, count: int, projects: int, new_items: int, removed_items: int, message: string, source_key: string}
      */
     public function importFile(string $absolutePath, string $originalFilename = '', ?array $source = null): array
     {
@@ -93,7 +93,7 @@ final class SharePointListingImporter
      *   size_bytes?: int|string
      * }> $rows
      * @param array{source_key?: string, site_host?: string, site_path?: string, folder_path?: string}|null $source
-     * @return array{ok: bool, count: int, projects: int, message: string, source_key: string}
+     * @return array{ok: bool, count: int, projects: int, new_items: int, removed_items: int, message: string, source_key: string}
      */
     public function importAssocRows(array $rows, string $statusLabel = 'imported', ?array $source = null): array
     {
@@ -240,6 +240,7 @@ final class SharePointListingImporter
             throw new RuntimeException('No valid rows were found in the import.');
         }
 
+        $changes = $this->catalog->compareItemKeysForSource($sourceKey, $items);
         $count = $this->catalog->replaceForSource($sourceKey, $items);
         $projects = $this->catalog->countProjects($sourceKey);
 
@@ -255,6 +256,8 @@ final class SharePointListingImporter
             'ok' => true,
             'count' => $count,
             'projects' => $projects,
+            'new_items' => $changes['new_items'],
+            'removed_items' => $changes['removed_items'],
             'source_key' => $sourceKey,
             'message' => $verb . ' ' . $count . ' item' . ($count === 1 ? '' : 's')
                 . ' across ' . $projects . ' project folder' . ($projects === 1 ? '' : 's') . '.',

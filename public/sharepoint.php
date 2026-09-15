@@ -128,6 +128,8 @@ if ($actionParam === 'browser_sync_import' && ($_SERVER['REQUEST_METHOD'] ?? '')
                 [
                     'count' => $result['count'] ?? 0,
                     'projects' => $result['projects'] ?? 0,
+                    'new_items' => $result['new_items'] ?? 0,
+                    'removed_items' => $result['removed_items'] ?? 0,
                     'source_key' => $sourceKey,
                 ]
             );

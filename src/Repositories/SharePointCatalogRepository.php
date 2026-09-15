@@ -16,6 +16,45 @@ final class SharePointCatalogRepository
     }
 
     /**
+     * Compare an incoming source snapshot with the currently stored item keys.
+     *
+     * @param list<array{item_key?: string}> $items
+     * @return array{new_items: int, removed_items: int}
+     */
+    public function compareItemKeysForSource(string $sourceKey, array $items): array
+    {
+        $sourceKey = trim($sourceKey) !== '' ? trim($sourceKey) : self::SOURCE_DEFAULT;
+        $select = $this->pdo->prepare(
+            'SELECT item_key FROM sharepoint_items WHERE source_key = :source_key'
+        );
+        $select->execute([':source_key' => $sourceKey]);
+
+        $existingKeys = [];
+        while (($key = $select->fetchColumn()) !== false) {
+            $key = trim((string) $key);
+            if ($key !== '') {
+                $existingKeys[$key] = true;
+            }
+        }
+
+        $incomingKeys = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $key = trim((string) ($item['item_key'] ?? ''));
+            if ($key !== '') {
+                $incomingKeys[$key] = true;
+            }
+        }
+
+        return [
+            'new_items' => count(array_diff_key($incomingKeys, $existingKeys)),
+            'removed_items' => count(array_diff_key($existingKeys, $incomingKeys)),
+        ];
+    }
+
+    /**
      * Replace all items for a source key in one transaction.
      *
      * @param list<array{

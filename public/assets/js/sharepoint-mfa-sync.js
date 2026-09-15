@@ -52,7 +52,15 @@
   const toastProgress = document.getElementById("rr-sp-sync-progress");
   const toastDetail = document.getElementById("rr-sp-sync-detail");
   const toastClose = document.getElementById("rr-sp-sync-close");
+  const syncStartedAt = Date.now();
   if (toastClose) toastClose.addEventListener("click", () => toast.remove());
+
+  const formatElapsed = () => {
+    const totalSeconds = Math.max(0, Math.round((Date.now() - syncStartedAt) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes > 0 ? minutes + "m " + seconds + "s" : seconds + "s";
+  };
 
   const setProgress = (message, detail, percent, state) => {
     if (toastStatus) {
@@ -553,9 +561,19 @@
     if (!response.ok || !json.ok) {
       throw new Error(json.error || ("Import failed HTTP " + response.status));
     }
+    const newItems = Math.max(0, Number(json.new_items) || 0);
+    const removedItems = Math.max(0, Number(json.removed_items) || 0);
+    const changeSummary = newItems > 0
+      ? newItems + " new item" + (newItems === 1 ? "" : "s") + " added"
+      : "No new items found";
+    const removalSummary = removedItems > 0
+      ? " · " + removedItems + " removed item" + (removedItems === 1 ? "" : "s")
+      : "";
     setProgress(
-      "✅ Sync complete",
-      (json.message || (rows.length + " items imported")) + " · " + visioFound + " Visio files",
+      "✅ Sync complete · " + changeSummary,
+      changeSummary + removalSummary + " · " +
+        (json.message || (rows.length + " items imported")) +
+        " · " + visioFound + " Visio files · Completed in " + formatElapsed(),
       100,
       "done"
     );
@@ -564,7 +582,7 @@
     console.error("%c❌ Sync failed", "color:#b91c1c;font-weight:bold", error);
     setProgress(
       "❌ Sync failed",
-      error && error.message ? error.message : String(error),
+      (error && error.message ? error.message : String(error)) + " · Stopped after " + formatElapsed(),
       100,
       "error"
     );
