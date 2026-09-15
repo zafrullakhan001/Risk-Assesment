@@ -649,9 +649,13 @@
     if (filesHelp) {
       filesHelp.textContent = rows.length
         ? state.level === 'types'
-          ? `Top ${rows.length} largest files across selected catalogs`
+          ? state.selectedExts.size
+            ? `Top ${rows.length} largest files for ${selectedExtLabel()}`
+            : `Top ${rows.length} largest files across selected catalogs`
           : `Top ${rows.length} largest files for ${selectedExtLabel()}`
-        : 'No files in this view';
+        : state.level === 'types' && state.selectedExts.size
+          ? `No files for ${selectedExtLabel()}`
+          : 'No files in this view';
     }
     if (!rows.length) {
       filesBody.innerHTML = '<tr><td colspan="5" class="sp-size-empty">No files found.</td></tr>';
@@ -676,6 +680,91 @@
       .join('');
   };
 
+  const filteredTypeNodes = () => {
+    const all = Array.isArray(state.availableTypes) ? state.availableTypes : [];
+    if (!state.selectedExts.size) return all.slice();
+    return all.filter((t) => state.selectedExts.has(String(t.ext || '')));
+  };
+
+  const filteredTypeKpis = () => {
+    const nodes = filteredTypeNodes();
+    let totalBytes = 0;
+    let totalFiles = 0;
+    let largestBytes = 0;
+    let largestLabel = '';
+    nodes.forEach((t) => {
+      const bytes = Number(t.size_bytes) || 0;
+      const files = Number(t.file_count) || 0;
+      totalBytes += bytes;
+      totalFiles += files;
+      if (bytes > largestBytes) {
+        largestBytes = bytes;
+        largestLabel = `.${String(t.ext || '')}`;
+      }
+    });
+    const base = state.typesPayload?.kpis || {};
+    return {
+      ...base,
+      total_bytes: totalBytes,
+      file_count: totalFiles,
+      type_count: nodes.length,
+      largest_bytes: largestBytes,
+      largest_label: largestLabel,
+    };
+  };
+
+  const filteredLargeFiles = (files) => {
+    const rows = Array.isArray(files) ? files : [];
+    if (state.level !== 'types' || !state.selectedExts.size) return rows;
+    return rows.filter((file) => state.selectedExts.has(fileExtension(file.name)));
+  };
+
+  /** Re-render types overview using current chip selection (client-side filter). */
+  const refreshTypesView = ({ chips = true } = {}) => {
+    if (state.level !== 'types') return;
+    if (chips) renderExtChips();
+    else updateExtSelectionUi();
+    renderBreadcrumb();
+    const nodes = filteredTypeNodes();
+    renderKpis(filteredTypeKpis());
+    renderTreemap(nodes);
+    const sourceFiles =
+      state.typesPayload?.large_files ||
+      state.data?.large_files ||
+      state.largeFiles ||
+      [];
+    renderLargeFiles(filteredLargeFiles(sourceFiles));
+    refreshFilteredLargeFiles();
+  };
+
+  let largeFilesFetchId = 0;
+  const refreshFilteredLargeFiles = async () => {
+    if (state.level !== 'types') return;
+    const requestId = ++largeFilesFetchId;
+    if (!state.selectedExts.size) {
+      renderLargeFiles(state.typesPayload?.large_files || []);
+      return;
+    }
+    try {
+      const sources = readSelectedSources();
+      const response = await fetch(
+        apiUrl({
+          sources: sources.join(',') || 'all',
+          level: 'overview',
+          extensions: Array.from(state.selectedExts).join(','),
+        }),
+        { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+      );
+      const payload = await response.json();
+      if (requestId !== largeFilesFetchId || state.level !== 'types') return;
+      if (response.ok && payload.ok) {
+        renderLargeFiles(payload.large_files || []);
+      }
+    } catch (e) {
+      /* keep client-filtered list */
+    }
+  };
+
   const applyTypesPayload = (payload) => {
     state.typesPayload = payload;
     state.availableTypes = Array.isArray(payload.types) ? payload.types.slice() : [];
@@ -688,7 +777,6 @@
         if (!available.has(ext)) state.selectedExts.delete(ext);
       });
     }
-    renderExtChips();
   };
 
   const applyPayload = (payload) => {
@@ -709,6 +797,9 @@
       state.projectName = '';
       state.folderPath = '';
       applyTypesPayload(payload);
+      saveNavigation();
+      refreshTypesView();
+      return;
     }
     saveNavigation();
     renderBreadcrumb();
@@ -720,8 +811,7 @@
   const load = async (force = false) => {
     if (state.loading) return;
     if (state.loaded && !force && state.data?.nodes && state.level === 'types') {
-      renderTreemap(state.data.nodes || []);
-      renderExtChips();
+      refreshTypesView();
       return;
     }
     state.loading = true;
@@ -962,6 +1052,7 @@
     saveSelectedExts();
     input.closest('.sp-file-type-ext-chip')?.classList.toggle('is-active', input.checked);
     updateExtSelectionUi();
+    if (state.level === 'types') refreshTypesView({ chips: false });
   });
 
   extAllBtn?.addEventListener('click', () => {
@@ -969,13 +1060,15 @@
       if (t.ext) state.selectedExts.add(String(t.ext));
     });
     saveSelectedExts();
-    renderExtChips();
+    if (state.level === 'types') refreshTypesView();
+    else renderExtChips();
   });
 
   extClearBtn?.addEventListener('click', () => {
     state.selectedExts.clear();
     saveSelectedExts();
-    renderExtChips();
+    if (state.level === 'types') refreshTypesView();
+    else renderExtChips();
   });
 
   let searchTimer = 0;
@@ -991,7 +1084,10 @@
   const scheduleTreemapResize = () => {
     if (!state.loaded || !state.data?.nodes) return;
     window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => renderTreemap(state.data.nodes || []), 120);
+    resizeTimer = window.setTimeout(() => {
+      if (state.level === 'types') renderTreemap(filteredTypeNodes());
+      else renderTreemap(state.data.nodes || []);
+    }, 120);
   };
   window.addEventListener('resize', scheduleTreemapResize);
   if (typeof ResizeObserver === 'function' && treemapWrap) {
@@ -1021,7 +1117,9 @@
       saveNavigation();
     },
     redraw: () => {
-      if (state.loaded && state.data?.nodes) renderTreemap(state.data.nodes || []);
+      if (!state.loaded || !state.data?.nodes) return;
+      if (state.level === 'types') renderTreemap(filteredTypeNodes());
+      else renderTreemap(state.data.nodes || []);
     },
     syncScopesFromStorage,
   };
