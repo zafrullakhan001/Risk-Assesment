@@ -179,7 +179,13 @@
     pagesFetched += 1;
     return response.json();
   };
-  const apiPost = async (url, body, digest) => {
+  // SharePoint remains strictly read-only. RenderListDataAsStream requires
+  // POST syntactically, but it only queries list data and cannot alter content.
+  const apiReadPost = async (url, body, digest) => {
+    const endpoint = new URL(url, location.origin);
+    if (!/\\/RenderListDataAsStream$/i.test(endpoint.pathname)) {
+      throw new Error("Blocked non-read SharePoint POST endpoint.");
+    }
     const response = await fetch(url, {
       method: "POST",
       credentials: "include",
@@ -270,7 +276,7 @@
         encodeURIComponent(quote(listPath)) +
         (listDataNext ? "&" + listDataNext.replace(/^\\?/, "") : "");
 
-      const payload = await apiPost(
+      const payload = await apiReadPost(
         url,
         { parameters: { ViewXml: viewXml, RenderOptions: 4103 } },
         digest
@@ -564,16 +570,16 @@
     const newItems = Math.max(0, Number(json.new_items) || 0);
     const removedItems = Math.max(0, Number(json.removed_items) || 0);
     const changeSummary = newItems > 0
-      ? newItems + " new item" + (newItems === 1 ? "" : "s") + " added"
-      : "No new items found";
+      ? newItems + " new SharePoint item" + (newItems === 1 ? "" : "s") + " found"
+      : "No new SharePoint items found";
     const removalSummary = removedItems > 0
-      ? " · " + removedItems + " removed item" + (removedItems === 1 ? "" : "s")
+      ? " · " + removedItems + " local catalog item" + (removedItems === 1 ? "" : "s") + " no longer present"
       : "";
     setProgress(
       "✅ Sync complete · " + changeSummary,
       changeSummary + removalSummary + " · " +
         (json.message || (rows.length + " items imported")) +
-        " · " + visioFound + " Visio files · Completed in " + formatElapsed(),
+        " into RiskRegister · " + visioFound + " Visio files · Completed in " + formatElapsed(),
       100,
       "done"
     );
