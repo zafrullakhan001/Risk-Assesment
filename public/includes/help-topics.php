@@ -397,7 +397,7 @@ HTML,
 <li><strong>Show archived</strong> (admins) — include catalogs, projects, and files you hid so you can restore them.</li>
 <li><strong>Recent</strong> — browser-local chips for recent queries.</li>
 </ul>
-<p>Open <strong>Advanced</strong> for date, person, catalog presence (Any / All / Only / Missing), “projects that contain,” and “projects that lack,” plus file-type chips. <strong>Save search</strong> pins the query and filters; <strong>Export CSV</strong> downloads the full filtered set. Press <code>/</code> to focus the search box.</p>
+<p>Open <strong>Criteria</strong> (or press <code>Ctrl</code>+<code>K</code>) for a dialog with Find, tag, extension, person, path, has/lacks, file-type chips, AND/OR, Fuzzy, Deep files, dates, and presence already filled from the current search. Press <code>/</code> to focus the Find box. Open <strong>Advanced</strong> on the search card for the same date, person, catalog presence (Any / All / Only / Missing), “projects that contain,” and “projects that lack” filters inline. <strong>Save search</strong> pins the query and filters; <strong>Export CSV</strong> downloads the full filtered set.</p>
 <p>Open a project row for the workspace dialog: files, Copy / QR / tags, archive, and related actions. Admins maintain the reusable <strong>search tag</strong> list.</p>
 HTML,
                 ],

@@ -168,7 +168,7 @@
 
   const syncOtherScopeChecks = (keys) => {
     const selected = new Set(keys);
-    root.querySelectorAll('.sp-size-scope-check, .sp-duplicates-scope-check').forEach((input) => {
+    root.querySelectorAll('.sp-size-scope-check, .sp-duplicates-scope-check, .sp-file-type-scope-check').forEach((input) => {
       input.checked = selected.has(input.value);
       input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
     });

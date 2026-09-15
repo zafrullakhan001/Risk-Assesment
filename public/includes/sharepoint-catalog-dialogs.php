@@ -567,6 +567,170 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                 </div>
             </dialog>
 
+            <dialog class="response-dialog sharepoint-search-criteria-dialog" id="sharepoint-search-criteria-dialog" aria-labelledby="sharepoint-search-criteria-title">
+                <form class="response-dialog-form sharepoint-search-criteria-form" id="sharepoint-search-criteria-form" action="#" method="dialog">
+                    <div class="response-dialog-head">
+                        <div>
+                            <div class="eyebrow">🔎 Catalog search</div>
+                            <h3 id="sharepoint-search-criteria-title">Search criteria</h3>
+                            <p class="response-dialog-sub">Fill in the fields, or keep typing operators in Find. Press <kbd>/</kbd> to focus Find · <kbd>Ctrl</kbd>+<kbd>K</kbd> opens this dialog.</p>
+                        </div>
+                        <button type="button" class="button ghost response-dialog-close" id="sharepoint-search-criteria-close" aria-label="Close">✕</button>
+                    </div>
+
+                    <div class="sp-criteria-grid" role="group" aria-label="Search operators">
+                        <label class="sp-criteria-field sp-criteria-field--wide">
+                            <span>Find</span>
+                            <input type="search" id="sp-criteria-words" placeholder="encore network" autocomplete="off" aria-label="Keywords">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Exact phrase</span>
+                            <input type="text" id="sp-criteria-phrase" placeholder="data center" autocomplete="off" aria-label="Exact phrase">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Exclude</span>
+                            <input type="text" id="sp-criteria-exclude" placeholder="legacy, archive" autocomplete="off" aria-label="Exclude terms">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Tag</span>
+                            <input type="text" id="sp-criteria-tag" list="sp-criteria-tag-list" placeholder="priority" autocomplete="off" aria-label="Tag">
+                            <datalist id="sp-criteria-tag-list"></datalist>
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Extension</span>
+                            <input type="text" id="sp-criteria-ext" placeholder="pdf, vsdx" autocomplete="off" aria-label="File extensions">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Person</span>
+                            <input type="text" id="sp-criteria-person" list="sp-criteria-person-list" placeholder='Last, First' autocomplete="off" aria-label="Person">
+                            <datalist id="sp-criteria-person-list"></datalist>
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Path</span>
+                            <input type="text" id="sp-criteria-path" placeholder="drawings" autocomplete="off" aria-label="Folder path">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Has</span>
+                            <input type="text" id="sp-criteria-has" placeholder="pdf, visio" autocomplete="off" aria-label="Must contain">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Lacks</span>
+                            <input type="text" id="sp-criteria-lacks" placeholder="pdf" autocomplete="off" aria-label="Must lack">
+                        </label>
+                    </div>
+                    <div class="sp-criteria-tag-picks" id="sp-criteria-tag-picks" hidden></div>
+
+                    <div class="sp-criteria-cluster" role="group" aria-label="File type filters">
+                        <span class="sp-criteria-cluster-label">Types</span>
+                        <div class="sharepoint-type-chips" id="sp-criteria-type-chips">
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--pdf" data-criteria-type="pdf" title="Has at least one PDF file" aria-pressed="false">📕 PDF</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--word" data-criteria-type="word" title="Has a Word document" aria-pressed="false">🔵 DOCX</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--excel" data-criteria-type="excel" title="Has an Excel workbook" aria-pressed="false">🟢 XLSX</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--powerpoint" data-criteria-type="powerpoint" title="Has a PowerPoint presentation" aria-pressed="false">🟠 PPTX</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--visio" data-criteria-type="visio" title="Has Visio diagrams" aria-pressed="false">📐 Visio</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--email" data-criteria-type="email" title="Has saved email files" aria-pressed="false">✉️ MSG</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--archive" data-criteria-type="archive" title="Has a compressed archive" aria-pressed="false">🗜️ ZIP</button>
+                            <button type="button" class="sp-dialog-chip sp-type-chip sp-type-chip--folders" data-criteria-type="folders" title="Has nested subfolders" aria-pressed="false">📂 Folders</button>
+                        </div>
+                    </div>
+
+                    <div class="sp-criteria-cluster" role="group" aria-label="Search options">
+                        <span class="sp-criteria-cluster-label">Options</span>
+                        <div class="sp-search-toggle-group" role="group" aria-label="Match spaced words with AND or OR" id="sp-criteria-word-mode">
+                            <button type="button" class="sp-search-toggle is-active" data-criteria-word-mode="and" title="AND — every word must appear" aria-pressed="true">AND</button>
+                            <button type="button" class="sp-search-toggle" data-criteria-word-mode="or" title="OR — match if any word appears" aria-pressed="false">OR</button>
+                        </div>
+                        <button type="button" class="sp-search-toggle" id="sp-criteria-fuzzy" title="Tolerate typos and similar-sounding words" aria-pressed="false">✨ Fuzzy</button>
+                        <button type="button" class="sp-search-toggle is-active" id="sp-criteria-deep" title="Also search nested file and folder names" aria-pressed="true">📂 Deep files</button>
+                        <button type="button" class="sp-search-toggle" id="sp-criteria-favorites" title="Show only starred project folders" aria-pressed="false" hidden>★ Fav</button>
+                        <button type="button" class="sp-search-toggle" id="sp-criteria-archived" title="Include archived catalogs and projects" aria-pressed="false" hidden>📦 Show archived</button>
+                    </div>
+
+                    <div class="sp-criteria-cluster" role="group" aria-label="Where to search">
+                        <span class="sp-criteria-cluster-label">Scope</span>
+                        <div class="sp-search-toggle-group" role="group" id="sp-criteria-match-scope">
+                            <button type="button" class="sp-search-toggle is-active" data-criteria-scope="all" aria-pressed="true">🌐 All</button>
+                            <button type="button" class="sp-search-toggle" data-criteria-scope="names" aria-pressed="false">📁 Names</button>
+                            <button type="button" class="sp-search-toggle" data-criteria-scope="files" aria-pressed="false">📄 Files</button>
+                            <button type="button" class="sp-search-toggle" data-criteria-scope="people" aria-pressed="false">👤 People</button>
+                        </div>
+                    </div>
+
+                    <div class="sp-criteria-grid sp-criteria-grid--filters" role="group" aria-label="Filters">
+                        <label class="sp-criteria-field">
+                            <span>Modified</span>
+                            <select id="sp-criteria-date" aria-label="Modified date range">
+                                <option value="">Any time</option>
+                                <option value="7d">Last 7 days</option>
+                                <option value="30d">Last 30 days</option>
+                                <option value="year">This year</option>
+                                <option value="custom">Custom…</option>
+                            </select>
+                        </label>
+                        <label class="sp-criteria-field is-hidden" id="sp-criteria-date-from-wrap" hidden>
+                            <span>From</span>
+                            <input type="date" id="sp-criteria-date-from" aria-label="Modified from date">
+                        </label>
+                        <label class="sp-criteria-field is-hidden" id="sp-criteria-date-to-wrap" hidden>
+                            <span>To</span>
+                            <input type="date" id="sp-criteria-date-to" aria-label="Modified to date">
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Person filter</span>
+                            <select id="sp-criteria-who" aria-label="Filter by person">
+                                <option value="">Anyone</option>
+                            </select>
+                        </label>
+                        <label class="sp-criteria-field" id="sp-criteria-presence-wrap" hidden>
+                            <span>Presence</span>
+                            <select id="sp-criteria-presence" aria-label="Catalog presence filter">
+                                <option value="any">Any selected catalog</option>
+                                <option value="all">In all selected</option>
+                                <option value="only">Only in this catalog</option>
+                                <option value="missing">Missing from…</option>
+                            </select>
+                        </label>
+                        <label class="sp-criteria-field is-hidden" id="sp-criteria-missing-wrap" hidden>
+                            <span>Missing from</span>
+                            <select id="sp-criteria-missing" aria-label="Catalog the project is missing from"></select>
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Contains</span>
+                            <select id="sp-criteria-has-filter" aria-label="Projects that contain">
+                                <option value="">—</option>
+                                <option value="pdf">📕 PDF</option>
+                                <option value="visio">📐 Visio</option>
+                                <option value="empty">📭 Empty (no files)</option>
+                                <option value="stale">⏳ Stale (90+ days)</option>
+                            </select>
+                        </label>
+                        <label class="sp-criteria-field">
+                            <span>Lacks</span>
+                            <select id="sp-criteria-lacks-filter" aria-label="Projects that lack">
+                                <option value="">—</option>
+                                <option value="pdf">📕 PDF</option>
+                                <option value="visio">📐 Visio</option>
+                                <option value="empty">📭 Empty (no files)</option>
+                                <option value="stale">⏳ Stale (90+ days)</option>
+                            </select>
+                        </label>
+                        <label class="sp-criteria-field sp-criteria-field--wide">
+                            <span>Refine</span>
+                            <input type="search" id="sp-criteria-refine" placeholder="Narrow current results…" autocomplete="off" aria-label="Refine search">
+                        </label>
+                    </div>
+
+                    <p class="sp-criteria-preview" id="sp-criteria-preview" aria-live="polite">Find: <code></code></p>
+
+                    <div class="sp-criteria-actions">
+                        <button type="button" class="button ghost" id="sharepoint-search-criteria-reset">Clear fields</button>
+                        <span class="sp-criteria-actions-spacer"></span>
+                        <button type="button" class="button ghost" id="sharepoint-search-criteria-cancel">Cancel</button>
+                        <button type="submit" class="button button-primary" id="sharepoint-search-criteria-apply">Search</button>
+                    </div>
+                </form>
+            </dialog>
+
             <dialog class="response-dialog sharepoint-search-dash-dialog sp-workspace-dialog is-compact-chrome" id="sharepoint-search-dash-dialog" aria-labelledby="sharepoint-search-dash-title" data-density="compact" data-require-close-btn="1" data-list-animation="soft-landing">
                 <div class="response-dialog-form sharepoint-search-dash-body">
                     <div class="response-dialog-head sp-dialog-drag-handle">

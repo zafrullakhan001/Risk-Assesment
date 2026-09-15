@@ -714,8 +714,15 @@
       input.checked = selected.has(input.value);
       input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
     });
+    root.querySelectorAll('.sp-file-type-scope-check').forEach((input) => {
+      input.checked = selected.has(input.value);
+      input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
+    });
     if (window.RiskRegisterOwnerStorage?.syncScopesFromStorage) {
       window.RiskRegisterOwnerStorage.syncScopesFromStorage();
+    }
+    if (window.RiskRegisterFileTypeStorage?.syncScopesFromStorage) {
+      window.RiskRegisterFileTypeStorage.syncScopesFromStorage();
     }
     if (state.level === 'overview') loadOverview();
     if (state.activeTab === 'duplicates') {
@@ -723,10 +730,13 @@
       loadDuplicateStats(true);
     } else if (state.activeTab === 'owners') {
       window.RiskRegisterOwnerStorage?.load?.(true);
+    } else if (state.activeTab === 'file-types') {
+      window.RiskRegisterFileTypeStorage?.load?.(true);
     } else {
       state.duplicates.loaded = false;
       // Keep owner storage in sync with catalog selection when returning to that tab.
       window.RiskRegisterOwnerStorage?.invalidate?.();
+      window.RiskRegisterFileTypeStorage?.invalidate?.();
     }
   });
 
@@ -741,11 +751,18 @@
       el.checked = true;
       el.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', true);
     });
+    root.querySelectorAll('.sp-file-type-scope-check').forEach((el) => {
+      el.checked = true;
+      el.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', true);
+    });
     saveSelectedSources();
     updateScopesUi();
     updateDuplicateScopesUi();
     if (window.RiskRegisterOwnerStorage?.syncScopesFromStorage) {
       window.RiskRegisterOwnerStorage.syncScopesFromStorage();
+    }
+    if (window.RiskRegisterFileTypeStorage?.syncScopesFromStorage) {
+      window.RiskRegisterFileTypeStorage.syncScopesFromStorage();
     }
     if (state.level === 'overview') loadOverview();
     if (state.activeTab === 'duplicates') {
@@ -753,10 +770,13 @@
       loadDuplicateStats(true);
     } else if (state.activeTab === 'owners') {
       window.RiskRegisterOwnerStorage?.load?.(true);
+    } else if (state.activeTab === 'file-types') {
+      window.RiskRegisterFileTypeStorage?.load?.(true);
     } else {
       state.duplicates.loaded = false;
       // Keep owner storage in sync with catalog selection when returning to that tab.
       window.RiskRegisterOwnerStorage?.invalidate?.();
+      window.RiskRegisterFileTypeStorage?.invalidate?.();
     }
   });
 
@@ -1104,7 +1124,7 @@
   };
 
   const setActiveTab = (tab) => {
-    const allowed = new Set(['treemap', 'owners', 'duplicates']);
+    const allowed = new Set(['treemap', 'owners', 'file-types', 'duplicates']);
     const next = allowed.has(tab) ? tab : 'treemap';
     state.activeTab = next;
     root.querySelectorAll('.sp-size-tab').forEach((btn) => {
@@ -1128,6 +1148,10 @@
       if (window.RiskRegisterOwnerStorage?.load) {
         window.RiskRegisterOwnerStorage.load(false);
       }
+    } else if (next === 'file-types') {
+      if (window.RiskRegisterFileTypeStorage?.load) {
+        window.RiskRegisterFileTypeStorage.load(false);
+      }
     } else if (state.loaded && state.data?.nodes) {
       window.setTimeout(() => renderTreemap(state.data.nodes || []), 40);
     }
@@ -1149,14 +1173,16 @@
     const fromUrl = params.get('tab');
     if (fromUrl === 'owners' || fromUrl === 'by-owner') return 'owners';
     if (fromUrl === 'duplicates') return 'duplicates';
+    if (fromUrl === 'file-types' || fromUrl === 'types' || fromUrl === 'by-type') return 'file-types';
     if (fromUrl === 'treemap' || fromUrl === 'by-size') return 'treemap';
     // Explicit tab= in URL wins; otherwise restore last chosen tab.
     if (params.has('tab')) return 'treemap';
     try {
       const stored = String(localStorage.getItem(TAB_KEY) || '');
-      if (stored === 'owners' || stored === 'duplicates' || stored === 'treemap') return stored;
+      if (stored === 'owners' || stored === 'duplicates' || stored === 'treemap' || stored === 'file-types') return stored;
       if (stored === 'by-owner') return 'owners';
       if (stored === 'by-size') return 'treemap';
+      if (stored === 'types' || stored === 'by-type') return 'file-types';
     } catch (e) { /* ignore */ }
     return 'treemap';
   };
@@ -1193,9 +1219,14 @@
       input.checked = selected.has(input.value);
       input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
     });
+    root.querySelectorAll('.sp-file-type-scope-check').forEach((input) => {
+      input.checked = selected.has(input.value);
+      input.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', input.checked);
+    });
     updateScopesUi();
     updateDuplicateScopesUi();
     window.RiskRegisterOwnerStorage?.invalidate?.();
+    window.RiskRegisterFileTypeStorage?.invalidate?.();
     loadDuplicateStats(true);
   });
 
@@ -1210,12 +1241,17 @@
       el.checked = true;
       el.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', true);
     });
+    root.querySelectorAll('.sp-file-type-scope-check').forEach((el) => {
+      el.checked = true;
+      el.closest('.sharepoint-scope-chip')?.classList.toggle('is-active', true);
+    });
     try {
       localStorage.setItem(SOURCES_KEY, JSON.stringify(readDuplicateSources()));
     } catch (e) { /* ignore */ }
     updateScopesUi();
     updateDuplicateScopesUi();
     window.RiskRegisterOwnerStorage?.invalidate?.();
+    window.RiskRegisterFileTypeStorage?.invalidate?.();
     loadDuplicateStats(true);
   });
 

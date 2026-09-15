@@ -151,7 +151,7 @@ if ($actionParam === 'browser_sync_import' && ($_SERVER['REQUEST_METHOD'] ?? '')
 }
 
 $currentUser = $auth->requireAuth();
-$requestedApp = $actionParam === 'size_stats' || $actionParam === 'duplicate_stats' || $actionParam === 'owner_storage_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
+$requestedApp = $actionParam === 'size_stats' || $actionParam === 'duplicate_stats' || $actionParam === 'owner_storage_stats' || $actionParam === 'file_type_stats' || (string) ($_GET['view'] ?? '') === 'heatmap'
     ? \RiskAssessment\AppModules::STORAGE
     : \RiskAssessment\AppModules::SHAREPOINT;
 \RiskAssessment\AppModules::instance()->require($requestedApp, $currentUser);
@@ -643,6 +643,102 @@ if ($actionParam === 'duplicate_stats') {
 
     $sizeDashboard = new SharePointSizeDashboard($pdo);
     $payload = $sizeDashboard->buildDuplicateStats($selectedKeys, $sourceTitles);
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'file_type_stats') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=30');
+
+    $level = strtolower(trim((string) ($_GET['level'] ?? 'types')));
+    $sizeSourceKey = trim((string) ($_GET['source'] ?? ''));
+    $projectName = trim((string) ($_GET['project'] ?? ''));
+    $folderPath = trim((string) ($_GET['path'] ?? ''));
+    $extensionsParam = trim((string) ($_GET['extensions'] ?? ''));
+    $rawExtensions = $extensionsParam === ''
+        ? []
+        : array_values(array_filter(array_map('trim', explode(',', $extensionsParam))));
+
+    $sizeDashboard = new SharePointSizeDashboard($pdo);
+    $extensions = $sizeDashboard->normalizeExtensions($rawExtensions);
+
+    $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $wantedKeys = [];
+    if ($sourcesParam === 'all' || $sourcesParam === '') {
+        foreach ($allSources as $src) {
+            $wantedKeys[] = (string) ($src['source_key'] ?? '');
+        }
+    } else {
+        $wantedKeys = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+    }
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $selectedKeys = [];
+    $sourceTitles = [];
+    foreach ($wantedKeys as $key) {
+        if (!isset($byKey[$key])) {
+            continue;
+        }
+        $selectedKeys[] = $key;
+        $sourceTitles[$key] = (string) ($byKey[$key]['title'] ?? $key);
+    }
+    if ($selectedKeys === []) {
+        $selectedKeys = [$activeSourceKey];
+        $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
+    }
+
+    if ($level === 'folder') {
+        if ($sizeSourceKey === '' || $projectName === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'source and project are required for folder drill-down.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        if ($sourcesRepo->findByKey($sizeSourceKey) === null) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'SharePoint folder not found.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $sizeDashboard->buildDrilldown($sizeSourceKey, $projectName, $folderPath, $extensions);
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($level === 'projects') {
+        if ($sizeSourceKey === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'source is required for project view.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $src = $sourcesRepo->findByKey($sizeSourceKey);
+        if ($src === null) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'SharePoint folder not found.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $sizeDashboard->buildProjects(
+            $sizeSourceKey,
+            (string) ($src['title'] ?? $sizeSourceKey),
+            $extensions
+        );
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($level === 'overview') {
+        $payload = $sizeDashboard->buildOverview($selectedKeys, $sourceTitles, $extensions);
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    $payload = $sizeDashboard->buildFileTypeOverview($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -2577,7 +2673,7 @@ $soloPageClass = $ownerSolo
                             <h2>🗺️ Catalog storage heatmap</h2>
                             <p>
                                 Treemap of catalog folder sizes — click to drill into projects, subfolders, and the largest files.
-                                Use <strong>By Owner</strong> to see who consumes the most storage, or <strong>Duplicate Files</strong> to find same-name, same-size copies.
+                                Use <strong>By Owner</strong> to see who consumes the most storage, <strong>By File Type</strong> to filter by extension (PDF, Visio, Excel, …), or <strong>Duplicate Files</strong> to find same-name, same-size copies.
                             </p>
                         </div>
                         <div class="sp-size-heatmap-summary-tools" data-no-toggle onclick="event.stopPropagation()">
@@ -2595,6 +2691,7 @@ $soloPageClass = $ownerSolo
                         <div class="sp-size-heatmap-tabs" role="tablist" aria-label="Storage analysis views">
                             <button type="button" class="sp-size-tab is-active" role="tab" id="sp-size-tab-treemap" data-tab="treemap" aria-selected="true" aria-controls="sp-size-tab-panel-treemap">Storage Map</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-owners" data-tab="owners" aria-selected="false" aria-controls="sp-size-tab-panel-owners">By Owner</button>
+                            <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-file-types" data-tab="file-types" aria-selected="false" aria-controls="sp-size-tab-panel-file-types">By File Type</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-duplicates" data-tab="duplicates" aria-selected="false" aria-controls="sp-size-tab-panel-duplicates">Duplicate Files</button>
                         </div>
 
@@ -2749,6 +2846,102 @@ $soloPageClass = $ownerSolo
                                         </thead>
                                         <tbody id="sp-owner-storage-files-body">
                                             <tr><td colspan="5" class="sp-size-empty">Open this tab to load owner storage.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="sp-size-tab-panel" role="tabpanel" id="sp-size-tab-panel-file-types" data-tab-panel="file-types" aria-labelledby="sp-size-tab-file-types" hidden>
+                            <div class="sp-file-type-toolbar">
+                                <p class="panel-help sp-file-type-help">
+                                    Storage by file extension in the selected catalogs. Select one or more types, then map where those files live.
+                                </p>
+                                <div class="sp-file-type-toolbar-actions">
+                                    <button type="button" class="button ghost" id="sp-file-type-map-locations" title="Show catalog storage for selected file types" disabled>Map locations</button>
+                                    <button type="button" class="button ghost" id="sp-file-type-back" hidden title="Go up one level">← Back</button>
+                                    <button type="button" class="button ghost" id="sp-file-type-refresh" title="Reload file-type storage data">↻ Refresh</button>
+                                </div>
+                            </div>
+                            <nav class="sp-size-breadcrumb sp-file-type-breadcrumb" id="sp-file-type-breadcrumb" aria-label="File type storage path">
+                                <button type="button" class="sp-size-crumb is-active" data-ft-level="types">All file types</button>
+                            </nav>
+                            <?php if (count($allSources) > 0): ?>
+                                <div class="sp-od-scopes sp-size-scopes sp-file-type-scopes" id="sp-file-type-scopes" role="group" aria-label="Catalogs for file-type storage">
+                                    <div class="sp-od-scopes-head">
+                                        <span class="sp-od-scopes-label">
+                                            <span aria-hidden="true">📁</span>
+                                            Catalogs
+                                            <b class="sp-od-scopes-count" id="sp-file-type-scopes-count"><?= count($allSources) ?> of <?= count($allSources) ?></b>
+                                        </span>
+                                        <button type="button" class="sp-od-scopes-all is-active" id="sp-file-type-scopes-all" disabled>All selected</button>
+                                    </div>
+                                    <div class="sp-od-scopes-list">
+                                        <?php foreach ($allSources as $src): ?>
+                                            <?php
+                                            $srcKey = (string) ($src['source_key'] ?? '');
+                                            $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                            ?>
+                                            <label class="sharepoint-scope-chip is-active" data-source-key="<?= e($srcKey) ?>">
+                                                <input type="checkbox" class="sp-file-type-scope-check" value="<?= e($srcKey) ?>" checked>
+                                                <span><?= e($srcTitle) ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            <div class="sp-file-type-ext-scopes" id="sp-file-type-ext-scopes" role="group" aria-label="File types for storage heatmap">
+                                <div class="sp-od-scopes-head">
+                                    <span class="sp-od-scopes-label">
+                                        <span aria-hidden="true">📄</span>
+                                        File types
+                                        <b class="sp-od-scopes-count" id="sp-file-type-ext-count">0 of 0</b>
+                                    </span>
+                                    <div class="sp-file-type-ext-tools">
+                                        <label class="sp-file-type-ext-search-label">
+                                            <span class="visually-hidden">Filter file types</span>
+                                            <input type="search" id="sp-file-type-ext-search" class="sp-file-type-ext-search" placeholder="Filter types…" autocomplete="off">
+                                        </label>
+                                        <button type="button" class="sp-od-scopes-all" id="sp-file-type-ext-all" disabled>Select all</button>
+                                        <button type="button" class="button ghost sp-file-type-ext-clear" id="sp-file-type-ext-clear" hidden>Clear</button>
+                                    </div>
+                                </div>
+                                <div class="sp-od-scopes-list sp-file-type-ext-list" id="sp-file-type-ext-list">
+                                    <p class="panel-help">Open this tab to load file types.</p>
+                                </div>
+                            </div>
+                            <div class="sp-size-kpis sp-file-type-kpis" id="sp-file-type-kpis" aria-live="polite"></div>
+                            <div class="sp-size-treemap-wrap sp-file-type-treemap-wrap" tabindex="0" role="region" aria-label="File type storage treemap">
+                                <div class="sp-size-treemap" id="sp-file-type-treemap"></div>
+                            </div>
+                            <div class="sp-size-large-files sp-file-type-files">
+                                <div class="sp-size-large-head">
+                                    <h3>Largest files by type</h3>
+                                    <p class="panel-help" id="sp-file-type-files-help">Top files for the current view</p>
+                                </div>
+                                <div class="table-wrap">
+                                    <table class="sp-size-files-table" id="sp-file-type-files-table">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col" class="is-sortable" data-ft-file-sort="name" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-ft-file-sort-button="name">File</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-ft-file-sort="ext" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-ft-file-sort-button="ext">Type</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-ft-file-sort="project" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-ft-file-sort-button="project">Project</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable is-sorted-desc" data-ft-file-sort="size" aria-sort="descending">
+                                                    <button type="button" class="sp-size-sort-btn" data-ft-file-sort-button="size">Size</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-ft-file-sort="modified" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-ft-file-sort-button="modified">Modified</button>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="sp-file-type-files-body">
+                                            <tr><td colspan="5" class="sp-size-empty">Open this tab to load file-type storage.</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -3444,6 +3637,7 @@ $soloPageClass = $ownerSolo
     <?php endif; ?>
     <?php if ($storageAvailable && !$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
     <script src="assets/js/sharepoint-owner-storage.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-storage.js') ?>"></script>
+    <script src="assets/js/sharepoint-file-type-storage.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-file-type-storage.js') ?>"></script>
     <script src="assets/js/sharepoint-size-heatmap.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-size-heatmap.js') ?>"></script>
     <?php endif; ?>
         <?php if (!$ownerSolo && !$catalogSolo && $isAdmin): ?>

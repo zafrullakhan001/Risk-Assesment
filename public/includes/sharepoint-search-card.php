@@ -181,11 +181,15 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                                    autocomplete="off"
                                    <?= $searchCardPublic ? '' : 'autofocus ' ?>
                                    aria-label="Search SharePoint catalog"
-                                   title="Live search. Tag names match without tag:. Tips: tag:name · ext:pdf · type:visio · person:name · path:drawings · has:pdf · &quot;exact phrase&quot; · -exclude · Press / to focus"
+                                   title="Live search. Tag names match without tag:. Tips: tag:name · ext:pdf · type:visio · person:name · path:drawings · has:pdf · &quot;exact phrase&quot; · -exclude · Press / to focus Find · Ctrl+K for Criteria"
                                    aria-autocomplete="list"
                                    aria-controls="sharepoint-search-suggest"
                                    aria-expanded="false">
                             <button type="button" class="sharepoint-search-clear<?= $query === '' ? ' is-hidden' : '' ?>" id="sharepoint-search-clear" title="Clear search (Esc)" aria-label="Clear search">×</button>
+                            <button type="button" class="sharepoint-search-criteria-btn" id="sharepoint-search-criteria-open" title="Open search criteria (Ctrl+K). Press / to focus Find." aria-haspopup="dialog" aria-controls="sharepoint-search-criteria-dialog" aria-expanded="false">
+                                <span class="sharepoint-search-criteria-btn-label">Criteria</span>
+                                <kbd class="sharepoint-search-criteria-kbd">Ctrl K</kbd>
+                            </button>
                             <noscript>
                                 <button type="submit" class="button button-primary">Search</button>
                             </noscript>

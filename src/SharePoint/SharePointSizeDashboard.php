@@ -23,30 +23,50 @@ final class SharePointSizeDashboard
     /**
      * @param list<string> $sourceKeys
      * @param array<string, string> $sourceTitles keyed by source_key
+     * @param list<string> $extensions optional file-extension filter (e.g. pdf, vsdx)
      * @return array<string, mixed>
      */
-    public function buildOverview(array $sourceKeys, array $sourceTitles = []): array
+    public function buildOverview(array $sourceKeys, array $sourceTitles = [], array $extensions = []): array
     {
         $sourceKeys = $this->normalizeKeys($sourceKeys);
+        $extensions = $this->normalizeExtensions($extensions);
         if ($sourceKeys === []) {
             return $this->emptyOverview([]);
         }
 
         $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
+        $params = $sourceKeys;
+        $extFilter = '';
+        if ($extensions !== []) {
+            $extFilter = ' AND lower(item_type) = \'file\' AND ' . $this->extensionMatchSql($extensions, 'name', $params, 'oext');
+        }
 
-        $statement = $this->pdo->prepare(
-            "SELECT source_key, project_name,
-                    SUM(CASE WHEN lower(item_type) = 'file' THEN COALESCE(size_bytes, 0) ELSE 0 END) AS size_bytes,
-                    SUM(CASE WHEN lower(item_type) = 'file' THEN 1 ELSE 0 END) AS file_count,
-                    COUNT(DISTINCT project_name) AS project_count
-             FROM sharepoint_items
-             WHERE source_key IN ($placeholders)
-               AND {$visible}
-             GROUP BY source_key, project_name
-             HAVING size_bytes > 0 OR file_count > 0"
-        );
-        $statement->execute($sourceKeys);
+        if ($extensions === []) {
+            $statement = $this->pdo->prepare(
+                "SELECT source_key, project_name,
+                        SUM(CASE WHEN lower(item_type) = 'file' THEN COALESCE(size_bytes, 0) ELSE 0 END) AS size_bytes,
+                        SUM(CASE WHEN lower(item_type) = 'file' THEN 1 ELSE 0 END) AS file_count
+                 FROM sharepoint_items
+                 WHERE source_key IN ($placeholders)
+                   AND {$visible}
+                 GROUP BY source_key, project_name
+                 HAVING size_bytes > 0 OR file_count > 0"
+            );
+        } else {
+            $statement = $this->pdo->prepare(
+                "SELECT source_key, project_name,
+                        SUM(COALESCE(size_bytes, 0)) AS size_bytes,
+                        COUNT(*) AS file_count
+                 FROM sharepoint_items
+                 WHERE source_key IN ($placeholders)
+                   AND {$visible}
+                   {$extFilter}
+                 GROUP BY source_key, project_name
+                 HAVING size_bytes > 0 OR file_count > 0"
+            );
+        }
+        $statement->execute($params);
         $rows = $statement->fetchAll() ?: [];
 
         $catalogs = [];
@@ -107,6 +127,7 @@ final class SharePointSizeDashboard
         return [
             'level' => 'overview',
             'sources' => $sources,
+            'extensions' => $extensions,
             'kpis' => [
                 'total_bytes' => $totalBytes,
                 'file_count' => $totalFiles,
@@ -116,35 +137,187 @@ final class SharePointSizeDashboard
                 'largest_label' => $largestLabel,
             ],
             'nodes' => $nodes,
+            'large_files' => $this->topFiles($sourceKeys, null, null, $extensions),
+        ];
+    }
+
+    /**
+     * Aggregate storage by file extension across selected catalogs.
+     *
+     * @param list<string> $sourceKeys
+     * @param array<string, string> $sourceTitles keyed by source_key
+     * @return array<string, mixed>
+     */
+    public function buildFileTypeOverview(array $sourceKeys, array $sourceTitles = []): array
+    {
+        $sourceKeys = $this->normalizeKeys($sourceKeys);
+        if ($sourceKeys === []) {
+            return $this->emptyFileTypes([]);
+        }
+
+        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
+
+        $statement = $this->pdo->prepare(
+            "SELECT name, COALESCE(size_bytes, 0) AS size_bytes
+             FROM sharepoint_items
+             WHERE source_key IN ($placeholders)
+               AND lower(item_type) = 'file'
+               AND {$visible}"
+        );
+        $statement->execute($sourceKeys);
+        $rows = $statement->fetchAll() ?: [];
+
+        /** @var array<string, array{ext: string, file_count: int, size_bytes: int}> $byExt */
+        $byExt = [];
+        $totalBytes = 0;
+        $totalFiles = 0;
+        $noExtCount = 0;
+        $noExtBytes = 0;
+
+        foreach ($rows as $row) {
+            $name = (string) ($row['name'] ?? '');
+            $bytes = (int) ($row['size_bytes'] ?? 0);
+            $ext = $this->fileExtension($name);
+            if ($ext === '') {
+                $noExtCount++;
+                $noExtBytes += $bytes;
+                $totalBytes += $bytes;
+                $totalFiles++;
+                continue;
+            }
+            if (!isset($byExt[$ext])) {
+                $byExt[$ext] = [
+                    'ext' => $ext,
+                    'file_count' => 0,
+                    'size_bytes' => 0,
+                ];
+            }
+            $byExt[$ext]['file_count']++;
+            $byExt[$ext]['size_bytes'] += $bytes;
+            $totalBytes += $bytes;
+            $totalFiles++;
+        }
+
+        $types = [];
+        $largestBytes = 0;
+        $largestLabel = '';
+        foreach ($byExt as $ext => $info) {
+            $bytes = (int) $info['size_bytes'];
+            $count = (int) $info['file_count'];
+            $types[] = [
+                'key' => $ext,
+                'ext' => $ext,
+                'label' => '.' . $ext,
+                'type' => 'file-type',
+                'size_bytes' => $bytes,
+                'file_count' => $count,
+                'hue' => $this->hue('ext:' . $ext),
+            ];
+            if ($bytes > $largestBytes) {
+                $largestBytes = $bytes;
+                $largestLabel = '.' . $ext;
+            }
+        }
+
+        usort(
+            $types,
+            static function (array $a, array $b): int {
+                $cmp = ((int) $b['file_count']) <=> ((int) $a['file_count']);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+                $cmp = ((int) $b['size_bytes']) <=> ((int) $a['size_bytes']);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+
+                return strcasecmp((string) ($a['ext'] ?? ''), (string) ($b['ext'] ?? ''));
+            }
+        );
+
+        $nodes = $types;
+        usort(
+            $nodes,
+            static fn (array $a, array $b): int => ((int) $b['size_bytes']) <=> ((int) $a['size_bytes'])
+        );
+
+        $sources = [];
+        foreach ($sourceKeys as $key) {
+            $sources[] = [
+                'source_key' => $key,
+                'title' => (string) ($sourceTitles[$key] ?? $key),
+            ];
+        }
+
+        return [
+            'level' => 'types',
+            'sources' => $sources,
+            'kpis' => [
+                'total_bytes' => $totalBytes,
+                'file_count' => $totalFiles,
+                'type_count' => count($types),
+                'largest_bytes' => $largestBytes,
+                'largest_label' => $largestLabel,
+                'no_extension_count' => $noExtCount,
+                'no_extension_bytes' => $noExtBytes,
+            ],
+            'types' => $types,
+            'nodes' => $nodes,
             'large_files' => $this->topFiles($sourceKeys, null, null),
         ];
     }
 
     /**
+     * @param list<string> $extensions
      * @return array<string, mixed>
      */
-    public function buildProjects(string $sourceKey, string $sourceTitle = ''): array
+    public function buildProjects(string $sourceKey, string $sourceTitle = '', array $extensions = []): array
     {
         $sourceKey = trim($sourceKey);
+        $extensions = $this->normalizeExtensions($extensions);
         if ($sourceKey === '') {
             return $this->emptyProjects('', '');
         }
 
         $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
-        $statement = $this->pdo->prepare(
-            "SELECT project_name,
-                    SUM(CASE WHEN lower(item_type) = 'file' THEN COALESCE(size_bytes, 0) ELSE 0 END) AS size_bytes,
-                    SUM(CASE WHEN lower(item_type) = 'file' THEN 1 ELSE 0 END) AS file_count,
-                    SUM(CASE WHEN lower(item_type) = 'folder' THEN 1 ELSE 0 END) AS folder_count,
-                    MAX(last_modified) AS last_modified
-             FROM sharepoint_items
-             WHERE source_key = :source_key
-               AND {$visible}
-             GROUP BY project_name
-             HAVING size_bytes > 0 OR file_count > 0
-             ORDER BY size_bytes DESC, LOWER(project_name) ASC"
-        );
-        $statement->execute([':source_key' => $sourceKey]);
+        $params = [$sourceKey];
+        $extFilter = '';
+        if ($extensions !== []) {
+            $extFilter = ' AND lower(item_type) = \'file\' AND ' . $this->extensionMatchSql($extensions, 'name', $params, 'pext');
+        }
+
+        if ($extensions === []) {
+            $statement = $this->pdo->prepare(
+                "SELECT project_name,
+                        SUM(CASE WHEN lower(item_type) = 'file' THEN COALESCE(size_bytes, 0) ELSE 0 END) AS size_bytes,
+                        SUM(CASE WHEN lower(item_type) = 'file' THEN 1 ELSE 0 END) AS file_count,
+                        SUM(CASE WHEN lower(item_type) = 'folder' THEN 1 ELSE 0 END) AS folder_count,
+                        MAX(last_modified) AS last_modified
+                 FROM sharepoint_items
+                 WHERE source_key = ?
+                   AND {$visible}
+                 GROUP BY project_name
+                 HAVING size_bytes > 0 OR file_count > 0
+                 ORDER BY size_bytes DESC, LOWER(project_name) ASC"
+            );
+        } else {
+            $statement = $this->pdo->prepare(
+                "SELECT project_name,
+                        SUM(COALESCE(size_bytes, 0)) AS size_bytes,
+                        COUNT(*) AS file_count,
+                        0 AS folder_count,
+                        MAX(last_modified) AS last_modified
+                 FROM sharepoint_items
+                 WHERE source_key = ?
+                   AND {$visible}
+                   {$extFilter}
+                 GROUP BY project_name
+                 HAVING size_bytes > 0 OR file_count > 0
+                 ORDER BY size_bytes DESC, LOWER(project_name) ASC"
+            );
+        }
+        $statement->execute($params);
         $rows = $statement->fetchAll() ?: [];
 
         $nodes = [];
@@ -180,24 +353,28 @@ final class SharePointSizeDashboard
             'level' => 'projects',
             'source_key' => $sourceKey,
             'source_title' => $sourceTitle,
+            'extensions' => $extensions,
             'kpis' => [
                 'total_bytes' => $totalBytes,
                 'file_count' => $totalFiles,
                 'project_count' => count($nodes),
             ],
             'nodes' => $nodes,
-            'large_files' => $this->topFiles([$sourceKey], null, null),
+            'large_files' => $this->topFiles([$sourceKey], null, null, $extensions),
         ];
     }
 
     /**
+     * @param list<string> $extensions
      * @return array<string, mixed>
      */
-    public function buildDrilldown(string $sourceKey, string $projectName, string $folderPath = ''): array
+    public function buildDrilldown(string $sourceKey, string $projectName, string $folderPath = '', array $extensions = []): array
     {
         $sourceKey = trim($sourceKey);
         $projectName = trim($projectName);
         $folderPath = trim(str_replace('\\', '/', $folderPath));
+        $extensions = $this->normalizeExtensions($extensions);
+        $extSet = $extensions === [] ? null : array_fill_keys($extensions, true);
         if ($sourceKey === '' || $projectName === '') {
             return $this->emptyDrilldown($sourceKey, $projectName, $folderPath);
         }
@@ -257,6 +434,9 @@ final class SharePointSizeDashboard
 
             if (count($segments) === 1 && $rel === $prefix . '/' . $childName) {
                 if ($itemType === 'file') {
+                    if ($extSet !== null && !isset($extSet[$this->fileExtension($name)])) {
+                        continue;
+                    }
                     $childFiles[$childName] = [
                         'key' => $childName,
                         'label' => $childName,
@@ -286,6 +466,9 @@ final class SharePointSizeDashboard
             }
 
             if ($itemType === 'file') {
+                if ($extSet !== null && !isset($extSet[$this->fileExtension($name)])) {
+                    continue;
+                }
                 $childPath = $prefix . '/' . $childName;
                 if (!isset($childFolders[$childPath])) {
                     $childFolders[$childPath] = [
@@ -304,6 +487,10 @@ final class SharePointSizeDashboard
 
         foreach ($rows as $row) {
             if (strtolower((string) ($row['item_type'] ?? '')) !== 'file') {
+                continue;
+            }
+            $name = trim((string) ($row['name'] ?? ''));
+            if ($extSet !== null && !isset($extSet[$this->fileExtension($name)])) {
                 continue;
             }
             $rel = trim(str_replace('\\', '/', (string) ($row['relative_path'] ?? '')));
@@ -326,6 +513,14 @@ final class SharePointSizeDashboard
             }
             $childFolders[$childPath]['size_bytes'] += $bytes;
             $childFolders[$childPath]['file_count']++;
+        }
+
+        // Drop empty folders when filtering by extension.
+        if ($extSet !== null) {
+            $childFolders = array_filter(
+                $childFolders,
+                static fn (array $f): bool => ((int) ($f['file_count'] ?? 0)) > 0 || ((int) ($f['size_bytes'] ?? 0)) > 0
+            );
         }
 
         $nodes = array_merge(array_values($childFolders), array_values($childFiles));
@@ -364,6 +559,7 @@ final class SharePointSizeDashboard
             'project_name' => $projectName,
             'folder_path' => $folderPath,
             'folder_url' => $folderUrl,
+            'extensions' => $extensions,
             'breadcrumb' => $breadcrumb,
             'kpis' => [
                 'total_bytes' => $totalBytes,
@@ -371,7 +567,7 @@ final class SharePointSizeDashboard
                 'item_count' => count($nodes),
             ],
             'nodes' => $nodes,
-            'large_files' => $this->topFiles([$sourceKey], $projectName, $folderPath),
+            'large_files' => $this->topFiles([$sourceKey], $projectName, $folderPath, $extensions),
         ];
     }
 
@@ -541,11 +737,13 @@ final class SharePointSizeDashboard
 
     /**
      * @param list<string> $sourceKeys
+     * @param list<string> $extensions
      * @return list<array<string, mixed>>
      */
-    private function topFiles(array $sourceKeys, ?string $projectName, ?string $folderPath): array
+    private function topFiles(array $sourceKeys, ?string $projectName, ?string $folderPath, array $extensions = []): array
     {
         $sourceKeys = $this->normalizeKeys($sourceKeys);
+        $extensions = $this->normalizeExtensions($extensions);
         if ($sourceKeys === []) {
             return [];
         }
@@ -564,6 +762,9 @@ final class SharePointSizeDashboard
             $extra .= ' AND (relative_path = ? OR relative_path LIKE ? ESCAPE \'\\\')';
             $params[] = $path;
             $params[] = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $path) . '/%';
+        }
+        if ($extensions !== []) {
+            $extra .= ' AND ' . $this->extensionMatchSql($extensions, 'name', $params, 'tfext');
         }
 
         $statement = $this->pdo->prepare(
@@ -593,6 +794,73 @@ final class SharePointSizeDashboard
         }
 
         return $out;
+    }
+
+    /**
+     * Last file extension from a name (lowercase), empty if none.
+     */
+    public function fileExtension(string $name): string
+    {
+        $base = basename(str_replace('\\', '/', $name));
+        $dot = strrpos($base, '.');
+        if ($dot === false || $dot <= 0 || $dot === strlen($base) - 1) {
+            return '';
+        }
+        $ext = strtolower(substr($base, $dot + 1));
+        if ($ext === '' || strlen($ext) > 15 || !preg_match('/^[a-z0-9]+$/', $ext)) {
+            return '';
+        }
+
+        return $ext;
+    }
+
+    /**
+     * @param list<string>|array<int, string> $extensions
+     * @return list<string>
+     */
+    public function normalizeExtensions(array $extensions): array
+    {
+        $out = [];
+        $count = 0;
+        foreach ($extensions as $ext) {
+            if ($count >= 200) {
+                break;
+            }
+            $ext = strtolower(ltrim(trim((string) $ext), '.'));
+            if ($ext === '' || strlen($ext) > 15 || !preg_match('/^[a-z0-9]+$/', $ext)) {
+                continue;
+            }
+            if (isset($out[$ext])) {
+                continue;
+            }
+            $out[$ext] = $ext;
+            $count++;
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Exact last-extension match (avoids LIKE '%.pdf' matching file.pdf.bak).
+     * Appends positional placeholders to $params.
+     *
+     * @param list<string> $extensions already normalized
+     * @param array<int, mixed> $params
+     */
+    private function extensionMatchSql(array $extensions, string $column, array &$params, string $prefix = 'ext'): string
+    {
+        unset($prefix);
+        if ($extensions === []) {
+            return '1=1';
+        }
+        $ors = [];
+        foreach ($extensions as $ext) {
+            $len = strlen($ext) + 1;
+            $params[] = '.' . $ext;
+            $ors[] = "(LENGTH({$column}) > {$len} AND LOWER(SUBSTR({$column}, -{$len})) = ?)";
+        }
+
+        return '(' . implode(' OR ', $ors) . ')';
     }
 
     /**
@@ -728,6 +996,30 @@ final class SharePointSizeDashboard
             ],
             'by_catalog' => [],
             'duplicate_groups' => [],
+        ];
+    }
+
+    /**
+     * @param list<array{source_key: string, title: string}> $sources
+     * @return array<string, mixed>
+     */
+    private function emptyFileTypes(array $sources): array
+    {
+        return [
+            'level' => 'types',
+            'sources' => $sources,
+            'kpis' => [
+                'total_bytes' => 0,
+                'file_count' => 0,
+                'type_count' => 0,
+                'largest_bytes' => 0,
+                'largest_label' => '',
+                'no_extension_count' => 0,
+                'no_extension_bytes' => 0,
+            ],
+            'types' => [],
+            'nodes' => [],
+            'large_files' => [],
         ];
     }
 }

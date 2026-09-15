@@ -158,7 +158,7 @@ final class AppModules
         if ($path === 'sharepoint.php' || str_starts_with($path, 'sharepoint.php')) {
             $view = (string) ($queryParams['view'] ?? '');
             $action = (string) ($queryParams['action'] ?? '');
-            if ($view === 'heatmap' || $action === 'size_stats') {
+            if ($view === 'heatmap' || $action === 'size_stats' || $action === 'file_type_stats') {
                 return self::STORAGE;
             }
             return self::SHAREPOINT;

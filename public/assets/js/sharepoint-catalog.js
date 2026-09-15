@@ -7763,6 +7763,8 @@
     }
   };
 
+  let syncCriteriaOpenButton = () => {};
+
   const updateControlsVisibility = () => {
     if (controls) controls.hidden = false;
     syncAdvancedPanel();
@@ -7838,6 +7840,7 @@
       presenceWrap.hidden = !showPresence;
       presenceWrap.classList.toggle('is-hidden', !showPresence);
     }
+    syncCriteriaOpenButton();
   };
 
   /** @type {{ rows: array, query: string, refine: string, deep: boolean, fuzzy: boolean, wordMode: string, matchScope: string, scopeKeys: string[], itemCount: number, ready: boolean, searching: boolean } | null} */
@@ -9384,15 +9387,525 @@
     window.setTimeout(() => hideSuggestions(), 120);
   });
 
+  const criteriaDialog = document.getElementById('sharepoint-search-criteria-dialog');
+  const criteriaOpenBtn = document.getElementById('sharepoint-search-criteria-open');
+  const criteriaForm = document.getElementById('sharepoint-search-criteria-form');
+  const criteriaEls = {
+    words: document.getElementById('sp-criteria-words'),
+    phrase: document.getElementById('sp-criteria-phrase'),
+    exclude: document.getElementById('sp-criteria-exclude'),
+    tag: document.getElementById('sp-criteria-tag'),
+    ext: document.getElementById('sp-criteria-ext'),
+    person: document.getElementById('sp-criteria-person'),
+    path: document.getElementById('sp-criteria-path'),
+    has: document.getElementById('sp-criteria-has'),
+    lacks: document.getElementById('sp-criteria-lacks'),
+    refine: document.getElementById('sp-criteria-refine'),
+    date: document.getElementById('sp-criteria-date'),
+    dateFrom: document.getElementById('sp-criteria-date-from'),
+    dateTo: document.getElementById('sp-criteria-date-to'),
+    dateFromWrap: document.getElementById('sp-criteria-date-from-wrap'),
+    dateToWrap: document.getElementById('sp-criteria-date-to-wrap'),
+    who: document.getElementById('sp-criteria-who'),
+    presence: document.getElementById('sp-criteria-presence'),
+    presenceWrap: document.getElementById('sp-criteria-presence-wrap'),
+    missing: document.getElementById('sp-criteria-missing'),
+    missingWrap: document.getElementById('sp-criteria-missing-wrap'),
+    hasFilter: document.getElementById('sp-criteria-has-filter'),
+    lacksFilter: document.getElementById('sp-criteria-lacks-filter'),
+    preview: document.getElementById('sp-criteria-preview'),
+    tagPicks: document.getElementById('sp-criteria-tag-picks'),
+    tagList: document.getElementById('sp-criteria-tag-list'),
+    personList: document.getElementById('sp-criteria-person-list'),
+    typeChips: document.getElementById('sp-criteria-type-chips'),
+    wordMode: document.getElementById('sp-criteria-word-mode'),
+    scope: document.getElementById('sp-criteria-match-scope'),
+    fuzzy: document.getElementById('sp-criteria-fuzzy'),
+    deep: document.getElementById('sp-criteria-deep'),
+    favorites: document.getElementById('sp-criteria-favorites'),
+    archived: document.getElementById('sp-criteria-archived'),
+  };
+  const criteriaDraft = {
+    types: [],
+    wordMode: 'and',
+    fuzzy: false,
+    deep: true,
+    favorites: false,
+    archived: false,
+    scope: 'all',
+  };
+  const criteriaShortcutIsMac = /Mac|iPhone|iPad/.test(String(navigator.platform || navigator.userAgent || ''));
+
+  const quoteSearchValue = (value) => {
+    const v = String(value || '').trim();
+    if (!v) return '';
+    return /[\s":]/.test(v) ? `"${v.replace(/"/g, '')}"` : v;
+  };
+
+  const splitCriteriaList = (value) =>
+    String(value || '')
+      .split(/[,]+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+  const composeCriteriaQuery = () => {
+    const parts = [];
+    const words = String(criteriaEls.words?.value || '').trim();
+    if (words) parts.push(words);
+    const phrase = String(criteriaEls.phrase?.value || '').trim();
+    if (phrase) parts.push(`"${phrase.replace(/"/g, '')}"`);
+    splitCriteriaList(criteriaEls.exclude?.value).forEach((term) => {
+      const clean = term.replace(/^-+/, '').trim();
+      if (!clean) return;
+      parts.push(/\s/.test(clean) ? `-"${clean.replace(/"/g, '')}"` : `-${clean}`);
+    });
+    splitCriteriaList(criteriaEls.tag?.value).forEach((tag) => {
+      parts.push(`tag:${quoteSearchValue(tag)}`);
+    });
+    splitCriteriaList(criteriaEls.ext?.value).forEach((ext) => {
+      const clean = ext.replace(/^\.+/, '').toLowerCase();
+      if (clean) parts.push(`ext:${clean}`);
+    });
+    const person = String(criteriaEls.person?.value || '').trim();
+    if (person) parts.push(`person:${quoteSearchValue(person)}`);
+    splitCriteriaList(criteriaEls.path?.value).forEach((path) => {
+      parts.push(`path:${quoteSearchValue(path)}`);
+    });
+    splitCriteriaList(criteriaEls.has?.value).forEach((trait) => {
+      parts.push(`has:${String(trait).toLowerCase()}`);
+    });
+    splitCriteriaList(criteriaEls.lacks?.value).forEach((trait) => {
+      parts.push(`lacks:${String(trait).toLowerCase()}`);
+    });
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
+
+  const syncCriteriaTypeChips = () => {
+    criteriaEls.typeChips?.querySelectorAll('[data-criteria-type]').forEach((btn) => {
+      const key = btn.getAttribute('data-criteria-type') || '';
+      const active = criteriaDraft.types.includes(key);
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  };
+
+  const syncCriteriaToggle = (btn, active) => {
+    if (!btn) return;
+    btn.classList.toggle('is-active', !!active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  };
+
+  const syncCriteriaOptionToggles = () => {
+    criteriaEls.wordMode?.querySelectorAll('[data-criteria-word-mode]').forEach((btn) => {
+      const active = btn.getAttribute('data-criteria-word-mode') === criteriaDraft.wordMode;
+      syncCriteriaToggle(btn, active);
+    });
+    criteriaEls.scope?.querySelectorAll('[data-criteria-scope]').forEach((btn) => {
+      const active = btn.getAttribute('data-criteria-scope') === criteriaDraft.scope;
+      syncCriteriaToggle(btn, active);
+    });
+    syncCriteriaToggle(criteriaEls.fuzzy, criteriaDraft.fuzzy);
+    syncCriteriaToggle(criteriaEls.deep, criteriaDraft.deep);
+    syncCriteriaToggle(criteriaEls.favorites, criteriaDraft.favorites);
+    syncCriteriaToggle(criteriaEls.archived, criteriaDraft.archived);
+  };
+
+  const syncCriteriaDateWraps = () => {
+    const custom = (criteriaEls.date?.value || '') === 'custom';
+    [criteriaEls.dateFromWrap, criteriaEls.dateToWrap].forEach((wrap) => {
+      if (!wrap) return;
+      wrap.hidden = !custom;
+      wrap.classList.toggle('is-hidden', !custom);
+    });
+  };
+
+  const syncCriteriaPresenceWraps = () => {
+    const showPresence = !!(presenceWrap && !presenceWrap.hidden);
+    if (criteriaEls.presenceWrap) {
+      criteriaEls.presenceWrap.hidden = !showPresence;
+    }
+    const showMissing = showPresence && (criteriaEls.presence?.value || '') === 'missing';
+    if (criteriaEls.missingWrap) {
+      criteriaEls.missingWrap.hidden = !showMissing;
+      criteriaEls.missingWrap.classList.toggle('is-hidden', !showMissing);
+    }
+  };
+
+  const selectedCriteriaTags = () =>
+    new Set(splitCriteriaList(criteriaEls.tag?.value).map((tag) => tag.toLowerCase()));
+
+  const renderCriteriaTagPicks = () => {
+    const root = criteriaEls.tagPicks;
+    if (!root) return;
+    const tags = (state.allTags || []).slice(0, 16);
+    if (!tags.length) {
+      root.hidden = true;
+      root.innerHTML = '';
+      return;
+    }
+    const selected = selectedCriteriaTags();
+    root.hidden = false;
+    root.innerHTML = tags
+      .map((tag) => {
+        const label = String(tag.label || '').trim();
+        if (!label) return '';
+        const active = selected.has(label.toLowerCase()) || selected.has(String(tag.slug || '').toLowerCase());
+        return `<button type="button" class="sp-dialog-chip${active ? ' is-active' : ''}" data-criteria-tag="${escapeHtml(label)}" aria-pressed="${active ? 'true' : 'false'}">${escapeHtml(label)}</button>`;
+      })
+      .join('');
+  };
+
+  const fillCriteriaDatalists = () => {
+    if (criteriaEls.tagList) {
+      criteriaEls.tagList.innerHTML = (state.allTags || [])
+        .map((tag) => {
+          const label = String(tag.label || '').trim();
+          return label ? `<option value="${escapeHtml(label)}"></option>` : '';
+        })
+        .join('');
+    }
+    if (criteriaEls.personList) {
+      const names = new Set();
+      state.projects.forEach((project) => {
+        [project.modified_by, project.person].forEach((name) => {
+          const display = String(name || '').trim();
+          if (display) names.add(display);
+        });
+      });
+      criteriaEls.personList.innerHTML = [...names]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+        .slice(0, 80)
+        .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+        .join('');
+    }
+  };
+
+  const copySelectOptions = (from, to, value) => {
+    if (!from || !to) return;
+    to.innerHTML = from.innerHTML;
+    const next = String(value || '');
+    if ([...to.options].some((opt) => opt.value === next)) to.value = next;
+    else to.value = '';
+  };
+
+  const updateCriteriaPreview = () => {
+    const query = composeCriteriaQuery();
+    const bits = [];
+    if (query) bits.push(query);
+    if (criteriaDraft.types.length) bits.push(`types:${criteriaDraft.types.join(',')}`);
+    if (criteriaDraft.wordMode === 'or') bits.push('OR');
+    if (criteriaDraft.fuzzy) bits.push('fuzzy');
+    if (!criteriaDraft.deep) bits.push('deep off');
+    if (criteriaEls.preview) {
+      const code = criteriaEls.preview.querySelector('code');
+      if (code) code.textContent = bits.join(' · ') || '(all projects)';
+      else criteriaEls.preview.innerHTML = `Find: <code>${escapeHtml(bits.join(' · ') || '(all projects)')}</code>`;
+    }
+    renderCriteriaTagPicks();
+  };
+
+  const fillCriteriaFromState = () => {
+    const parsed = parseActiveQuery();
+    const extraPhrases = (parsed.phrases || []).slice(1).map((phrase) => `"${phrase}"`);
+    const leftover = [];
+    if (parsed.modifiedBy) leftover.push(`modified:${quoteSearchValue(parsed.modifiedBy)}`);
+    if (parsed.createdBy) leftover.push(`created:${quoteSearchValue(parsed.createdBy)}`);
+    (parsed.types || []).forEach((type) => {
+      if (TYPE_CHIP_KEYS.has(type)) return;
+      leftover.push(`type:${type}`);
+    });
+    if (criteriaEls.words) {
+      criteriaEls.words.value = [...(parsed.words || []), ...extraPhrases, ...leftover].join(' ');
+    }
+    if (criteriaEls.phrase) criteriaEls.phrase.value = parsed.phrases?.[0] || '';
+    if (criteriaEls.exclude) criteriaEls.exclude.value = (parsed.excludes || []).join(', ');
+    if (criteriaEls.tag) criteriaEls.tag.value = (parsed.tags || []).join(', ');
+    if (criteriaEls.ext) criteriaEls.ext.value = (parsed.extensions || []).join(', ');
+    if (criteriaEls.person) criteriaEls.person.value = parsed.person || '';
+    if (criteriaEls.path) criteriaEls.path.value = (parsed.paths || []).join(', ');
+    if (criteriaEls.has) criteriaEls.has.value = (parsed.has || []).join(', ');
+    if (criteriaEls.lacks) criteriaEls.lacks.value = (parsed.lacks || []).join(', ');
+    if (criteriaEls.refine) criteriaEls.refine.value = state.refine || '';
+    const mappedTypes = (parsed.types || []).filter((type) => TYPE_CHIP_KEYS.has(type));
+    criteriaDraft.types = [...new Set([...(state.types || []), ...mappedTypes])];
+    criteriaDraft.wordMode = state.wordMode === 'or' ? 'or' : 'and';
+    criteriaDraft.fuzzy = !!state.fuzzy;
+    criteriaDraft.deep = state.deep !== false;
+    criteriaDraft.favorites = !!state.showFavorites;
+    criteriaDraft.archived = !!state.showArchived;
+    criteriaDraft.scope = MATCH_SCOPES.has(state.matchScope) ? state.matchScope : 'all';
+    if (criteriaEls.date) criteriaEls.date.value = DATE_PRESETS.has(state.datePreset) ? state.datePreset : '';
+    if (criteriaEls.dateFrom) criteriaEls.dateFrom.value = state.dateFrom || '';
+    if (criteriaEls.dateTo) criteriaEls.dateTo.value = state.dateTo || '';
+    if (criteriaEls.hasFilter) criteriaEls.hasFilter.value = HAS_LACK_KEYS.has(state.has) ? state.has : '';
+    if (criteriaEls.lacksFilter) criteriaEls.lacksFilter.value = HAS_LACK_KEYS.has(state.lacks) ? state.lacks : '';
+    if (criteriaEls.presence) criteriaEls.presence.value = PRESENCE_MODES.has(state.presence) ? state.presence : 'any';
+    copySelectOptions(personFilterEl, criteriaEls.who, state.who || '');
+    copySelectOptions(missingSourceEl, criteriaEls.missing, state.missingSource || '');
+    if (criteriaEls.favorites) criteriaEls.favorites.hidden = !favoritesToggle;
+    if (criteriaEls.archived) criteriaEls.archived.hidden = !archivedToggle;
+    fillCriteriaDatalists();
+    syncCriteriaTypeChips();
+    syncCriteriaOptionToggles();
+    syncCriteriaDateWraps();
+    syncCriteriaPresenceWraps();
+    updateCriteriaPreview();
+  };
+
+  const resetCriteriaFields = () => {
+    [
+      criteriaEls.words,
+      criteriaEls.phrase,
+      criteriaEls.exclude,
+      criteriaEls.tag,
+      criteriaEls.ext,
+      criteriaEls.person,
+      criteriaEls.path,
+      criteriaEls.has,
+      criteriaEls.lacks,
+      criteriaEls.refine,
+      criteriaEls.dateFrom,
+      criteriaEls.dateTo,
+    ].forEach((el) => {
+      if (el) el.value = '';
+    });
+    if (criteriaEls.date) criteriaEls.date.value = '';
+    if (criteriaEls.who) criteriaEls.who.value = '';
+    if (criteriaEls.presence) criteriaEls.presence.value = 'any';
+    if (criteriaEls.hasFilter) criteriaEls.hasFilter.value = '';
+    if (criteriaEls.lacksFilter) criteriaEls.lacksFilter.value = '';
+    criteriaDraft.types = [];
+    criteriaDraft.wordMode = 'and';
+    criteriaDraft.fuzzy = false;
+    criteriaDraft.deep = true;
+    criteriaDraft.favorites = false;
+    criteriaDraft.archived = false;
+    criteriaDraft.scope = 'all';
+    syncCriteriaTypeChips();
+    syncCriteriaOptionToggles();
+    syncCriteriaDateWraps();
+    syncCriteriaPresenceWraps();
+    updateCriteriaPreview();
+    criteriaEls.words?.focus();
+  };
+
+  const closeCriteriaDialog = () => {
+    if (!criteriaDialog?.open) return;
+    if (typeof criteriaDialog.close === 'function') criteriaDialog.close();
+    else criteriaDialog.removeAttribute('open');
+    criteriaOpenBtn?.setAttribute('aria-expanded', 'false');
+  };
+
+  const applyCriteriaDialog = () => {
+    state.query = composeCriteriaQuery();
+    state.refine = String(criteriaEls.refine?.value || '').trim();
+    state.types = [...criteriaDraft.types];
+    state.wordMode = criteriaDraft.wordMode === 'or' ? 'or' : 'and';
+    state.fuzzy = !!criteriaDraft.fuzzy;
+    state.deep = criteriaDraft.deep !== false;
+    state.showFavorites = !!criteriaDraft.favorites;
+    state.showArchived = !!criteriaDraft.archived;
+    state.matchScope = MATCH_SCOPES.has(criteriaDraft.scope) ? criteriaDraft.scope : 'all';
+    state.datePreset = DATE_PRESETS.has(criteriaEls.date?.value) ? criteriaEls.date.value : '';
+    state.dateFrom = String(criteriaEls.dateFrom?.value || '');
+    state.dateTo = String(criteriaEls.dateTo?.value || '');
+    state.who = String(criteriaEls.who?.value || '');
+    state.presence = PRESENCE_MODES.has(criteriaEls.presence?.value) ? criteriaEls.presence.value : 'any';
+    state.missingSource = String(criteriaEls.missing?.value || '');
+    state.has = HAS_LACK_KEYS.has(criteriaEls.hasFilter?.value) ? criteriaEls.hasFilter.value : '';
+    state.lacks = HAS_LACK_KEYS.has(criteriaEls.lacksFilter?.value) ? criteriaEls.lacksFilter.value : '';
+    try {
+      localStorage.setItem(STORAGE.wordMode, state.wordMode);
+      localStorage.setItem(STORAGE.fuzzy, state.fuzzy ? '1' : '0');
+      localStorage.setItem(STORAGE.deep, state.deep ? '1' : '0');
+      if (favoritesToggle) localStorage.setItem(STORAGE.favorites, state.showFavorites ? '1' : '0');
+      if (archivedToggle) localStorage.setItem(STORAGE.archived, state.showArchived ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    if (archivedToggle) {
+      searchRoot.dataset.showArchived = state.showArchived ? '1' : '0';
+      state.projects = state.projects.map((project) => prepareSearchProject(project));
+    }
+    if (
+      state.matchScope !== 'all' ||
+      state.datePreset ||
+      state.who ||
+      (state.presence && state.presence !== 'any') ||
+      state.has ||
+      state.lacks
+    ) {
+      setAdvancedOpen(true);
+    }
+    hideSuggestions();
+    closeCriteriaDialog();
+    applySearch({ resetPage: true, syncInputs: true });
+    if (state.query.trim().length >= RECENT_MIN_LEN) rememberRecentSearch(state.query);
+  };
+
+  const openCriteriaDialog = () => {
+    if (!criteriaDialog) return;
+    populatePersonFilter();
+    fillCriteriaFromState();
+    if (typeof criteriaDialog.showModal === 'function') criteriaDialog.showModal();
+    else criteriaDialog.setAttribute('open', '');
+    criteriaOpenBtn?.setAttribute('aria-expanded', 'true');
+    window.requestAnimationFrame(() => {
+      criteriaEls.words?.focus();
+      criteriaEls.words?.select();
+    });
+  };
+
+  syncCriteriaOpenButton = () => {
+    if (!criteriaOpenBtn) return;
+    const parsed = parseActiveQuery();
+    const active = !!(
+      state.query.trim() ||
+      state.refine.trim() ||
+      state.types.length ||
+      parsed.tags?.length ||
+      parsed.extensions?.length ||
+      parsed.person ||
+      parsed.paths?.length ||
+      parsed.has?.length ||
+      parsed.lacks?.length ||
+      state.datePreset ||
+      state.who ||
+      state.has ||
+      state.lacks ||
+      (state.presence && state.presence !== 'any')
+    );
+    criteriaOpenBtn.classList.toggle('is-active', active);
+  };
+
+  if (criteriaOpenBtn && criteriaShortcutIsMac) {
+    const kbd = criteriaOpenBtn.querySelector('.sharepoint-search-criteria-kbd');
+    if (kbd) kbd.textContent = '⌘K';
+  }
+
+  criteriaOpenBtn?.addEventListener('click', () => {
+    if (criteriaDialog?.open) closeCriteriaDialog();
+    else openCriteriaDialog();
+  });
+  document.getElementById('sharepoint-search-criteria-close')?.addEventListener('click', () => closeCriteriaDialog());
+  document.getElementById('sharepoint-search-criteria-cancel')?.addEventListener('click', () => closeCriteriaDialog());
+  document.getElementById('sharepoint-search-criteria-reset')?.addEventListener('click', () => resetCriteriaFields());
+  criteriaForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    applyCriteriaDialog();
+  });
+  criteriaDialog?.addEventListener('close', () => {
+    criteriaOpenBtn?.setAttribute('aria-expanded', 'false');
+  });
+  criteriaDialog?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeCriteriaDialog();
+  });
+  criteriaForm?.addEventListener('input', () => {
+    syncCriteriaDateWraps();
+    syncCriteriaPresenceWraps();
+    updateCriteriaPreview();
+  });
+  criteriaForm?.addEventListener('change', () => {
+    syncCriteriaDateWraps();
+    syncCriteriaPresenceWraps();
+    updateCriteriaPreview();
+  });
+  criteriaEls.typeChips?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-criteria-type]');
+    if (!btn) return;
+    const key = btn.getAttribute('data-criteria-type') || '';
+    if (!TYPE_CHIP_KEYS.has(key)) return;
+    if (criteriaDraft.types.includes(key)) {
+      criteriaDraft.types = criteriaDraft.types.filter((item) => item !== key);
+    } else {
+      criteriaDraft.types = [...criteriaDraft.types, key];
+    }
+    syncCriteriaTypeChips();
+    updateCriteriaPreview();
+  });
+  criteriaEls.tagPicks?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-criteria-tag]');
+    if (!btn || !criteriaEls.tag) return;
+    const label = btn.getAttribute('data-criteria-tag') || '';
+    if (!label) return;
+    const current = splitCriteriaList(criteriaEls.tag.value);
+    const lower = label.toLowerCase();
+    const exists = current.some((item) => item.toLowerCase() === lower);
+    criteriaEls.tag.value = exists
+      ? current.filter((item) => item.toLowerCase() !== lower).join(', ')
+      : [...current, label].join(', ');
+    updateCriteriaPreview();
+  });
+  criteriaEls.wordMode?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-criteria-word-mode]');
+    if (!btn) return;
+    criteriaDraft.wordMode = btn.getAttribute('data-criteria-word-mode') === 'or' ? 'or' : 'and';
+    syncCriteriaOptionToggles();
+    updateCriteriaPreview();
+  });
+  criteriaEls.scope?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-criteria-scope]');
+    if (!btn) return;
+    const next = btn.getAttribute('data-criteria-scope') || 'all';
+    criteriaDraft.scope = MATCH_SCOPES.has(next) ? next : 'all';
+    syncCriteriaOptionToggles();
+    updateCriteriaPreview();
+  });
+  criteriaEls.fuzzy?.addEventListener('click', () => {
+    criteriaDraft.fuzzy = !criteriaDraft.fuzzy;
+    syncCriteriaOptionToggles();
+    updateCriteriaPreview();
+  });
+  criteriaEls.deep?.addEventListener('click', () => {
+    criteriaDraft.deep = !criteriaDraft.deep;
+    syncCriteriaOptionToggles();
+    updateCriteriaPreview();
+  });
+  criteriaEls.favorites?.addEventListener('click', () => {
+    criteriaDraft.favorites = !criteriaDraft.favorites;
+    syncCriteriaOptionToggles();
+    updateCriteriaPreview();
+  });
+  criteriaEls.archived?.addEventListener('click', () => {
+    criteriaDraft.archived = !criteriaDraft.archived;
+    syncCriteriaOptionToggles();
+    updateCriteriaPreview();
+  });
+
+  window.RiskRegisterSharePoint = Object.assign(window.RiskRegisterSharePoint || {}, {
+    openSearchCriteriaDialog: () => openCriteriaDialog(),
+  });
+
   document.addEventListener('keydown', (event) => {
+    if ((event.key === 'k' || event.key === 'K') && (event.ctrlKey || event.metaKey) && !event.altKey) {
+      if (!searchRoot.contains(event.target) && event.target !== document.body && !criteriaDialog?.contains(event.target)) {
+        const tag = String(event.target?.tagName || '').toLowerCase();
+        if (tag === 'textarea' || (tag === 'input' && event.target !== input && event.target !== refineInput)) return;
+      }
+      event.preventDefault();
+      if (criteriaDialog?.open) {
+        criteriaEls.words?.focus();
+        criteriaEls.words?.select();
+      } else {
+        openCriteriaDialog();
+      }
+      return;
+    }
     if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       if (isTypingTarget(event.target)) return;
       event.preventDefault();
+      if (criteriaDialog?.open) {
+        criteriaEls.words?.focus();
+        criteriaEls.words?.select();
+        return;
+      }
       input?.focus();
       input?.select();
       return;
     }
     if (event.key === 'Escape') {
+      if (criteriaDialog?.open) return;
       if (state.suggestOpen) {
         hideSuggestions();
         return;

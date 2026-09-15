@@ -20926,6 +20926,96 @@ html.is-compact .help-reader-toolbar {
 .sp-size-tab-panel.is-active {
     display: grid;
 }
+
+/* File-type storage heatmap */
+.sp-file-type-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.sp-file-type-help {
+    margin: 0;
+    max-width: 42rem;
+}
+.sp-file-type-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.sp-file-type-ext-scopes {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(248, 250, 252, 0.85);
+}
+.sp-file-type-ext-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.sp-file-type-ext-search {
+    min-width: 140px;
+    max-width: 220px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    background: #fff;
+    font: inherit;
+}
+.sp-file-type-ext-search:focus {
+    outline: 2px solid rgba(15, 118, 110, 0.35);
+    border-color: var(--accent, #0f766e);
+}
+.sp-file-type-ext-list {
+    max-height: 160px;
+    overflow: auto;
+    align-content: start;
+}
+.sp-file-type-ext-chip {
+    gap: 6px;
+}
+.sp-file-type-ext-emoji {
+    flex: 0 0 auto;
+}
+.sp-file-type-ext-label {
+    font-weight: 650;
+}
+.sp-file-type-ext-code {
+    font-size: 0.78em;
+    color: #64748b;
+    background: rgba(15, 23, 42, 0.05);
+    padding: 1px 5px;
+    border-radius: 6px;
+}
+.sp-file-type-ext-badge {
+    margin-left: 2px;
+    font-size: 0.78em;
+    font-weight: 700;
+    color: var(--accent, #0f766e);
+    background: rgba(15, 118, 110, 0.1);
+    padding: 1px 6px;
+    border-radius: 999px;
+}
+.sp-file-type-ext-chip.is-active .sp-file-type-ext-badge {
+    background: rgba(15, 118, 110, 0.18);
+}
+.sp-file-type-ext-clear {
+    padding: 6px 10px;
+}
+.sp-file-type-file-ext {
+    white-space: nowrap;
+}
+.sp-file-type-ext-scopes[hidden],
+#sp-file-type-back[hidden],
+.sp-file-type-scopes[hidden] {
+    display: none !important;
+}
 .sp-duplicates-toolbar {
     display: flex;
     align-items: flex-start;
