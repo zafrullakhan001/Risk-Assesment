@@ -572,8 +572,15 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                             <div class="sharepoint-compare-bar" id="sharepoint-compare-bar">
                                 <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
                                 <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
+                                <button type="button" class="button ghost sharepoint-export-selected is-hidden" data-export-format="csv" data-export-scope="selected" hidden disabled title="Download the checked projects as CSV">⬇️ CSV</button>
+                                <button type="button" class="button ghost sharepoint-export-selected is-hidden" data-export-format="json" data-export-scope="selected" hidden disabled title="Download the checked projects as JSON">⬇️ JSON</button>
                                 <button type="button" class="button ghost" id="sharepoint-compare-clear" hidden>Clear selection</button>
                             </div>
+                            <?php
+                            $exportPickerClass = 'sharepoint-export-picker--toolbar';
+                            $exportToggleClass = 'button ghost sp-adv-export';
+                            require __DIR__ . '/includes/sharepoint-export-picker.php';
+                            ?>
                             <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
                         </div>
                     </summary>

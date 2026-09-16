@@ -3027,14 +3027,23 @@ $soloPageClass = $ownerSolo
                             <span class="sharepoint-compare-hint" id="sharepoint-compare-hint">Select 2–3 folders to compare side by side</span>
                             <button type="button" class="button button-primary" id="sharepoint-compare-open" disabled>⚖️ Compare selected</button>
                             <button type="button" class="button ghost is-hidden" id="sharepoint-favorites-add" hidden disabled title="Add the selected projects to favorites">★ Add selected</button>
+                            <button type="button" class="button ghost sharepoint-export-selected is-hidden" data-export-format="csv" data-export-scope="selected" hidden disabled title="Download the checked projects as CSV">⬇️ CSV</button>
+                            <button type="button" class="button ghost sharepoint-export-selected is-hidden" data-export-format="json" data-export-scope="selected" hidden disabled title="Download the checked projects as JSON">⬇️ JSON</button>
                             <button type="button" class="button ghost" id="sharepoint-compare-clear" hidden>Clear selection</button>
                         </div>
                         <div class="sharepoint-favorites-bar is-hidden" id="sharepoint-favorites-bar" hidden>
                             <button type="button" class="button ghost" id="sharepoint-favorites-select-all" title="Select all filtered favorites">Select all</button>
                             <span class="sharepoint-favorites-hint" id="sharepoint-favorites-hint">0 selected</span>
+                            <button type="button" class="button ghost sharepoint-export-selected is-hidden" data-export-format="csv" data-export-scope="selected" hidden disabled title="Download the checked favorites as CSV">⬇️ CSV</button>
+                            <button type="button" class="button ghost sharepoint-export-selected is-hidden" data-export-format="json" data-export-scope="selected" hidden disabled title="Download the checked favorites as JSON">⬇️ JSON</button>
                             <button type="button" class="button ghost is-danger" id="sharepoint-favorites-remove" disabled title="Remove the selected project favorites">Remove selected</button>
                             <button type="button" class="button ghost is-danger" id="sharepoint-favorites-clear-all" title="Remove every project favorite">Clear all</button>
                         </div>
+                        <?php
+                        $exportPickerClass = 'sharepoint-export-picker--toolbar';
+                        $exportToggleClass = 'button ghost sp-adv-export';
+                        require __DIR__ . '/includes/sharepoint-export-picker.php';
+                        ?>
                         <?php if (!$catalogSolo): ?>
                             <span class="sharepoint-sources-collapse-hint" aria-hidden="true"></span>
                         <?php endif; ?>
@@ -3126,7 +3135,7 @@ $soloPageClass = $ownerSolo
                                     <tr class="sharepoint-project-row" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>" tabindex="0">
                                         <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
                                             <label class="sharepoint-row-select">
-                                                <input type="checkbox" class="sharepoint-compare-check" value="<?= e($selectId) ?>" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>" aria-label="Select <?= e($projectName) ?> for compare">
+                                                <input type="checkbox" class="sharepoint-compare-check" value="<?= e($selectId) ?>" data-project-name="<?= e($projectName) ?>" data-source-key="<?= e($activeSourceKey) ?>" aria-label="Select <?= e($projectName) ?> to export or compare">
                                             </label>
                                         </td>
                                         <td data-col="name">

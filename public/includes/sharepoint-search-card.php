@@ -326,7 +326,11 @@ $showSectionMove = !empty($showSectionMove) && empty($searchCardPublic);
                     </label>
                     <div class="sp-adv-actions">
                         <button type="button" class="button ghost sp-adv-save" id="sharepoint-save-search" title="Pin this query + filters so you can reopen it later from Saved">📌 Save search</button>
-                        <button type="button" class="button ghost sp-adv-export" id="sharepoint-export-csv" title="Download all matching projects as a CSV (full filtered set, not just this page)">⬇️ Export CSV</button>
+                        <?php
+                        $exportPickerClass = 'sp-adv-export-picker';
+                        $exportToggleClass = 'button ghost sp-adv-export';
+                        require __DIR__ . '/sharepoint-export-picker.php';
+                        ?>
                     </div>
                 </div>
                 </div>

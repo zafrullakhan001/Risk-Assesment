@@ -5822,7 +5822,6 @@
   const hasFilterEl = document.getElementById('sharepoint-has-filter');
   const lacksFilterEl = document.getElementById('sharepoint-lacks-filter');
   const saveSearchBtn = document.getElementById('sharepoint-save-search');
-  const exportCsvBtn = document.getElementById('sharepoint-export-csv');
   const savedRoot = document.getElementById('sharepoint-saved-searches');
   const savedChips = document.getElementById('sharepoint-saved-chips');
   const statsEl = document.getElementById('sharepoint-search-stats');
@@ -7009,22 +7008,22 @@
     if (compareHintEl) {
       if (canFavSelect) {
         if (count === 0) {
-          compareHintEl.textContent = 'Select projects to favorite, or pick 2–3 to compare';
+          compareHintEl.textContent = 'Select projects to export, favorite, or pick 2–3 to compare';
         } else if (count === 1) {
-          compareHintEl.textContent = '1 selected — add to favorites, or pick 1–2 more to compare';
+          compareHintEl.textContent = '1 selected — export, add to favorites, or pick 1–2 more to compare';
         } else if (count >= MIN_COMPARE && count <= MAX_COMPARE) {
-          compareHintEl.textContent = `${count} selected — compare or add to favorites`;
+          compareHintEl.textContent = `${count} selected — export, compare, or add to favorites`;
         } else {
-          compareHintEl.textContent = `${count} selected — add to favorites (compare needs 2–3)`;
+          compareHintEl.textContent = `${count} selected — export or add to favorites (compare needs 2–3)`;
         }
       } else if (count === 0) {
-        compareHintEl.textContent = 'Select 2–3 folders to compare side by side';
+        compareHintEl.textContent = 'Select folders to export, or pick 2–3 to compare side by side';
       } else if (count === 1) {
-        compareHintEl.textContent = '1 selected — pick 1 or 2 more catalog folders';
+        compareHintEl.textContent = '1 selected — export, or pick 1 or 2 more catalog folders to compare';
       } else if (count === 2) {
-        compareHintEl.textContent = '2 selected — compare now, or pick a 3rd folder';
+        compareHintEl.textContent = '2 selected — export or compare now, or pick a 3rd folder';
       } else {
-        compareHintEl.textContent = `${count} selected — ready to compare`;
+        compareHintEl.textContent = `${count} selected — export or compare`;
       }
     }
     if (compareOpenBtn) {
@@ -7089,9 +7088,12 @@
     }
   };
 
+  let syncExportUi = () => {};
+
   const syncSelectionBars = () => {
     syncCompareBar();
     syncFavoritesBar();
+    syncExportUi();
   };
 
   const refreshRowSelectionUi = () => {
@@ -7101,9 +7103,9 @@
       input.checked = state.selected.has(input.value);
       input.closest('.sharepoint-project-row')?.classList.toggle('is-compare-selected', input.checked);
       const name = input.getAttribute('data-project-name') || 'project';
-      let label = `Select ${name} for compare`;
-      if (favMode) label = `Select ${name} to remove from favorites`;
-      else if (canFavSelect) label = `Select ${name} to favorite or compare`;
+      let label = `Select ${name} to export or compare`;
+      if (favMode) label = `Select ${name} to export or remove from favorites`;
+      else if (canFavSelect) label = `Select ${name} to export, favorite, or compare`;
       input.setAttribute('aria-label', label);
     });
   };
@@ -8539,46 +8541,312 @@
     return text;
   };
 
-  const exportFilteredCsv = () => {
-    const rows = filteredProjects();
+  const downloadBlobFile = (content, mime, filename) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const compactExportItems = (items) =>
+    (Array.isArray(items) ? items : [])
+      .map((item) => ({
+        name: String(item?.name || ''),
+        path: String(item?.path || ''),
+      }))
+      .filter((item) => item.name || item.path);
+
+  const serializeExportProject = (project, match) => {
+    const tags = normalizeTagList(project?.tags);
+    return {
+      project_name: String(project?.project_name || ''),
+      catalog: String(project?.source_title || ''),
+      source_key: String(project?.source_key || ''),
+      file_count: Number(project?.file_count || 0),
+      folder_count: Number(project?.folder_count || 0),
+      item_count: Number(project?.item_count || 0),
+      last_modified: String(project?.last_modified || ''),
+      date_created: String(project?.date_created || ''),
+      modified_by: String(project?.modified_by || ''),
+      created_by: String(project?.person || ''),
+      match_score: match?.score ?? null,
+      sharepoint_url: String(project?.folder_url || ''),
+      tags: tags.map((tag) => ({
+        id: tag.id,
+        label: tag.label,
+        slug: tag.slug,
+      })),
+      archived: !!project?.archived,
+      favorited: !!project?.favorited,
+      files: compactExportItems(project?.files),
+      folders: compactExportItems(project?.folders),
+    };
+  };
+
+  const scopedCatalogRows = () => {
+    let results = state.projects.map((project) => ({ project, match: null }));
+    if (state.scopeKeys.length) {
+      const allowed = new Set(state.scopeKeys);
+      results = results.filter((row) => allowed.has(String(row.project?.source_key || '')));
+    }
+    if (!state.showArchived) {
+      results = results.filter((row) => !row.project?.archived);
+    }
+    results.sort(compareProjectRows);
+    return results;
+  };
+
+  const selectedCatalogRows = () => {
+    if (!state.selected.size) return [];
+    const byKey = new Map();
+    state.projects.forEach((project) => {
+      const key = selectionKey(String(project?.source_key || ''), String(project?.project_name || ''));
+      if (key) byKey.set(key, project);
+    });
+    const rows = [];
+    state.selected.forEach((sel) => {
+      const project = byKey.get(sel.key);
+      if (project) rows.push({ project, match: null });
+    });
+    return rows;
+  };
+
+  const collectExportRows = (scope) => {
+    if (scope === 'selected') return selectedCatalogRows();
+    if (scope === 'full') return scopedCatalogRows();
+    return filteredProjects();
+  };
+
+  const exportFileStamp = () => new Date().toISOString().slice(0, 10);
+
+  const exportCatalogProjects = (format, scope) => {
+    const nextFormat = format === 'json' ? 'json' : 'csv';
+    const nextScope = scope === 'selected' || scope === 'full' ? scope : 'matching';
+    const rows = collectExportRows(nextScope);
+    if (!rows.length) {
+      window.alert(
+        nextScope === 'selected'
+          ? 'Select one or more projects first.'
+          : 'Nothing to export.'
+      );
+      return;
+    }
+
+    const records = rows.map(({ project, match }) => serializeExportProject(project, match));
+    const stamp = exportFileStamp();
+    const basename = `catalog-${nextScope}-${stamp}`;
+
+    if (nextFormat === 'json') {
+      const payload = {
+        exported_at: new Date().toISOString(),
+        source: 'architecture-project-catalogs',
+        scope: nextScope,
+        query: String(state.query || '').trim(),
+        catalogs: [...(state.scopeKeys || [])],
+        count: records.length,
+        projects: records,
+      };
+      downloadBlobFile(
+        `${JSON.stringify(payload, null, 2)}\n`,
+        'application/json;charset=utf-8',
+        `${basename}.json`
+      );
+      return;
+    }
+
     const header = [
       'project',
       'catalog',
+      'source_key',
       'files',
       'folders',
+      'items',
       'modified',
+      'date_created',
       'modified_by',
       'created_by',
       'match_score',
+      'tags',
+      'archived',
+      'favorited',
       'sharepoint_url',
     ];
     const lines = [header.join(',')];
-    rows.forEach(({ project, match }) => {
+    records.forEach((row) => {
       lines.push(
         [
-          project.project_name,
-          project.source_title,
-          project.file_count,
-          project.folder_count,
-          project.last_modified,
-          project.modified_by,
-          project.person,
-          match?.score ?? '',
-          project.folder_url,
+          row.project_name,
+          row.catalog,
+          row.source_key,
+          row.file_count,
+          row.folder_count,
+          row.item_count,
+          row.last_modified,
+          row.date_created,
+          row.modified_by,
+          row.created_by,
+          row.match_score ?? '',
+          row.tags.map((tag) => tag.label).join('; '),
+          row.archived ? 'yes' : '',
+          row.favorited ? 'yes' : '',
+          row.sharepoint_url,
         ]
           .map(csvEscape)
           .join(',')
       );
     });
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `catalog-search-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadBlobFile(`\uFEFF${lines.join('\r\n')}\r\n`, 'text/csv;charset=utf-8', `${basename}.csv`);
+  };
+
+  const closeExportMenus = () => {
+    document.querySelectorAll('.sharepoint-export-picker').forEach((picker) => {
+      const menu = picker.querySelector('.sharepoint-export-menu');
+      const toggle = picker.querySelector('.sharepoint-export-toggle');
+      if (menu) {
+        menu.hidden = true;
+        menu.style.removeProperty('position');
+        menu.style.removeProperty('top');
+        menu.style.removeProperty('left');
+        menu.style.removeProperty('right');
+        menu.style.removeProperty('bottom');
+        menu.style.removeProperty('width');
+      }
+      toggle?.classList.remove('is-active');
+      toggle?.setAttribute('aria-expanded', 'false');
+    });
+  };
+
+  syncExportUi = () => {
+    const matchingCount = filteredProjects().length;
+    const selectedCount = state.selected.size;
+    const fullCount = scopedCatalogRows().length;
+    const counts = { matching: matchingCount, selected: selectedCount, full: fullCount };
+    document.querySelectorAll('[data-export-count]').forEach((el) => {
+      const key = el.getAttribute('data-export-count') || '';
+      if (key in counts) el.textContent = String(counts[key]);
+    });
+    document.querySelectorAll('.sharepoint-export-action').forEach((btn) => {
+      const scope = btn.getAttribute('data-export-scope') || 'matching';
+      const count = counts[scope] ?? 0;
+      btn.disabled = count === 0;
+    });
+    document.querySelectorAll('.sharepoint-export-selected').forEach((btn) => {
+      const hasSel = selectedCount > 0;
+      btn.hidden = !hasSel;
+      btn.disabled = !hasSel;
+      btn.classList.toggle('is-hidden', !hasSel);
+      const format = String(btn.getAttribute('data-export-format') || 'csv').toUpperCase();
+      btn.textContent = hasSel ? `⬇️ ${format} (${selectedCount})` : `⬇️ ${format}`;
+    });
+  };
+
+  const runExportFromButton = (btn) => {
+    if (!(btn instanceof HTMLElement) || btn.disabled) return false;
+    const format = btn.getAttribute('data-export-format');
+    const scope = btn.getAttribute('data-export-scope');
+    if (!format || !scope) return false;
+    exportCatalogProjects(format, scope);
+    closeExportMenus();
+    return true;
+  };
+
+  const bindExportPickers = () => {
+    document.querySelectorAll('.sharepoint-export-picker').forEach((picker) => {
+      if (picker.dataset.exportBound === '1') return;
+      picker.dataset.exportBound = '1';
+      const toggle = picker.querySelector('.sharepoint-export-toggle');
+      const menu = picker.querySelector('.sharepoint-export-menu');
+      if (!toggle || !menu) return;
+
+      const placeToolbarMenu = (open) => {
+        if (!picker.classList.contains('sharepoint-export-picker--toolbar')) return;
+        if (!open) {
+          menu.style.removeProperty('position');
+          menu.style.removeProperty('top');
+          menu.style.removeProperty('left');
+          menu.style.removeProperty('right');
+          menu.style.removeProperty('bottom');
+          menu.style.removeProperty('width');
+          return;
+        }
+        const rect = toggle.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.left = 'auto';
+        menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+        menu.style.width = '18rem';
+        const gap = 6;
+        const height = Math.max(menu.offsetHeight, 220);
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < height + 16) {
+          menu.style.top = 'auto';
+          menu.style.bottom = `${Math.max(8, window.innerHeight - rect.top + gap)}px`;
+        } else {
+          menu.style.bottom = 'auto';
+          menu.style.top = `${rect.bottom + gap}px`;
+        }
+      };
+
+      const setOpen = (open) => {
+        if (open) closeExportMenus();
+        menu.hidden = !open;
+        toggle.classList.toggle('is-active', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        placeToolbarMenu(open);
+      };
+
+      toggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(menu.hidden);
+      });
+      picker.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const btn = target.closest('[data-export-format][data-export-scope]');
+        if (!btn || !picker.contains(btn)) return;
+        event.preventDefault();
+        runExportFromButton(btn);
+      });
+      picker.querySelector('.sharepoint-export-close')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        setOpen(false);
+      });
+    });
+
+    if (document.documentElement.dataset.spExportBound === '1') return;
+    document.documentElement.dataset.spExportBound = '1';
+    document.querySelectorAll('.sharepoint-export-selected').forEach((btn) => {
+      if (btn.dataset.exportBound === '1') return;
+      btn.dataset.exportBound = '1';
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        runExportFromButton(btn);
+      });
+    });
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.sharepoint-export-picker')) return;
+      closeExportMenus();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeExportMenus();
+    });
+    document.getElementById('sharepoint-catalog-table-shell')?.addEventListener('toggle', () => {
+      const shell = document.getElementById('sharepoint-catalog-table-shell');
+      if (shell && !shell.open) closeExportMenus();
+    });
+    document.getElementById('sharepoint-catalog-shell')?.addEventListener('toggle', () => {
+      const shell = document.getElementById('sharepoint-catalog-shell');
+      if (shell && !shell.open) closeExportMenus();
+    });
   };
 
   const isTypingTarget = (el) => {
@@ -8702,7 +8970,7 @@
         return `<tr class="sharepoint-project-row${isSelected ? ' is-compare-selected' : ''}${hitSet?.total ? ' has-deep-hits' : ''}${project.archived ? ' is-archived' : ''}${project.favorited ? ' is-favorite' : ''}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" data-open-query="${escapeHtml(openQuery)}" tabindex="0">
           <td class="sharepoint-select-col" data-col="select" onclick="event.stopPropagation()">
             <label class="sharepoint-row-select">
-              <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="${escapeHtml(favoritesSelectionMode() ? `Select ${name} to remove from favorites` : unlimitedProjectSelection() ? `Select ${name} to favorite or compare` : `Select ${name} for compare`)}">
+              <input type="checkbox" class="sharepoint-compare-check" value="${escapeHtml(selectId)}" data-project-name="${escapeHtml(name)}" data-source-key="${escapeHtml(sourceKey)}" ${isSelected ? 'checked' : ''} aria-label="${escapeHtml(favoritesSelectionMode() ? `Select ${name} to export or remove from favorites` : unlimitedProjectSelection() ? `Select ${name} to export, favorite, or compare` : `Select ${name} to export or compare`)}">
             </label>
           </td>
           <td data-col="name">
@@ -9318,7 +9586,7 @@
   });
 
   saveSearchBtn?.addEventListener('click', () => saveCurrentSearch());
-  exportCsvBtn?.addEventListener('click', () => exportFilteredCsv());
+  bindExportPickers();
 
   savedRoot?.addEventListener('click', (event) => {
     const removeBtn = event.target.closest('[data-saved-remove]');
