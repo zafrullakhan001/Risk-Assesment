@@ -3071,10 +3071,26 @@ $soloPageClass = $ownerSolo
                                     <button type="button" class="button ghost" id="sp-portfolio-refresh" title="Reload portfolio storage data">↻ Refresh</button>
                                 </div>
                             </div>
+                            <div class="sp-portfolio-chart-controls">
                             <div class="sp-portfolio-mode" id="sp-portfolio-mode" role="group" aria-label="Portfolio heatmap subcategory">
                                 <button type="button" class="sp-portfolio-mode-btn is-active" data-portfolio-mode="storage" aria-pressed="true">Storage</button>
                                 <button type="button" class="sp-portfolio-mode-btn" data-portfolio-mode="projects" aria-pressed="false">Projects</button>
                                 <button type="button" class="sp-portfolio-mode-btn" data-portfolio-mode="owners" aria-pressed="false">Owners</button>
+                            </div>
+                            <div class="sp-portfolio-mode sp-portfolio-chart-type" id="sp-portfolio-chart-type" role="group" aria-label="Portfolio chart type">
+                                <button type="button" class="sp-portfolio-mode-btn is-active" data-portfolio-chart="heatmap" aria-pressed="true">Heatmap</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="bar" aria-pressed="false">Bars</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="columns" aria-pressed="false">Columns</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="share" aria-pressed="false">Share</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="rank" aria-pressed="false">Rank</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="pareto" aria-pressed="false">Pareto</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="mix" aria-pressed="false">Mix</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart="bubbles" aria-pressed="false">Bubbles</button>
+                            </div>
+                            <div class="sp-portfolio-mode sp-portfolio-chart-sort" id="sp-portfolio-chart-sort" role="group" aria-label="Chart sort order" hidden>
+                                <button type="button" class="sp-portfolio-mode-btn is-active" data-portfolio-chart-sort="desc" aria-pressed="true" title="Largest first">High → Low</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-chart-sort="asc" aria-pressed="false" title="Smallest first">Low → High</button>
+                            </div>
                             </div>
                             <nav class="sp-size-breadcrumb sp-portfolio-breadcrumb" id="sp-portfolio-breadcrumb" aria-label="Portfolio storage path">
                                 <button type="button" class="sp-size-crumb is-active" data-portfolio-level="portfolios">All portfolios</button>
@@ -3115,8 +3131,9 @@ $soloPageClass = $ownerSolo
                             <?php endif; ?>
                             <div class="sp-size-kpis sp-portfolio-kpis" id="sp-portfolio-kpis" aria-live="polite"></div>
                             <div id="sp-portfolio-coverage" class="sp-portfolio-coverage" hidden></div>
-                            <div class="sp-size-treemap-wrap sp-portfolio-treemap-wrap" tabindex="0" role="region" aria-label="Portfolio storage treemap">
-                                <div class="sp-size-treemap" id="sp-portfolio-treemap"></div>
+                            <div id="sp-portfolio-chart-filters" class="sp-portfolio-chart-filters" hidden aria-live="polite"></div>
+                            <div class="sp-size-treemap-wrap sp-portfolio-treemap-wrap" tabindex="0" role="region" aria-label="Portfolio storage chart">
+                                <div class="sp-size-treemap" id="sp-portfolio-treemap" data-chart-type="heatmap"></div>
                             </div>
                             <details class="sp-project-submenu" id="sp-portfolio-project-submenu" open>
                                 <summary class="sp-project-submenu-summary">
@@ -3156,6 +3173,35 @@ $soloPageClass = $ownerSolo
                                                     </th>
                                                     <th scope="col" class="is-sortable" data-portfolio-project-sort="files" aria-sort="none">
                                                         <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="files">Files</button>
+                                                    </th>
+                                                </tr>
+                                                <tr class="sp-portfolio-project-filter-row">
+                                                    <th scope="col">
+                                                        <label class="visually-hidden" for="sp-portfolio-filter-source">Filter by catalog</label>
+                                                        <select id="sp-portfolio-filter-source" class="sp-portfolio-col-filter" data-portfolio-filter="source" aria-label="Filter by catalog">
+                                                            <option value="">All catalogs</option>
+                                                        </select>
+                                                    </th>
+                                                    <th scope="col">
+                                                        <label class="visually-hidden" for="sp-portfolio-filter-owner">Filter by owner</label>
+                                                        <select id="sp-portfolio-filter-owner" class="sp-portfolio-col-filter" data-portfolio-filter="owner" aria-label="Filter by owner">
+                                                            <option value="">All owners</option>
+                                                        </select>
+                                                    </th>
+                                                    <th scope="col">
+                                                        <label class="visually-hidden" for="sp-portfolio-filter-portfolio">Filter by portfolio</label>
+                                                        <select id="sp-portfolio-filter-portfolio" class="sp-portfolio-col-filter" data-portfolio-filter="portfolio" aria-label="Filter by portfolio">
+                                                            <option value="">All portfolios</option>
+                                                        </select>
+                                                    </th>
+                                                    <th scope="col">
+                                                        <label class="visually-hidden" for="sp-portfolio-filter-sub">Filter by sub-portfolio</label>
+                                                        <select id="sp-portfolio-filter-sub" class="sp-portfolio-col-filter" data-portfolio-filter="sub" aria-label="Filter by sub-portfolio">
+                                                            <option value="">All sub-portfolios</option>
+                                                        </select>
+                                                    </th>
+                                                    <th scope="col" colspan="2">
+                                                        <button type="button" class="button ghost sp-portfolio-filters-clear" id="sp-portfolio-filters-clear" hidden>Clear filters</button>
                                                     </th>
                                                 </tr>
                                             </thead>

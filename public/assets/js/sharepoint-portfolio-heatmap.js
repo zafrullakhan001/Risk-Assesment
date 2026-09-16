@@ -13,6 +13,7 @@
   const projectCountEl = document.getElementById('sp-portfolio-project-count');
   const projectSearch = document.getElementById('sp-portfolio-project-search');
   const projectUniqueToggle = document.getElementById('sp-portfolio-project-unique');
+  const chartFiltersEl = document.getElementById('sp-portfolio-chart-filters');
   const scopesRoot = document.getElementById('sp-portfolio-scopes');
   const refreshBtn = document.getElementById('sp-portfolio-refresh');
   const backBtn = document.getElementById('sp-portfolio-back');
@@ -22,6 +23,8 @@
   const PORTFOLIO_SOURCES_KEY = 'riskregister_sp_portfolio_heatmap_sources';
   const NAV_KEY = 'riskregister_sp_portfolio_heatmap_navigation';
   const MODE_KEY = 'riskregister_sp_portfolio_heatmap_mode';
+  const CHART_KEY = 'riskregister_sp_portfolio_heatmap_chart';
+  const CHART_SORT_KEY = 'riskregister_sp_portfolio_heatmap_chart_sort';
   const MIN_TILE_PX = 44;
 
   const state = {
@@ -30,6 +33,8 @@
     data: null,
     level: 'portfolios',
     mode: 'storage',
+    chartType: 'heatmap',
+    chartSort: 'desc',
     portfolio: '',
     subPortfolio: '',
     ownerKey: '',
@@ -38,6 +43,12 @@
     projectMenu: [],
     projectSearch: '',
     projectUniqueOnly: false,
+    projectFilters: {
+      source: '',
+      owner: '',
+      portfolio: '',
+      sub: '',
+    },
     fileSort: { key: 'size', direction: 'desc' },
     projectSort: { key: 'size', direction: 'desc' },
     canEditPortfolio: root.getAttribute('data-can-edit-portfolio') === '1',
@@ -50,6 +61,14 @@
     if (mode === 'projects' || mode === 'owners') return mode;
     return 'storage';
   };
+
+  const CHART_TYPES = new Set(['heatmap', 'bar', 'columns', 'share', 'rank', 'pareto', 'mix', 'bubbles']);
+  const SORTABLE_CHART_TYPES = new Set(['bar', 'columns', 'share', 'rank', 'pareto', 'mix', 'bubbles']);
+  const normalizeChartType = (value) => {
+    const chart = String(value || '');
+    return CHART_TYPES.has(chart) ? chart : 'heatmap';
+  };
+  const normalizeChartSort = (value) => (String(value || '') === 'asc' ? 'asc' : 'desc');
   let heatmapAnimationTimer = 0;
 
   const escapeHtml = (value) =>
@@ -160,6 +179,20 @@
     return 'storage';
   };
 
+  const readPersistedChartType = () => {
+    try {
+      return normalizeChartType(localStorage.getItem(CHART_KEY) || '');
+    } catch (e) { /* ignore */ }
+    return 'heatmap';
+  };
+
+  const readPersistedChartSort = () => {
+    try {
+      return normalizeChartSort(localStorage.getItem(CHART_SORT_KEY) || '');
+    } catch (e) { /* ignore */ }
+    return 'desc';
+  };
+
   const setModeUi = () => {
     root.querySelectorAll('[data-portfolio-mode]').forEach((btn) => {
       const active = btn.getAttribute('data-portfolio-mode') === state.mode;
@@ -168,15 +201,86 @@
     });
   };
 
+  const setChartTypeUi = () => {
+    root.querySelectorAll('[data-portfolio-chart]').forEach((btn) => {
+      const active = btn.getAttribute('data-portfolio-chart') === state.chartType;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    root.querySelectorAll('[data-portfolio-chart-sort]').forEach((btn) => {
+      const active = btn.getAttribute('data-portfolio-chart-sort') === state.chartSort;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    const sortGroup = document.getElementById('sp-portfolio-chart-sort');
+    if (sortGroup) {
+      sortGroup.hidden = !SORTABLE_CHART_TYPES.has(state.chartType);
+    }
+    treemapEl?.setAttribute('data-chart-type', state.chartType);
+    treemapEl?.setAttribute('data-chart-sort', state.chartSort);
+    const scrollable = state.chartType !== 'heatmap';
+    if (treemapWrap) {
+      treemapWrap.classList.toggle('is-scroll-chart', scrollable);
+      treemapWrap.classList.toggle('is-bar-chart', scrollable);
+    }
+  };
+
+  const sortedChartNodes = (nodes) => {
+    const list = (nodes || [])
+      .slice()
+      .filter((node) => nodeWeight(node) > 0 || (Number(node.size_bytes) || 0) > 0 || (Number(node.project_count) || 0) > 0)
+      .sort((a, b) => {
+        const cmp = nodeWeight(b) - nodeWeight(a);
+        if (cmp !== 0) return cmp;
+        return String(a.label || '').localeCompare(String(b.label || ''), undefined, { sensitivity: 'base' });
+      });
+    if (state.chartSort === 'asc') list.reverse();
+    return list;
+  };
+
+  const prepareAltChartShell = (chartClass, heightPx) => {
+    const height = Math.max(280, Number(heightPx) || 320);
+    treemapEl.style.width = '100%';
+    treemapEl.style.height = `${height}px`;
+    treemapEl.style.maxHeight = `${Math.min(780, Math.max(320, height))}px`;
+    treemapEl.classList.remove(
+      'is-bar-chart',
+      'is-columns-chart',
+      'is-share-chart',
+      'is-rank-chart',
+      'is-pareto-chart',
+      'is-mix-chart',
+      'is-bubbles-chart',
+      'is-chart-enter'
+    );
+    if (chartClass) treemapEl.classList.add(chartClass);
+  };
+
+  const playChartEntrance = () => {
+    if (!treemapEl) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    treemapEl.classList.remove('is-chart-enter');
+    // Force reflow so repeated renders replay the entrance.
+    void treemapEl.offsetWidth;
+    treemapEl.classList.add('is-chart-enter');
+    window.clearTimeout(playChartEntrance._timer);
+    playChartEntrance._timer = window.setTimeout(() => {
+      treemapEl.classList.remove('is-chart-enter');
+    }, 1200);
+  };
+
+  const weightSharePct = (weight, total) => {
+    if (!total) return 0;
+    return Math.round((weight / total) * 1000) / 10;
+  };
+
   const nodeWeight = (node) => {
     const type = String(node.type || '');
     if (state.mode === 'projects' && type !== 'project') {
       return Math.max(0, Number(node.project_count) || 0);
     }
-    if (state.mode === 'owners' && type === 'portfolio') {
-      return Math.max(0, Number(node.owner_count) || 0);
-    }
-    if (state.mode === 'owners' && type === 'owner') {
+    // Owners mode: size by projects so portfolios with one owner still differ visually.
+    if (state.mode === 'owners' && (type === 'portfolio' || type === 'owner')) {
       return Math.max(0, Number(node.project_count) || 0);
     }
     return Math.max(0, Number(node.size_bytes) || 0);
@@ -401,80 +505,72 @@
     }, (Number.isFinite(duration) ? duration : 580) + 300);
   };
 
-  const renderTreemap = (nodes) => {
-    const { width, height } = getTreemapSize();
-    treemapEl.style.width = '100%';
-    treemapEl.style.height = `${height}px`;
-    treemapEl.style.maxHeight = `${height}px`;
+  const emptyChartMessage = () => {
+    if (state.level === 'projects') return 'No projects in this category.';
+    if (state.level === 'owners') return 'No owners in this portfolio.';
+    if (state.level === 'sub_portfolios') return 'No sub-portfolios in this portfolio.';
+    return 'No portfolio storage data for this view.';
+  };
 
-    const rects = squarify(nodes, 0, 0, width, height);
-    if (!rects.length) {
-      const emptyMsg =
-        state.level === 'projects'
-          ? 'No projects in this category.'
-          : state.level === 'owners'
-            ? 'No owners in this portfolio.'
-            : state.level === 'sub_portfolios'
-              ? 'No sub-portfolios in this portfolio.'
-              : 'No portfolio storage data for this view.';
-      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyMsg}</p>`;
-      return;
+  const nodeButtonAttrs = (node) => {
+    const label = String(node.label || node.key || '');
+    const bytes = Number(node.size_bytes) || 0;
+    const files = Number(node.file_count) || 0;
+    const projects = Number(node.project_count) || 0;
+    const owners = Number(node.owner_count) || 0;
+    const type = String(node.type || 'portfolio');
+    const sourceKey = String(node.source_key || '');
+    const projectName = String(node.project_name || (type === 'project' ? label : ''));
+    const ownerKey = String(node.owner_key || (type === 'owner' ? node.key : ''));
+    const ownerName = String(node.owner_name || (type === 'owner' ? label : ''));
+    const confidence = String(node.confidence || '');
+    const needsReview = !!node.needs_review;
+    const secondary = tileSecondaryLabel(node, type);
+    const tip = [
+      label,
+      type === 'project' && node.source_title ? String(node.source_title) : '',
+      type === 'owner' ? formatProjectCount(projects) : '',
+      type === 'portfolio' && state.mode === 'owners' ? formatOwnerCount(owners) : '',
+      type !== 'project' && type !== 'owner' ? formatProjectCount(projects) : '',
+      formatBytes(bytes),
+      files ? `${files} file(s)` : '',
+      confidence ? `Confidence: ${confidence}` : '',
+      needsReview ? 'Needs review' : '',
+      type === 'portfolio' && state.mode === 'projects' ? 'Click to show projects heatmap' : '',
+      type === 'portfolio' && state.mode === 'owners' ? 'Click to show owners' : '',
+      type === 'portfolio' && state.mode === 'storage' ? 'Click to show sub-portfolios' : '',
+      type === 'owner' ? 'Click to show this owner’s projects' : '',
+      type === 'sub_portfolio' ? 'Click to show projects' : '',
+      type === 'project' ? 'Click to open project dialog' : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const drillable =
+      (type === 'portfolio' || type === 'sub_portfolio' || type === 'owner' || type === 'project') &&
+      label &&
+      label !== '__other__';
+    let ariaBits = `${label}, ${formatBytes(bytes)}`;
+    if (type === 'owner') {
+      ariaBits = `${label}, ${formatProjectCount(projects)}, ${formatBytes(bytes)}`;
+    } else if (type === 'portfolio' && state.mode === 'owners') {
+      ariaBits = `${label}, ${formatOwnerCount(owners)}, ${formatProjectCount(projects)}`;
+    } else if (type !== 'project') {
+      ariaBits = `${label}, ${formatBytes(bytes)}, ${formatProjectCount(projects)}`;
     }
-
-    treemapEl.innerHTML = rects
-      .map(({ node, x, y, width: w, height: h }) => {
-        const label = String(node.label || node.key || '');
-        const bytes = Number(node.size_bytes) || 0;
-        const files = Number(node.file_count) || 0;
-        const projects = Number(node.project_count) || 0;
-        const owners = Number(node.owner_count) || 0;
-        const type = String(node.type || 'portfolio');
-        const sourceKey = String(node.source_key || '');
-        const projectName = String(node.project_name || (type === 'project' ? label : ''));
-        const ownerKey = String(node.owner_key || (type === 'owner' ? node.key : ''));
-        const ownerName = String(node.owner_name || (type === 'owner' ? label : ''));
-        const confidence = String(node.confidence || '');
-        const needsReview = !!node.needs_review;
-        const showLabel = w >= MIN_TILE_PX && h >= MIN_TILE_PX;
-        const secondary = tileSecondaryLabel(node, type);
-        const tip = [
-          label,
-          type === 'project' && node.source_title ? String(node.source_title) : '',
-          type === 'owner' ? formatProjectCount(projects) : '',
-          type === 'portfolio' && state.mode === 'owners' ? formatOwnerCount(owners) : '',
-          type !== 'project' && type !== 'owner' ? formatProjectCount(projects) : '',
-          formatBytes(bytes),
-          files ? `${files} file(s)` : '',
-          confidence ? `Confidence: ${confidence}` : '',
-          needsReview ? 'Needs review' : '',
-          type === 'portfolio' && state.mode === 'projects' ? 'Click to show projects heatmap' : '',
-          type === 'portfolio' && state.mode === 'owners' ? 'Click to show owners' : '',
-          type === 'portfolio' && state.mode === 'storage' ? 'Click to show sub-portfolios' : '',
-          type === 'owner' ? 'Click to show this owner’s projects' : '',
-          type === 'sub_portfolio' ? 'Click to show projects' : '',
-          type === 'project' ? 'Click to open project dialog' : '',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        const drillable =
-          (type === 'portfolio' || type === 'sub_portfolio' || type === 'owner' || type === 'project') &&
-          label &&
-          label !== '__other__';
-        const left = Math.max(0, Math.min(x, width - 1));
-        const top = Math.max(0, Math.min(y, height - 1));
-        const tileW = Math.max(1, Math.min(w, width - left));
-        const tileH = Math.max(1, Math.min(h, height - top));
-        const reviewClass = needsReview ? ' is-needs-review' : '';
-        let ariaBits = `${label}, ${formatBytes(bytes)}`;
-        if (type === 'owner') {
-          ariaBits = `${label}, ${formatProjectCount(projects)}, ${formatBytes(bytes)}`;
-        } else if (type === 'portfolio' && state.mode === 'owners') {
-          ariaBits = `${label}, ${formatOwnerCount(owners)}, ${formatProjectCount(projects)}`;
-        } else if (type !== 'project') {
-          ariaBits = `${label}, ${formatBytes(bytes)}, ${formatProjectCount(projects)}`;
-        }
-        return `<button type="button" class="sp-size-tile sp-portfolio-tile${drillable ? ' is-drillable' : ''}${type === 'other' ? ' is-other' : ''}${type === 'project' ? ' is-project' : ''}${type === 'owner' ? ' is-owner' : ''}${reviewClass}"
-          style="left:${left}px;top:${top}px;width:${tileW}px;height:${tileH}px;background:${nodeColor(node.hue, needsReview ? 0.55 : 0.82)}"
+    return {
+      label,
+      type,
+      secondary,
+      tip,
+      drillable,
+      needsReview,
+      ariaBits,
+      sourceKey,
+      projectName,
+      ownerKey,
+      ownerName,
+      color: nodeColor(node.hue, needsReview ? 0.55 : 0.82),
+      attrs: `
           data-type="${escapeAttr(type)}"
           data-key="${escapeAttr(String(node.key || label))}"
           data-label="${escapeAttr(label)}"
@@ -486,11 +582,441 @@
           data-project-name="${escapeAttr(projectName)}"
           title="${escapeAttr(tip)}"
           aria-label="${escapeAttr(ariaBits)}"
-          ${drillable ? '' : ' tabindex="-1"'}
-        >${showLabel ? `<span class="sp-size-tile-label">${escapeHtml(label)}</span><span class="sp-size-tile-size">${escapeHtml(secondary)}</span>${needsReview && showLabel ? '<span class="sp-portfolio-tile-badge">Review</span>' : ''}` : `<span class="sp-size-tile-dot" aria-hidden="true"></span>`}</button>`;
+          ${drillable ? '' : ' tabindex="-1"'}`,
+    };
+  };
+
+  const renderTreemap = (nodes) => {
+    const { width, height } = getTreemapSize();
+    treemapEl.style.width = '100%';
+    treemapEl.style.height = `${height}px`;
+    treemapEl.style.maxHeight = `${height}px`;
+    treemapEl.classList.remove(
+      'is-bar-chart',
+      'is-columns-chart',
+      'is-share-chart',
+      'is-rank-chart',
+      'is-pareto-chart',
+      'is-mix-chart',
+      'is-bubbles-chart',
+      'is-chart-enter'
+    );
+
+    const rects = squarify(nodes, 0, 0, width, height);
+    if (!rects.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    treemapEl.innerHTML = rects
+      .map(({ node, x, y, width: w, height: h }) => {
+        const meta = nodeButtonAttrs(node);
+        const showLabel = w >= MIN_TILE_PX && h >= MIN_TILE_PX;
+        const left = Math.max(0, Math.min(x, width - 1));
+        const top = Math.max(0, Math.min(y, height - 1));
+        const tileW = Math.max(1, Math.min(w, width - left));
+        const tileH = Math.max(1, Math.min(h, height - top));
+        const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+        return `<button type="button" class="sp-size-tile sp-portfolio-tile${meta.drillable ? ' is-drillable' : ''}${meta.type === 'other' ? ' is-other' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+          style="left:${left}px;top:${top}px;width:${tileW}px;height:${tileH}px;background:${meta.color}"
+          ${meta.attrs}
+        >${showLabel ? `<span class="sp-size-tile-label">${escapeHtml(meta.label)}</span><span class="sp-size-tile-size">${escapeHtml(meta.secondary)}</span>${meta.needsReview && showLabel ? '<span class="sp-portfolio-tile-badge">Review</span>' : ''}` : `<span class="sp-size-tile-dot" aria-hidden="true"></span>`}</button>`;
       })
       .join('');
     replayHeatmapAnimation();
+  };
+
+  const renderBarChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    const chartHeight = Math.max(minHeight, Math.min(720, sorted.length * 38 + 16));
+    prepareAltChartShell('is-bar-chart', chartHeight);
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const maxWeight = Math.max(...sorted.map((node) => nodeWeight(node)), 1);
+    treemapEl.innerHTML = `<div class="sp-portfolio-bars" role="list">${sorted
+      .map((node, index) => {
+        const meta = nodeButtonAttrs(node);
+        const weight = nodeWeight(node);
+        const pct = Math.max(2, Math.round((weight / maxWeight) * 100));
+        const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+        return `<button type="button" class="sp-portfolio-bar sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+          role="listitem"
+          style="--i:${index}"
+          ${meta.attrs}
+        >
+          <span class="sp-portfolio-bar-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+          <span class="sp-portfolio-bar-track" aria-hidden="true">
+            <span class="sp-portfolio-bar-fill" style="--fill:${pct}%;background:${meta.color}"></span>
+          </span>
+          <span class="sp-portfolio-bar-value">${escapeHtml(meta.secondary)}</span>
+        </button>`;
+      })
+      .join('')}</div>`;
+    playChartEntrance();
+  };
+
+  const renderColumnsChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    prepareAltChartShell('is-columns-chart', Math.max(minHeight, 360));
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const maxWeight = Math.max(...sorted.map((node) => nodeWeight(node)), 1);
+    treemapEl.innerHTML = `<div class="sp-portfolio-columns" role="list">${sorted
+      .map((node, index) => {
+        const meta = nodeButtonAttrs(node);
+        const weight = nodeWeight(node);
+        const pct = Math.max(4, Math.round((weight / maxWeight) * 100));
+        const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+        return `<button type="button" class="sp-portfolio-column sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+          role="listitem"
+          style="--i:${index}"
+          ${meta.attrs}
+        >
+          <span class="sp-portfolio-column-value">${escapeHtml(meta.secondary)}</span>
+          <span class="sp-portfolio-column-track" aria-hidden="true">
+            <span class="sp-portfolio-column-fill" style="--fill:${pct}%;background:${meta.color}"></span>
+          </span>
+          <span class="sp-portfolio-column-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+        </button>`;
+      })
+      .join('')}</div>`;
+    playChartEntrance();
+  };
+
+  const polarToCartesian = (cx, cy, radius, angleDeg) => {
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+    return {
+      x: cx + radius * Math.cos(rad),
+      y: cy + radius * Math.sin(rad),
+    };
+  };
+
+  const donutSlicePath = (cx, cy, outerR, innerR, startAngle, endAngle) => {
+    const large = endAngle - startAngle > 180 ? 1 : 0;
+    const outerStart = polarToCartesian(cx, cy, outerR, endAngle);
+    const outerEnd = polarToCartesian(cx, cy, outerR, startAngle);
+    const innerStart = polarToCartesian(cx, cy, innerR, startAngle);
+    const innerEnd = polarToCartesian(cx, cy, innerR, endAngle);
+    return [
+      'M', outerStart.x, outerStart.y,
+      'A', outerR, outerR, 0, large, 0, outerEnd.x, outerEnd.y,
+      'L', innerStart.x, innerStart.y,
+      'A', innerR, innerR, 0, large, 1, innerEnd.x, innerEnd.y,
+      'Z',
+    ].join(' ');
+  };
+
+  const renderShareChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    prepareAltChartShell('is-share-chart', Math.max(minHeight, 420));
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const total = sorted.reduce((sum, node) => sum + nodeWeight(node), 0) || 1;
+    const cx = 120;
+    const cy = 120;
+    const outerR = 104;
+    const innerR = 58;
+    let angle = 0;
+    const slices = sorted.map((node) => {
+      const weight = nodeWeight(node);
+      const sweep = (weight / total) * 360;
+      const start = angle;
+      const end = angle + Math.max(sweep, weight > 0 ? 0.35 : 0);
+      angle = end;
+      const meta = nodeButtonAttrs(node);
+      const share = weightSharePct(weight, total);
+      return { node, meta, weight, share, start, end };
+    });
+
+    const paths = slices
+      .map(({ meta, start, end }, index) => {
+        if (end - start >= 359.9) {
+          return `<circle class="sp-portfolio-share-slice sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}" style="--i:${index}" cx="${cx}" cy="${cy}" r="${(outerR + innerR) / 2}" fill="none" stroke="${escapeAttr(meta.color)}" stroke-width="${outerR - innerR}" ${meta.attrs}></circle>`;
+        }
+        return `<path class="sp-portfolio-share-slice sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}" style="--i:${index}" d="${donutSlicePath(cx, cy, outerR, innerR, start, end)}" fill="${escapeAttr(meta.color)}" ${meta.attrs}></path>`;
+      })
+      .join('');
+
+    const legend = slices
+      .map(({ meta, share }, index) => {
+        const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+        return `<button type="button" class="sp-portfolio-share-legend-item sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}" style="--i:${index}" ${meta.attrs}>
+          <span class="sp-portfolio-share-swatch" style="background:${meta.color}" aria-hidden="true"></span>
+          <span class="sp-portfolio-share-legend-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+          <span class="sp-portfolio-share-legend-meta">${share}% · ${escapeHtml(meta.secondary)}</span>
+        </button>`;
+      })
+      .join('');
+
+    treemapEl.innerHTML = `<div class="sp-portfolio-share">
+      <div class="sp-portfolio-share-visual" aria-hidden="false">
+        <svg class="sp-portfolio-share-svg sp-chart-enter-item" style="--i:0" viewBox="0 0 240 240" role="img" aria-label="Share of total">
+          ${paths}
+          <circle cx="${cx}" cy="${cy}" r="${innerR - 2}" fill="#fff"></circle>
+          <text x="${cx}" y="${cy - 6}" text-anchor="middle" class="sp-portfolio-share-center-value">${sorted.length}</text>
+          <text x="${cx}" y="${cy + 14}" text-anchor="middle" class="sp-portfolio-share-center-label">items</text>
+        </svg>
+      </div>
+      <div class="sp-portfolio-share-legend" role="list">${legend}</div>
+    </div>`;
+    playChartEntrance();
+  };
+
+  const renderRankChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    const chartHeight = Math.max(minHeight, Math.min(720, sorted.length * 44 + 20));
+    prepareAltChartShell('is-rank-chart', chartHeight);
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const total = sorted.reduce((sum, node) => sum + nodeWeight(node), 0) || 1;
+    const maxWeight = Math.max(...sorted.map((node) => nodeWeight(node)), 1);
+    const rankByValue = sorted
+      .slice()
+      .sort((a, b) => nodeWeight(b) - nodeWeight(a))
+      .reduce((map, node, index) => {
+        map.set(node, index + 1);
+        return map;
+      }, new Map());
+    treemapEl.innerHTML = `<div class="sp-portfolio-rank" role="list">${sorted
+      .map((node, index) => {
+        const meta = nodeButtonAttrs(node);
+        const weight = nodeWeight(node);
+        const share = weightSharePct(weight, total);
+        const pct = Math.max(3, Math.round((weight / maxWeight) * 100));
+        const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+        const rank = rankByValue.get(node) || 1;
+        return `<button type="button" class="sp-portfolio-rank-row sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+          role="listitem"
+          style="--i:${index}"
+          ${meta.attrs}
+        >
+          <span class="sp-portfolio-rank-pos">${rank}</span>
+          <span class="sp-portfolio-rank-main">
+            <span class="sp-portfolio-rank-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+            <span class="sp-portfolio-rank-track" aria-hidden="true">
+              <span class="sp-portfolio-rank-fill" style="--fill:${pct}%;background:${meta.color}"></span>
+            </span>
+          </span>
+          <span class="sp-portfolio-rank-meta">
+            <strong>${share}%</strong>
+            <span>${escapeHtml(meta.secondary)}</span>
+          </span>
+        </button>`;
+      })
+      .join('')}</div>`;
+    playChartEntrance();
+  };
+
+  const renderParetoChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    const chartHeight = Math.max(minHeight, Math.min(760, sorted.length * 42 + 72));
+    prepareAltChartShell('is-pareto-chart', chartHeight);
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const total = sorted.reduce((sum, node) => sum + nodeWeight(node), 0) || 1;
+    const maxWeight = Math.max(...sorted.map((node) => nodeWeight(node)), 1);
+    const byDesc = sorted
+      .slice()
+      .sort((a, b) => nodeWeight(b) - nodeWeight(a));
+    let focusRunning = 0;
+    let topN = byDesc.length;
+    let topShare = 100;
+    for (let i = 0; i < byDesc.length; i += 1) {
+      focusRunning += nodeWeight(byDesc[i]);
+      const cum = weightSharePct(focusRunning, total);
+      if (cum >= 80) {
+        topN = i + 1;
+        topShare = cum;
+        break;
+      }
+    }
+    let running = 0;
+    const rows = sorted.map((node) => {
+      const weight = nodeWeight(node);
+      running += weight;
+      return {
+        node,
+        weight,
+        cumulative: weightSharePct(running, total),
+        pct: Math.max(2, Math.round((weight / maxWeight) * 100)),
+      };
+    });
+
+    treemapEl.innerHTML = `
+      <div class="sp-portfolio-pareto-insight sp-chart-enter-item" style="--i:0">
+        Top <strong>${topN}</strong> account for <strong>${topShare}%</strong> of this view
+      </div>
+      <div class="sp-portfolio-pareto" role="list">${rows
+        .map(({ node, cumulative, pct }, index) => {
+          const meta = nodeButtonAttrs(node);
+          const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+          return `<button type="button" class="sp-portfolio-pareto-row sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+            role="listitem"
+            style="--i:${index + 1}"
+            ${meta.attrs}
+          >
+            <span class="sp-portfolio-pareto-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+            <span class="sp-portfolio-pareto-track" aria-hidden="true">
+              <span class="sp-portfolio-pareto-fill" style="--fill:${pct}%;background:${meta.color}"></span>
+              <span class="sp-portfolio-pareto-cumulative" style="--cum:${Math.min(100, cumulative)}%"></span>
+            </span>
+            <span class="sp-portfolio-pareto-meta">
+              <strong>${cumulative}%</strong>
+              <span>${escapeHtml(meta.secondary)}</span>
+            </span>
+          </button>`;
+        })
+        .join('')}</div>`;
+    playChartEntrance();
+  };
+
+  const renderMixChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    prepareAltChartShell('is-mix-chart', Math.max(minHeight, 360));
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const total = sorted.reduce((sum, node) => sum + nodeWeight(node), 0) || 1;
+    const segments = sorted.map((node) => {
+      const weight = nodeWeight(node);
+      const share = weightSharePct(weight, total);
+      return { node, weight, share, flex: Math.max(share, 0.6) };
+    });
+
+    treemapEl.innerHTML = `
+      <div class="sp-portfolio-mix">
+        <div class="sp-portfolio-mix-track sp-chart-enter-item" style="--i:0" role="list">${segments
+          .map(({ node, share, flex }, index) => {
+            const meta = nodeButtonAttrs(node);
+            const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+            return `<button type="button" class="sp-portfolio-mix-seg sp-portfolio-tile${meta.drillable ? ' is-drillable' : ''}${reviewClass}"
+              role="listitem"
+              style="flex-grow:${flex};background:${meta.color};--i:${index}"
+              ${meta.attrs}
+              title="${escapeAttr(`${meta.label} · ${share}% · ${meta.secondary}`)}"
+            ><span>${share >= 7 ? `${escapeHtml(meta.label.length > 14 ? `${meta.label.slice(0, 12)}…` : meta.label)}` : ''}</span></button>`;
+          })
+          .join('')}</div>
+        <div class="sp-portfolio-mix-legend" role="list">${segments
+          .map(({ node, share }, index) => {
+            const meta = nodeButtonAttrs(node);
+            const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+            return `<button type="button" class="sp-portfolio-mix-legend-item sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+              role="listitem"
+              style="--i:${index + 1}"
+              ${meta.attrs}
+            >
+              <span class="sp-portfolio-share-swatch" style="background:${meta.color}" aria-hidden="true"></span>
+              <span class="sp-portfolio-mix-legend-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+              <span class="sp-portfolio-mix-legend-meta">${share}% · ${escapeHtml(meta.secondary)}</span>
+            </button>`;
+          })
+          .join('')}</div>
+      </div>`;
+    playChartEntrance();
+  };
+
+  const renderBubblesChart = (nodes) => {
+    const sorted = sortedChartNodes(nodes);
+    const { height: minHeight } = getTreemapSize();
+    prepareAltChartShell('is-bubbles-chart', Math.max(minHeight, 420));
+
+    if (!sorted.length) {
+      treemapEl.innerHTML = `<p class="sp-size-empty">${emptyChartMessage()}</p>`;
+      return;
+    }
+
+    const maxWeight = Math.max(...sorted.map((node) => nodeWeight(node)), 1);
+    const total = sorted.reduce((sum, node) => sum + nodeWeight(node), 0) || 1;
+    treemapEl.innerHTML = `<div class="sp-portfolio-bubbles" role="list">${sorted
+      .map((node, index) => {
+        const meta = nodeButtonAttrs(node);
+        const weight = nodeWeight(node);
+        const share = weightSharePct(weight, total);
+        const scale = Math.sqrt(weight / maxWeight);
+        const size = Math.round(64 + scale * 108);
+        const reviewClass = meta.needsReview ? ' is-needs-review' : '';
+        return `<button type="button" class="sp-portfolio-bubble sp-portfolio-tile sp-chart-enter-item${meta.drillable ? ' is-drillable' : ''}${meta.type === 'project' ? ' is-project' : ''}${meta.type === 'owner' ? ' is-owner' : ''}${reviewClass}"
+          role="listitem"
+          style="--i:${index};--bubble:${size}px;--bubble-color:${meta.color}"
+          ${meta.attrs}
+        >
+          <span class="sp-portfolio-bubble-share">${share}%</span>
+          <span class="sp-portfolio-bubble-label">${escapeHtml(meta.label)}${meta.needsReview ? ' <em>Review</em>' : ''}</span>
+          <span class="sp-portfolio-bubble-value">${escapeHtml(meta.secondary)}</span>
+        </button>`;
+      })
+      .join('')}</div>`;
+    playChartEntrance();
+  };
+
+  const currentChartNodes = () => {
+    if (hasActiveProjectFilters()) {
+      return buildHeatmapNodesFromProjects(filteredProjectRows());
+    }
+    return state.data?.nodes || [];
+  };
+
+  const renderChart = (nodes) => {
+    setChartTypeUi();
+    if (state.chartType === 'bar') {
+      renderBarChart(nodes);
+      return;
+    }
+    if (state.chartType === 'columns') {
+      renderColumnsChart(nodes);
+      return;
+    }
+    if (state.chartType === 'share') {
+      renderShareChart(nodes);
+      return;
+    }
+    if (state.chartType === 'rank') {
+      renderRankChart(nodes);
+      return;
+    }
+    if (state.chartType === 'pareto') {
+      renderParetoChart(nodes);
+      return;
+    }
+    if (state.chartType === 'mix') {
+      renderMixChart(nodes);
+      return;
+    }
+    if (state.chartType === 'bubbles') {
+      renderBubblesChart(nodes);
+      return;
+    }
+    renderTreemap(nodes);
   };
 
   const renderBreadcrumb = () => {
@@ -610,22 +1136,221 @@
     `;
   };
 
+  const hueFromKey = (value) => {
+    const raw = String(value || '');
+    let hash = 2166136261;
+    for (let i = 0; i < raw.length; i += 1) {
+      hash ^= raw.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return Math.abs(hash) % 360;
+  };
+
+  const hasActiveProjectFilters = () => {
+    const f = state.projectFilters || {};
+    return !!(
+      f.source
+      || f.owner
+      || f.portfolio
+      || f.sub
+      || String(state.projectSearch || '').trim()
+      || state.projectUniqueOnly
+    );
+  };
+
+  const filteredProjectRows = () => {
+    const query = String(state.projectSearch || '').trim().toLowerCase();
+    const filters = state.projectFilters || {};
+    let rows = (state.projectMenu || []).filter((row) => {
+      if (filters.source && String(row.source_key || '') !== filters.source) return false;
+      if (filters.owner && String(row.owner_key || '') !== filters.owner) return false;
+      if (filters.portfolio && String(row.portfolio || '') !== filters.portfolio) return false;
+      if (filters.sub && String(row.sub_portfolio || '') !== filters.sub) return false;
+      if (!query) return true;
+      const hay = [
+        row.project_name,
+        row.owner_name,
+        row.portfolio,
+        row.sub_portfolio,
+        row.source_title,
+      ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+      return hay.includes(query);
+    });
+
+    if (state.projectUniqueOnly) {
+      /** @type {Map<string, any>} */
+      const byName = new Map();
+      rows.forEach((row) => {
+        const nameKey = String(row.project_name || row.label || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ' ');
+        if (!nameKey) return;
+        const prev = byName.get(nameKey);
+        if (!prev) {
+          byName.set(nameKey, row);
+          return;
+        }
+        if ((Number(row.size_bytes) || 0) > (Number(prev.size_bytes) || 0)) {
+          byName.set(nameKey, row);
+        }
+      });
+      rows = Array.from(byName.values());
+    }
+
+    return rows;
+  };
+
+  const buildHeatmapNodesFromProjects = (rows) => {
+    if (state.level === 'projects') {
+      return rows.map((row) => {
+        const projectName = String(row.project_name || row.label || '');
+        const sourceKey = String(row.source_key || '');
+        return {
+          ...row,
+          key: String(row.key || `${sourceKey}\n${projectName}`),
+          label: projectName,
+          type: 'project',
+          project_name: projectName,
+          source_key: sourceKey,
+          size_bytes: Number(row.size_bytes) || 0,
+          file_count: Number(row.file_count) || 0,
+          project_count: 1,
+          hue: Number.isFinite(Number(row.hue)) ? Number(row.hue) : hueFromKey(`${sourceKey}\n${projectName}`),
+        };
+      });
+    }
+
+    /** @type {Map<string, any>} */
+    const buckets = new Map();
+    const bucketKey = (row) => {
+      if (state.level === 'owners') return String(row.owner_key || '_unassigned');
+      if (state.level === 'sub_portfolios') return String(row.sub_portfolio || '—');
+      return String(row.portfolio || '—');
+    };
+    const bucketLabel = (row, key) => {
+      if (state.level === 'owners') return String(row.owner_name || key);
+      return key;
+    };
+    const bucketType = () => {
+      if (state.level === 'owners') return 'owner';
+      if (state.level === 'sub_portfolios') return 'sub_portfolio';
+      return 'portfolio';
+    };
+
+    rows.forEach((row) => {
+      const key = bucketKey(row);
+      if (!buckets.has(key)) {
+        const type = bucketType();
+        const label = bucketLabel(row, key);
+        buckets.set(key, {
+          key,
+          label,
+          type,
+          owner_key: type === 'owner' ? key : String(row.owner_key || ''),
+          owner_name: type === 'owner' ? label : String(row.owner_name || ''),
+          portfolio: String(row.portfolio || state.portfolio || ''),
+          sub_portfolio: type === 'sub_portfolio' ? label : String(row.sub_portfolio || ''),
+          size_bytes: 0,
+          file_count: 0,
+          project_count: 0,
+          owner_count: 0,
+          _owners: new Set(),
+          hue: hueFromKey(`${type}:${key}`),
+        });
+      }
+      const node = buckets.get(key);
+      node.size_bytes += Number(row.size_bytes) || 0;
+      node.file_count += Number(row.file_count) || 0;
+      node.project_count += 1;
+      if (row.owner_key) node._owners.add(String(row.owner_key));
+    });
+
+    return Array.from(buckets.values()).map((node) => {
+      node.owner_count = node._owners.size;
+      delete node._owners;
+      return node;
+    });
+  };
+
+  const filteredKpisFromProjects = (rows) => {
+    let totalBytes = 0;
+    let fileCount = 0;
+    rows.forEach((row) => {
+      totalBytes += Number(row.size_bytes) || 0;
+      fileCount += Number(row.file_count) || 0;
+    });
+    const base = {
+      total_bytes: totalBytes,
+      file_count: fileCount,
+      project_count: rows.length,
+    };
+    if (state.level === 'owners') {
+      const owners = new Set(rows.map((r) => String(r.owner_key || '')));
+      return { ...base, owner_count: owners.size };
+    }
+    if (state.level === 'sub_portfolios') {
+      const subs = new Set(rows.map((r) => String(r.sub_portfolio || '')));
+      return { ...base, sub_portfolio_count: subs.size };
+    }
+    if (state.level === 'portfolios') {
+      const portfolios = new Set(rows.map((r) => String(r.portfolio || '')));
+      let largestBytes = 0;
+      let largestLabel = '';
+      const byPortfolio = new Map();
+      rows.forEach((row) => {
+        const key = String(row.portfolio || '');
+        const next = (byPortfolio.get(key) || 0) + (Number(row.size_bytes) || 0);
+        byPortfolio.set(key, next);
+        if (next > largestBytes) {
+          largestBytes = next;
+          largestLabel = key;
+        }
+      });
+      return {
+        ...base,
+        portfolio_count: portfolios.size,
+        largest_bytes: largestBytes,
+        largest_label: largestLabel,
+      };
+    }
+    return base;
+  };
+
   const sortedLargeFiles = () => {
     const { key, direction } = state.fileSort;
     const dir = direction === 'asc' ? 1 : -1;
-    return (state.largeFiles || []).slice().sort((a, b) => {
-      if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
-      if (key === 'modified') {
-        return String(a.last_modified || '').localeCompare(String(b.last_modified || '')) * dir;
-      }
-      if (key === 'portfolio') {
-        return String(a.portfolio || '').localeCompare(String(b.portfolio || ''), undefined, { sensitivity: 'base' }) * dir;
-      }
-      if (key === 'project') {
-        return String(a.project_name || '').localeCompare(String(b.project_name || ''), undefined, { sensitivity: 'base' }) * dir;
-      }
-      return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }) * dir;
-    });
+    const filteredProjects = filteredProjectRows();
+    const filtersActive = hasActiveProjectFilters();
+    const allowedProjects = filtersActive
+      ? new Set(
+          filteredProjects.map((row) =>
+            `${String(row.source_key || '')}\n${String(row.project_name || row.label || '')}`.toLowerCase()
+          )
+        )
+      : null;
+    return (state.largeFiles || [])
+      .filter((file) => {
+        if (!allowedProjects) return true;
+        const keyName = `${String(file.source_key || '')}\n${String(file.project_name || '')}`.toLowerCase();
+        return allowedProjects.has(keyName);
+      })
+      .slice()
+      .sort((a, b) => {
+        if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
+        if (key === 'modified') {
+          return String(a.last_modified || '').localeCompare(String(b.last_modified || '')) * dir;
+        }
+        if (key === 'portfolio') {
+          return String(a.portfolio || '').localeCompare(String(b.portfolio || ''), undefined, { sensitivity: 'base' }) * dir;
+        }
+        if (key === 'project') {
+          return String(a.project_name || '').localeCompare(String(b.project_name || ''), undefined, { sensitivity: 'base' }) * dir;
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }) * dir;
+      });
   };
 
   const updateFileSortHeaders = () => {
@@ -689,66 +1414,207 @@
   };
 
   const sortedProjectMenu = () => {
-    const query = String(state.projectSearch || '').trim().toLowerCase();
     const { key, direction } = state.projectSort;
     const dir = direction === 'asc' ? 1 : -1;
-    let rows = (state.projectMenu || []).filter((row) => {
-      if (!query) return true;
-      const hay = [
-        row.project_name,
-        row.owner_name,
-        row.portfolio,
-        row.sub_portfolio,
-        row.source_title,
-      ]
-        .map((v) => String(v || '').toLowerCase())
-        .join(' ');
-      return hay.includes(query);
-    });
-
-    if (state.projectUniqueOnly) {
-      /** @type {Map<string, any>} */
-      const byName = new Map();
-      rows.forEach((row) => {
-        const nameKey = String(row.project_name || row.label || '')
-          .trim()
-          .toLowerCase()
-          .replace(/\s+/g, ' ');
-        if (!nameKey) return;
-        const prev = byName.get(nameKey);
-        if (!prev) {
-          byName.set(nameKey, row);
-          return;
-        }
-        // Keep the larger catalog copy when public + private both match.
-        if ((Number(row.size_bytes) || 0) > (Number(prev.size_bytes) || 0)) {
-          byName.set(nameKey, row);
-        }
+    return filteredProjectRows()
+      .slice()
+      .sort((a, b) => {
+        if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
+        if (key === 'files') return ((Number(a.file_count) || 0) - (Number(b.file_count) || 0)) * dir;
+        const left =
+          key === 'owner'
+            ? a.owner_name
+            : key === 'portfolio'
+              ? a.portfolio
+              : key === 'sub'
+                ? a.sub_portfolio
+                : a.project_name || a.label;
+        const right =
+          key === 'owner'
+            ? b.owner_name
+            : key === 'portfolio'
+              ? b.portfolio
+              : key === 'sub'
+                ? b.sub_portfolio
+                : b.project_name || b.label;
+        return String(left || '').localeCompare(String(right || ''), undefined, { sensitivity: 'base' }) * dir;
       });
-      rows = Array.from(byName.values());
+  };
+
+  const uniqueSortedValues = (rows, getter) => {
+    const map = new Map();
+    rows.forEach((row) => {
+      const value = String(getter(row) || '').trim();
+      if (!value) return;
+      if (!map.has(value)) map.set(value, value);
+    });
+    return Array.from(map.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  };
+
+  const fillSelectOptions = (select, values, allLabel, selected, labelForValue = null) => {
+    if (!select) return;
+    const current = selected || '';
+    const options = [`<option value="">${escapeHtml(allLabel)}</option>`];
+    values.forEach((value) => {
+      const label = labelForValue ? labelForValue(value) : value;
+      options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+    if (current && values.includes(current)) {
+      select.value = current;
+    } else {
+      select.value = '';
+      if (selected && selected !== select.value) {
+        // Selected value no longer available for this cascade.
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const syncProjectFilterControls = () => {
+    const rows = state.projectMenu || [];
+    const filters = state.projectFilters;
+    const sourceSelect = document.getElementById('sp-portfolio-filter-source');
+    const ownerSelect = document.getElementById('sp-portfolio-filter-owner');
+    const portfolioSelect = document.getElementById('sp-portfolio-filter-portfolio');
+    const subSelect = document.getElementById('sp-portfolio-filter-sub');
+    const clearBtn = document.getElementById('sp-portfolio-filters-clear');
+
+    const sourceLabels = new Map();
+    rows.forEach((row) => {
+      const key = String(row.source_key || '');
+      if (!key || sourceLabels.has(key)) return;
+      sourceLabels.set(key, String(row.source_title || key));
+    });
+    fillSelectOptions(
+      sourceSelect,
+      Array.from(sourceLabels.keys()).sort((a, b) =>
+        String(sourceLabels.get(a) || a).localeCompare(String(sourceLabels.get(b) || b), undefined, { sensitivity: 'base' })
+      ),
+      'All catalogs',
+      filters.source,
+      (value) => sourceLabels.get(value) || value
+    );
+
+    const ownerLabels = new Map();
+    rows.forEach((row) => {
+      const key = String(row.owner_key || '');
+      if (!key || ownerLabels.has(key)) return;
+      ownerLabels.set(key, String(row.owner_name || key));
+    });
+    fillSelectOptions(
+      ownerSelect,
+      Array.from(ownerLabels.keys()).sort((a, b) =>
+        String(ownerLabels.get(a) || a).localeCompare(String(ownerLabels.get(b) || b), undefined, { sensitivity: 'base' })
+      ),
+      'All owners',
+      filters.owner,
+      (value) => ownerLabels.get(value) || value
+    );
+
+    fillSelectOptions(
+      portfolioSelect,
+      uniqueSortedValues(rows, (row) => row.portfolio),
+      'All portfolios',
+      filters.portfolio
+    );
+
+    const subSourceRows = filters.portfolio
+      ? rows.filter((row) => String(row.portfolio || '') === filters.portfolio)
+      : rows;
+    const subOk = fillSelectOptions(
+      subSelect,
+      uniqueSortedValues(subSourceRows, (row) => row.sub_portfolio),
+      'All sub-portfolios',
+      filters.sub
+    );
+    if (!subOk) {
+      filters.sub = '';
     }
 
-    return rows.slice().sort((a, b) => {
-      if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
-      if (key === 'files') return ((Number(a.file_count) || 0) - (Number(b.file_count) || 0)) * dir;
-      const left =
-        key === 'owner'
-          ? a.owner_name
-          : key === 'portfolio'
-            ? a.portfolio
-            : key === 'sub'
-              ? a.sub_portfolio
-              : a.project_name || a.label;
-      const right =
-        key === 'owner'
-          ? b.owner_name
-          : key === 'portfolio'
-            ? b.portfolio
-            : key === 'sub'
-              ? b.sub_portfolio
-              : b.project_name || b.label;
-      return String(left || '').localeCompare(String(right || ''), undefined, { sensitivity: 'base' }) * dir;
-    });
+    if (clearBtn) clearBtn.hidden = !hasActiveProjectFilters();
+    renderChartFilterSummary();
+  };
+
+  const chartFilterLabel = (key, value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (key === 'source') {
+      const row = (state.projectMenu || []).find((item) => String(item.source_key || '') === raw);
+      return String(row?.source_title || raw);
+    }
+    if (key === 'owner') {
+      const row = (state.projectMenu || []).find((item) => String(item.owner_key || '') === raw);
+      return String(row?.owner_name || raw);
+    }
+    return raw;
+  };
+
+  const renderChartFilterSummary = () => {
+    if (!chartFiltersEl) return;
+    if (!hasActiveProjectFilters()) {
+      chartFiltersEl.hidden = true;
+      chartFiltersEl.innerHTML = '';
+      return;
+    }
+
+    const filters = state.projectFilters || {};
+    const chips = [];
+    if (filters.source) {
+      chips.push({ key: 'source', label: 'Catalog', value: chartFilterLabel('source', filters.source) });
+    }
+    if (filters.owner) {
+      chips.push({ key: 'owner', label: 'Owner', value: chartFilterLabel('owner', filters.owner) });
+    }
+    if (filters.portfolio) {
+      chips.push({ key: 'portfolio', label: 'Portfolio', value: chartFilterLabel('portfolio', filters.portfolio) });
+    }
+    if (filters.sub) {
+      chips.push({ key: 'sub', label: 'Sub-portfolio', value: chartFilterLabel('sub', filters.sub) });
+    }
+    const search = String(state.projectSearch || '').trim();
+    if (search) {
+      chips.push({ key: 'search', label: 'Search', value: search });
+    }
+    if (state.projectUniqueOnly) {
+      chips.push({ key: 'unique', label: 'Mode', value: 'Unique projects only' });
+    }
+
+    const matched = filteredProjectRows().length;
+    const total = (state.projectMenu || []).length;
+    chartFiltersEl.hidden = false;
+    chartFiltersEl.innerHTML = `
+      <div class="sp-portfolio-chart-filters-head">
+        <span class="sp-portfolio-chart-filters-title">Chart filters</span>
+        <span class="sp-portfolio-chart-filters-count">${matched} of ${total} project${total === 1 ? '' : 's'}</span>
+      </div>
+      <div class="sp-portfolio-chart-filters-chips" role="list">
+        ${chips
+          .map(
+            (chip) => `<span class="sp-portfolio-chart-filter-chip" role="listitem">
+              <span class="sp-portfolio-chart-filter-chip-label">${escapeHtml(chip.label)}</span>
+              <strong>${escapeHtml(chip.value)}</strong>
+            </span>`
+          )
+          .join('')}
+      </div>
+      <button type="button" class="button ghost sp-portfolio-chart-filters-clear" id="sp-portfolio-chart-filters-clear">Clear filters</button>
+    `;
+  };
+
+  const applyProjectFiltersAndRedraw = () => {
+    syncProjectFilterControls();
+    renderProjectMenu();
+    renderFiles();
+    const rows = filteredProjectRows();
+    if (hasActiveProjectFilters()) {
+      renderKpis(filteredKpisFromProjects(rows));
+      renderChart(buildHeatmapNodesFromProjects(rows));
+    } else if (state.data?.ok !== false) {
+      renderKpis(state.data?.kpis || null);
+      renderChart(state.data?.nodes || []);
+    }
   };
 
   const updateProjectSortHeaders = () => {
@@ -768,6 +1634,7 @@
 
   const renderProjectMenu = () => {
     if (!projectBody) return;
+    syncProjectFilterControls();
     const rows = sortedProjectMenu();
     updateProjectSortHeaders();
     if (projectCountEl) projectCountEl.textContent = String(rows.length);
@@ -781,8 +1648,8 @@
       } else {
         projectHelp.textContent = 'All mapped projects in the selected catalogs, with folder owner.';
       }
-      if (state.projectUniqueOnly) {
-        projectHelp.textContent += ' Showing unique project names only.';
+      if (hasActiveProjectFilters()) {
+        projectHelp.textContent += ' Chart follows the filters shown above.';
       }
     }
     if (!rows.length) {
@@ -1119,11 +1986,17 @@
       }
       return;
     }
-    renderKpis(state.data?.kpis || null);
     renderCoverage(state.data?.coverage || null, state.data?.mapping_error || '');
-    renderTreemap(state.data?.nodes || []);
     state.largeFiles = state.data?.large_files || [];
     state.projectMenu = state.data?.project_menu || [];
+    const filteredRows = filteredProjectRows();
+    if (hasActiveProjectFilters()) {
+      renderKpis(filteredKpisFromProjects(filteredRows));
+      renderChart(buildHeatmapNodesFromProjects(filteredRows));
+    } else {
+      renderKpis(state.data?.kpis || null);
+      renderChart(state.data?.nodes || []);
+    }
     renderFiles();
     renderProjectMenu();
   };
@@ -1165,12 +2038,21 @@
     }
   };
 
+  const resetProjectFilters = () => {
+    state.projectFilters = { source: '', owner: '', portfolio: '', sub: '' };
+    state.projectSearch = '';
+    state.projectUniqueOnly = false;
+    if (projectSearch) projectSearch.value = '';
+    if (projectUniqueToggle) projectUniqueToggle.checked = false;
+  };
+
   const showPortfolios = () => {
     state.level = 'portfolios';
     state.portfolio = '';
     state.subPortfolio = '';
     state.ownerKey = '';
     state.ownerName = '';
+    resetProjectFilters();
     state.loaded = false;
     state.data = null;
     saveNavigation();
@@ -1183,6 +2065,7 @@
     state.subPortfolio = '';
     state.ownerKey = '';
     state.ownerName = '';
+    resetProjectFilters();
     state.loaded = false;
     state.data = null;
     saveNavigation();
@@ -1195,6 +2078,7 @@
     state.subPortfolio = '';
     state.ownerKey = '';
     state.ownerName = '';
+    resetProjectFilters();
     state.loaded = false;
     state.data = null;
     saveNavigation();
@@ -1207,6 +2091,7 @@
     state.subPortfolio = subPortfolio || '';
     state.ownerKey = ownerKey || '';
     state.ownerName = ownerName || '';
+    resetProjectFilters();
     state.loaded = false;
     state.data = null;
     saveNavigation();
@@ -1253,13 +2138,39 @@
     }
     setModeUi();
     if (state.loaded && state.data?.nodes) {
-      renderTreemap(state.data.nodes || []);
+      renderChart(currentChartNodes());
     }
     saveNavigation();
   };
 
+  const setChartType = (chartType) => {
+    const next = normalizeChartType(chartType);
+    if (next === state.chartType) return;
+    state.chartType = next;
+    try {
+      localStorage.setItem(CHART_KEY, next);
+    } catch (e) { /* ignore */ }
+    setChartTypeUi();
+    if (state.loaded && state.data) {
+      renderChart(currentChartNodes());
+    }
+  };
+
+  const setChartSort = (sortDir) => {
+    const next = normalizeChartSort(sortDir);
+    if (next === state.chartSort) return;
+    state.chartSort = next;
+    try {
+      localStorage.setItem(CHART_SORT_KEY, next);
+    } catch (e) { /* ignore */ }
+    setChartTypeUi();
+    if (state.loaded && state.data && SORTABLE_CHART_TYPES.has(state.chartType)) {
+      renderChart(currentChartNodes());
+    }
+  };
+
   treemapEl.addEventListener('click', (event) => {
-    const tile = event.target.closest('.sp-size-tile');
+    const tile = event.target.closest('.sp-portfolio-tile');
     if (!tile || !treemapEl.contains(tile)) return;
     const type = tile.getAttribute('data-type') || '';
     if (type === 'portfolio') {
@@ -1327,6 +2238,18 @@
     setMode(btn.getAttribute('data-portfolio-mode') || 'storage');
   });
 
+  document.getElementById('sp-portfolio-chart-type')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-portfolio-chart]');
+    if (!btn) return;
+    setChartType(btn.getAttribute('data-portfolio-chart') || 'heatmap');
+  });
+
+  document.getElementById('sp-portfolio-chart-sort')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-portfolio-chart-sort]');
+    if (!btn) return;
+    setChartSort(btn.getAttribute('data-portfolio-chart-sort') || 'desc');
+  });
+
   backBtn?.addEventListener('click', goBack);
   refreshBtn?.addEventListener('click', () => load(true));
 
@@ -1355,11 +2278,42 @@
 
   projectSearch?.addEventListener('input', () => {
     state.projectSearch = projectSearch.value || '';
-    renderProjectMenu();
+    applyProjectFiltersAndRedraw();
   });
   projectUniqueToggle?.addEventListener('change', () => {
     state.projectUniqueOnly = !!projectUniqueToggle.checked;
-    renderProjectMenu();
+    applyProjectFiltersAndRedraw();
+  });
+
+  projectTable?.addEventListener('change', (event) => {
+    const select = event.target.closest('[data-portfolio-filter]');
+    if (!select || !projectTable.contains(select)) return;
+    const key = select.getAttribute('data-portfolio-filter');
+    if (!key || !(key in state.projectFilters)) return;
+    state.projectFilters[key] = select.value || '';
+    if (key === 'portfolio') {
+      state.projectFilters.sub = '';
+    }
+    applyProjectFiltersAndRedraw();
+  });
+
+  const clearAllProjectFilters = () => {
+    state.projectFilters = { source: '', owner: '', portfolio: '', sub: '' };
+    state.projectSearch = '';
+    state.projectUniqueOnly = false;
+    if (projectSearch) projectSearch.value = '';
+    if (projectUniqueToggle) projectUniqueToggle.checked = false;
+    applyProjectFiltersAndRedraw();
+  };
+
+  document.getElementById('sp-portfolio-filters-clear')?.addEventListener('click', () => {
+    clearAllProjectFilters();
+  });
+
+  chartFiltersEl?.addEventListener('click', (event) => {
+    const clearBtn = event.target.closest('#sp-portfolio-chart-filters-clear');
+    if (!clearBtn) return;
+    clearAllProjectFilters();
   });
 
   projectTable?.addEventListener('click', (event) => {
@@ -1595,9 +2549,9 @@
 
   let resizeTimer = 0;
   const scheduleTreemapResize = () => {
-    if (!state.loaded || !state.data?.nodes) return;
+    if (!state.loaded || !state.data) return;
     window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => renderTreemap(state.data.nodes || []), 120);
+    resizeTimer = window.setTimeout(() => renderChart(currentChartNodes()), 120);
   };
   window.addEventListener('resize', scheduleTreemapResize);
   if (typeof ResizeObserver === 'function' && treemapWrap) {
@@ -1607,6 +2561,8 @@
 
   syncScopesFromStorage();
   state.mode = readPersistedMode();
+  state.chartType = readPersistedChartType();
+  state.chartSort = readPersistedChartSort();
   const savedNav = readNavigation();
   if (savedNav?.mode) {
     state.mode = normalizeMode(savedNav.mode);
@@ -1631,6 +2587,7 @@
     state.ownerName = '';
   }
   setModeUi();
+  setChartTypeUi();
   renderBreadcrumb();
 
   window.RiskRegisterPortfolioStorage = {
@@ -1663,6 +2620,7 @@
           state.ownerName = '';
         }
         setModeUi();
+        setChartTypeUi();
       }
       return load(force);
     },
@@ -1678,7 +2636,7 @@
       saveNavigation();
     },
     redraw: () => {
-      if (state.loaded && state.data?.nodes) renderTreemap(state.data.nodes || []);
+      if (state.loaded && state.data) renderChart(currentChartNodes());
     },
     syncScopesFromStorage,
   };
