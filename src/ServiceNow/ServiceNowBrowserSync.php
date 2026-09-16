@@ -13,7 +13,7 @@ use RuntimeException;
 final class ServiceNowBrowserSync
 {
     public const TOKEN_TTL_SECONDS = 1800;
-    public const MAX_RELATED_TICKETS = 50;
+    public const MAX_RELATED_TICKETS = 250;
     public const MAX_ATTACHMENTS = 100;
     public const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
     public const PACKET_FORMAT = 'architecture-risk.servicenow-task-packet.v1';
@@ -252,14 +252,47 @@ final class ServiceNowBrowserSync
         return $scheme . '://' . $host . $port;
     }
 
+    /**
+     * Normalize a ServiceNow ticket number (TASK, DMND, STRY, DDR, PRJ, etc.).
+     * Kept as normalizeTaskNumber for backward compatibility with callers/tests.
+     */
     public static function normalizeTaskNumber(string $taskNumber): string
     {
-        $task = strtoupper(trim($taskNumber));
-        if (!preg_match('/^TASK\d+$/', $task)) {
-            throw new RuntimeException('Task number must look like TASK0123456.');
+        return self::normalizeTicketNumber($taskNumber);
+    }
+
+    public static function normalizeTicketNumber(string $ticketNumber): string
+    {
+        $ticket = strtoupper(trim($ticketNumber));
+        if (!preg_match('/^[A-Z]+\d+$/', $ticket)) {
+            throw new RuntimeException(
+                'Ticket number must look like TASK0123456, DMND…, STRY…, DDR…, or PRJ….'
+            );
         }
 
-        return $task;
+        return $ticket;
+    }
+
+    /**
+     * ServiceNow form table for opening a ticket by number prefix.
+     */
+    public static function tableForTicketNumber(string $ticketNumber): string
+    {
+        $ticket = strtoupper(trim($ticketNumber));
+        if (str_starts_with($ticket, 'DMND')) {
+            return 'dmn_demand';
+        }
+        if (str_starts_with($ticket, 'STRY')) {
+            return 'rm_story';
+        }
+        if (str_starts_with($ticket, 'DDR')) {
+            return 'sn_tprm_dd_request';
+        }
+        if (str_starts_with($ticket, 'PRJ')) {
+            return 'pm_project';
+        }
+
+        return 'task';
     }
 
     public static function sanitizeStoredFilename(string $name): string

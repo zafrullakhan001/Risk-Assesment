@@ -10,6 +10,28 @@ const EXTENSION_SOURCE = 'riskregister-servicenow-extension';
 const SHAREPOINT_PAGE_SOURCE = 'riskregister-sharepoint-page';
 const SHAREPOINT_EXTENSION_SOURCE = 'riskregister-sharepoint-extension';
 
+function extensionReadyPayload() {
+  try {
+    return {
+      version: chrome.runtime.getManifest().version,
+      capabilities: {
+        flexibleTicketNumbers: true,
+      },
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function safeRuntimeSendMessage(message, callback) {
+  try {
+    chrome.runtime.sendMessage(message, callback);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 function postToPage(type, payload, source = EXTENSION_SOURCE) {
   window.postMessage({
     source,
@@ -24,14 +46,17 @@ window.addEventListener('message', (event) => {
   if (!data) return;
 
   if (data.source === PAGE_SOURCE && data.type === 'RR_SN_EXTENSION_PING') {
-    postToPage('RR_SN_EXTENSION_READY', { version: chrome.runtime.getManifest().version });
+    const ready = extensionReadyPayload();
+    if (ready) postToPage('RR_SN_EXTENSION_READY', ready);
     return;
   }
 
   if (data.source === SHAREPOINT_PAGE_SOURCE && data.type === 'RR_SP_EXTENSION_PING') {
+    const ready = extensionReadyPayload();
+    if (!ready) return;
     postToPage(
       'RR_SP_EXTENSION_READY',
-      { version: chrome.runtime.getManifest().version },
+      { version: ready.version },
       SHAREPOINT_EXTENSION_SOURCE
     );
     return;
@@ -43,7 +68,7 @@ window.addEventListener('message', (event) => {
   if (!isServiceNowPrepare && !isSharePointPrepare) return;
 
   const requestId = String(data.requestId || '');
-  chrome.runtime.sendMessage({
+  const sent = safeRuntimeSendMessage({
     type: isSharePointPrepare ? 'RR_SP_PREPARE' : 'RR_SN_PREPARE',
     config: data.config,
   }, (response) => {
@@ -68,6 +93,17 @@ window.addEventListener('message', (event) => {
       isSharePointPrepare ? SHAREPOINT_EXTENSION_SOURCE : EXTENSION_SOURCE
     );
   });
+  if (!sent) {
+    postToPage(
+      isSharePointPrepare ? 'RR_SP_EXTENSION_PREPARE_RESULT' : 'RR_SN_EXTENSION_PREPARE_RESULT',
+      {
+        requestId,
+        ok: false,
+        error: 'Extension was reloaded. Refresh this RiskRegister page and try again.',
+      },
+      isSharePointPrepare ? SHAREPOINT_EXTENSION_SOURCE : EXTENSION_SOURCE
+    );
+  }
 });
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -87,9 +123,12 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-postToPage('RR_SN_EXTENSION_READY', { version: chrome.runtime.getManifest().version });
-postToPage(
-  'RR_SP_EXTENSION_READY',
-  { version: chrome.runtime.getManifest().version },
-  SHAREPOINT_EXTENSION_SOURCE
-);
+const initialReady = extensionReadyPayload();
+if (initialReady) {
+  postToPage('RR_SN_EXTENSION_READY', initialReady);
+  postToPage(
+    'RR_SP_EXTENSION_READY',
+    { version: initialReady.version },
+    SHAREPOINT_EXTENSION_SOURCE
+  );
+}

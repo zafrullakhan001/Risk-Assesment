@@ -20,6 +20,8 @@
   let lastScript = '';
   let lastOpenUrl = '';
   let extensionAvailable = false;
+  let extensionSupportsFlexibleTickets = false;
+  let extensionVersion = '';
   const extensionRequests = new Map();
 
   const pageSource = 'riskregister-servicenow-page';
@@ -32,6 +34,11 @@
 
     if (data.type === 'RR_SN_EXTENSION_READY') {
       extensionAvailable = true;
+      extensionVersion = String(data.version || '');
+      extensionSupportsFlexibleTickets = !!(
+        data.capabilities
+        && data.capabilities.flexibleTicketNumbers === true
+      );
       root.classList.add('has-servicenow-extension');
       if (prepareBtn) {
         prepareBtn.textContent = '▶ Prepare + open automatically';
@@ -163,8 +170,21 @@
       setStatus('Enter your ServiceNow instance URL (e.g. https://yourcompany.service-now.com).', false);
       return;
     }
-    if (!/^TASK\d+$/i.test(taskNumber)) {
-      setStatus('Task number must look like TASK0123456.', false);
+    if (!/^[A-Z]+\d+$/i.test(taskNumber)) {
+      setStatus('Ticket number must look like TASK0123456, DMND…, STRY…, DDR…, or PRJ….', false);
+      return;
+    }
+    if (
+      extensionAvailable
+      && !/^TASK\d+$/i.test(taskNumber)
+      && !extensionSupportsFlexibleTickets
+    ) {
+      setStatus(
+        'The loaded browser extension'
+          + (extensionVersion ? ' (version ' + extensionVersion + ')' : '')
+          + ' only supports TASK numbers. Open the extensions page, reload RiskRegister Browser Sync, then refresh this page.',
+        false
+      );
       return;
     }
 

@@ -133,8 +133,8 @@ function validatePrepared(message, sender) {
   if (!isServiceNowOrigin(instanceOrigin)) {
     throw new Error('Prepared ServiceNow origin is not allowed.');
   }
-  if (!/^TASK\d+$/.test(taskNumber) || !script.includes(taskNumber)) {
-    throw new Error('Prepared TASK number failed validation.');
+  if (!/^[A-Z]+\d+$/.test(taskNumber) || !script.includes(taskNumber)) {
+    throw new Error('Prepared ticket number failed validation.');
   }
 
   const now = Math.floor(Date.now() / 1000);

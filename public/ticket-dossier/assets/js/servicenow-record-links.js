@@ -41,18 +41,20 @@
             if (upper.indexOf('DMND') === 0) resolved = 'demand';
             else if (upper.indexOf('STRY') === 0) resolved = 'story';
             else if (upper.indexOf('DDR') === 0) resolved = 'ddr';
+            else if (upper.indexOf('PRJ') === 0) resolved = 'project';
             else resolved = 'task';
         }
         if (resolved === 'demand') return 'dmn_demand';
         if (resolved === 'story') return 'rm_story';
         if (resolved === 'ddr') return 'sn_tprm_dd_request';
+        if (resolved === 'project') return 'pm_project';
         return 'task';
     }
 
     function recordUrl(instance, number, sysId, table, kind) {
         var origin = normalizeOrigin(instance);
         var ticket = String(number || '').trim().toUpperCase();
-        if (!origin || !/^(DMND|STRY|TASK|DDR)\d+$/.test(ticket)) {
+        if (!origin || !/^(DMND|STRY|TASK|DDR|PRJ)\d+$/.test(ticket)) {
             return '';
         }
         var uri = tableFor(kind, table, ticket) + '.do';

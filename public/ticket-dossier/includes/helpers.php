@@ -115,7 +115,7 @@ function firstNonEmpty(string ...$values): string
 /**
  * Extract ServiceNow record numbers from free text.
  *
- * @return array{demand: string, story: string, task: string, ddr: string}
+ * @return array{demand: string, story: string, task: string, ddr: string, project: string}
  */
 function extractRecordNumbers(string $text): array
 {
@@ -124,6 +124,7 @@ function extractRecordNumbers(string $text): array
         'story' => '',
         'task' => '',
         'ddr' => '',
+        'project' => '',
     ];
 
     if (preg_match('/\b(DMND\d+)\b/i', $text, $m)) {
@@ -137,6 +138,9 @@ function extractRecordNumbers(string $text): array
     }
     if (preg_match('/\b(DDR\d+)\b/i', $text, $m)) {
         $found['ddr'] = strtoupper($m[1]);
+    }
+    if (preg_match('/\b(PRJ\d+)\b/i', $text, $m)) {
+        $found['project'] = strtoupper($m[1]);
     }
 
     return $found;
@@ -156,6 +160,9 @@ function servicenowKindFromNumber(string $number): string
     }
     if (str_starts_with($number, 'DDR')) {
         return 'ddr';
+    }
+    if (str_starts_with($number, 'PRJ')) {
+        return 'project';
     }
 
     return '';
@@ -210,6 +217,7 @@ function servicenowTableForRecord(string $kind = '', string $table = '', string 
         'demand' => 'dmn_demand',
         'story' => 'rm_story',
         'ddr' => 'sn_tprm_dd_request',
+        'project' => 'pm_project',
         default => 'task',
     };
 }
@@ -223,7 +231,7 @@ function servicenowRecordUrl(
 ): string {
     $origin = servicenowNormalizeInstanceOrigin($instance);
     $number = strtoupper(trim($number));
-    if ($origin === '' || $number === '' || preg_match('/^(?:DMND|STRY|TASK|DDR)\d+$/', $number) !== 1) {
+    if ($origin === '' || $number === '' || preg_match('/^(?:DMND|STRY|TASK|DDR|PRJ)\d+$/', $number) !== 1) {
         return '';
     }
 
@@ -428,6 +436,7 @@ function kindLabel(string $kind): string
         'demand' => 'Demand',
         'story' => 'Story',
         'task' => 'Task',
+        'project' => 'Project',
         'packet' => 'Task packet',
         'attachment' => 'Attachment',
         'related' => 'Related tickets',
@@ -442,6 +451,7 @@ function kindEmoji(string $kind): string
         'demand' => '🎯',
         'story' => '📖',
         'task' => '✅',
+        'project' => '📁',
         'packet' => '📦',
         'attachment' => '📎',
         'related' => '🔗',

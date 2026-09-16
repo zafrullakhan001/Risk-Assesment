@@ -251,6 +251,7 @@
 .field small { color: var(--muted); font-size: 13px; }
 .field.inline { display: flex; align-items: center; gap: 10px; }
 .field input[type="text"],
+.field input[type="url"],
 .field input[type="search"],
 .field input[type="file"],
 .field select {
@@ -261,6 +262,14 @@
     background: var(--card);
     color: var(--ink);
     font: inherit;
+}
+.field .check {
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
 }
 .field select {
     cursor: pointer;

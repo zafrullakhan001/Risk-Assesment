@@ -708,13 +708,56 @@ final class ProjectImporter
         $task = is_array($parsed['task'] ?? null) ? $parsed['task'] : [];
         $ddr = is_array($parsed['ddr'] ?? null) ? $parsed['ddr'] : [];
         $vendor = is_array($parsed['vendor']['fields'] ?? null) ? $parsed['vendor']['fields'] : [];
+        $overview = is_array($parsed['overview'] ?? null) ? $parsed['overview'] : [];
+        $packetMeta = is_array($parsed['packet_meta'] ?? null) ? $parsed['packet_meta'] : [];
+        $rootKind = strtolower(trim((string) ($packetMeta['root_kind'] ?? '')));
+        $rootNumber = strtoupper(trim((string) ($parsed['root_number'] ?? '')));
+        if ($rootKind === '' && $rootNumber !== '') {
+            $rootKind = servicenowKindFromNumber($rootNumber);
+        }
+
+        $rootProjectTitle = '';
+        if ($rootKind === 'project') {
+            $rootProjectTitle = trim((string) ($overview['title'] ?? ''));
+            $relatedTickets = is_array($parsed['related_tickets'] ?? null)
+                ? $parsed['related_tickets']
+                : [];
+            foreach ($relatedTickets as $relatedTicket) {
+                if (!is_array($relatedTicket)) {
+                    continue;
+                }
+                $number = strtoupper(trim((string) ($relatedTicket['number'] ?? '')));
+                if ($rootNumber !== '' && $number !== $rootNumber) {
+                    continue;
+                }
+                $fields = is_array($relatedTicket['fields'] ?? null)
+                    ? $relatedTicket['fields']
+                    : [];
+                $rootProjectTitle = firstNonEmpty(
+                    (string) ($relatedTicket['title'] ?? ''),
+                    (string) ($relatedTicket['short_description'] ?? ''),
+                    (string) ($fields['Name'] ?? ''),
+                    (string) ($fields['Project name'] ?? ''),
+                    (string) ($fields['Project Name'] ?? ''),
+                    $rootProjectTitle
+                );
+                break;
+            }
+        }
+
+        $explicitTitle = trim((string) ($optionalTitle ?? ''));
+        if (strcasecmp($explicitTitle, 'Untitled Project') === 0) {
+            $explicitTitle = '';
+        }
 
         $title = firstNonEmpty(
-            trim((string) ($optionalTitle ?? '')),
+            $explicitTitle,
+            $rootProjectTitle,
             (string) ($demand['title'] ?? ''),
             (string) ($story['title'] ?? ''),
             (string) ($ddr['title'] ?? ''),
             (string) ($task['title'] ?? ''),
+            (string) ($overview['title'] ?? ''),
             'Untitled Project'
         );
 

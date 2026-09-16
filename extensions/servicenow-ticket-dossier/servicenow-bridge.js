@@ -27,6 +27,15 @@ function showExtensionNotice(message, isError) {
   window.setTimeout(() => notice.remove(), isError ? 15000 : 5000);
 }
 
+function safeRuntimeSendMessage(message, callback) {
+  try {
+    chrome.runtime.sendMessage(message, callback);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 window.addEventListener('message', (event) => {
   if (event.source !== window || event.origin !== window.location.origin) return;
   const data = event.data;
@@ -37,14 +46,14 @@ window.addEventListener('message', (event) => {
   ) {
     return;
   }
-  chrome.runtime.sendMessage({
+  safeRuntimeSendMessage({
     type: 'RR_SN_EXPORT_COMPLETE',
     origin: window.location.origin,
     taskNumber: String(data.taskNumber || ''),
   });
 });
 
-chrome.runtime.sendMessage({
+safeRuntimeSendMessage({
   type: 'RR_SN_TAB_READY',
   origin: window.location.origin,
 }, (response) => {

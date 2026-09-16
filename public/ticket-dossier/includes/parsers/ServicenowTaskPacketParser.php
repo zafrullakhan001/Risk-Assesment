@@ -58,8 +58,10 @@ final class ServicenowTaskPacketParser
         }
 
         $rootNumber = strtoupper(trim((string) ($data['root_number'] ?? '')));
-        if ($rootNumber === '' || !preg_match('/^TASK\d+$/', $rootNumber)) {
-            throw new RuntimeException('Packet is missing a valid root TASK number.');
+        if ($rootNumber === '' || !preg_match('/^[A-Z]+\d+$/', $rootNumber)) {
+            throw new RuntimeException(
+                'Packet is missing a valid root ticket number (e.g. TASK…, DMND…, STRY…, DDR…, PRJ…).'
+            );
         }
 
         $ticketsIn = is_array($data['tickets'] ?? null) ? $data['tickets'] : [];
@@ -112,10 +114,31 @@ final class ServicenowTaskPacketParser
             $rootNumber = (string) $root['number'];
         }
 
-        $relatedTickets = [];
+        $rootKind = self::kindFromNumber(
+            (string) $root['number'],
+            (string) ($root['sys_class_name'] ?? $root['table'] ?? '')
+        );
+        // Slot kinds used by the dossier ribbon (project/other stay in related).
+        $slotKind = in_array($rootKind, ['demand', 'story', 'task', 'ddr'], true) ? $rootKind : '';
+
         $story = null;
         $demand = null;
+        $task = null;
         $ddr = null;
+        $relatedTickets = [];
+
+        if ($slotKind === 'demand') {
+            $demand = $root;
+        } elseif ($slotKind === 'story') {
+            $story = $root;
+        } elseif ($slotKind === 'task') {
+            $task = $root;
+        } elseif ($slotKind === 'ddr') {
+            $ddr = $root;
+        } else {
+            // Project or unknown root: keep in related_tickets, do not force into task.
+            $relatedTickets[] = $root;
+        }
 
         foreach ($tickets as $ticket) {
             if (strcasecmp((string) $ticket['number'], $rootNumber) === 0) {
@@ -130,6 +153,10 @@ final class ServicenowTaskPacketParser
                 $demand = $ticket;
                 continue;
             }
+            if ($kind === 'task' && $task === null) {
+                $task = $ticket;
+                continue;
+            }
             if ($kind === 'ddr' && $ddr === null) {
                 $ddr = $ticket;
                 continue;
@@ -137,7 +164,7 @@ final class ServicenowTaskPacketParser
             $relatedTickets[] = $ticket;
         }
 
-        $taskSection = self::toSection($root, 'task', $relationships);
+        $taskSection = $task !== null ? self::toSection($task, 'task', $relationships) : null;
         $storySection = $story !== null ? self::toSection($story, 'story', $relationships) : null;
         $demandSection = $demand !== null ? self::toSection($demand, 'demand', $relationships) : null;
         $ddrSection = $ddr !== null ? self::toSection($ddr, 'ddr', $relationships) : null;
@@ -145,7 +172,11 @@ final class ServicenowTaskPacketParser
         $relatedSections = [];
         foreach ($relatedTickets as $ticket) {
             $kind = self::kindFromNumber((string) $ticket['number'], (string) ($ticket['sys_class_name'] ?? ''));
-            $relatedSections[] = self::toSection($ticket, $kind === 'other' ? 'task' : $kind, $relationships);
+            $sectionKind = match ($kind) {
+                'demand', 'story', 'task', 'ddr', 'project' => $kind,
+                default => 'task',
+            };
+            $relatedSections[] = self::toSection($ticket, $sectionKind, $relationships);
         }
 
         $title = firstNonEmpty(
@@ -182,6 +213,7 @@ final class ServicenowTaskPacketParser
                 'ticket_count' => count($tickets),
                 'relationship_count' => count($relationships),
                 'attachment_count' => self::countAttachments($tickets),
+                'root_kind' => $rootKind !== '' ? $rootKind : 'other',
             ],
         ];
     }
@@ -206,7 +238,7 @@ final class ServicenowTaskPacketParser
         $root = strtoupper(trim((string) ($data['root_number'] ?? '')));
         $tickets = $data['tickets'] ?? null;
 
-        return preg_match('/^TASK\d+$/', $root) === 1 && is_array($tickets) && $tickets !== [];
+        return preg_match('/^[A-Z]+\d+$/', $root) === 1 && is_array($tickets) && $tickets !== [];
     }
 
     /**
@@ -252,9 +284,13 @@ final class ServicenowTaskPacketParser
 
         $short = firstNonEmpty(
             (string) ($ticket['short_description'] ?? ''),
+            (string) ($ticket['title'] ?? ''),
             (string) ($fields['Short description'] ?? ''),
             (string) ($fields['Short Description'] ?? ''),
-            (string) ($fields['short_description'] ?? '')
+            (string) ($fields['short_description'] ?? ''),
+            (string) ($fields['Name'] ?? ''),
+            (string) ($fields['Project name'] ?? ''),
+            (string) ($fields['Project Name'] ?? '')
         );
         $description = firstNonEmpty(
             (string) ($ticket['description'] ?? ''),
@@ -380,7 +416,7 @@ final class ServicenowTaskPacketParser
             'related' => $related !== [] ? $related : (is_array($ticket['related'] ?? null) ? $ticket['related'] : []),
             'related_numbers' => is_array($ticket['related_numbers'] ?? null)
                 ? $ticket['related_numbers']
-                : ['demand' => '', 'story' => '', 'task' => '', 'ddr' => ''],
+                : ['demand' => '', 'story' => '', 'task' => '', 'ddr' => '', 'project' => ''],
         ];
     }
 
@@ -399,6 +435,9 @@ final class ServicenowTaskPacketParser
         if (str_starts_with($number, 'DDR')) {
             return 'ddr';
         }
+        if (str_starts_with($number, 'PRJ')) {
+            return 'project';
+        }
 
         $class = strtolower($sysClass);
         if (str_contains($class, 'demand')) {
@@ -406,6 +445,12 @@ final class ServicenowTaskPacketParser
         }
         if (str_contains($class, 'story') || str_contains($class, 'rm_story')) {
             return 'story';
+        }
+        if (str_contains($class, 'pm_project')) {
+            return 'project';
+        }
+        if (str_contains($class, 'diligence') || str_contains($class, 'tprm_dd')) {
+            return 'ddr';
         }
 
         return 'other';

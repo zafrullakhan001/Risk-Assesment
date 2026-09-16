@@ -129,7 +129,7 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
             $rootNumber = strtoupper(trim((string) ($packet['root_number'] ?? '')));
             if ($expectedTask !== '' && $rootNumber !== '' && $rootNumber !== $expectedTask) {
                 throw new RuntimeException(
-                    'Packet root task ' . $rootNumber . ' does not match prepared task ' . $expectedTask . '.'
+                    'Packet root ticket ' . $rootNumber . ' does not match prepared ticket ' . $expectedTask . '.'
                 );
             }
 
@@ -230,6 +230,8 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
                 $kind = 'demand';
             } elseif (preg_match('/^DDR\d+$/i', $ticketNumber)) {
                 $kind = 'ddr';
+            } elseif (preg_match('/^PRJ\d+$/i', $ticketNumber)) {
+                $kind = 'project';
             } elseif (preg_match('/^TASK\d+$/i', $ticketNumber)) {
                 $kind = 'task';
             }
@@ -383,7 +385,9 @@ if ($action === 'prepare_browser_sync' && ($_SERVER['REQUEST_METHOD'] ?? '') ===
         $prepared['complete_url'] .= $tokenQuery;
 
         $jsonOut(['ok' => true] + $prepared + [
-            'open_url' => $prepared['instance_origin'] . '/nav_to.do?uri=task.do?sysparm_query=number=' . rawurlencode($prepared['task_number']),
+            'open_url' => $prepared['instance_origin'] . '/nav_to.do?uri='
+                . ServiceNowBrowserSync::tableForTicketNumber((string) $prepared['task_number'])
+                . '.do?sysparm_query=number=' . rawurlencode((string) $prepared['task_number']),
         ]);
     } catch (Throwable $e) {
         $jsonOut(['ok' => false, 'error' => $e->getMessage()], 400);

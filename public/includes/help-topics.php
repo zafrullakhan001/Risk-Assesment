@@ -294,20 +294,20 @@ HTML,
                     'id' => 'dossier-servicenow-console',
                     'title' => 'Console pull from ServiceNow',
                     'html' => <<<'HTML'
-<p>On the Ticket Dossier home page, open <strong>Console pull from ServiceNow</strong> to fetch a TASK plus its direct <strong>Task Relationships</strong> and attachments — without storing a ServiceNow password in Risk Register.</p>
+<p>On the Ticket Dossier home page, open <strong>Console pull from ServiceNow</strong> to fetch any ticket (Task, Demand, Story, Project, or Due Diligence) plus its related tickets and attachments — without storing a ServiceNow password in Risk Register.</p>
 <ol>
 <li>Install the bundled extension once: open <code>edge://extensions</code> or <code>chrome://extensions</code>, enable Developer mode, click <strong>Load unpacked</strong>, and select <code>C:\xampp\htdocs\RiskRegister\extensions\servicenow-ticket-dossier</code>.</li>
-<li>Enter your ServiceNow instance URL (for example <code>https://yourcompany.service-now.com</code>) and a task number like <code>TASK0123456</code>.</li>
-<li>The ServiceNow URL persists automatically. Leave <strong>Remember and reuse the selected folder</strong> enabled to also persist the browser’s secure folder handle. Only the TASK number must be entered for each export. If folder permission is unavailable, the browser asks you to choose a folder.</li>
+<li>Enter your ServiceNow instance URL (for example <code>https://yourcompany.service-now.com</code>) and a ticket number such as <code>TASK0123456</code>, <code>DMND…</code>, <code>STRY…</code>, <code>DDR…</code>, or <code>PRJ…</code>.</li>
+<li>The ServiceNow URL persists automatically. Leave <strong>Remember and reuse the selected folder</strong> enabled to also persist the browser’s secure folder handle. Only the ticket number must be entered for each export. If folder permission is unavailable, the browser asks you to choose a folder.</li>
 <li>Click <strong>Prepare + open automatically</strong>. Risk Register issues a short-lived token (about 30 minutes) and opens ServiceNow.</li>
 <li>Sign in on that tab if needed. The extension starts the exporter and an overlay appears—no F12 console paste is needed.</li>
-<li>Click <strong>Export packet</strong> on the overlay (required so the browser can ask for a save folder). Choose a folder. The script writes <code>TASK…/TASK….json</code> and an <code>attachments/</code> tree, then imports the packet into Ticket Dossier.</li>
+<li>Click <strong>Export packet</strong> on the overlay (required so the browser can ask for a save folder). Choose a folder. The script writes a packet JSON and an <code>attachments/</code> tree, then imports into Ticket Dossier.</li>
 </ol>
 <ul>
 <li>If the extension is not installed or automatic start fails, Risk Register copies the script so the existing F12 console workflow remains available as a fallback.</li>
 <li>Chrome/Edge briefly displays a debugger notification while the extension starts the exporter, then the extension immediately detaches.</li>
-<li>Only the starting task’s relationship list is walked — not related-of-related.</li>
-<li>Caps: 50 related tickets, 100 attachments, 25 MB per file.</li>
+<li>For a Project, the exporter discovers related-list tabs from ServiceNow metadata, loads their numbered records, and then walks Task Relationships plus common parent/demand/project references breadth-first. Due Diligence is also resolved from a linked Demand when present.</li>
+<li>Safety caps: 250 related tickets, 100 attachments, 25 MB per file.</li>
 <li>If your browser cannot pick a folder (for example some Firefox builds), the script falls back to downloading the JSON and files, and still imports into Ticket Dossier.</li>
 <li>You can also upload a completed task-packet JSON later; attachments only arrive with the console pull (or a ZIP backup).</li>
 </ul>

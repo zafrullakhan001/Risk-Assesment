@@ -11,7 +11,7 @@
       completeUrl: cfg.complete_url,
       instanceOrigin: cfg.instance_origin,
       taskNumber: cfg.task_number,
-      maxRelated: cfg.max_related || 50,
+      maxRelated: cfg.max_related || 250,
       maxAttachments: cfg.max_attachments || 100,
       maxAttachmentBytes: cfg.max_attachment_bytes || 25 * 1024 * 1024,
       rememberFolder: cfg.remember_folder === true,
@@ -97,7 +97,7 @@
   const setStatus = (el, msg, isError) => {
     if (!el) return;
     el.textContent = msg;
-    el.style.color = isError ? "#b91c1c" : "#0f766e";
+    el.style.color = isError ? "#fecaca" : "#f8fafc";
     const panel = document.getElementById("rr-sn-packet-overlay");
     if (!panel) return;
     const lower = String(msg || "").toLowerCase();
@@ -150,23 +150,123 @@
     return fields;
   };
 
-  const fetchTaskByNumber = async (number) => {
+  const fetchTableByNumber = async (table, number) => {
     const q = encodeURIComponent("number=" + number);
     const data = await apiGet(
-      "/api/now/table/task?sysparm_query=" + q +
+      "/api/now/table/" + encodeURIComponent(table) + "?sysparm_query=" + q +
         "&sysparm_limit=1&sysparm_display_value=all&sysparm_exclude_reference_link=true"
     );
     const rows = (data && data.result) || [];
-    if (!rows.length) throw new Error("Task " + number + " not found.");
-    return rows[0];
+    return rows.length ? rows[0] : null;
   };
 
+  const fetchTableBySysId = async (table, sysId) => {
+    try {
+      const data = await apiGet(
+        "/api/now/table/" + encodeURIComponent(table) + "/" + encodeURIComponent(sysId) +
+          "?sysparm_display_value=all&sysparm_exclude_reference_link=true"
+      );
+      return data && data.result ? data.result : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const kindHintFromNumber = (number) => {
+    const n = String(number || "").toUpperCase();
+    if (/^DMND\\d+$/.test(n)) return "demand";
+    if (/^STRY\\d+$/.test(n)) return "story";
+    if (/^DDR\\d+$/.test(n)) return "ddr";
+    if (/^PRJ\\d+$/.test(n)) return "project";
+    if (/^TASK\\d+$/.test(n)) return "task";
+    return "ticket";
+  };
+
+  const tablesForNumber = (number) => {
+    const kind = kindHintFromNumber(number);
+    if (kind === "ddr") return ["sn_tprm_dd_request", "task"];
+    if (kind === "project") return ["task", "pm_project"];
+    if (kind === "demand") return ["task", "dmn_demand"];
+    if (kind === "story") return ["task", "rm_story"];
+    return ["task"];
+  };
+
+  const fetchRecordByNumber = async (number) => {
+    const tables = tablesForNumber(number);
+    for (let i = 0; i < tables.length; i++) {
+      const rec = await fetchTableByNumber(tables[i], number);
+      if (rec) {
+        if (!rec.sys_class_name) rec.sys_class_name = tables[i];
+        return rec;
+      }
+    }
+    throw new Error("Ticket " + number + " not found.");
+  };
+
+  const fetchTaskByNumber = async (number) => fetchRecordByNumber(number);
+
   const fetchTaskBySysId = async (sysId) => {
-    const data = await apiGet(
-      "/api/now/table/task/" + encodeURIComponent(sysId) +
-        "?sysparm_display_value=all&sysparm_exclude_reference_link=true"
-    );
-    return data && data.result ? data.result : null;
+    let rec = await fetchTableBySysId("task", sysId);
+    if (rec) return rec;
+    rec = await fetchTableBySysId("sn_tprm_dd_request", sysId);
+    if (rec) {
+      if (!rec.sys_class_name) rec.sys_class_name = "sn_tprm_dd_request";
+      return rec;
+    }
+    rec = await fetchTableBySysId("pm_project", sysId);
+    if (rec) {
+      if (!rec.sys_class_name) rec.sys_class_name = "pm_project";
+      return rec;
+    }
+    return null;
+  };
+
+  const REF_FIELD_KEYS = [
+    "parent", "top_task", "demand", "u_demand", "project", "parent_project",
+    "u_project", "story", "u_story", "parent_story", "task", "u_task"
+  ];
+
+  const extractRefLinks = (rec, selfSysId) => {
+    const out = [];
+    const record = rec || {};
+    REF_FIELD_KEYS.forEach((key) => {
+      const val = record[key];
+      if (!val) return;
+      const sysId = String(typeof val === "object" ? (val.value || "") : val || "").trim();
+      const display = String(typeof val === "object" ? (val.display_value || "") : "").trim().toUpperCase();
+      if (!/^[0-9a-f]{32}$/i.test(sysId) || sysId === selfSysId) return;
+      out.push({
+        sys_id: sysId,
+        number: /^[A-Z]+\\d+$/.test(display) ? display : "",
+        type: "Reference:" + key,
+        field: key,
+      });
+    });
+    return out;
+  };
+
+  const resolveDemandFromDdr = async (ddrTicket) => {
+    if (!ddrTicket || !ddrTicket._rec) return null;
+    const rec = ddrTicket._rec;
+    const demandKeys = ["demand", "u_demand", "parent", "top_task", "task"];
+    for (let i = 0; i < demandKeys.length; i++) {
+      const val = rec[demandKeys[i]];
+      if (!val || typeof val !== "object") continue;
+      const sysId = String(val.value || "").trim();
+      const display = String(val.display_value || "").trim().toUpperCase();
+      if (/^[0-9a-f]{32}$/i.test(sysId)) {
+        const demandRec = await fetchTaskBySysId(sysId);
+        if (demandRec) return demandRec;
+      }
+      if (/^DMND\\d+$/i.test(display)) {
+        try {
+          return await fetchRecordByNumber(display);
+        } catch (e) {
+          console.warn("Demand lookup from DDR failed:", display, e && e.message);
+        }
+      }
+    }
+    return null;
   };
 
   const fetchRelationships = async (sysId) => {
@@ -177,6 +277,271 @@
         "&sysparm_display_value=all&sysparm_exclude_reference_link=true"
     );
     return (data && data.result) || [];
+  };
+
+  /**
+   * ServiceNow project tabs are usually related lists: records on other tables
+   * that reference pm_project. Discover those references from sys_dictionary,
+   * query each list, and retain numbered records only. Every returned row is
+   * verified to reference this exact project before it can enter the packet.
+   */
+  const fetchProjectRelatedListRecords = async (projectRec, maxRecords) => {
+    const projectSysId = raw(projectRec && projectRec.sys_id) || dv(projectRec && projectRec.sys_id);
+    if (!/^[0-9a-f]{32}$/i.test(projectSysId)) return [];
+
+    const candidates = new Map();
+    const addCandidate = (table, field, label) => {
+      const safeTable = String(table || "").trim().toLowerCase();
+      const safeField = String(field || "").trim().toLowerCase();
+      if (!/^[a-z][a-z0-9_]*$/.test(safeTable)) return;
+      if (!/^[a-z][a-z0-9_]*$/.test(safeField)) return;
+      const key = safeTable + "." + safeField;
+      if (!candidates.has(key)) {
+        candidates.set(key, {
+          table: safeTable,
+          field: safeField,
+          label: String(label || safeField),
+        });
+      }
+    };
+    const addQueryCandidate = (table, query, label) => {
+      const safeTable = String(table || "").trim().toLowerCase();
+      const safeQuery = String(query || "").trim();
+      if (!/^[a-z][a-z0-9_]*$/.test(safeTable)) return;
+      if (!safeQuery || safeQuery.indexOf(projectSysId) === -1) return;
+      const key = safeTable + ".ui:" + safeQuery;
+      if (!candidates.has(key)) {
+        candidates.set(key, {
+          table: safeTable,
+          field: "ui_related_list",
+          label: String(label || "Project related list"),
+          query: safeQuery,
+          verifiedByUi: true,
+        });
+      }
+    };
+
+    // Prefer the exact related-list queries already rendered on the Project
+    // form. This captures configured/scripted tabs that dictionary references
+    // alone cannot describe.
+    const pageContexts = [window];
+    try {
+      const mainFrame = document.getElementById("gsft_main");
+      if (mainFrame && mainFrame.contentWindow) pageContexts.push(mainFrame.contentWindow);
+    } catch (_error) {
+      // Same-origin frame access can be unavailable during navigation.
+    }
+    pageContexts.forEach((context) => {
+      try {
+        const lists = context.GlideList2 && typeof context.GlideList2.getLists === "function"
+          ? context.GlideList2.getLists()
+          : null;
+        const listValues = Array.isArray(lists)
+          ? lists
+          : (lists && typeof lists === "object" ? Object.values(lists) : []);
+        listValues.forEach((list) => {
+          const table = typeof list.getTableName === "function"
+            ? list.getTableName()
+            : (list.tableName || list.table_name || "");
+          const query = typeof list.getQuery === "function"
+            ? list.getQuery()
+            : (list.query || "");
+          const label = typeof list.getTitle === "function"
+            ? list.getTitle()
+            : (list.title || "Project tab");
+          addQueryCandidate(table, query, label);
+        });
+      } catch (error) {
+        console.warn("Project UI related-list registry unavailable:", error && error.message);
+      }
+
+      try {
+        const links = context.document.querySelectorAll(
+          'a[href*="_list.do"][href*="sysparm_query"]'
+        );
+        links.forEach((link) => {
+          const url = new URL(link.href, context.location.href);
+          const match = url.pathname.match(/\\/([a-z][a-z0-9_]*)_list\\.do$/i);
+          if (!match) return;
+          addQueryCandidate(
+            match[1],
+            url.searchParams.get("sysparm_query") || "",
+            link.textContent || link.getAttribute("aria-label") || "Project tab"
+          );
+        });
+      } catch (error) {
+        console.warn("Project UI related-list links unavailable:", error && error.message);
+      }
+    });
+
+    // Core task hierarchy links can reference a Project through task inheritance.
+    addCandidate("task", "parent", "Parent");
+    addCandidate("task", "top_task", "Top task");
+    [
+      ["task", "project"],
+      ["task", "parent_project"],
+      ["task", "u_project"],
+      ["pm_project_task", "project"],
+      ["pm_project_task", "parent"],
+      ["pm_project_task", "top_task"],
+      ["dmn_demand", "project"],
+      ["dmn_demand", "parent_project"],
+      ["rm_story", "project"],
+      ["rm_story", "parent"],
+      ["rm_story", "top_task"],
+      ["sc_task", "project"],
+      ["sc_task", "parent"],
+      ["sc_task", "top_task"],
+      ["change_request", "project"],
+      ["change_request", "parent"],
+      ["change_request", "top_task"],
+      ["incident", "project"],
+      ["incident", "parent"],
+      ["incident", "top_task"],
+      ["problem", "project"],
+      ["problem", "parent"],
+      ["problem", "top_task"],
+      ["risk", "task"],
+      ["issue", "task"],
+      ["time_card", "task"],
+      ["resource_allocation", "task"],
+      ["fm_expense_line", "task"],
+      ["cost_plan", "task"],
+    ].forEach((pair) => addCandidate(pair[0], pair[1], humanize(pair[1])));
+
+    try {
+      const dictionaryQueries = [
+        "reference=pm_project^elementISNOTEMPTY^active=true",
+        "referenceINtask,planned_task^elementINparent,top_task,task,project,parent_project,u_project,planned_task,source_task^active=true",
+      ];
+      for (let dictionaryIndex = 0; dictionaryIndex < dictionaryQueries.length; dictionaryIndex++) {
+        const dictionaryQuery = encodeURIComponent(dictionaryQueries[dictionaryIndex]);
+        const dictionary = await apiGet(
+          "/api/now/table/sys_dictionary?sysparm_query=" + dictionaryQuery +
+            "&sysparm_fields=name,element,column_label&sysparm_limit=500"
+        );
+        ((dictionary && dictionary.result) || []).forEach((row) => {
+          addCandidate(
+            raw(row.name) || dv(row.name),
+            raw(row.element) || dv(row.element),
+            dv(row.column_label) || raw(row.element) || dv(row.element)
+          );
+        });
+      }
+    } catch (error) {
+      console.warn(
+        "Project related-list discovery unavailable; using core task links:",
+        error && error.message
+      );
+    }
+
+    const found = [];
+    const seen = new Set();
+    const listCandidates = Array.from(candidates.values()).slice(0, 250);
+    for (let i = 0; i < listCandidates.length && found.length < maxRecords; i++) {
+      const candidate = listCandidates[i];
+      try {
+        const query = encodeURIComponent(
+          candidate.query || (candidate.field + "=" + projectSysId)
+        );
+        const pageSize = 100;
+        const maxPages = Math.max(1, Math.ceil(maxRecords / pageSize) + 1);
+        for (
+          let page = 0;
+          page < maxPages && found.length < maxRecords;
+          page++
+        ) {
+          const remaining = Math.max(1, Math.min(pageSize, maxRecords - found.length));
+          const data = await apiGet(
+            "/api/now/table/" + encodeURIComponent(candidate.table) +
+              "?sysparm_query=" + query +
+              "&sysparm_limit=" + remaining +
+              "&sysparm_offset=" + (page * pageSize) +
+              "&sysparm_display_value=all&sysparm_exclude_reference_link=true"
+          );
+          const rows = (data && data.result) || [];
+          for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+            const rec = rows[rowIndex];
+            const linkedProjectId = raw(rec && rec[candidate.field]);
+            // An invalid field can cause ServiceNow to ignore the condition.
+            // Never accept a row unless the returned reference proves the link.
+            if (!candidate.verifiedByUi && linkedProjectId !== projectSysId) continue;
+            const sysId = raw(rec.sys_id) || dv(rec.sys_id);
+            const number = String(dv(rec.number) || "").trim().toUpperCase();
+            if (
+              /^[A-Z]+\d+$/.test(number)
+              && /^[0-9a-f]{32}$/i.test(sysId)
+              && sysId !== projectSysId
+              && !seen.has(sysId)
+            ) {
+              seen.add(sysId);
+              if (!rec.sys_class_name) rec.sys_class_name = candidate.table;
+              found.push({
+                rec,
+                table: candidate.table,
+                field: candidate.field,
+                label: candidate.label,
+              });
+            }
+
+            // Some project tabs are M2M tables. Their row has no useful number,
+            // but another reference on that verified row points to the ticket.
+            const indirectRefs = [];
+            Object.keys(rec || {}).forEach((key) => {
+              if (key === candidate.field || key === "sys_id") return;
+              const val = rec[key];
+              if (!val || typeof val !== "object") return;
+              const refSysId = String(val.value || "").trim();
+              const refNumber = String(val.display_value || "").trim().toUpperCase();
+              const keyLooksTicket = /(task|request|change|incident|problem|story|demand|record|document)/i.test(key);
+              if (!/^[0-9a-f]{32}$/i.test(refSysId) || refSysId === projectSysId) return;
+              if (!/^[A-Z]+\d+$/.test(refNumber) && !keyLooksTicket) return;
+              indirectRefs.push({ sys_id: refSysId, number: refNumber, field: key });
+            });
+
+            for (
+              let refIndex = 0;
+              refIndex < Math.min(indirectRefs.length, 12) && found.length < maxRecords;
+              refIndex++
+            ) {
+              const ref = indirectRefs[refIndex];
+              if (seen.has(ref.sys_id)) continue;
+              let ticketRec = null;
+              if (/^[A-Z]+\d+$/.test(ref.number)) {
+                try {
+                  ticketRec = await fetchRecordByNumber(ref.number);
+                } catch (_error) {
+                  ticketRec = null;
+                }
+              }
+              if (!ticketRec) ticketRec = await fetchTaskBySysId(ref.sys_id);
+              if (!ticketRec) continue;
+              const ticketSysId = raw(ticketRec.sys_id) || dv(ticketRec.sys_id);
+              const ticketNumber = String(dv(ticketRec.number) || ref.number || "").trim().toUpperCase();
+              if (!/^[A-Z]+\d+$/.test(ticketNumber) || !/^[0-9a-f]{32}$/i.test(ticketSysId)) continue;
+              if (seen.has(ticketSysId) || ticketSysId === projectSysId) continue;
+              seen.add(ticketSysId);
+              found.push({
+                rec: ticketRec,
+                table: candidate.table,
+                field: candidate.field + "->" + ref.field,
+                label: candidate.label,
+              });
+            }
+          }
+          if (rows.length < remaining) break;
+          await sleep(20);
+        }
+      } catch (error) {
+        console.warn(
+          "Project related list skipped:",
+          candidate.table + "." + candidate.field,
+          error && error.message
+        );
+      }
+      await sleep(20);
+    }
+    return found.slice(0, maxRecords);
   };
 
   const fetchJournal = async (sysId) => {
@@ -238,8 +603,8 @@
       sys_class_name: tableName,
       table: tableName,
       state: dv(rec.state),
-      short_description: dv(rec.short_description),
-      description: dv(rec.description),
+      short_description: dv(rec.short_description) || dv(rec.name) || dv(rec.title),
+      description: dv(rec.description) || dv(rec.short_description) || dv(rec.name) || dv(rec.title),
       fields: fieldsFromRecord(rec),
       journal: journal,
       attachments: attMeta.map((a) => ({
@@ -407,7 +772,7 @@
     const sysId = String(ticket && ticket.sys_id || "").trim();
     const number = String(ticket && ticket.number || "").trim().toUpperCase();
     if (!sysId || !number) return null;
-    if (!/^(TASK|STRY|DMND)\\d+$/i.test(number)) return null;
+    if (!/^(TASK|STRY|DMND|PRJ)\\d+$/i.test(number)) return null;
 
     const table = String(ticket.table || ticket.sys_class_name || "task").trim() || "task";
     const candidates = [
@@ -778,7 +1143,7 @@
         rootHandle = rememberedFolderHandle;
         setStatus(statusEl, "Using saved package folder: " + rememberedFolderHandle.name);
       } else if (window.showDirectoryPicker) {
-        setStatus(statusEl, "Choose a folder for the task packet…");
+        setStatus(statusEl, "Choose a folder for the ticket packet…");
         try {
           rootHandle = await chooseAndRememberFolder();
         } catch (pickerError) {
@@ -793,51 +1158,161 @@
         console.warn("Current origin", location.origin, "vs prepared", CFG.instanceOrigin);
       }
       setStatus(statusEl, "Looking up " + CFG.taskNumber + "…");
-      const rootRec = await fetchTaskByNumber(CFG.taskNumber);
-      const rootSysId = raw(rootRec.sys_id) || dv(rootRec.sys_id);
-      const rootNumber = (dv(rootRec.number) || CFG.taskNumber).toUpperCase();
+      const rootNumberHint = String(CFG.taskNumber || "").toUpperCase();
+      let rootRec = await fetchRecordByNumber(rootNumberHint);
+      let rootMapped = await mapTicket(rootRec, rootNumberHint);
+      let crawlStartRec = rootRec;
+      let crawlStartMapped = rootMapped;
+      const seedTickets = [];
 
-      setStatus(statusEl, "Loading Task Relationships…");
-      const relRows = await fetchRelationships(rootSysId);
-      const relationships = [];
-      const relatedIds = new Map();
-      relRows.forEach((row) => {
-        const parentId = raw(row.parent) || raw((row.parent || {}).value);
-        const childId = raw(row.child) || raw((row.child || {}).value);
-        const parentNum = dv(row.parent) || "";
-        const childNum = dv(row.child) || "";
-        let type = dv(row.type) || dv(row.relationship_type) || "";
-        if (!type && row.parent_descriptor && row.child_descriptor) {
-          type = dv(row.parent_descriptor) + "::" + dv(row.child_descriptor);
+      // DDR roots are not always on task_rel_task; resolve the linked Demand and crawl from there.
+      if (/^DDR\\d+$/i.test(rootMapped.number || rootNumberHint)) {
+        seedTickets.push(rootMapped);
+        setStatus(statusEl, "Resolving Demand linked to " + rootMapped.number + "…");
+        const demandRec = await resolveDemandFromDdr(rootMapped);
+        if (demandRec) {
+          crawlStartRec = demandRec;
+          crawlStartMapped = await mapTicket(demandRec);
+        } else {
+          console.warn("No Demand linked to DDR; exporting DDR alone.");
         }
-        relationships.push({
-          parent: String(parentNum).toUpperCase() || parentId,
-          child: String(childNum).toUpperCase() || childId,
-          type: type || "Related",
-          parent_sys_id: parentId,
-          child_sys_id: childId,
-        });
-        [parentId, childId].forEach((id) => {
-          if (id && id !== rootSysId) relatedIds.set(id, true);
-        });
-      });
-
-      if (relatedIds.size > CFG.maxRelated) {
-        console.warn("Truncating related tickets to", CFG.maxRelated);
       }
-      const relatedList = Array.from(relatedIds.keys()).slice(0, CFG.maxRelated);
 
-      setStatus(statusEl, "Fetching related tickets (" + relatedList.length + ")…");
-      const tickets = [];
-      tickets.push(await mapTicket(rootRec, rootNumber));
-      for (let i = 0; i < relatedList.length; i++) {
-        const rec = await fetchTaskBySysId(relatedList[i]);
-        if (rec) {
-          tickets.push(await mapTicket(rec));
+      const rootSysId = raw(crawlStartRec.sys_id) || dv(crawlStartRec.sys_id);
+      const rootNumber = (dv(rootRec.number) || rootNumberHint).toUpperCase();
+      const packetRootSysId = raw(rootRec.sys_id) || dv(rootRec.sys_id);
+
+      setStatus(statusEl, "Walking related tickets…");
+      const relationships = [];
+      const ticketsById = new Map();
+      const queue = [];
+      const queuedIds = new Set();
+      const processedIds = new Set();
+
+      const enqueue = (sysId) => {
+        if (!sysId || queuedIds.has(sysId) || processedIds.has(sysId)) return;
+        if (!ticketsById.has(sysId) && ticketsById.size + queue.length >= CFG.maxRelated) return;
+        queue.push(sysId);
+        queuedIds.add(sysId);
+      };
+
+      const addMapped = (mapped) => {
+        if (!mapped || !mapped.sys_id) return;
+        if (ticketsById.has(mapped.sys_id)) return;
+        if (ticketsById.size >= CFG.maxRelated) return;
+        ticketsById.set(mapped.sys_id, mapped);
+      };
+
+      // Prefer packet root first, then crawl start (Demand when root is DDR).
+      for (let i = 0; i < seedTickets.length; i++) addMapped(seedTickets[i]);
+      addMapped(crawlStartMapped);
+      if (!ticketsById.has(packetRootSysId) && rootMapped.sys_id === packetRootSysId) {
+        addMapped(rootMapped);
+      }
+
+      if (/^PRJ\d+$/i.test(rootNumber) || kindHintFromNumber(rootNumber) === "project") {
+        const remaining = Math.max(0, CFG.maxRelated - ticketsById.size);
+        if (remaining > 0) {
+          setStatus(statusEl, "Loading Project related-list tabs…");
+          const projectListRows = await fetchProjectRelatedListRecords(rootRec, remaining);
+          for (let i = 0; i < projectListRows.length; i++) {
+            const relatedListRow = projectListRows[i];
+            const mapped = await mapTicket(relatedListRow.rec);
+            if (!mapped || !mapped.sys_id) continue;
+            addMapped(mapped);
+            relationships.push({
+              parent: rootNumber,
+              child: String(mapped.number || mapped.sys_id).toUpperCase(),
+              type: "Project tab:" + relatedListRow.table + "." + relatedListRow.field,
+              parent_sys_id: packetRootSysId,
+              child_sys_id: mapped.sys_id,
+            });
+            enqueue(mapped.sys_id);
+            setStatus(
+              statusEl,
+              "Loading Project related-list tabs… " + (i + 1) + "/" + projectListRows.length
+            );
+            await sleep(30);
+          }
         }
-        setStatus(statusEl, "Fetching related tickets… " + (i + 1) + "/" + relatedList.length);
+      }
+      enqueue(rootSysId);
+
+      while (queue.length > 0 && ticketsById.size < CFG.maxRelated) {
+        const currentId = queue.shift();
+        queuedIds.delete(currentId);
+        if (processedIds.has(currentId)) continue;
+        let current = ticketsById.get(currentId);
+        if (!current) {
+          const rec = await fetchTaskBySysId(currentId);
+          if (!rec) continue;
+          current = await mapTicket(rec);
+          addMapped(current);
+        }
+        if (!current || !current._rec) continue;
+        processedIds.add(currentId);
+
+        try {
+          const relRows = await fetchRelationships(currentId);
+          relRows.forEach((row) => {
+            const parentId = raw(row.parent) || raw((row.parent || {}).value);
+            const childId = raw(row.child) || raw((row.child || {}).value);
+            const parentNum = dv(row.parent) || "";
+            const childNum = dv(row.child) || "";
+            let type = dv(row.type) || dv(row.relationship_type) || "";
+            if (!type && row.parent_descriptor && row.child_descriptor) {
+              type = dv(row.parent_descriptor) + "::" + dv(row.child_descriptor);
+            }
+            relationships.push({
+              parent: String(parentNum).toUpperCase() || parentId,
+              child: String(childNum).toUpperCase() || childId,
+              type: type || "Related",
+              parent_sys_id: parentId,
+              child_sys_id: childId,
+            });
+            [parentId, childId].forEach((id) => {
+              if (id && id !== currentId) enqueue(id);
+            });
+          });
+        } catch (relError) {
+          console.warn("Relationship fetch skipped for", current.number, relError && relError.message);
+        }
+
+        extractRefLinks(current._rec, currentId).forEach((ref) => {
+          relationships.push({
+            parent: String(current.number || "").toUpperCase() || currentId,
+            child: ref.number || ref.sys_id,
+            type: ref.type,
+            parent_sys_id: currentId,
+            child_sys_id: ref.sys_id,
+          });
+          enqueue(ref.sys_id);
+        });
+
+        setStatus(
+          statusEl,
+          "Walking related tickets… " + ticketsById.size +
+            (queue.length ? " (+" + queue.length + " pending)" : "")
+        );
         await sleep(40);
       }
+
+      // Fetch any queued ids not yet mapped (cap already applied in enqueue).
+      for (let i = 0; i < queue.length && ticketsById.size < CFG.maxRelated; i++) {
+        const id = queue[i];
+        if (ticketsById.has(id)) continue;
+        const rec = await fetchTaskBySysId(id);
+        if (rec) addMapped(await mapTicket(rec));
+        await sleep(40);
+      }
+
+      const tickets = Array.from(ticketsById.values());
+      // Keep packet root first for readability.
+      tickets.sort((a, b) => {
+        if (a.sys_id === packetRootSysId) return -1;
+        if (b.sys_id === packetRootSysId) return 1;
+        return 0;
+      });
 
       const firstDemand = tickets.find((t) => /^DMND\\d+$/i.test(String(t.number || ""))) || null;
       if (firstDemand) {
@@ -878,14 +1353,14 @@
         setStatus(statusEl, "Attachments " + done + "/" + total + (name ? ": " + name : ""));
       });
 
-      setStatus(statusEl, "Exporting Demand/Story/Task PDFs…");
+      setStatus(statusEl, "Exporting Demand/Story/Task/Project PDFs…");
       const pdfFiles = [];
       const pdfWarnings = [];
       const seenPdf = new Set();
       for (let i = 0; i < tickets.length; i++) {
         const t = tickets[i];
         const num = String(t.number || "").toUpperCase();
-        if (!/^(TASK|STRY|DMND)\\d+$/i.test(num) || seenPdf.has(num)) continue;
+        if (!/^(TASK|STRY|DMND|PRJ)\\d+$/i.test(num) || seenPdf.has(num)) continue;
         seenPdf.add(num);
         const pdf = await exportTicketPdf(t);
         if (pdf) {
@@ -907,7 +1382,7 @@
         instance: CFG.instanceOrigin,
         exported_at: new Date().toISOString(),
         root_number: rootNumber,
-        root_sys_id: rootSysId,
+        root_sys_id: packetRootSysId,
         relationships: relationships,
         tickets: cleanTickets,
         exported_pdfs: pdfFiles.map((f) => ({
@@ -1012,9 +1487,9 @@
   );
   overlay.innerHTML =
     '<div style="font-weight:700;margin-bottom:6px;color:#5eead4">RiskRegister · ServiceNow packet</div>' +
-    '<div style="opacity:.9;margin-bottom:10px;font-size:13px">Task <code style="color:#a5f3fc">' +
+    '<div style="opacity:.9;margin-bottom:10px;font-size:13px">Ticket <code style="color:#a5f3fc">' +
     String(CFG.taskNumber).replace(/</g, "") +
-    "</code> · direct Task Relationships + attachments. A saved folder is reused when permitted.</div>" +
+    "</code> · project tabs, related tickets, fields, journal, and attachments. A saved folder is reused when permitted.</div>" +
     '<div class="rr-sn-flow" aria-hidden="true">' +
       '<div class="rr-sn-flow-row">' +
         '<div class="rr-sn-node"><span class="rr-sn-node-icon">🎫</span><span>ServiceNow</span></div>' +

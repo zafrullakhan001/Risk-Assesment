@@ -267,7 +267,8 @@ $projectSourcesMeta = static function (array $project): array {
             </summary>
             <p class="context-note">
                 With the optional browser extension, the exporter starts automatically in a <strong>signed-in ServiceNow</strong> tab.
-                It pulls the TASK, its direct <strong>Task Relationships</strong>, and attachments — writes a local folder, then creates a Ticket Dossier here.
+                Enter any ticket number (Task, Demand, Story, Project, or Due Diligence). It walks related tickets and attachments —
+                writes a local folder, then creates a Ticket Dossier here.
                 No ServiceNow password is stored in Risk Register.
             </p>
             <div
@@ -277,7 +278,7 @@ $projectSourcesMeta = static function (array $project): array {
             >
                 <ol class="servicenow-console-steps">
                     <li>Install the extension once from <code>extensions/servicenow-ticket-dossier</code> using Edge/Chrome <strong>Load unpacked</strong>.</li>
-                    <li>Enter your instance URL and TASK number, then <strong>Prepare + open automatically</strong>.</li>
+                    <li>Enter your instance URL and ticket number, then <strong>Prepare + open automatically</strong>.</li>
                     <li>Sign in on the ServiceNow tab if needed. The extension starts the exporter without F12 or pasting.</li>
                     <li>On the overlay, click <strong>Export packet</strong>, choose a save folder, and wait for import to finish.</li>
                 </ol>
@@ -302,29 +303,28 @@ $projectSourcesMeta = static function (array $project): array {
                         >
                     </label>
                     <label class="field">
-                        <span>Task number</span>
+                        <span>Ticket number</span>
                         <input
                             type="text"
                             id="servicenow-console-task"
                             name="task_number"
-                            placeholder="TASK0123456"
-                            pattern="TASK\d+"
+                            placeholder="TASK0123456 or DMND… / STRY… / DDR… / PRJ…"
                             autocomplete="off"
                         >
                     </label>
-                    <label class="field">
+                    <div class="field field-span-2">
                         <span>Package folder</span>
-                        <span class="check">
+                        <label class="check">
                             <input type="checkbox" id="servicenow-console-remember-folder" checked>
                             Remember and reuse the selected folder
-                        </span>
+                        </label>
                         <small>
                             The ServiceNow URL persists in this browser. When enabled, the selected folder permission also persists;
-                            only the TASK number must be entered each time.
+                            only the ticket number must be entered each time.
                             The browser does not expose the full Windows path.
                             If no permitted folder is saved, ServiceNow prompts you to choose one.
                         </small>
-                    </label>
+                    </div>
                 </div>
                 <div class="servicenow-console-actions">
                     <button type="button" class="button button-primary" id="servicenow-console-prepare">🔐 Prepare + copy + open</button>
