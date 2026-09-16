@@ -21,6 +21,8 @@ use RiskAssessment\SharePoint\SharePointGraphClient;
 use RiskAssessment\SharePoint\SharePointListingImporter;
 use RiskAssessment\SharePoint\SharePointOwnerDashboard;
 use RiskAssessment\SharePoint\SharePointOwnerStorageDashboard;
+use RiskAssessment\SharePoint\SharePointPortfolioDashboard;
+use RiskAssessment\SharePoint\SharePointPortfolioMapping;
 use RiskAssessment\SharePoint\SharePointSizeDashboard;
 use RiskAssessment\SqliteMaintenance;
 
@@ -602,6 +604,177 @@ if ($actionParam === 'size_stats') {
 
     $payload = $sizeDashboard->buildOverview($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'portfolio_stats') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=30');
+
+    $level = strtolower(trim((string) ($_GET['level'] ?? 'portfolios')));
+    $portfolioName = trim((string) ($_GET['portfolio'] ?? ''));
+    $subPortfolioName = trim((string) ($_GET['sub_portfolio'] ?? ''));
+    $ownerKeyParam = trim((string) ($_GET['owner'] ?? ''));
+
+    $portfolioDash = new SharePointPortfolioDashboard($pdo);
+
+    $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
+    $wantedKeys = [];
+    if ($sourcesParam === 'all' || $sourcesParam === '') {
+        $wantedKeys = array_keys(SharePointPortfolioDashboard::ALLOWED_SOURCES);
+    } else {
+        $wantedKeys = array_values(array_filter(array_map('trim', explode(',', $sourcesParam))));
+    }
+
+    $byKey = [];
+    foreach ($allSources as $src) {
+        $key = (string) ($src['source_key'] ?? '');
+        if ($key !== '') {
+            $byKey[$key] = $src;
+        }
+    }
+
+    $selectedKeys = [];
+    $sourceTitles = [];
+    foreach ($wantedKeys as $key) {
+        if (!isset(SharePointPortfolioDashboard::ALLOWED_SOURCES[$key])) {
+            continue;
+        }
+        if (!isset($byKey[$key])) {
+            continue;
+        }
+        $selectedKeys[] = $key;
+        $sourceTitles[$key] = (string) ($byKey[$key]['title'] ?? $key);
+    }
+    $selectedKeys = $portfolioDash->filterAllowedSources($selectedKeys);
+    if ($selectedKeys === []) {
+        foreach (array_keys(SharePointPortfolioDashboard::ALLOWED_SOURCES) as $fallbackKey) {
+            if (!isset($byKey[$fallbackKey])) {
+                continue;
+            }
+            $selectedKeys[] = $fallbackKey;
+            $sourceTitles[$fallbackKey] = (string) ($byKey[$fallbackKey]['title'] ?? $fallbackKey);
+        }
+    }
+    if ($selectedKeys === []) {
+        http_response_code(400);
+        echo json_encode([
+            'ok' => false,
+            'error' => 'No public/private architecture catalog is available for portfolio mapping.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if ($level === 'projects') {
+        if ($portfolioName === '') {
+            http_response_code(400);
+            echo json_encode([
+                'ok' => false,
+                'error' => 'portfolio is required for project view.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $portfolioDash->buildProjects(
+            $selectedKeys,
+            $sourceTitles,
+            $portfolioName,
+            $subPortfolioName,
+            $ownerKeyParam
+        );
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($level === 'owners') {
+        if ($portfolioName === '') {
+            http_response_code(400);
+            echo json_encode([
+                'ok' => false,
+                'error' => 'portfolio is required for owner view.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $portfolioDash->buildOwners($selectedKeys, $sourceTitles, $portfolioName);
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($level === 'sub_portfolios' || $level === 'sub-portfolios') {
+        if ($portfolioName === '') {
+            http_response_code(400);
+            echo json_encode([
+                'ok' => false,
+                'error' => 'portfolio is required for sub-portfolio view.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $payload = $portfolioDash->buildSubPortfolios($selectedKeys, $sourceTitles, $portfolioName);
+        echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($level !== 'portfolios' && $level !== 'overview') {
+        http_response_code(400);
+        echo json_encode([
+            'ok' => false,
+            'error' => 'level must be portfolios, owners, sub_portfolios, or projects.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $payload = $portfolioDash->buildOverview($selectedKeys, $sourceTitles);
+    echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'portfolio_mapping_options') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=60');
+    $projectName = trim((string) ($_GET['project_name'] ?? ''));
+    $options = SharePointPortfolioMapping::optionTree();
+    $payload = [
+        'ok' => true,
+        'options' => $options,
+        'can_edit' => $isAdmin,
+    ];
+    if ($projectName !== '') {
+        $payload['mapping'] = SharePointPortfolioMapping::resolve($projectName);
+    }
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($actionParam === 'export_portfolio_mapping') {
+    if (!$isAdmin) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => 'Only administrators can export portfolio mappings.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    try {
+        SharePointPortfolioMapping::exportToOutput();
+    } catch (Throwable $exception) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($actionParam === 'export_portfolio_mapping_template') {
+    if (!$isAdmin) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => 'Only administrators can download the portfolio mapping template.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    try {
+        SharePointPortfolioMapping::exportTemplateToOutput();
+    } catch (Throwable $exception) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
     exit;
 }
 
@@ -1405,6 +1578,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             $flash = 'File/folder tags updated.';
+        } elseif ($action === 'save_portfolio_mapping') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $projectName = trim((string) ($_POST['project_name'] ?? ''));
+            $portfolio = trim((string) ($_POST['portfolio'] ?? ''));
+            $subPortfolio = trim((string) ($_POST['sub_portfolio'] ?? ''));
+            $confidence = trim((string) ($_POST['confidence'] ?? 'Medium'));
+            $note = trim((string) ($_POST['note'] ?? ''));
+            $previous = SharePointPortfolioMapping::resolve($projectName);
+            $mapping = SharePointPortfolioMapping::upsert(
+                $projectName,
+                $portfolio,
+                $subPortfolio,
+                $confidence,
+                $note
+            );
+            $auth->users()->logAudit(
+                'sharepoint.portfolio_mapping_updated',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'project_name' => $projectName,
+                    'from_portfolio' => $previous['portfolio'],
+                    'from_sub_portfolio' => $previous['sub_portfolio'],
+                    'to_portfolio' => $mapping['portfolio'],
+                    'to_sub_portfolio' => $mapping['sub_portfolio'],
+                    'confidence' => $mapping['confidence'],
+                ]
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'mapping' => $mapping,
+                    'options' => SharePointPortfolioMapping::optionTree(),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = 'Portfolio mapping updated for "' . $projectName . '".';
+        } elseif ($action === 'import_portfolio_mapping') {
+            $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+                || (string) ($_POST['ajax'] ?? '') === '1';
+            $mode = strtolower(trim((string) ($_POST['mode'] ?? 'append'))) === 'replace' ? 'replace' : 'append';
+            $file = $_FILES['import_file'] ?? null;
+            if (!is_array($file)) {
+                throw new RuntimeException('Please choose a CSV file to import.');
+            }
+            if ((int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new RuntimeException('The CSV upload failed. Please try again.');
+            }
+            $tmp = (string) ($file['tmp_name'] ?? '');
+            if ($tmp === '' || !is_uploaded_file($tmp)) {
+                throw new RuntimeException('Invalid CSV upload.');
+            }
+            $original = strtolower((string) ($file['name'] ?? ''));
+            if ($original !== '' && !str_ends_with($original, '.csv')) {
+                throw new RuntimeException('Please upload a .csv file with the portfolio mapping header.');
+            }
+            $parsed = SharePointPortfolioMapping::parseCsvFile($tmp);
+            $result = SharePointPortfolioMapping::importRows(
+                $parsed['rows'],
+                $mode,
+                (int) $parsed['skipped'],
+                $parsed['errors']
+            );
+            $auth->users()->logAudit(
+                'sharepoint.portfolio_mapping_imported',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                null,
+                null,
+                [
+                    'mode' => $result['mode'],
+                    'before' => $result['before'],
+                    'after' => $result['after'],
+                    'added' => $result['added'],
+                    'updated' => $result['updated'],
+                    'unchanged' => $result['unchanged'],
+                    'skipped' => $result['skipped'],
+                    'filename' => (string) ($file['name'] ?? ''),
+                ]
+            );
+            if ($wantsJson) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'result' => $result,
+                    'options' => SharePointPortfolioMapping::optionTree(),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            $flash = $mode === 'replace'
+                ? 'Portfolio mapping replaced (' . (int) $result['after'] . ' rows).'
+                : 'Portfolio mapping appended/updated (+' . (int) $result['added'] . ' / ~' . (int) $result['updated'] . ').';
         } elseif ($action === 'set_archive') {
             $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
                 || (string) ($_POST['ajax'] ?? '') === '1';
@@ -1538,6 +1807,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'prepare_browser_sync' || $action === 'delegated_sync'
             || $action === 'create_search_tag' || $action === 'delete_search_tag'
             || $action === 'save_project_tags' || $action === 'save_item_tags'
+            || $action === 'save_portfolio_mapping'
+            || $action === 'import_portfolio_mapping'
             || $action === 'set_archive' || $action === 'set_favorite'
             || $action === 'set_favorites' || $action === 'unset_favorites') {
             $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
@@ -2656,6 +2927,8 @@ $soloPageClass = $ownerSolo
                 id="sharepoint-size-heatmap"
                 data-sp-section="heatmap"
                 data-solo="<?= $heatmapSolo ? '1' : '0' ?>"
+                data-csrf="<?= e((string) ($_SESSION['csrf_token'] ?? '')) ?>"
+                data-can-edit-portfolio="<?= $isAdmin ? '1' : '0' ?>"
                 data-active-source="<?= e($activeSourceKey) ?>"
                 data-sources="<?= e(json_encode(array_map(static function (array $src) use ($catalogTones): array {
                     $key = (string) ($src['source_key'] ?? '');
@@ -2673,7 +2946,7 @@ $soloPageClass = $ownerSolo
                             <h2>🗺️ Catalog storage heatmap</h2>
                             <p>
                                 Treemap of catalog folder sizes — click to drill into projects, subfolders, and the largest files.
-                                Use <strong>By Owner</strong> to see who consumes the most storage, <strong>By File Type</strong> to filter by extension (PDF, Visio, Excel, …), or <strong>Duplicate Files</strong> to find same-name, same-size copies.
+                                Use <strong>By Portfolio</strong> for approximate portfolio storage, <strong>By Owner</strong> to see who consumes the most storage, <strong>By File Type</strong> to filter by extension (PDF, Visio, Excel, …), or <strong>Duplicate Files</strong> to find same-name, same-size copies.
                             </p>
                         </div>
                         <div class="sp-size-heatmap-summary-tools" data-no-toggle onclick="event.stopPropagation()">
@@ -2690,6 +2963,7 @@ $soloPageClass = $ownerSolo
                     <div class="sp-size-heatmap-panel">
                         <div class="sp-size-heatmap-tabs" role="tablist" aria-label="Storage analysis views">
                             <button type="button" class="sp-size-tab is-active" role="tab" id="sp-size-tab-treemap" data-tab="treemap" aria-selected="true" aria-controls="sp-size-tab-panel-treemap">Storage Map</button>
+                            <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-portfolio" data-tab="portfolio" aria-selected="false" aria-controls="sp-size-tab-panel-portfolio">By Portfolio</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-owners" data-tab="owners" aria-selected="false" aria-controls="sp-size-tab-panel-owners">By Owner</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-file-types" data-tab="file-types" aria-selected="false" aria-controls="sp-size-tab-panel-file-types">By File Type</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-duplicates" data-tab="duplicates" aria-selected="false" aria-controls="sp-size-tab-panel-duplicates">Duplicate Files</button>
@@ -2774,6 +3048,147 @@ $soloPageClass = $ownerSolo
                         </div>
                         </div><!-- /.sp-size-tab-panel treemap -->
 
+                        <div class="sp-size-tab-panel" role="tabpanel" id="sp-size-tab-panel-portfolio" data-tab-panel="portfolio" aria-labelledby="sp-size-tab-portfolio" hidden>
+                            <div class="sp-portfolio-toolbar">
+                                <p class="panel-help sp-portfolio-help">
+                                    Approximate portfolio storage for public and private architecture catalogs.
+                                    Tiles show storage size and project count. Use <strong>Storage</strong> (portfolio → sub-portfolio → project), <strong>Projects</strong> (portfolio → projects), or <strong>Owners</strong> (portfolio → owners → projects).
+                                </p>
+                                <div class="sp-portfolio-toolbar-actions">
+                                    <?php if ($isAdmin): ?>
+                                        <button type="button" class="button ghost" id="sp-portfolio-export" title="Download the full portfolio mapping CSV">⬇ Export CSV</button>
+                                        <button type="button" class="button ghost" id="sp-portfolio-template" title="Download a blank CSV template for bulk import">📄 Template</button>
+                                        <button type="button" class="button ghost" id="sp-portfolio-import" title="Import portfolio mapping CSV (append or replace)">⬆ Import CSV</button>
+                                    <?php endif; ?>
+                                    <button type="button" class="button ghost" id="sp-portfolio-back" hidden title="Go up one level">← Back</button>
+                                    <button type="button" class="button ghost" id="sp-portfolio-refresh" title="Reload portfolio storage data">↻ Refresh</button>
+                                </div>
+                            </div>
+                            <div class="sp-portfolio-mode" id="sp-portfolio-mode" role="group" aria-label="Portfolio heatmap subcategory">
+                                <button type="button" class="sp-portfolio-mode-btn is-active" data-portfolio-mode="storage" aria-pressed="true">Storage</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-mode="projects" aria-pressed="false">Projects</button>
+                                <button type="button" class="sp-portfolio-mode-btn" data-portfolio-mode="owners" aria-pressed="false">Owners</button>
+                            </div>
+                            <nav class="sp-size-breadcrumb sp-portfolio-breadcrumb" id="sp-portfolio-breadcrumb" aria-label="Portfolio storage path">
+                                <button type="button" class="sp-size-crumb is-active" data-portfolio-level="portfolios">All portfolios</button>
+                            </nav>
+                            <?php
+                            $portfolioSources = array_values(array_filter(
+                                $allSources,
+                                static function (array $src): bool {
+                                    $key = (string) ($src['source_key'] ?? '');
+
+                                    return $key === 'default' || $key === 'architectural-projects-private';
+                                }
+                            ));
+                            ?>
+                            <?php if (count($portfolioSources) > 0): ?>
+                                <div class="sp-od-scopes sp-size-scopes sp-portfolio-scopes" id="sp-portfolio-scopes" role="group" aria-label="Catalogs for portfolio heatmap">
+                                    <div class="sp-od-scopes-head">
+                                        <span class="sp-od-scopes-label">
+                                            <span aria-hidden="true">📁</span>
+                                            Catalogs
+                                            <b class="sp-od-scopes-count" id="sp-portfolio-scopes-count"><?= count($portfolioSources) ?> of <?= count($portfolioSources) ?></b>
+                                        </span>
+                                        <button type="button" class="sp-od-scopes-all is-active" id="sp-portfolio-scopes-all" disabled>All selected</button>
+                                    </div>
+                                    <div class="sp-od-scopes-list">
+                                        <?php foreach ($portfolioSources as $src): ?>
+                                            <?php
+                                            $srcKey = (string) ($src['source_key'] ?? '');
+                                            $srcTitle = (string) ($src['title'] ?? $srcKey);
+                                            ?>
+                                            <label class="sharepoint-scope-chip is-active" data-source-key="<?= e($srcKey) ?>">
+                                                <input type="checkbox" class="sp-portfolio-scope-check" value="<?= e($srcKey) ?>" checked>
+                                                <span><?= e($srcTitle) ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            <div class="sp-size-kpis sp-portfolio-kpis" id="sp-portfolio-kpis" aria-live="polite"></div>
+                            <div id="sp-portfolio-coverage" class="sp-portfolio-coverage" hidden></div>
+                            <div class="sp-size-treemap-wrap sp-portfolio-treemap-wrap" tabindex="0" role="region" aria-label="Portfolio storage treemap">
+                                <div class="sp-size-treemap" id="sp-portfolio-treemap"></div>
+                            </div>
+                            <details class="sp-project-submenu" id="sp-portfolio-project-submenu" open>
+                                <summary class="sp-project-submenu-summary">
+                                    <span class="sp-project-submenu-title">Projects in this category</span>
+                                    <span class="sp-project-submenu-count" id="sp-portfolio-project-count">0</span>
+                                </summary>
+                                <div class="sp-project-submenu-panel">
+                                    <div class="sp-project-submenu-toolbar">
+                                        <label class="sp-project-submenu-search-label">
+                                            <span class="visually-hidden">Filter projects</span>
+                                            <input type="search" id="sp-portfolio-project-search" class="sp-project-submenu-search" placeholder="Filter by project, owner, or portfolio…" autocomplete="off">
+                                        </label>
+                                        <p class="panel-help sp-project-submenu-help" id="sp-portfolio-project-help">Projects for the current portfolio view, with folder owner.</p>
+                                    </div>
+                                    <div class="table-wrap">
+                                        <table class="sp-size-files-table sp-project-submenu-table" id="sp-portfolio-project-table">
+                                            <thead>
+                                                <tr>
+                                                    <th scope="col" class="is-sortable is-sorted-asc" data-portfolio-project-sort="name" aria-sort="ascending">
+                                                        <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="name">Project</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-portfolio-project-sort="owner" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="owner">Owner</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-portfolio-project-sort="portfolio" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="portfolio">Portfolio</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-portfolio-project-sort="sub" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="sub">Sub-portfolio</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable is-sorted-desc" data-portfolio-project-sort="size" aria-sort="descending">
+                                                        <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="size">Size</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-portfolio-project-sort="files" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-portfolio-project-sort-button="files">Files</button>
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="sp-portfolio-project-body">
+                                                <tr><td colspan="6" class="sp-size-empty">Open this tab to load projects.</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </details>
+                            <div class="sp-size-large-files sp-portfolio-files">
+                                <div class="sp-size-large-head">
+                                    <h3>Largest files in view</h3>
+                                    <p class="panel-help" id="sp-portfolio-files-help">Top files for the current portfolio view</p>
+                                </div>
+                                <div class="table-wrap">
+                                    <table class="sp-size-files-table" id="sp-portfolio-files-table">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col" class="is-sortable" data-portfolio-file-sort="name" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-portfolio-file-sort-button="name">File</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-portfolio-file-sort="portfolio" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-portfolio-file-sort-button="portfolio">Portfolio</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-portfolio-file-sort="project" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-portfolio-file-sort-button="project">Project</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable is-sorted-desc" data-portfolio-file-sort="size" aria-sort="descending">
+                                                    <button type="button" class="sp-size-sort-btn" data-portfolio-file-sort-button="size">Size</button>
+                                                </th>
+                                                <th scope="col" class="is-sortable" data-portfolio-file-sort="modified" aria-sort="none">
+                                                    <button type="button" class="sp-size-sort-btn" data-portfolio-file-sort-button="modified">Modified</button>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="sp-portfolio-files-body">
+                                            <tr><td colspan="5" class="sp-size-empty">Open this tab to load portfolio storage.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="sp-size-tab-panel" role="tabpanel" id="sp-size-tab-panel-owners" data-tab-panel="owners" aria-labelledby="sp-size-tab-owners" hidden>
                             <div class="sp-owner-storage-toolbar">
                                 <p class="panel-help sp-owner-storage-help">
@@ -2818,6 +3233,50 @@ $soloPageClass = $ownerSolo
                             <div class="sp-size-treemap-wrap sp-owner-storage-treemap-wrap" tabindex="0" role="region" aria-label="Owner storage treemap">
                                 <div class="sp-size-treemap" id="sp-owner-storage-treemap"></div>
                             </div>
+                            <details class="sp-project-submenu" id="sp-owner-project-submenu" open>
+                                <summary class="sp-project-submenu-summary">
+                                    <span class="sp-project-submenu-title">Projects by owner</span>
+                                    <span class="sp-project-submenu-count" id="sp-owner-project-count">0</span>
+                                </summary>
+                                <div class="sp-project-submenu-panel">
+                                    <div class="sp-project-submenu-toolbar">
+                                        <label class="sp-project-submenu-search-label">
+                                            <span class="visually-hidden">Filter projects</span>
+                                            <input type="search" id="sp-owner-project-search" class="sp-project-submenu-search" placeholder="Filter by project, owner, or portfolio…" autocomplete="off">
+                                        </label>
+                                        <p class="panel-help sp-project-submenu-help" id="sp-owner-project-help">Projects for the current owner view, with approximate portfolio.</p>
+                                    </div>
+                                    <div class="table-wrap">
+                                        <table class="sp-size-files-table sp-project-submenu-table" id="sp-owner-project-table">
+                                            <thead>
+                                                <tr>
+                                                    <th scope="col" class="is-sortable is-sorted-asc" data-owner-project-sort="name" aria-sort="ascending">
+                                                        <button type="button" class="sp-size-sort-btn" data-owner-project-sort-button="name">Project</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-owner-project-sort="owner" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-owner-project-sort-button="owner">Owner</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-owner-project-sort="portfolio" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-owner-project-sort-button="portfolio">Portfolio</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-owner-project-sort="sub" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-owner-project-sort-button="sub">Sub-portfolio</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable is-sorted-desc" data-owner-project-sort="size" aria-sort="descending">
+                                                        <button type="button" class="sp-size-sort-btn" data-owner-project-sort-button="size">Size</button>
+                                                    </th>
+                                                    <th scope="col" class="is-sortable" data-owner-project-sort="files" aria-sort="none">
+                                                        <button type="button" class="sp-size-sort-btn" data-owner-project-sort-button="files">Files</button>
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="sp-owner-project-body">
+                                                <tr><td colspan="6" class="sp-size-empty">Open this tab to load projects.</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </details>
                             <div class="sp-size-large-files sp-owner-storage-files">
                                 <div class="sp-size-large-head">
                                     <h3>Largest files by owner</h3>
@@ -3245,6 +3704,7 @@ $soloPageClass = $ownerSolo
             <?php endif; ?>
             <?php if ($heatmapSolo): ?>
                 <?php require __DIR__ . '/includes/sharepoint-list-animation-dialog.php'; ?>
+                <?php require __DIR__ . '/includes/sharepoint-catalog-dialogs.php'; ?>
             <?php endif; ?>
 
             <?php if ($isAdmin && !$panelSolo): ?>
@@ -3647,6 +4107,7 @@ $soloPageClass = $ownerSolo
     <?php if ($storageAvailable && !$catalogSolo && !$foldersSolo && ($heatmapSolo || !$ownerSolo)): ?>
     <script src="assets/js/sharepoint-owner-storage.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-owner-storage.js') ?>"></script>
     <script src="assets/js/sharepoint-file-type-storage.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-file-type-storage.js') ?>"></script>
+    <script src="assets/js/sharepoint-portfolio-heatmap.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-portfolio-heatmap.js') ?>"></script>
     <script src="assets/js/sharepoint-size-heatmap.js?v=<?= filemtime(__DIR__ . '/assets/js/sharepoint-size-heatmap.js') ?>"></script>
     <?php endif; ?>
         <?php if (!$ownerSolo && !$catalogSolo && $isAdmin): ?>

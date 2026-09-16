@@ -117,6 +117,39 @@ final class SharePointOwnerStorageDashboard
         $top = $nodes[0] ?? null;
         $topBytes = (int) ($top['size_bytes'] ?? 0);
         $concentration = $totalBytes > 0 ? round($topBytes / $totalBytes, 4) : 0.0;
+        $map = SharePointPortfolioMapping::load();
+        $projectMenu = [];
+        foreach ($projects as $project) {
+            $resolved = SharePointPortfolioMapping::resolve((string) ($project['project_name'] ?? ''), $map);
+            $projectMenu[] = [
+                'key' => (string) $project['source_key'] . "\n" . (string) $project['project_name'],
+                'label' => (string) $project['project_name'],
+                'type' => 'project',
+                'source_key' => (string) $project['source_key'],
+                'source_title' => (string) ($project['source_title'] ?? ''),
+                'project_name' => (string) $project['project_name'],
+                'folder_url' => (string) ($project['folder_url'] ?? ''),
+                'size_bytes' => (int) $project['size_bytes'],
+                'file_count' => (int) $project['file_count'],
+                'owner_key' => (string) $project['owner_key'],
+                'owner_name' => (string) $project['owner_name'],
+                'portfolio' => $resolved['portfolio'],
+                'sub_portfolio' => $resolved['sub_portfolio'],
+                'confidence' => $resolved['confidence'],
+                'needs_review' => $resolved['needs_review'],
+            ];
+        }
+        usort(
+            $projectMenu,
+            static function (array $a, array $b): int {
+                $cmp = ((int) $b['size_bytes']) <=> ((int) $a['size_bytes']);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+
+                return strcasecmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
+            }
+        );
 
         return [
             'level' => 'owner_storage',
@@ -134,6 +167,7 @@ final class SharePointOwnerStorageDashboard
                 'concentration_warn' => $concentration >= self::CONCENTRATION_WARN,
             ],
             'nodes' => $nodes,
+            'project_menu' => $projectMenu,
             'large_files' => $this->topFilesWithOwners($sourceKeys, $sourceTitles, $projects),
         ];
     }
@@ -167,6 +201,7 @@ final class SharePointOwnerStorageDashboard
             return $this->emptyOwnerProjects($this->sourceMeta($sourceKeys, $sourceTitles), $ownerKey, $ownerName);
         }
 
+        $map = SharePointPortfolioMapping::load();
         $nodes = [];
         $totalBytes = 0;
         $totalFiles = 0;
@@ -177,6 +212,7 @@ final class SharePointOwnerStorageDashboard
             $totalFiles += $files;
             $sourceKey = (string) $project['source_key'];
             $projectName = (string) $project['project_name'];
+            $resolved = SharePointPortfolioMapping::resolve($projectName, $map);
             $nodes[] = [
                 'key' => $sourceKey . "\n" . $projectName,
                 'label' => $projectName,
@@ -190,6 +226,10 @@ final class SharePointOwnerStorageDashboard
                 'avg_file_size' => $files > 0 ? (int) round($bytes / $files) : 0,
                 'owner_key' => $ownerKey,
                 'owner_name' => (string) ($project['owner_name'] ?? $ownerName),
+                'portfolio' => $resolved['portfolio'],
+                'sub_portfolio' => $resolved['sub_portfolio'],
+                'confidence' => $resolved['confidence'],
+                'needs_review' => $resolved['needs_review'],
                 'hue' => $this->hue($sourceKey . "\n" . $projectName),
             ];
         }
@@ -224,6 +264,7 @@ final class SharePointOwnerStorageDashboard
                 'concentration_warn' => false,
             ],
             'nodes' => $nodes,
+            'project_menu' => $nodes,
             'large_files' => $this->topFilesWithOwners($sourceKeys, $sourceTitles, $owned, $ownerKey),
         ];
     }
@@ -544,6 +585,7 @@ final class SharePointOwnerStorageDashboard
                 'concentration_warn' => false,
             ],
             'nodes' => [],
+            'project_menu' => [],
             'large_files' => [],
         ];
     }
@@ -572,6 +614,7 @@ final class SharePointOwnerStorageDashboard
                 'concentration_warn' => false,
             ],
             'nodes' => [],
+            'project_menu' => [],
             'large_files' => [],
         ];
     }

@@ -750,4 +750,98 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                 </div>
             </dialog>
 
+            <dialog class="response-dialog sp-portfolio-map-dialog" id="sp-portfolio-map-dialog" aria-labelledby="sp-portfolio-map-dialog-title">
+                <form class="response-dialog-form sp-portfolio-map-form" id="sp-portfolio-map-form" action="#" method="dialog">
+                    <div class="response-dialog-head">
+                        <div>
+                            <div class="eyebrow">Portfolio mapping</div>
+                            <h3 id="sp-portfolio-map-dialog-title">Reassign portfolio</h3>
+                            <p class="response-dialog-sub" id="sp-portfolio-map-dialog-sub">Update the approximate portfolio for this project.</p>
+                        </div>
+                        <button type="button" class="button ghost response-dialog-close" id="sp-portfolio-map-dialog-close" aria-label="Close">✕</button>
+                    </div>
+                    <div class="sp-portfolio-map-fields">
+                        <label class="sp-portfolio-map-field">
+                            <span>Project</span>
+                            <input type="text" id="sp-portfolio-map-project" readonly>
+                        </label>
+                        <label class="sp-portfolio-map-field">
+                            <span>Portfolio</span>
+                            <select id="sp-portfolio-map-portfolio" required></select>
+                        </label>
+                        <label class="sp-portfolio-map-field" id="sp-portfolio-map-portfolio-new-wrap" hidden>
+                            <span>New portfolio name</span>
+                            <input type="text" id="sp-portfolio-map-portfolio-custom" maxlength="200" autocomplete="off" placeholder="e.g. Population Health">
+                        </label>
+                        <label class="sp-portfolio-map-field">
+                            <span>Sub-portfolio</span>
+                            <select id="sp-portfolio-map-sub" required></select>
+                        </label>
+                        <label class="sp-portfolio-map-field" id="sp-portfolio-map-sub-new-wrap" hidden>
+                            <span>New sub-portfolio name</span>
+                            <input type="text" id="sp-portfolio-map-sub-custom" maxlength="200" autocomplete="off" placeholder="e.g. Care Management">
+                        </label>
+                        <label class="sp-portfolio-map-field">
+                            <span>Confidence</span>
+                            <select id="sp-portfolio-map-confidence">
+                                <option value="High">High</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="Low">Low</option>
+                            </select>
+                        </label>
+                        <label class="sp-portfolio-map-field">
+                            <span>Classification note</span>
+                            <textarea id="sp-portfolio-map-note" rows="3" maxlength="1000" placeholder="Optional note about this classification"></textarea>
+                        </label>
+                        <p class="sp-portfolio-map-error" id="sp-portfolio-map-error" hidden></p>
+                    </div>
+                    <div class="response-dialog-actions">
+                        <button type="button" class="button ghost" id="sp-portfolio-map-cancel">Cancel</button>
+                        <button type="submit" class="button button-primary" id="sp-portfolio-map-save">Save mapping</button>
+                    </div>
+                </form>
+            </dialog>
+
+            <dialog class="response-dialog sp-portfolio-map-dialog" id="sp-portfolio-import-dialog" aria-labelledby="sp-portfolio-import-dialog-title">
+                <form class="response-dialog-form sp-portfolio-import-form" id="sp-portfolio-import-form" action="#" method="dialog" enctype="multipart/form-data">
+                    <div class="response-dialog-head">
+                        <div>
+                            <div class="eyebrow">Portfolio mapping</div>
+                            <h3 id="sp-portfolio-import-dialog-title">Import CSV</h3>
+                            <p class="response-dialog-sub">Bulk update approximate portfolio assignments. Export first if you want a backup copy.</p>
+                        </div>
+                        <button type="button" class="button ghost response-dialog-close" id="sp-portfolio-import-dialog-close" aria-label="Close">✕</button>
+                    </div>
+                    <div class="sp-portfolio-map-fields">
+                        <label class="sp-portfolio-map-field">
+                            <span>CSV file</span>
+                            <input type="file" id="sp-portfolio-import-file" accept=".csv,text/csv" required>
+                        </label>
+                        <fieldset class="sp-portfolio-import-mode">
+                            <legend>Import mode</legend>
+                            <label class="sp-portfolio-import-mode-option">
+                                <input type="radio" name="sp-portfolio-import-mode" value="append" checked>
+                                <span><strong>Append / update</strong> — keep existing rows; add new projects and overwrite matching project names</span>
+                            </label>
+                            <label class="sp-portfolio-import-mode-option">
+                                <input type="radio" name="sp-portfolio-import-mode" value="replace">
+                                <span><strong>Replace all</strong> — replace the entire mapping with this CSV (a backup file is created first)</span>
+                            </label>
+                        </fieldset>
+                        <p class="panel-help">
+                            Required header:
+                            <code>Project, Approximate Portfolio, Approximate Sub-Portfolio, Confidence, Classification Note</code>
+                            ·
+                            <button type="button" class="sp-portfolio-import-template-link" id="sp-portfolio-import-template-link">Download template</button>
+                        </p>
+                        <p class="sp-portfolio-map-error" id="sp-portfolio-import-error" hidden></p>
+                        <p class="sp-portfolio-import-result" id="sp-portfolio-import-result" hidden></p>
+                    </div>
+                    <div class="response-dialog-actions">
+                        <button type="button" class="button ghost" id="sp-portfolio-import-cancel">Cancel</button>
+                        <button type="submit" class="button button-primary" id="sp-portfolio-import-save">Import CSV</button>
+                    </div>
+                </form>
+            </dialog>
+
             <?php require __DIR__ . '/sharepoint-catalog-compare-dialog.php'; ?>

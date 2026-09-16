@@ -7,6 +7,11 @@
   const filesBody = document.getElementById('sp-owner-storage-files-body');
   const filesHelp = document.getElementById('sp-owner-storage-files-help');
   const filesTable = document.getElementById('sp-owner-storage-files-table');
+  const projectBody = document.getElementById('sp-owner-project-body');
+  const projectHelp = document.getElementById('sp-owner-project-help');
+  const projectTable = document.getElementById('sp-owner-project-table');
+  const projectCountEl = document.getElementById('sp-owner-project-count');
+  const projectSearch = document.getElementById('sp-owner-project-search');
   const scopesRoot = document.getElementById('sp-owner-storage-scopes');
   const refreshBtn = document.getElementById('sp-owner-storage-refresh');
   const backBtn = document.getElementById('sp-owner-storage-back');
@@ -26,7 +31,10 @@
     ownerKey: '',
     ownerName: '',
     largeFiles: [],
+    projectMenu: [],
+    projectSearch: '',
     fileSort: { key: 'size', direction: 'desc' },
+    projectSort: { key: 'size', direction: 'desc' },
   };
   let heatmapAnimationTimer = 0;
 
@@ -369,7 +377,7 @@
           projects ? `${projects} project folder(s)` : '',
           avg ? `avg ${formatBytes(avg)}` : '',
           type === 'owner' ? 'Click to show this owner’s projects' : '',
-          type === 'project' ? (folderUrl ? 'Click to open project folder' : 'Project folder') : '',
+          type === 'project' ? 'Click to open project dialog' : '',
         ]
           .filter(Boolean)
           .join('\n');
@@ -547,6 +555,101 @@
       .join('');
   };
 
+  const sortedProjectMenu = () => {
+    const query = String(state.projectSearch || '').trim().toLowerCase();
+    const { key, direction } = state.projectSort;
+    const dir = direction === 'asc' ? 1 : -1;
+    return (state.projectMenu || [])
+      .filter((row) => {
+        if (!query) return true;
+        const hay = [
+          row.project_name,
+          row.owner_name,
+          row.portfolio,
+          row.sub_portfolio,
+          row.source_title,
+        ]
+          .map((v) => String(v || '').toLowerCase())
+          .join(' ');
+        return hay.includes(query);
+      })
+      .slice()
+      .sort((a, b) => {
+        if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
+        if (key === 'files') return ((Number(a.file_count) || 0) - (Number(b.file_count) || 0)) * dir;
+        const left =
+          key === 'owner'
+            ? a.owner_name
+            : key === 'portfolio'
+              ? a.portfolio
+              : key === 'sub'
+                ? a.sub_portfolio
+                : a.project_name || a.label;
+        const right =
+          key === 'owner'
+            ? b.owner_name
+            : key === 'portfolio'
+              ? b.portfolio
+              : key === 'sub'
+                ? b.sub_portfolio
+                : b.project_name || b.label;
+        return String(left || '').localeCompare(String(right || ''), undefined, { sensitivity: 'base' }) * dir;
+      });
+  };
+
+  const syncProjectSortHeaders = () => {
+    projectTable?.querySelectorAll('th[data-owner-project-sort]').forEach((header) => {
+      const active = header.getAttribute('data-owner-project-sort') === state.projectSort.key;
+      const direction = active ? state.projectSort.direction : 'none';
+      header.setAttribute(
+        'aria-sort',
+        direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'
+      );
+      header.classList.toggle('is-sorted-asc', active && direction === 'asc');
+      header.classList.toggle('is-sorted-desc', active && direction === 'desc');
+    });
+  };
+
+  const renderProjectMenu = (menu) => {
+    if (!projectBody) return;
+    if (Array.isArray(menu)) state.projectMenu = menu.slice();
+    const rows = sortedProjectMenu();
+    syncProjectSortHeaders();
+    if (projectCountEl) projectCountEl.textContent = String(rows.length);
+    if (projectHelp) {
+      projectHelp.textContent =
+        state.level === 'owner'
+          ? `Projects owned by ${state.ownerName || 'this person'}, with approximate portfolio.`
+          : 'All projects across selected catalogs, with owner and approximate portfolio.';
+    }
+    if (!rows.length) {
+      projectBody.innerHTML = '<tr><td colspan="6" class="sp-size-empty">No projects match this view.</td></tr>';
+      return;
+    }
+    projectBody.innerHTML = rows
+      .map((row) => {
+        const projectName = String(row.project_name || row.label || '');
+        const sourceKey = String(row.source_key || '');
+        const ownerName = String(row.owner_name || '—');
+        const ownerKey = String(row.owner_key || '');
+        const sourceTitle = String(row.source_title || '');
+        const folderUrl = String(row.folder_url || '');
+        const projectBtn = `<button type="button" class="sp-project-submenu-project-link" data-source-key="${escapeAttr(sourceKey)}" data-project-name="${escapeAttr(projectName)}" data-folder-url="${escapeAttr(folderUrl)}">${escapeHtml(projectName)}</button>${sourceTitle ? `<span class="sp-project-submenu-meta">${escapeHtml(sourceTitle)}</span>` : ''}`;
+        const ownerBtn = ownerKey
+          ? `<button type="button" class="sp-project-submenu-owner-link" data-owner-key="${escapeAttr(ownerKey)}" data-owner-name="${escapeAttr(ownerName)}">${escapeHtml(ownerName)}</button>`
+          : escapeHtml(ownerName);
+        return `<tr>
+          <td>${projectBtn}</td>
+          <td>${ownerBtn}</td>
+          <td>${escapeHtml(row.portfolio || '—')}</td>
+          <td>${escapeHtml(row.sub_portfolio || '—')}</td>
+          <td>${escapeHtml(formatBytes(row.size_bytes))}</td>
+          <td>${escapeHtml(String(row.file_count ?? 0))}</td>
+        </tr>`;
+      })
+      .join('');
+  };
+
   const applyPayload = (payload) => {
     state.data = payload;
     state.level = payload.level === 'owner_projects' ? 'owner' : 'overview';
@@ -563,18 +666,23 @@
     renderQuality(payload.kpis || {});
     renderTreemap(payload.nodes || []);
     renderLargeFiles(payload.large_files || []);
+    renderProjectMenu(payload.project_menu || []);
   };
 
   const load = async (force = false) => {
     if (state.loading) return;
     if (state.loaded && !force && state.data && state.level === 'overview' && !state.ownerKey) {
       renderTreemap(state.data.nodes || []);
+      renderProjectMenu(state.data.project_menu || state.projectMenu || []);
       return;
     }
     state.loading = true;
     treemapEl.innerHTML = '<p class="sp-size-empty">Loading…</p>';
     if (filesBody) {
       filesBody.innerHTML = '<tr><td colspan="5" class="sp-size-empty">Loading…</td></tr>';
+    }
+    if (projectBody) {
+      projectBody.innerHTML = '<tr><td colspan="6" class="sp-size-empty">Loading…</td></tr>';
     }
     try {
       const sources = readSelectedSources();
@@ -596,6 +704,9 @@
       treemapEl.innerHTML = `<p class="sp-size-empty sp-size-error">${escapeHtml(error.message || 'Load failed.')}</p>`;
       if (filesBody) {
         filesBody.innerHTML = `<tr><td colspan="5" class="sp-size-empty sp-size-error">${escapeHtml(error.message || 'Load failed.')}</td></tr>`;
+      }
+      if (projectBody) {
+        projectBody.innerHTML = `<tr><td colspan="6" class="sp-size-empty sp-size-error">${escapeHtml(error.message || 'Load failed.')}</td></tr>`;
       }
       if (kpisEl) kpisEl.innerHTML = '';
       if (qualityEl) {
@@ -631,8 +742,9 @@
       window.RiskRegisterSharePoint.openProject(projectName, sourceKey);
       return;
     }
-    if (folderUrl) {
-      window.open(folderUrl, '_blank', 'noopener,noreferrer');
+    // Dialog unavailable (unexpected): do not open SharePoint as a substitute.
+    if (projectName) {
+      console.warn('Project dialog is unavailable; cannot open', projectName, sourceKey || folderUrl || '');
     }
   };
 
@@ -669,6 +781,18 @@
   kpisEl?.addEventListener('click', ownerDrillHandler);
   qualityEl?.addEventListener('click', ownerDrillHandler);
   filesBody?.addEventListener('click', ownerDrillHandler);
+  projectBody?.addEventListener('click', (event) => {
+    const projectBtn = event.target.closest('.sp-project-submenu-project-link');
+    if (projectBtn) {
+      openProject(
+        projectBtn.getAttribute('data-source-key') || '',
+        projectBtn.getAttribute('data-project-name') || '',
+        projectBtn.getAttribute('data-folder-url') || ''
+      );
+      return;
+    }
+    ownerDrillHandler(event);
+  });
 
   breadcrumbEl?.addEventListener('click', (event) => {
     const crumb = event.target.closest('[data-owner-level]');
@@ -690,6 +814,24 @@
       state.fileSort.direction = key === 'size' || key === 'created' ? 'desc' : 'asc';
     }
     renderLargeFiles(state.largeFiles);
+  });
+
+  projectSearch?.addEventListener('input', () => {
+    state.projectSearch = projectSearch.value || '';
+    renderProjectMenu();
+  });
+
+  projectTable?.querySelector('thead')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-owner-project-sort-button]');
+    if (!button) return;
+    const key = button.getAttribute('data-owner-project-sort-button') || 'name';
+    if (state.projectSort.key === key) {
+      state.projectSort.direction = state.projectSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.projectSort.key = key;
+      state.projectSort.direction = key === 'size' || key === 'files' ? 'desc' : 'asc';
+    }
+    renderProjectMenu();
   });
 
   scopesRoot?.addEventListener('change', (event) => {
