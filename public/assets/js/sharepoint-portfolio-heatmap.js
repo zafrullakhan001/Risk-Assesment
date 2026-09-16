@@ -12,6 +12,7 @@
   const projectTable = document.getElementById('sp-portfolio-project-table');
   const projectCountEl = document.getElementById('sp-portfolio-project-count');
   const projectSearch = document.getElementById('sp-portfolio-project-search');
+  const projectUniqueToggle = document.getElementById('sp-portfolio-project-unique');
   const scopesRoot = document.getElementById('sp-portfolio-scopes');
   const refreshBtn = document.getElementById('sp-portfolio-refresh');
   const backBtn = document.getElementById('sp-portfolio-back');
@@ -36,6 +37,7 @@
     largeFiles: [],
     projectMenu: [],
     projectSearch: '',
+    projectUniqueOnly: false,
     fileSort: { key: 'size', direction: 'desc' },
     projectSort: { key: 'size', direction: 'desc' },
     canEditPortfolio: root.getAttribute('data-can-edit-portfolio') === '1',
@@ -690,42 +692,63 @@
     const query = String(state.projectSearch || '').trim().toLowerCase();
     const { key, direction } = state.projectSort;
     const dir = direction === 'asc' ? 1 : -1;
-    return (state.projectMenu || [])
-      .filter((row) => {
-        if (!query) return true;
-        const hay = [
-          row.project_name,
-          row.owner_name,
-          row.portfolio,
-          row.sub_portfolio,
-          row.source_title,
-        ]
-          .map((v) => String(v || '').toLowerCase())
-          .join(' ');
-        return hay.includes(query);
-      })
-      .slice()
-      .sort((a, b) => {
-        if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
-        if (key === 'files') return ((Number(a.file_count) || 0) - (Number(b.file_count) || 0)) * dir;
-        const left =
-          key === 'owner'
-            ? a.owner_name
-            : key === 'portfolio'
-              ? a.portfolio
-              : key === 'sub'
-                ? a.sub_portfolio
-                : a.project_name || a.label;
-        const right =
-          key === 'owner'
-            ? b.owner_name
-            : key === 'portfolio'
-              ? b.portfolio
-              : key === 'sub'
-                ? b.sub_portfolio
-                : b.project_name || b.label;
-        return String(left || '').localeCompare(String(right || ''), undefined, { sensitivity: 'base' }) * dir;
+    let rows = (state.projectMenu || []).filter((row) => {
+      if (!query) return true;
+      const hay = [
+        row.project_name,
+        row.owner_name,
+        row.portfolio,
+        row.sub_portfolio,
+        row.source_title,
+      ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+      return hay.includes(query);
+    });
+
+    if (state.projectUniqueOnly) {
+      /** @type {Map<string, any>} */
+      const byName = new Map();
+      rows.forEach((row) => {
+        const nameKey = String(row.project_name || row.label || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ' ');
+        if (!nameKey) return;
+        const prev = byName.get(nameKey);
+        if (!prev) {
+          byName.set(nameKey, row);
+          return;
+        }
+        // Keep the larger catalog copy when public + private both match.
+        if ((Number(row.size_bytes) || 0) > (Number(prev.size_bytes) || 0)) {
+          byName.set(nameKey, row);
+        }
       });
+      rows = Array.from(byName.values());
+    }
+
+    return rows.slice().sort((a, b) => {
+      if (key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
+      if (key === 'files') return ((Number(a.file_count) || 0) - (Number(b.file_count) || 0)) * dir;
+      const left =
+        key === 'owner'
+          ? a.owner_name
+          : key === 'portfolio'
+            ? a.portfolio
+            : key === 'sub'
+              ? a.sub_portfolio
+              : a.project_name || a.label;
+      const right =
+        key === 'owner'
+          ? b.owner_name
+          : key === 'portfolio'
+            ? b.portfolio
+            : key === 'sub'
+              ? b.sub_portfolio
+              : b.project_name || b.label;
+      return String(left || '').localeCompare(String(right || ''), undefined, { sensitivity: 'base' }) * dir;
+    });
   };
 
   const updateProjectSortHeaders = () => {
@@ -757,6 +780,9 @@
         projectHelp.textContent = `Projects in ${state.portfolio || 'this portfolio'}, with folder owner.`;
       } else {
         projectHelp.textContent = 'All mapped projects in the selected catalogs, with folder owner.';
+      }
+      if (state.projectUniqueOnly) {
+        projectHelp.textContent += ' Showing unique project names only.';
       }
     }
     if (!rows.length) {
@@ -1331,6 +1357,10 @@
     state.projectSearch = projectSearch.value || '';
     renderProjectMenu();
   });
+  projectUniqueToggle?.addEventListener('change', () => {
+    state.projectUniqueOnly = !!projectUniqueToggle.checked;
+    renderProjectMenu();
+  });
 
   projectTable?.addEventListener('click', (event) => {
     const sortBtn = event.target.closest('[data-portfolio-project-sort-button]');
@@ -1446,6 +1476,8 @@
     if (importFile) importFile.value = '';
     const appendRadio = importForm?.querySelector('input[name="sp-portfolio-import-mode"][value="append"]');
     if (appendRadio) appendRadio.checked = true;
+    const keepUnique = document.getElementById('sp-portfolio-import-keep-unique');
+    if (keepUnique) keepUnique.checked = true;
     importDialog.showModal();
   };
 
@@ -1459,6 +1491,7 @@
     const mode = importForm?.querySelector('input[name="sp-portfolio-import-mode"]:checked')?.value === 'replace'
       ? 'replace'
       : 'append';
+    const keepUnique = document.getElementById('sp-portfolio-import-keep-unique')?.checked !== false;
     if (mode === 'replace') {
       const ok = window.confirm(
         'Replace ALL portfolio mapping rows with this CSV?\n\nA backup file will be created first. This cannot be undone from the UI.'
@@ -1477,6 +1510,7 @@
       body.set('action', 'import_portfolio_mapping');
       body.set('ajax', '1');
       body.set('mode', mode);
+      body.set('keep_unique', keepUnique ? '1' : '0');
       body.set('import_file', file, file.name || 'portfolio_mapping.csv');
       const response = await fetch('sharepoint.php', {
         method: 'POST',
@@ -1496,7 +1530,10 @@
         ? `Replaced mapping: ${result.after ?? 0} rows (was ${result.before ?? 0}).`
         : `Import complete: +${result.added ?? 0} added, ${result.updated ?? 0} updated, ${result.unchanged ?? 0} unchanged (${result.after ?? 0} total).`;
       const skippedNote = Number(result.skipped) > 0 ? ` Skipped ${result.skipped} invalid row(s).` : '';
-      setImportResult(summary + skippedNote);
+      const dupNote = Number(result.duplicates) > 0
+        ? ` Filtered ${result.duplicates} duplicate project row(s).`
+        : '';
+      setImportResult(summary + skippedNote + dupNote);
       state.loaded = false;
       state.data = null;
       await load(true);

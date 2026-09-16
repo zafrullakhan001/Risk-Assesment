@@ -828,6 +828,10 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                                 <span><strong>Replace all</strong> — replace the entire mapping with this CSV (a backup file is created first)</span>
                             </label>
                         </fieldset>
+                        <label class="sp-portfolio-import-mode-option sp-portfolio-import-unique">
+                            <input type="checkbox" id="sp-portfolio-import-keep-unique" checked>
+                            <span><strong>Filter duplicates — keep unique</strong> — if the CSV has the same project more than once, keep the last row and drop earlier duplicates</span>
+                        </label>
                         <p class="panel-help">
                             Required header:
                             <code>Project, Approximate Portfolio, Approximate Sub-Portfolio, Confidence, Classification Note</code>

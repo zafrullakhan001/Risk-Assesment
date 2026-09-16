@@ -1623,6 +1623,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $wantsJson = str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
                 || (string) ($_POST['ajax'] ?? '') === '1';
             $mode = strtolower(trim((string) ($_POST['mode'] ?? 'append'))) === 'replace' ? 'replace' : 'append';
+            $keepUniqueRaw = $_POST['keep_unique'] ?? '1';
+            $keepUnique = $keepUniqueRaw === true
+                || $keepUniqueRaw === 1
+                || $keepUniqueRaw === '1'
+                || strtolower((string) $keepUniqueRaw) === 'true';
             $file = $_FILES['import_file'] ?? null;
             if (!is_array($file)) {
                 throw new RuntimeException('Please choose a CSV file to import.');
@@ -1638,12 +1643,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($original !== '' && !str_ends_with($original, '.csv')) {
                 throw new RuntimeException('Please upload a .csv file with the portfolio mapping header.');
             }
-            $parsed = SharePointPortfolioMapping::parseCsvFile($tmp);
+            $parsed = SharePointPortfolioMapping::parseCsvFile($tmp, $keepUnique);
             $result = SharePointPortfolioMapping::importRows(
                 $parsed['rows'],
                 $mode,
                 (int) $parsed['skipped'],
-                $parsed['errors']
+                $parsed['errors'],
+                (int) $parsed['duplicates'],
+                $parsed['duplicate_samples']
             );
             $auth->users()->logAudit(
                 'sharepoint.portfolio_mapping_imported',
@@ -3121,6 +3128,10 @@ $soloPageClass = $ownerSolo
                                         <label class="sp-project-submenu-search-label">
                                             <span class="visually-hidden">Filter projects</span>
                                             <input type="search" id="sp-portfolio-project-search" class="sp-project-submenu-search" placeholder="Filter by project, owner, or portfolio…" autocomplete="off">
+                                        </label>
+                                        <label class="sp-project-submenu-unique">
+                                            <input type="checkbox" id="sp-portfolio-project-unique">
+                                            <span>Unique only</span>
                                         </label>
                                         <p class="panel-help sp-project-submenu-help" id="sp-portfolio-project-help">Projects for the current portfolio view, with folder owner.</p>
                                     </div>

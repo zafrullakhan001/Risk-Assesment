@@ -21598,6 +21598,21 @@ html.is-compact .help-reader-toolbar {
     font-size: 0.9rem;
     color: #0f172a;
 }
+.sp-project-submenu-unique {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.86rem;
+    font-weight: 650;
+    color: #334155;
+    white-space: nowrap;
+}
+.sp-portfolio-import-unique {
+    margin-top: 0.15rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.6rem;
+}
 .sp-portfolio-import-result {
     margin: 0;
     color: #0f766e;

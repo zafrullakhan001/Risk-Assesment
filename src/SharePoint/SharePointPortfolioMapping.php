@@ -370,10 +370,12 @@ final class SharePointPortfolioMapping
      * @return array{
      *   rows: array<string, array{project: string, portfolio: string, sub_portfolio: string, confidence: string, note: string}>,
      *   skipped: int,
+     *   duplicates: int,
+     *   duplicate_samples: list<string>,
      *   errors: list<string>
      * }
      */
-    public static function parseCsvFile(string $filePath): array
+    public static function parseCsvFile(string $filePath, bool $keepUnique = true): array
     {
         if (!is_file($filePath) || !is_readable($filePath)) {
             throw new \InvalidArgumentException('Uploaded CSV is missing or unreadable.');
@@ -416,6 +418,9 @@ final class SharePointPortfolioMapping
         $rows = [];
         $errors = [];
         $skipped = 0;
+        $duplicates = 0;
+        /** @var list<string> $duplicateSamples */
+        $duplicateSamples = [];
         $line = 1;
         while (($cols = fgetcsv($handle)) !== false) {
             $line++;
@@ -455,6 +460,17 @@ final class SharePointPortfolioMapping
             }
 
             $key = self::normalizeKey($project);
+            if (isset($rows[$key])) {
+                $duplicates++;
+                if (count($duplicateSamples) < 8) {
+                    $duplicateSamples[] = $project;
+                }
+                if (!$keepUnique) {
+                    continue;
+                }
+                // keepUnique: last row wins
+            }
+
             $rows[$key] = [
                 'project' => $project,
                 'portfolio' => $portfolio,
@@ -469,9 +485,20 @@ final class SharePointPortfolioMapping
             throw new \InvalidArgumentException('No valid mapping rows found in the uploaded CSV.');
         }
 
+        if (!$keepUnique && $duplicates > 0) {
+            $sample = implode(', ', array_slice($duplicateSamples, 0, 5));
+            throw new \InvalidArgumentException(
+                "CSV has {$duplicates} duplicate project name(s)"
+                . ($sample !== '' ? " (e.g. {$sample})" : '')
+                . '. Enable “Filter duplicates — keep unique”, or remove duplicate Project rows.'
+            );
+        }
+
         return [
             'rows' => $rows,
             'skipped' => $skipped,
+            'duplicates' => $duplicates,
+            'duplicate_samples' => $duplicateSamples,
             'errors' => array_slice($errors, 0, 12),
         ];
     }
@@ -481,10 +508,17 @@ final class SharePointPortfolioMapping
      *
      * @param array<string, array{project: string, portfolio: string, sub_portfolio: string, confidence: string, note: string}> $incoming
      * @param 'append'|'replace' $mode
-     * @return array{mode: string, before: int, after: int, added: int, updated: int, unchanged: int, skipped: int, errors: list<string>}
+     * @return array{mode: string, before: int, after: int, added: int, updated: int, unchanged: int, skipped: int, duplicates: int, duplicate_samples: list<string>, errors: list<string>}
      */
-    public static function importRows(array $incoming, string $mode = 'append', int $skipped = 0, array $errors = [], ?string $path = null): array
-    {
+    public static function importRows(
+        array $incoming,
+        string $mode = 'append',
+        int $skipped = 0,
+        array $errors = [],
+        int $duplicates = 0,
+        array $duplicateSamples = [],
+        ?string $path = null
+    ): array {
         $mode = strtolower(trim($mode)) === 'replace' ? 'replace' : 'append';
         if ($incoming === []) {
             throw new \InvalidArgumentException('No mapping rows to import.');
@@ -541,6 +575,8 @@ final class SharePointPortfolioMapping
             'updated' => $updated,
             'unchanged' => $unchanged,
             'skipped' => $skipped,
+            'duplicates' => $duplicates,
+            'duplicate_samples' => $duplicateSamples,
             'errors' => $errors,
         ];
     }
