@@ -309,6 +309,19 @@
     display: grid;
     gap: 12px;
 }
+.servicenow-console-sync--inline {
+    margin-top: 0;
+}
+.complete-dossier-divider {
+    height: 1px;
+    margin: 18px 0 16px;
+    background: color-mix(in srgb, var(--line) 80%, transparent);
+}
+.complete-dossier-sn-title {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+    font-family: var(--font-display);
+}
 .servicenow-console-steps {
     margin: 0;
     padding-left: 1.25rem;
@@ -938,11 +951,16 @@ html[data-project-list-view="strip"] .card-meta {
 }
 .project-table-id,
 .project-table-date,
-.project-table-ticket {
+.project-table-ticket,
+.project-table-size {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--muted);
     white-space: nowrap;
+}
+.project-table-size {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 .project-table-owner {
     white-space: nowrap;

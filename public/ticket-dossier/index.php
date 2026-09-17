@@ -29,7 +29,7 @@ $searchPerPage = PaginationPreference::resolve(
     10,
     $allowedPerPage
 );
-$allowedSorts = ['id', 'project', 'vendor', 'owner', 'demand', 'story', 'task', 'ddr', 'updated'];
+$allowedSorts = ['id', 'project', 'vendor', 'owner', 'demand', 'story', 'task', 'ddr', 'size', 'updated'];
 $searchSort = strtolower(trim((string) ($_GET['sort'] ?? 'updated')));
 if (!in_array($searchSort, $allowedSorts, true)) {
     $searchSort = 'updated';
@@ -123,7 +123,7 @@ $projectListUrl = static function (array $overrides = []) use ($projectListQuery
 $sortHeaderUrl = static function (string $column) use ($searchSort, $searchDir, $projectListUrl): string {
     $nextDir = ($searchSort === $column && $searchDir === 'asc') ? 'desc' : 'asc';
     if ($searchSort !== $column) {
-        $nextDir = in_array($column, ['updated', 'id'], true) ? 'desc' : 'asc';
+        $nextDir = in_array($column, ['updated', 'id', 'size'], true) ? 'desc' : 'asc';
     }
 
     return $projectListUrl([
@@ -267,7 +267,7 @@ $projectSourcesMeta = static function (array $project): array {
             </summary>
             <p class="context-note">
                 With the optional browser extension, the exporter starts automatically in a <strong>signed-in ServiceNow</strong> tab.
-                Enter any ticket number (Task, Demand, Story, Project, or Due Diligence). It walks related tickets and attachments —
+                Enter any ticket number or ServiceNow record URL (Task, Demand, Story, Project, or Due Diligence). It walks related tickets and attachments —
                 writes a local folder, then creates a Ticket Dossier here.
                 No ServiceNow password is stored in Risk Register.
             </p>
@@ -303,12 +303,12 @@ $projectSourcesMeta = static function (array $project): array {
                         >
                     </label>
                     <label class="field">
-                        <span>Ticket number</span>
+                        <span>Ticket number or ServiceNow URL</span>
                         <input
                             type="text"
                             id="servicenow-console-task"
                             name="task_number"
-                            placeholder="TASK0123456 or DMND… / STRY… / DDR… / PRJ…"
+                            placeholder="TASK0123456 or https://…service-now.com/…number=…"
                             autocomplete="off"
                         >
                     </label>
@@ -463,7 +463,7 @@ $projectSourcesMeta = static function (array $project): array {
                                 <?php endforeach; ?>
                             </div>
                             <div class="card-meta">
-                                <span>🗓️ Updated <time class="js-local-time" datetime="<?= e(dossierUtcIso((string) $project['updated_at'])) ?>"><?= e((string) $project['updated_at']) ?> UTC</time> · <?= $presentCount ?>/4 sources</span>
+                                <span>🗓️ Updated <time class="js-local-time" datetime="<?= e(dossierUtcIso((string) $project['updated_at'])) ?>"><?= e((string) $project['updated_at']) ?> UTC</time> · 📦 <?= e(formatBytes((int) ($project['package_size_bytes'] ?? 0))) ?> · <?= $presentCount ?>/4 sources</span>
                                 <div class="card-actions">
                                     <a class="button button-primary button-small" href="project.php?id=<?= (int) $project['id'] ?>">Open →</a>
                                     <a class="button ghost button-small" href="export-zip.php?id=<?= (int) $project['id'] ?>" title="Export this project as ZIP">📦 ZIP</a>
@@ -520,6 +520,9 @@ $projectSourcesMeta = static function (array $project): array {
                                     <th scope="col" class="<?= e($sortClass('ddr')) ?>" aria-sort="<?= e($sortAria('ddr')) ?>">
                                         <a class="project-sort-link" href="<?= e($sortHeaderUrl('ddr')) ?>">DDR</a>
                                     </th>
+                                    <th scope="col" class="<?= e($sortClass('size')) ?>" aria-sort="<?= e($sortAria('size')) ?>">
+                                        <a class="project-sort-link" href="<?= e($sortHeaderUrl('size')) ?>" title="Total size of stored dossier files">Size</a>
+                                    </th>
                                     <th scope="col" class="<?= e($sortClass('updated')) ?>" aria-sort="<?= e($sortAria('updated')) ?>">
                                         <a class="project-sort-link" href="<?= e($sortHeaderUrl('updated')) ?>">Updated</a>
                                     </th>
@@ -534,6 +537,7 @@ $projectSourcesMeta = static function (array $project): array {
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_story" value="<?= e($searchFilters['story']) ?>" placeholder="Filter…" aria-label="Filter by story"></th>
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_task" value="<?= e($searchFilters['task']) ?>" placeholder="Filter…" aria-label="Filter by task"></th>
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_ddr" value="<?= e($searchFilters['ddr']) ?>" placeholder="Filter…" aria-label="Filter by DDR"></th>
+                                    <th scope="col" aria-hidden="true"></th>
                                     <th scope="col"><input type="search" form="project-table-filter-form" name="f_updated" value="<?= e($searchFilters['updated']) ?>" placeholder="YYYY-MM-DD" aria-label="Filter by updated date"></th>
                                     <th scope="col" class="project-table-filter-actions">
                                         <button type="submit" form="project-table-filter-form" class="button ghost project-filter-apply">Filter</button>
@@ -557,13 +561,14 @@ $projectSourcesMeta = static function (array $project): array {
                             <tbody>
                                 <?php if ($projects === []): ?>
                                     <tr class="project-table-empty">
-                                        <td colspan="10">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
+                                        <td colspan="11">No projects match<?= $searchQuery !== '' || $activeFilters !== [] ? ' these filters.' : '.' ?></td>
                                     </tr>
                                 <?php endif; ?>
                                 <?php foreach ($projects as $project): ?>
                                     <?php
                                     $ownerName = projectOwnerName($project);
                                     $ownerTitle = projectOwnerTitle($project);
+                                    $packageSizeBytes = (int) ($project['package_size_bytes'] ?? 0);
                                     ?>
                                     <tr>
                                         <td class="project-table-id">#<?= (int) $project['id'] ?></td>
@@ -616,6 +621,7 @@ $projectSourcesMeta = static function (array $project): array {
                                                 ]);
                                             }
                                         ?></td>
+                                        <td class="project-table-size" title="<?= e(number_format($packageSizeBytes) . ' bytes') ?>"><?= e($packageSizeBytes > 0 ? formatBytes($packageSizeBytes) : '—') ?></td>
                                         <td class="project-table-date"><time class="js-local-time" datetime="<?= e(dossierUtcIso((string) $project['updated_at'])) ?>"><?= e((string) $project['updated_at']) ?> UTC</time></td>
                                         <td class="project-table-actions">
                                             <div class="project-table-action-row">

@@ -75,13 +75,15 @@ final class ServiceNowBrowserSync
         string $importUrl,
         string $attachmentUrl,
         string $completeUrl,
-        array $owner = []
+        array $owner = [],
+        ?int $targetProjectId = null
     ): array {
         $this->ensureSchema();
         $this->purgeExpired();
 
         $origin = self::normalizeInstanceOrigin($instanceOrigin);
         $task = self::normalizeTaskNumber($taskNumber);
+        $boundProjectId = ($targetProjectId !== null && $targetProjectId > 0) ? $targetProjectId : null;
 
         $token = bin2hex(random_bytes(32));
         $hash = hash('sha256', $token);
@@ -96,7 +98,7 @@ final class ServiceNowBrowserSync
             ) VALUES (
                 :hash, :origin, :task,
                 :owner_user_id, :owner_username, :owner_display_name, :owner_auth_source,
-                NULL, :expires, :created
+                :project_id, :expires, :created
             )'
         );
 
@@ -109,6 +111,7 @@ final class ServiceNowBrowserSync
             ':owner_username' => (string) ($owner['owner_username'] ?? ''),
             ':owner_display_name' => (string) ($owner['owner_display_name'] ?? ''),
             ':owner_auth_source' => (string) ($owner['owner_auth_source'] ?? ''),
+            ':project_id' => $boundProjectId,
             ':expires' => $expiresAt,
             ':created' => $now,
         ]);
@@ -118,6 +121,8 @@ final class ServiceNowBrowserSync
             'expires_at' => $expiresAt,
             'instance_origin' => $origin,
             'task_number' => $task,
+            'project_id' => $boundProjectId,
+            'merge_into_project' => $boundProjectId !== null,
             'import_url' => $importUrl,
             'attachment_url' => $attachmentUrl,
             'complete_url' => $completeUrl,

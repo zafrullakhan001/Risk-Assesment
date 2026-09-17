@@ -116,9 +116,8 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
             $allowedOrigin = (string) ($row['instance_origin'] ?? '');
             $browserSync->applyCorsHeaders($origin, $allowedOrigin);
 
-            if ((int) ($row['project_id'] ?? 0) > 0) {
-                throw new RuntimeException('This sync token already created a project. Prepare a new console pull.');
-            }
+            $boundProjectId = (int) ($row['project_id'] ?? 0);
+            $mergeIntoExisting = $boundProjectId > 0;
 
             $packet = $payload['packet'] ?? $payload;
             if (!is_array($packet) || empty($packet['tickets'])) {
@@ -150,19 +149,31 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
                 'owner_auth_source' => (string) ($row['owner_auth_source'] ?? ''),
             ];
 
-            $result = ProjectImporter::importServiceNowPacket($packet, $owner);
-            $projectId = (int) ($result['project_id'] ?? 0);
-            if ($projectId <= 0) {
-                throw new RuntimeException('Failed to create Ticket Dossier project.');
+            if ($mergeIntoExisting) {
+                if (ProjectRepository::find($boundProjectId) === null) {
+                    throw new RuntimeException('Target Ticket Dossier project was not found.');
+                }
+                $result = ProjectImporter::mergeServiceNowPacket($boundProjectId, $packet);
+                $projectId = $boundProjectId;
+                $message = 'Packet merged into this dossier. Upload attachments next.';
+            } else {
+                $result = ProjectImporter::importServiceNowPacket($packet, $owner);
+                $projectId = (int) ($result['project_id'] ?? 0);
+                if ($projectId <= 0) {
+                    throw new RuntimeException('Failed to create Ticket Dossier project.');
+                }
+                $browserSync->bindProject($token, $projectId);
+                $message = 'Packet imported. Upload attachments next.';
             }
-
-            $browserSync->bindProject($token, $projectId);
 
             $jsonOut([
                 'ok' => true,
                 'project_id' => $projectId,
-                'message' => 'Packet imported. Upload attachments next.',
+                'merged' => $mergeIntoExisting,
+                'message' => $message,
                 'warnings' => $result['warnings'] ?? [],
+                'updated' => $result['updated'] ?? [],
+                'added' => $result['added'] ?? [],
             ]);
         }
 
@@ -230,10 +241,20 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
                 $kind = 'demand';
             } elseif (preg_match('/^DDR\d+$/i', $ticketNumber)) {
                 $kind = 'ddr';
+            } elseif (preg_match('/^PRJTASK\d+$/i', $ticketNumber)) {
+                $kind = 'project_task';
             } elseif (preg_match('/^PRJ\d+$/i', $ticketNumber)) {
                 $kind = 'project';
             } elseif (preg_match('/^TASK\d+$/i', $ticketNumber)) {
                 $kind = 'task';
+            } elseif (preg_match('/^CHG\d+$/i', $ticketNumber)) {
+                $kind = 'change';
+            } elseif (preg_match('/^RSK\d+$/i', $ticketNumber)) {
+                $kind = 'risk';
+            } elseif (preg_match('/^ISU\d+$/i', $ticketNumber)) {
+                $kind = 'issue';
+            } elseif (preg_match('/^DCSN\d+$/i', $ticketNumber)) {
+                $kind = 'decision';
             }
             if (
                 preg_match('/DDR\d+/i', $originalName)
@@ -361,7 +382,26 @@ if ($action === 'prepare_browser_sync' && ($_SERVER['REQUEST_METHOD'] ?? '') ===
         require_valid_csrf();
 
         $instance = trim((string) ($_POST['instance_url'] ?? $_POST['instance_origin'] ?? ''));
-        $taskNumber = trim((string) ($_POST['task_number'] ?? ''));
+        $taskInput = trim((string) ($_POST['task_number'] ?? $_POST['ticket_url'] ?? ''));
+        $targetProjectId = (int) ($_POST['project_id'] ?? 0);
+
+        $parsedRef = servicenowParseTicketReference($taskInput, $instance);
+        if ($parsedRef['ticket'] === '') {
+            throw new RuntimeException(
+                'Enter a ticket number (TASK…, DMND…, STRY…, DDR…, PRJ…) or a ServiceNow record URL.'
+            );
+        }
+        if ($parsedRef['instance'] !== '') {
+            $instance = $parsedRef['instance'];
+        }
+        $taskNumber = $parsedRef['ticket'];
+
+        if ($targetProjectId > 0 && ProjectRepository::find($targetProjectId) === null) {
+            throw new RuntimeException('Target dossier project was not found.');
+        }
+        if ($targetProjectId <= 0) {
+            $targetProjectId = 0;
+        }
 
         $scriptDir = str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/ticket-dossier/browser-sync.php')));
         $scriptDir = rtrim($scriptDir, '/');
@@ -377,7 +417,8 @@ if ($action === 'prepare_browser_sync' && ($_SERVER['REQUEST_METHOD'] ?? '') ===
             $importUrl,
             $attachmentUrl,
             $completeUrl,
-            $owner
+            $owner,
+            $targetProjectId > 0 ? $targetProjectId : null
         );
         $tokenQuery = '&token=' . rawurlencode((string) $prepared['token']);
         $prepared['import_url'] .= $tokenQuery;

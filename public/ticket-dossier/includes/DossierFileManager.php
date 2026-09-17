@@ -212,6 +212,18 @@ final class DossierFileManager
 
         $section = ServicenowPdfParser::parse($path, $pdfKind);
         $number = strtoupper(trim((string) ($section['number'] ?? '')));
+
+        if ($pdfKind === 'project') {
+            $parsed['project'] = self::mergeSection(
+                is_array($parsed['project'] ?? null) ? $parsed['project'] : [],
+                $section
+            );
+            $sources['project'] = true;
+
+            return 'Project PDF parsed into the dossier Project section'
+                . ($number !== '' ? ' (' . $number . ')' : '') . '.';
+        }
+
         $primaryNumber = strtoupper(trim((string) ($project[$pdfKind . '_number'] ?? '')));
 
         if ($primaryNumber === '' || $number === '' || $number === $primaryNumber) {
@@ -332,7 +344,7 @@ final class DossierFileManager
 
     private static function inferPdfKind(string $kind, string $name): ?string
     {
-        if (in_array($kind, ['demand', 'story', 'task'], true)) {
+        if (in_array($kind, ['demand', 'story', 'task', 'project'], true)) {
             return $kind;
         }
         if (preg_match('/(?:^|\/)(DMND\d+)/i', $name)) {
@@ -340,6 +352,9 @@ final class DossierFileManager
         }
         if (preg_match('/(?:^|\/)(STRY\d+)/i', $name)) {
             return 'story';
+        }
+        if (preg_match('/(?:^|\/)(PRJ\d+)/i', $name) && !preg_match('/(?:^|\/)(PRJTASK\d+)/i', $name)) {
+            return 'project';
         }
         if (preg_match('/(?:^|\/)(TASK\d+)/i', $name)) {
             return 'task';

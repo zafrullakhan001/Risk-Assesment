@@ -172,13 +172,75 @@
     }
   };
 
+  // Important dossier kinds only (status reports, RALLOC, time/cost excluded).
   const kindHintFromNumber = (number) => {
     const n = String(number || "").toUpperCase();
     if (/^DMND\\d+$/.test(n)) return "demand";
     if (/^STRY\\d+$/.test(n)) return "story";
     if (/^DDR\\d+$/.test(n)) return "ddr";
+    if (/^PRJTASK\\d+$/.test(n)) return "project_task";
     if (/^PRJ\\d+$/.test(n)) return "project";
     if (/^TASK\\d+$/.test(n)) return "task";
+    if (/^CHG\\d+$/.test(n)) return "change";
+    if (/^RSK\\d+$/.test(n)) return "risk";
+    if (/^ISU\\d+$/.test(n)) return "issue";
+    if (/^DCSN\\d+$/.test(n)) return "decision";
+    return "ticket";
+  };
+
+  const isImportantProjectTicketNumber = (number) => {
+    const kind = kindHintFromNumber(number);
+    return kind !== "ticket";
+  };
+
+  const PROJECT_SKIP_TABLES = {
+    time_card: true,
+    cost_plan: true,
+    fm_expense_line: true,
+    resource_allocation: true,
+    project_status: true,
+    planned_task_baseline: true,
+    baseline: true,
+    stakeholder: true,
+    incident: true,
+    problem: true,
+  };
+
+  const PROJECT_ALLOW_TABLES = {
+    dmn_demand: true,
+    rm_story: true,
+    sc_task: true,
+    task: true,
+    pm_project_task: true,
+    planned_task: true,
+    change_request: true,
+    risk: true,
+    issue: true,
+    dmn_decision: true,
+    decision: true,
+    sn_tprm_dd_request: true,
+    pm_project: true,
+  };
+
+  const isProjectSkipTable = (table) => !!PROJECT_SKIP_TABLES[String(table || "").toLowerCase()];
+  const isProjectAllowTable = (table) => {
+    const t = String(table || "").toLowerCase();
+    if (!t || isProjectSkipTable(t)) return false;
+    return !!PROJECT_ALLOW_TABLES[t];
+  };
+
+  const kindFromTableName = (table) => {
+    const t = String(table || "").toLowerCase();
+    if (t.indexOf("demand") !== -1) return "demand";
+    if (t.indexOf("story") !== -1) return "story";
+    if (t.indexOf("diligence") !== -1 || t.indexOf("tprm_dd") !== -1) return "ddr";
+    if (t === "pm_project" || (t.indexOf("pm_project") !== -1 && t.indexOf("task") === -1)) return "project";
+    if (t.indexOf("project_task") !== -1 || t === "pm_project_task") return "project_task";
+    if (t.indexOf("change") !== -1) return "change";
+    if (t === "risk" || t.indexOf("risk") !== -1) return "risk";
+    if (t === "issue" || t.indexOf("issue") !== -1) return "issue";
+    if (t.indexOf("decision") !== -1) return "decision";
+    if (t === "sc_task" || t === "task") return "task";
     return "ticket";
   };
 
@@ -186,8 +248,14 @@
     const kind = kindHintFromNumber(number);
     if (kind === "ddr") return ["sn_tprm_dd_request", "task"];
     if (kind === "project") return ["task", "pm_project"];
+    if (kind === "project_task") return ["pm_project_task", "task"];
     if (kind === "demand") return ["task", "dmn_demand"];
     if (kind === "story") return ["task", "rm_story"];
+    if (kind === "change") return ["change_request", "task"];
+    if (kind === "risk") return ["risk", "task"];
+    if (kind === "issue") return ["issue", "task"];
+    if (kind === "decision") return ["dmn_decision", "task"];
+    if (kind === "task") return ["sc_task", "task"];
     return ["task"];
   };
 
@@ -205,18 +273,33 @@
 
   const fetchTaskByNumber = async (number) => fetchRecordByNumber(number);
 
-  const fetchTaskBySysId = async (sysId) => {
-    let rec = await fetchTableBySysId("task", sysId);
-    if (rec) return rec;
-    rec = await fetchTableBySysId("sn_tprm_dd_request", sysId);
-    if (rec) {
-      if (!rec.sys_class_name) rec.sys_class_name = "sn_tprm_dd_request";
-      return rec;
-    }
-    rec = await fetchTableBySysId("pm_project", sysId);
-    if (rec) {
-      if (!rec.sys_class_name) rec.sys_class_name = "pm_project";
-      return rec;
+  const fetchTaskBySysId = async (sysId, preferredTable) => {
+    const tables = [];
+    const pushTable = (table) => {
+      const t = String(table || "").trim().toLowerCase();
+      if (!t || isProjectSkipTable(t) || tables.indexOf(t) !== -1) return;
+      tables.push(t);
+    };
+    pushTable(preferredTable);
+    [
+      "task",
+      "sc_task",
+      "sn_tprm_dd_request",
+      "pm_project",
+      "pm_project_task",
+      "dmn_demand",
+      "rm_story",
+      "change_request",
+      "risk",
+      "issue",
+      "dmn_decision",
+    ].forEach(pushTable);
+    for (let i = 0; i < tables.length; i++) {
+      const rec = await fetchTableBySysId(tables[i], sysId);
+      if (rec) {
+        if (!rec.sys_class_name) rec.sys_class_name = tables[i];
+        return rec;
+      }
     }
     return null;
   };
@@ -295,6 +378,7 @@
       const safeField = String(field || "").trim().toLowerCase();
       if (!/^[a-z][a-z0-9_]*$/.test(safeTable)) return;
       if (!/^[a-z][a-z0-9_]*$/.test(safeField)) return;
+      if (isProjectSkipTable(safeTable) || !isProjectAllowTable(safeTable)) return;
       const key = safeTable + "." + safeField;
       if (!candidates.has(key)) {
         candidates.set(key, {
@@ -309,6 +393,7 @@
       const safeQuery = String(query || "").trim();
       if (!/^[a-z][a-z0-9_]*$/.test(safeTable)) return;
       if (!safeQuery || safeQuery.indexOf(projectSysId) === -1) return;
+      if (isProjectSkipTable(safeTable) || !isProjectAllowTable(safeTable)) return;
       const key = safeTable + ".ui:" + safeQuery;
       if (!candidates.has(key)) {
         candidates.set(key, {
@@ -374,16 +459,19 @@
       }
     });
 
-    // Core task hierarchy links can reference a Project through task inheritance.
+    // Important dossier links only — skip status/resource/time/cost/incident noise.
     addCandidate("task", "parent", "Parent");
     addCandidate("task", "top_task", "Top task");
     [
       ["task", "project"],
       ["task", "parent_project"],
       ["task", "u_project"],
+      ["task", "u_parent_project"],
       ["pm_project_task", "project"],
       ["pm_project_task", "parent"],
       ["pm_project_task", "top_task"],
+      ["planned_task", "parent"],
+      ["planned_task", "top_task"],
       ["dmn_demand", "project"],
       ["dmn_demand", "parent_project"],
       ["rm_story", "project"],
@@ -392,27 +480,25 @@
       ["sc_task", "project"],
       ["sc_task", "parent"],
       ["sc_task", "top_task"],
+      ["sc_task", "u_parent_project"],
       ["change_request", "project"],
       ["change_request", "parent"],
       ["change_request", "top_task"],
-      ["incident", "project"],
-      ["incident", "parent"],
-      ["incident", "top_task"],
-      ["problem", "project"],
-      ["problem", "parent"],
-      ["problem", "top_task"],
+      ["change_request", "u_parent_project"],
       ["risk", "task"],
+      ["risk", "project"],
       ["issue", "task"],
-      ["time_card", "task"],
-      ["resource_allocation", "task"],
-      ["fm_expense_line", "task"],
-      ["cost_plan", "task"],
+      ["issue", "project"],
+      ["dmn_decision", "task"],
+      ["dmn_decision", "parent"],
+      ["decision", "task"],
+      ["decision", "parent"],
     ].forEach((pair) => addCandidate(pair[0], pair[1], humanize(pair[1])));
 
     try {
       const dictionaryQueries = [
         "reference=pm_project^elementISNOTEMPTY^active=true",
-        "referenceINtask,planned_task^elementINparent,top_task,task,project,parent_project,u_project,planned_task,source_task^active=true",
+        "referenceINtask,planned_task^elementINparent,top_task,task,project,parent_project,u_project,u_parent_project,planned_task,source_task^active=true",
       ];
       for (let dictionaryIndex = 0; dictionaryIndex < dictionaryQueries.length; dictionaryIndex++) {
         const dictionaryQuery = encodeURIComponent(dictionaryQueries[dictionaryIndex]);
@@ -470,6 +556,7 @@
             const number = String(dv(rec.number) || "").trim().toUpperCase();
             if (
               /^[A-Z]+\d+$/.test(number)
+              && isImportantProjectTicketNumber(number)
               && /^[0-9a-f]{32}$/i.test(sysId)
               && sysId !== projectSysId
               && !seen.has(sysId)
@@ -514,11 +601,12 @@
                   ticketRec = null;
                 }
               }
-              if (!ticketRec) ticketRec = await fetchTaskBySysId(ref.sys_id);
+              if (!ticketRec) ticketRec = await fetchTaskBySysId(ref.sys_id, candidate.table);
               if (!ticketRec) continue;
               const ticketSysId = raw(ticketRec.sys_id) || dv(ticketRec.sys_id);
               const ticketNumber = String(dv(ticketRec.number) || ref.number || "").trim().toUpperCase();
-              if (!/^[A-Z]+\d+$/.test(ticketNumber) || !/^[0-9a-f]{32}$/i.test(ticketSysId)) continue;
+              if (!/^[A-Z]+\d+$/.test(ticketNumber) || !isImportantProjectTicketNumber(ticketNumber)) continue;
+              if (!/^[0-9a-f]{32}$/i.test(ticketSysId)) continue;
               if (seen.has(ticketSysId) || ticketSysId === projectSysId) continue;
               seen.add(ticketSysId);
               found.push({
@@ -564,10 +652,11 @@
   };
 
   const fetchAttachmentMeta = async (tableName, sysId) => {
+    const limit = Math.max(1, Math.min(100, CFG.maxAttachments || 100));
     const q = encodeURIComponent("table_name=" + tableName + "^table_sys_id=" + sysId);
     const data = await apiGet(
       "/api/now/attachment?sysparm_query=" + q +
-        "&sysparm_limit=100&sysparm_display_value=all"
+        "&sysparm_limit=" + limit + "&sysparm_display_value=all"
     );
     let rows = (data && data.result) || [];
     if (!rows.length) {
@@ -576,7 +665,7 @@
       const byRecord = encodeURIComponent("table_sys_id=" + sysId);
       const fallback = await apiGet(
         "/api/now/attachment?sysparm_query=" + byRecord +
-          "&sysparm_limit=100&sysparm_display_value=all"
+          "&sysparm_limit=" + limit + "&sysparm_display_value=all"
       );
       rows = (fallback && fallback.result) || [];
     }
@@ -587,6 +676,8 @@
     const sysId = raw(rec.sys_id) || dv(rec.sys_id);
     const number = (dv(rec.number) || numberHint || "").toUpperCase();
     const tableName = raw(rec.sys_class_name) || dv(rec.sys_class_name) || "task";
+    const hintKind = kindHintFromNumber(number);
+    const kind = hintKind !== "ticket" ? hintKind : kindFromTableName(tableName);
     const journal = await fetchJournal(sysId);
     let attMeta = [];
     try {
@@ -602,6 +693,7 @@
       sys_id: sysId,
       sys_class_name: tableName,
       table: tableName,
+      kind: kind,
       state: dv(rec.state),
       short_description: dv(rec.short_description) || dv(rec.name) || dv(rec.title),
       description: dv(rec.description) || dv(rec.short_description) || dv(rec.name) || dv(rec.title),
@@ -772,7 +864,7 @@
     const sysId = String(ticket && ticket.sys_id || "").trim();
     const number = String(ticket && ticket.number || "").trim().toUpperCase();
     if (!sysId || !number) return null;
-    if (!/^(TASK|STRY|DMND|PRJ)\\d+$/i.test(number)) return null;
+    if (!/^(TASK|STRY|DMND|PRJTASK|PRJ)\\d+$/i.test(number)) return null;
 
     const table = String(ticket.table || ticket.sys_class_name || "task").trim() || "task";
     const candidates = [
@@ -1189,6 +1281,9 @@
       const queuedIds = new Set();
       const processedIds = new Set();
 
+      const projectRootMode =
+        /^PRJ\\d+$/i.test(rootNumber) || kindHintFromNumber(rootNumber) === "project";
+
       const enqueue = (sysId) => {
         if (!sysId || queuedIds.has(sysId) || processedIds.has(sysId)) return;
         if (!ticketsById.has(sysId) && ticketsById.size + queue.length >= CFG.maxRelated) return;
@@ -1200,6 +1295,10 @@
         if (!mapped || !mapped.sys_id) return;
         if (ticketsById.has(mapped.sys_id)) return;
         if (ticketsById.size >= CFG.maxRelated) return;
+        if (projectRootMode && mapped.sys_id !== packetRootSysId) {
+          const num = String(mapped.number || "").toUpperCase();
+          if (!num || !isImportantProjectTicketNumber(num)) return;
+        }
         ticketsById.set(mapped.sys_id, mapped);
       };
 
@@ -1210,7 +1309,7 @@
         addMapped(rootMapped);
       }
 
-      if (/^PRJ\d+$/i.test(rootNumber) || kindHintFromNumber(rootNumber) === "project") {
+      if (projectRootMode) {
         const remaining = Math.max(0, CFG.maxRelated - ticketsById.size);
         if (remaining > 0) {
           setStatus(statusEl, "Loading Project related-list tabs…");
@@ -1248,6 +1347,10 @@
           if (!rec) continue;
           current = await mapTicket(rec);
           addMapped(current);
+          if (!ticketsById.has(currentId)) {
+            processedIds.add(currentId);
+            continue;
+          }
         }
         if (!current || !current._rec) continue;
         processedIds.add(currentId);
@@ -1270,8 +1373,16 @@
               parent_sys_id: parentId,
               child_sys_id: childId,
             });
-            [parentId, childId].forEach((id) => {
-              if (id && id !== currentId) enqueue(id);
+            [
+              { id: parentId, number: parentNum },
+              { id: childId, number: childNum },
+            ].forEach((link) => {
+              if (!link.id || link.id === currentId) return;
+              if (projectRootMode) {
+                const num = String(link.number || "").toUpperCase();
+                if (/^[A-Z]+\\d+$/.test(num) && !isImportantProjectTicketNumber(num)) return;
+              }
+              enqueue(link.id);
             });
           });
         } catch (relError) {
@@ -1279,6 +1390,9 @@
         }
 
         extractRefLinks(current._rec, currentId).forEach((ref) => {
+          if (projectRootMode && ref.number && !isImportantProjectTicketNumber(ref.number)) {
+            return;
+          }
           relationships.push({
             parent: String(current.number || "").toUpperCase() || currentId,
             child: ref.number || ref.sys_id,
@@ -1360,7 +1474,7 @@
       for (let i = 0; i < tickets.length; i++) {
         const t = tickets[i];
         const num = String(t.number || "").toUpperCase();
-        if (!/^(TASK|STRY|DMND|PRJ)\\d+$/i.test(num) || seenPdf.has(num)) continue;
+        if (!/^(TASK|STRY|DMND|PRJTASK|PRJ)\\d+$/i.test(num) || seenPdf.has(num)) continue;
         seenPdf.add(num);
         const pdf = await exportTicketPdf(t);
         if (pdf) {
@@ -1489,7 +1603,7 @@
     '<div style="font-weight:700;margin-bottom:6px;color:#5eead4">RiskRegister · ServiceNow packet</div>' +
     '<div style="opacity:.9;margin-bottom:10px;font-size:13px">Ticket <code style="color:#a5f3fc">' +
     String(CFG.taskNumber).replace(/</g, "") +
-    "</code> · project tabs, related tickets, fields, journal, and attachments. A saved folder is reused when permitted.</div>" +
+    "</code> · important project tabs (Demand, tasks, changes, risks/issues/decisions), related tickets, fields, journal, and attachments. A saved folder is reused when permitted.</div>" +
     '<div class="rr-sn-flow" aria-hidden="true">' +
       '<div class="rr-sn-flow-row">' +
         '<div class="rr-sn-node"><span class="rr-sn-node-icon">🎫</span><span>ServiceNow</span></div>' +

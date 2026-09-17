@@ -6,7 +6,9 @@ final class ServicenowPdfParser
     /** Labels that often span multiple lines until the next known label. */
     private const MULTILINE_LABELS = [
         'Description',
+        'Executive Description',
         'Business Case',
+        'Business case',
         'Short Description',
         'Acceptance criteria',
         'Validation plan',
@@ -18,6 +20,9 @@ final class ServicenowPdfParser
         'Goals & Benefits',
         'Notes',
         'Related Project Notes',
+        'Entity Services',
+        'Location Address(s)',
+        'Reporting Flags',
     ];
 
     /**
@@ -52,6 +57,7 @@ final class ServicenowPdfParser
                 'demand' => $numbers['demand'],
                 'story' => $numbers['story'],
                 'task' => $numbers['task'],
+                'project' => $numbers['project'],
                 default => '',
             }
         );
@@ -64,6 +70,9 @@ final class ServicenowPdfParser
         }
         if ($kind === 'task' && $numbers['task'] === '' && $number !== '') {
             $numbers['task'] = $number;
+        }
+        if ($kind === 'project' && $numbers['project'] === '' && $number !== '') {
+            $numbers['project'] = $number;
         }
 
         foreach ($related as $rel) {
@@ -79,22 +88,58 @@ final class ServicenowPdfParser
 
         $description = firstNonEmpty(
             $fields['Description'] ?? '',
+            $fields['Executive Description'] ?? '',
             $fields['Detailed Description'] ?? '',
             $fields['Short Description'] ?? ''
         );
-        if (preg_match('/^Description\s*:\s*/i', $description)) {
-            $description = trim(preg_replace('/^Description\s*:\s*/i', '', $description) ?? $description);
+        if (preg_match('/^(?:Executive\s+)?Description\s*:\s*/i', $description)) {
+            $description = trim(preg_replace('/^(?:Executive\s+)?Description\s*:\s*/i', '', $description) ?? $description);
+        }
+        $description = preg_replace('/\b(?:Demand|Story|Request Task|Project) Details\s+Page\s+\d+\b[^\n]*/i', '', $description) ?? $description;
+        $description = preg_replace('/\bRun [Bb]y\s*:[^\n]*/', '', $description) ?? $description;
+        $description = trim(preg_replace('/\s+/', ' ', $description) ?? $description);
+
+        // Project PDFs often split the narrative across a page break between
+        // "Description"/"Executive Description" and "Business case", with a
+        // "Run By" report header in the middle. Recover the body text.
+        if ($kind === 'project' && strlen($description) < 40) {
+            if (preg_match(
+                '/(?:Executive\s+Description|Description)\s*:\s*(.*?)(?=\n\s*Business\s+[Cc]ase\s*:|\n\s*Goals\s*&\s*Benefits\s*:|\z)/is',
+                $text,
+                $descMatch
+            )) {
+                $fallback = (string) ($descMatch[1] ?? '');
+                $fallback = preg_replace('/\b(?:Demand|Story|Request Task|Project) Details\s+Page\s+\d+\b[^\n]*/i', '', $fallback) ?? $fallback;
+                $fallback = preg_replace('/\bRun [Bb]y\s*:[^\n]*/i', '', $fallback) ?? $fallback;
+                $fallback = preg_replace('/^Description\s*:\s*/i', '', trim($fallback)) ?? $fallback;
+                $fallback = trim(preg_replace('/\s+/', ' ', $fallback) ?? $fallback);
+                if (strlen($fallback) > strlen($description)) {
+                    $description = $fallback;
+                }
+            }
         }
 
-        $businessCase = $fields['Business Case'] ?? '';
+        $businessCase = firstNonEmpty(
+            $fields['Business Case'] ?? '',
+            $fields['Business case'] ?? ''
+        );
 
         // Prefer short description for title when Name is absent.
         $title = firstNonEmpty(
+            $fields['Project Name'] ?? '',
             $fields['Name'] ?? '',
             $fields['Short Description'] ?? '',
             $fields['Product(s) Name'] ?? '',
             $fields['Application Name'] ?? ''
         );
+
+        if ($description !== '') {
+            $fields['Description'] = $description;
+        }
+        if ($businessCase !== '') {
+            $fields['Business Case'] = $businessCase;
+            unset($fields['Business case']);
+        }
 
         return [
             'kind' => $kind,
@@ -163,8 +208,9 @@ final class ServicenowPdfParser
                 $value = trim(preg_replace('/\s+/', ' ', $match[2]) ?? $match[2]);
                 $value = ltrim($value, ": \t");
                 // Strip page headers that leaked into values.
-                $value = preg_replace('/\b(?:Demand|Story|Request Task) Details\s+Page\s+\d+\b.*/i', '', $value) ?? $value;
-                $value = preg_replace('/\bRun By\s*:.*$/i', '', $value) ?? $value;
+                $value = preg_replace('/\b(?:Demand|Story|Request Task|Project) Details\s+Page\s+\d+\b[^\n]*/i', '', $value) ?? $value;
+                $value = preg_replace('/\bRun By\s*:[^\n]*/i', '', $value) ?? $value;
+                $value = preg_replace('/\bRun by\s*:[^\n]*/i', '', $value) ?? $value;
                 $value = trim($value);
 
                 if ($label === '') {
@@ -247,7 +293,7 @@ final class ServicenowPdfParser
     {
         $related = [];
         if (preg_match_all(
-            '/\b((?:TASK|STRY|DMND|DDR)\d+)\s+((?:TASK|STRY|DMND|DDR)\d+)\s+(Contains::Task of|Task of::Contains|[A-Za-z: ]+)/i',
+            '/\b((?:TASK|STRY|DMND|DDR|PRJ|PRJTASK|CHG|RSK|ISU|DCSN)\d+)\s+((?:TASK|STRY|DMND|DDR|PRJ|PRJTASK|CHG|RSK|ISU|DCSN)\d+)\s+(Contains::Task of|Task of::Contains|[A-Za-z: ]+)/i',
             $text,
             $matches,
             PREG_SET_ORDER
@@ -270,25 +316,26 @@ final class ServicenowPdfParser
     private static function knownLabels(): array
     {
         return [
-            'Report Title', 'Run Date and Time', 'Run by', 'Table name',
-            'Name', 'Number', 'Total Age', 'Initiative Source', 'Business Unit', 'Scale',
+            'Name', 'Project Name', 'Number', 'Total Age', 'Initiative Source', 'Business Unit', 'Scale',
             'Division/Region', 'Facility', 'Submitted By', 'Requesting VP', 'Business Owner',
             'Funding CFO', 'AIT Executive Sponsor', 'AIT Product Owner', 'AIT Product Manager',
             'AIT Demand Manager', 'Target Project Start', 'Estimated Duration', 'Target Project Finish',
             'Impacted End Users', 'Quarterly Committment', 'QP-Scoping/Planning', 'QP-Building/Testing',
             'QP-Go-Live', 'Funding Status', 'Entity Type', 'Net New Provider Count', 'Number of Physicians',
             'Entity Services', 'Location Address(s)', 'Project', 'Related Project Number', 'Related Project Notes',
-            'State', 'Active Age', 'On Hold Reason', 'Initiative Group', 'Initiative Category', 'Portfolio',
+            'State', 'Status', 'Phase', 'Active Age', 'On Hold Reason', 'Initiative Group', 'Initiative Category',
+            'Initiative Type', 'Portfolio',
             'Program', 'Primary goal', 'Primary target', 'Aligned Governance Committee', 'Core Level',
             'Priority Alignment', 'AI Enabled Technologies', 'Reporting Flags', 'Billable', 'Confidential',
             'Impacted Business Applications', 'Product(s) Name', 'Third-Party Vendor', 'Status - Budget',
             'Core 4 Documentation', 'Capital outlay', 'Operational expense', 'Total planned cost',
+            'Planned capital', 'Planned operating', 'Actual cost', 'Allocated Cost', 'Planned Cost',
             'Funding AIT SVP', 'Finance ProjectID', 'Governance Committee Decision',
             'Governance Committee Review Date', 'Governance Committee Action', 'Contract Group',
-            'Contract Status', 'Letter of Intent Status', 'Description', 'Business Case',
-            'Product', 'Product Product Manager', 'Catalog Item', 'Theme', 'Epic', 'Impacted Products',
-            'Requested by', 'Assignment group', 'Assignee', 'Peer Reviewer', 'QA Assignee',
-            'Testing completed', 'Tested by', 'Tested date', 'Additional assignee list',
+            'Contract Status', 'Letter of Intent Status', 'Description', 'Executive Description',
+            'Business Case', 'Business case', 'Goals & Benefits',
+            'Project Manager', 'Project Site', 'Percent Milestone Complete', 'PMO Managed', 'SIR Report',
+            'Planned start date', 'Actual start date', 'Planned end date', 'Actual end date',
             'Percent complete', 'Priority', 'Type', 'Classification', 'Extract Classification',
             'Sprint', 'Points', 'Blocked', 'Blocked Duration', 'Waiting on User', 'Need By Date',
             'Product rank', 'Project phase', 'Blocked reason', 'Short Description',
@@ -303,7 +350,19 @@ final class ServicenowPdfParser
             'Bypass Inventory Intake Form', 'Request item', 'Request item Category', 'Request item Item',
             'Additional comments', 'Work notes list', 'Request', 'Request Description', 'Requester',
             'Requester Location', 'Affected User Location', 'Best Contact Email', 'Application Name',
-            'Detailed Description', 'Consultation (Assistance with e',
+            'Detailed Description', 'Consultation (Assistance with e', 'Vendor Name',
+            'Acquisition Risk Assessment Status', 'Product Risk Assessment Status', 'AI Risk Assessment Status',
+            'Execution type', 'Schedule', 'Calculation', 'Show on Program Status Report',
+            'Allow time card reporting on', 'Update actual effort from time card',
+            'Derive assignee list from resource plan', 'Recalculate score on project change',
+            'Project schedule date format', 'Derive time component from planned dates', 'Constraint date',
+            'Inherent risk', 'Residual risk', 'Knowledge', 'Service Mapping', 'Observability',
+            'Downtime Procedures', 'Vision 2030', 'Portfolio Manager',
+            'Product', 'Product Product Manager', 'Catalog Item', 'Theme', 'Epic', 'Impacted Products',
+            'Requested by', 'Assignment group', 'Assignee', 'Peer Reviewer', 'QA Assignee',
+            'Testing completed', 'Tested by', 'Tested date', 'Additional assignee list',
+            'Report Title', 'Run Date and Time', 'Run by', 'Table name',
+            'Notes', 'Initiative Details', 'Due Diligence',
         ];
     }
 

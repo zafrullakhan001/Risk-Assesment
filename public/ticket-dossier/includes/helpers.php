@@ -161,8 +161,23 @@ function servicenowKindFromNumber(string $number): string
     if (str_starts_with($number, 'DDR')) {
         return 'ddr';
     }
-    if (str_starts_with($number, 'PRJ')) {
+    if (str_starts_with($number, 'PRJTASK')) {
+        return 'project_task';
+    }
+    if (preg_match('/^PRJ\d+$/', $number)) {
         return 'project';
+    }
+    if (str_starts_with($number, 'CHG')) {
+        return 'change';
+    }
+    if (str_starts_with($number, 'RSK')) {
+        return 'risk';
+    }
+    if (str_starts_with($number, 'ISU')) {
+        return 'issue';
+    }
+    if (str_starts_with($number, 'DCSN')) {
+        return 'decision';
     }
 
     return '';
@@ -178,8 +193,92 @@ function servicenowNormalizeInstanceOrigin(string $url): string
     try {
         return \RiskAssessment\ServiceNow\ServiceNowBrowserSync::normalizeInstanceOrigin($url);
     } catch (Throwable) {
-        return '';
+        if (!preg_match('#^https?://#i', $url)) {
+            $url = 'https://' . $url;
+        }
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['host'])) {
+            return '';
+        }
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+        if ($scheme !== 'http' && $scheme !== 'https') {
+            $scheme = 'https';
+        }
+        $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+
+        return $scheme . '://' . strtolower((string) $parts['host']) . $port;
     }
+}
+
+/**
+ * Parse a bare ticket number or a ServiceNow record URL into instance + ticket.
+ *
+ * @return array{instance: string, ticket: string}
+ */
+function servicenowParseTicketReference(string $input, string $fallbackInstance = ''): array
+{
+    $input = trim($input);
+    $instance = '';
+    $ticket = '';
+
+    if ($input === '') {
+        return [
+            'instance' => servicenowNormalizeInstanceOrigin($fallbackInstance),
+            'ticket' => '',
+        ];
+    }
+
+    $looksLikeUrl = (bool) preg_match('#^https?://#i', $input)
+        || str_contains(strtolower($input), '.service-now.com')
+        || str_contains($input, '/nav_to.do')
+        || str_contains($input, '.do?');
+
+    if ($looksLikeUrl) {
+        $url = preg_match('#^https?://#i', $input) === 1 ? $input : 'https://' . ltrim($input, '/');
+        $parts = parse_url($url);
+        if (is_array($parts) && !empty($parts['host'])) {
+            $instance = servicenowNormalizeInstanceOrigin($url);
+            if ($instance === '') {
+                $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+                if ($scheme !== 'http' && $scheme !== 'https') {
+                    $scheme = 'https';
+                }
+                $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+                $instance = $scheme . '://' . strtolower((string) $parts['host']) . $port;
+            }
+        }
+
+        $haystack = $url;
+        $query = urldecode((string) ($parts['query'] ?? ''));
+        $fragment = urldecode((string) ($parts['fragment'] ?? ''));
+        if ($query !== '') {
+            $haystack .= ' ' . $query;
+        }
+        if ($fragment !== '') {
+            $haystack .= ' ' . $fragment;
+        }
+        // Nested nav_to.do?uri=… payloads are often still encoded.
+        $haystack .= ' ' . rawurldecode($haystack);
+
+        if (preg_match('/(?:^|[?&;]|sysparm_query=)number(?:=|%3D)([A-Za-z]+\d+)/i', $haystack, $m) === 1) {
+            $ticket = strtoupper($m[1]);
+        } elseif (preg_match('/\b((?:DMND|STRY|TASK|DDR|PRJ)\d+)\b/i', $haystack, $m) === 1) {
+            $ticket = strtoupper($m[1]);
+        }
+    } elseif (preg_match('/^([A-Za-z]+\d+)$/', $input, $m) === 1) {
+        $ticket = strtoupper($m[1]);
+    } elseif (preg_match('/\b((?:DMND|STRY|TASK|DDR|PRJ)\d+)\b/i', $input, $m) === 1) {
+        $ticket = strtoupper($m[1]);
+    }
+
+    if ($instance === '') {
+        $instance = servicenowNormalizeInstanceOrigin($fallbackInstance);
+    }
+
+    return [
+        'instance' => $instance,
+        'ticket' => $ticket,
+    ];
 }
 
 /**
@@ -437,6 +536,11 @@ function kindLabel(string $kind): string
         'story' => 'Story',
         'task' => 'Task',
         'project' => 'Project',
+        'project_task' => 'Project task',
+        'change' => 'Change',
+        'risk' => 'Risk',
+        'issue' => 'Issue',
+        'decision' => 'Decision',
         'packet' => 'Task packet',
         'attachment' => 'Attachment',
         'related' => 'Related tickets',
@@ -452,6 +556,11 @@ function kindEmoji(string $kind): string
         'story' => '📖',
         'task' => '✅',
         'project' => '📁',
+        'project_task' => '📋',
+        'change' => '🔄',
+        'risk' => '⚠️',
+        'issue' => '❗',
+        'decision' => '⚖️',
         'packet' => '📦',
         'attachment' => '📎',
         'related' => '🔗',
@@ -467,6 +576,7 @@ function sectionTitle(string $section): string
 {
     return match ($section) {
         'overview' => kindEmoji('overview') . ' Overview',
+        'project' => kindEmoji('project') . ' Project',
         'demand' => kindEmoji('demand') . ' Demand',
         'story' => kindEmoji('story') . ' Story',
         'task' => kindEmoji('task') . ' Task',
@@ -486,7 +596,7 @@ function sectionTitle(string $section): string
 function availableSections(array $parsed): array
 {
     $sections = ['overview'];
-    foreach (['demand', 'story', 'task', 'ddr', 'vendor', 'assessments'] as $key) {
+    foreach (['project', 'demand', 'story', 'task', 'ddr', 'vendor', 'assessments'] as $key) {
         if (!empty($parsed[$key]) && is_array($parsed[$key])) {
             if ($key === 'assessments') {
                 $ext = $parsed[$key]['external'] ?? [];
@@ -510,4 +620,22 @@ function availableSections(array $parsed): array
     $sections[] = 'files';
 
     return $sections;
+}
+
+/**
+ * Human-readable byte size for dossier package / file totals.
+ */
+function formatBytes(int $bytes): string
+{
+    if ($bytes < 1024) {
+        return $bytes . ' B';
+    }
+    if ($bytes < 1024 * 1024) {
+        return number_format($bytes / 1024, 1) . ' KB';
+    }
+    if ($bytes < 1024 * 1024 * 1024) {
+        return number_format($bytes / (1024 * 1024), 1) . ' MB';
+    }
+
+    return number_format($bytes / (1024 * 1024 * 1024), 2) . ' GB';
 }

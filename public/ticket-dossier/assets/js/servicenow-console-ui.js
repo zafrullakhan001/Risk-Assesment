@@ -1,5 +1,6 @@
 /**
  * Ticket Dossier UI: prepare ServiceNow console sync token, copy script, open instance.
+ * On a project page (data-project-id), merges the fetched packet into that dossier.
  */
 (() => {
   const root = document.getElementById('servicenow-console-sync');
@@ -14,6 +15,8 @@
   const taskInput = document.getElementById('servicenow-console-task');
   const rememberFolderInput = document.getElementById('servicenow-console-remember-folder');
   const csrf = root.getAttribute('data-csrf') || '';
+  const targetProjectId = parseInt(root.getAttribute('data-project-id') || '0', 10) || 0;
+  const mergeMode = targetProjectId > 0;
   const rememberFolderKey = 'ticketDossier.servicenow.rememberFolder';
   const instanceUrlKey = 'ticketDossier.servicenow.instanceUrl';
 
@@ -26,6 +29,53 @@
 
   const pageSource = 'riskregister-servicenow-page';
   const extensionSource = 'riskregister-servicenow-extension';
+
+  const parseTicketReference = (input, fallbackInstance) => {
+    const raw = String(input || '').trim();
+    const fallback = String(fallbackInstance || '').trim();
+    let instance = '';
+    let ticket = '';
+
+    if (!raw) {
+      return { instance: fallback, ticket: '' };
+    }
+
+    const looksLikeUrl = /^https?:\/\//i.test(raw)
+      || /\.service-now\.com/i.test(raw)
+      || /\/nav_to\.do/i.test(raw)
+      || /\.do\?/i.test(raw);
+
+    if (looksLikeUrl) {
+      const url = /^https?:\/\//i.test(raw) ? raw : ('https://' + raw.replace(/^\/+/, ''));
+      try {
+        const parsed = new URL(url);
+        instance = parsed.origin;
+      } catch {
+        instance = '';
+      }
+      const haystack = decodeURIComponent(url.replace(/\+/g, ' '));
+      let match = haystack.match(/(?:^|[?&;]|sysparm_query=)number(?:=|%3D)([A-Za-z]+\d+)/i);
+      if (!match) {
+        match = haystack.match(/\b((?:DMND|STRY|TASK|DDR|PRJ)\d+)\b/i);
+      }
+      if (match) {
+        ticket = String(match[1]).toUpperCase();
+      }
+    } else if (/^[A-Za-z]+\d+$/.test(raw)) {
+      ticket = raw.toUpperCase();
+    } else {
+      const match = raw.match(/\b((?:DMND|STRY|TASK|DDR|PRJ)\d+)\b/i);
+      if (match) {
+        ticket = String(match[1]).toUpperCase();
+      }
+    }
+
+    if (!instance && fallback) {
+      instance = fallback;
+    }
+
+    return { instance, ticket };
+  };
 
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.origin !== window.location.origin) return;
@@ -41,7 +91,9 @@
       );
       root.classList.add('has-servicenow-extension');
       if (prepareBtn) {
-        prepareBtn.textContent = '▶ Prepare + open automatically';
+        prepareBtn.textContent = mergeMode
+          ? '▶ Prepare + fetch into this dossier'
+          : '▶ Prepare + open automatically';
         prepareBtn.title = 'The installed extension will start the exporter in ServiceNow';
       }
       if (statusEl && statusEl.textContent === 'Not prepared yet.') {
@@ -127,9 +179,11 @@
 
   if (instanceInput) {
     try {
-      const savedInstanceUrl = window.localStorage.getItem(instanceUrlKey);
-      if (savedInstanceUrl) {
-        instanceInput.value = savedInstanceUrl;
+      if (!instanceInput.value.trim()) {
+        const savedInstanceUrl = window.localStorage.getItem(instanceUrlKey);
+        if (savedInstanceUrl) {
+          instanceInput.value = savedInstanceUrl;
+        }
       }
     } catch {
       // The URL remains editable when browser storage is unavailable.
@@ -144,6 +198,18 @@
         }
       } catch {
         // Preparing an export does not depend on persistence.
+      }
+    });
+  }
+
+  if (taskInput) {
+    taskInput.addEventListener('change', () => {
+      const parsed = parseTicketReference(taskInput.value, instanceInput ? instanceInput.value : '');
+      if (parsed.ticket) {
+        taskInput.value = parsed.ticket;
+      }
+      if (parsed.instance && instanceInput && !instanceInput.value.trim()) {
+        instanceInput.value = parsed.instance;
       }
     });
   }
@@ -164,14 +230,27 @@
   };
 
   const prepare = async () => {
-    const instanceUrl = (instanceInput && instanceInput.value || '').trim();
-    const taskNumber = (taskInput && taskInput.value || '').trim();
+    const parsed = parseTicketReference(
+      taskInput && taskInput.value || '',
+      instanceInput && instanceInput.value || ''
+    );
+    let instanceUrl = parsed.instance;
+    const taskNumber = parsed.ticket;
+
+    if (parsed.ticket && taskInput) {
+      taskInput.value = parsed.ticket;
+    }
+    if (parsed.instance && instanceInput) {
+      instanceInput.value = parsed.instance;
+      instanceUrl = parsed.instance;
+    }
+
     if (!instanceUrl) {
-      setStatus('Enter your ServiceNow instance URL (e.g. https://yourcompany.service-now.com).', false);
+      setStatus('Enter your ServiceNow instance URL (e.g. https://yourcompany.service-now.com), or paste a full record URL.', false);
       return;
     }
     if (!/^[A-Z]+\d+$/i.test(taskNumber)) {
-      setStatus('Ticket number must look like TASK0123456, DMND…, STRY…, DDR…, or PRJ….', false);
+      setStatus('Enter a ticket number (TASK…, DMND…, STRY…, DDR…, PRJ…) or a ServiceNow record URL that includes the number. For projects, only Demand/Story/Tasks/Changes and risks/issues/decisions are pulled.', false);
       return;
     }
     if (
@@ -189,7 +268,7 @@
     }
 
     if (prepareBtn) prepareBtn.disabled = true;
-    setStatus('Preparing console sync…');
+    setStatus(mergeMode ? 'Preparing fetch into this dossier…' : 'Preparing console sync…');
 
     try {
       const body = new FormData();
@@ -197,6 +276,9 @@
       body.set('csrf_token', csrf);
       body.set('instance_url', instanceUrl);
       body.set('task_number', taskNumber);
+      if (mergeMode) {
+        body.set('project_id', String(targetProjectId));
+      }
 
       const response = await fetch('browser-sync.php', {
         method: 'POST',
@@ -217,6 +299,9 @@
           // Preparing an export does not depend on persistence.
         }
       }
+      if (taskInput && payload.task_number) {
+        taskInput.value = payload.task_number;
+      }
       payload.remember_folder = !!(rememberFolderInput && rememberFolderInput.checked);
       lastScript = window.ServiceNowConsoleSync.buildConsoleScript(payload);
       lastOpenUrl = payload.open_url || payload.instance_origin || '';
@@ -236,10 +321,16 @@
         window.open(lastOpenUrl, '_blank', 'noopener,noreferrer');
       }
 
+      const mergeNote = mergeMode
+        ? ' Results merge into dossier #' + targetProjectId
+          + ' (matching tickets update; new ones such as Project are added).'
+        : '';
+
       if (extensionResult.ok) {
         setStatus(
-          'Extension armed for ' + payload.task_number
-          + '. ServiceNow is opening; the Export packet overlay will start automatically. Token expires in about 30 minutes.',
+          'Extension armed for ' + payload.task_number + '.'
+          + mergeNote
+          + ' ServiceNow is opening; the Export packet overlay will start automatically. Token expires in about 30 minutes.',
           true
         );
       } else {
@@ -247,6 +338,7 @@
           (copied
             ? 'Script copied. Paste it into the ServiceNow F12 console, then click Export packet on the overlay.'
             : 'Script ready (copy failed — use the text box). Paste into the ServiceNow F12 console, then click Export packet.')
+            + mergeNote
             + ' Automatic extension start was unavailable'
             + (extensionResult.error ? ': ' + extensionResult.error : '.')
             + ' Token expires in about 30 minutes.',

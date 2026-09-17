@@ -41,7 +41,12 @@ final class ProjectRepository
         [$whereSql, $params] = self::searchWhere($query, $filters);
         $orderSql = self::listOrderBy($sort, $dir);
 
-        $sql = 'SELECT * FROM projects'
+        // package_size_bytes = sum of stored dossier files (complete package on disk).
+        $sql = 'SELECT projects.*,'
+            . ' COALESCE(('
+            . ' SELECT SUM(pf.size_bytes) FROM project_files pf WHERE pf.project_id = projects.id'
+            . ' ), 0) AS package_size_bytes'
+            . ' FROM projects'
             . ($whereSql !== '' ? ' ' . $whereSql : '')
             . ' ORDER BY ' . $orderSql
             . ' LIMIT :limit OFFSET :offset';
@@ -153,11 +158,12 @@ final class ProjectRepository
             'task' => 'LOWER(IFNULL(task_number, \'\'))',
             'ddr' => 'LOWER(IFNULL(ddr_number, \'\'))',
             'owner' => "LOWER(COALESCE(NULLIF(owner_display_name, ''), NULLIF(owner_username, ''), ''))",
+            'size' => 'COALESCE((SELECT SUM(pf.size_bytes) FROM project_files pf WHERE pf.project_id = projects.id), 0)',
             'updated' => 'datetime(updated_at)',
         ];
 
         $column = $map[$sort] ?? $map['updated'];
-        if ($sort === 'updated' || $sort === 'id') {
+        if ($sort === 'updated' || $sort === 'id' || $sort === 'size') {
             return $column . ' ' . $dirSql . ', id DESC';
         }
 

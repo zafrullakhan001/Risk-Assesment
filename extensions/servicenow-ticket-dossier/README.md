@@ -41,7 +41,9 @@ only to the local RiskRegister catalog.
 ## Use with ServiceNow
 
 1. Open RiskRegister → Ticket Dossier → **Console pull from ServiceNow**.
-2. Enter the ServiceNow instance and TASK number.
+2. Enter the ServiceNow instance and ticket number (`TASK…`, `DMND…`, `STRY…`, `DDR…`, or `PRJ…`).
+   For projects, Demand/Story/Tasks/Changes and RIDAC items (risks, issues, decisions) are pulled;
+   status reports, time cards, and cost tabs are skipped.
 3. Click **Prepare + open automatically**.
 4. The extension stores the prepared export for at most 30 minutes and opens
    the matching ServiceNow tab.

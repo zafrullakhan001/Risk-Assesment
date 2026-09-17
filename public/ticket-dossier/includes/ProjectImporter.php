@@ -75,7 +75,7 @@ final class ProjectImporter
     public static function import(array $uploads, ?string $optionalTitle, ?array $ownerUser = null): array
     {
         if ($uploads === []) {
-            throw new InvalidArgumentException('Please upload at least one ServiceNow file (DDR JSON, demand, story, or task PDF).');
+            throw new InvalidArgumentException('Please upload at least one ServiceNow file (DDR JSON, demand, story, task, or project PDF).');
         }
 
         if (count($uploads) > TD_MAX_FILES_PER_UPLOAD) {
@@ -117,13 +117,13 @@ final class ProjectImporter
             }
 
             $kind = isset($upload['forced_kind'])
-                && in_array($upload['forced_kind'], array_merge(TD_SOURCE_KINDS, ['packet']), true)
+                && in_array($upload['forced_kind'], array_merge(TD_SOURCE_KINDS, ['packet', 'project']), true)
                 ? (string) $upload['forced_kind']
                 : FileClassifier::classify($tmp, $name);
 
             if ($kind === null) {
                 throw new InvalidArgumentException(
-                    $name . ' was not recognized. Use DDR JSON, a ServiceNow task packet JSON, or demand/story/task PDF exports.'
+                    $name . ' was not recognized. Use DDR JSON, a ServiceNow task packet JSON, or demand/story/task/project PDF exports.'
                 );
             }
 
@@ -505,13 +505,13 @@ final class ProjectImporter
             }
 
             $kind = isset($upload['forced_kind'])
-                && in_array($upload['forced_kind'], array_merge(TD_SOURCE_KINDS, ['packet']), true)
+                && in_array($upload['forced_kind'], array_merge(TD_SOURCE_KINDS, ['packet', 'project']), true)
                 ? (string) $upload['forced_kind']
                 : FileClassifier::classify($tmp, $name);
 
             if ($kind === null) {
                 throw new InvalidArgumentException(
-                    $name . ' was not recognized. Use DDR JSON, a ServiceNow task packet JSON, or demand/story/task PDF exports.'
+                    $name . ' was not recognized. Use DDR JSON, a ServiceNow task packet JSON, or demand/story/task/project PDF exports.'
                 );
             }
 
@@ -560,9 +560,11 @@ final class ProjectImporter
             'demand' => $mapped['demand'] ?? null,
             'story' => $mapped['story'] ?? null,
             'task' => $mapped['task'] ?? null,
-            'ddr' => null,
-            'vendor' => null,
-            'assessments' => ['external' => [], 'internal' => []],
+            'ddr' => $mapped['ddr'] ?? null,
+            'vendor' => is_array($mapped['vendor'] ?? null) ? $mapped['vendor'] : null,
+            'assessments' => is_array($mapped['assessments'] ?? null)
+                ? $mapped['assessments']
+                : ['external' => [], 'internal' => []],
             'overview' => is_array($mapped['overview'] ?? null) ? $mapped['overview'] : [
                 'title' => '',
                 'vendor' => '',
@@ -693,6 +695,350 @@ final class ProjectImporter
     }
 
     /**
+     * Merge a ServiceNow console packet into an existing dossier.
+     * Matching Demand/Story/Task/DDR numbers are refreshed; new tickets (e.g. Project) are added to Related.
+     *
+     * @param array<string, mixed> $packet
+     * @param array{tmp_name: string, name: string, size?: int, is_local?: bool}|null $packetFile
+     * @return array{project_id: int, warnings: list<string>, updated: list<string>, added: list<string>}
+     */
+    public static function mergeServiceNowPacket(
+        int $projectId,
+        array $packet,
+        ?array $packetFile = null
+    ): array {
+        if ($projectId <= 0) {
+            throw new InvalidArgumentException('Invalid project.');
+        }
+
+        $project = ProjectRepository::find($projectId);
+        if ($project === null) {
+            throw new InvalidArgumentException('Project not found.');
+        }
+
+        if (isset($packet['task']) && is_array($packet['task']) && ($packet['kind'] ?? '') === 'packet') {
+            $mapped = $packet;
+        } else {
+            $mapped = ServicenowTaskPacketParser::parseArray($packet);
+        }
+
+        $parsed = json_decode((string) ($project['parsed_json'] ?? ''), true);
+        if (!is_array($parsed)) {
+            $parsed = [];
+        }
+        $parsed = array_merge([
+            'demand' => null,
+            'story' => null,
+            'task' => null,
+            'ddr' => null,
+            'vendor' => null,
+            'assessments' => ['external' => [], 'internal' => []],
+            'overview' => [
+                'description' => '',
+                'business_case' => '',
+                'title' => '',
+                'vendor' => '',
+            ],
+            'related_tickets' => [],
+            'relationships' => [],
+            'packet_meta' => [],
+        ], $parsed);
+
+        $sources = json_decode((string) ($project['sources_json'] ?? ''), true);
+        if (!is_array($sources)) {
+            $sources = [];
+        }
+        foreach (TD_SOURCE_KINDS as $kind) {
+            $sources[$kind] = !empty($sources[$kind]);
+        }
+
+        $updated = [];
+        $added = [];
+        $warnings = [];
+
+        foreach (['demand', 'story', 'task', 'ddr'] as $kind) {
+            $incoming = $mapped[$kind] ?? null;
+            if (!is_array($incoming) || $incoming === []) {
+                continue;
+            }
+
+            $incomingNumber = strtoupper(trim((string) ($incoming['number'] ?? '')));
+            $existing = is_array($parsed[$kind] ?? null) ? $parsed[$kind] : null;
+            $existingNumber = strtoupper(trim((string) (
+                ($existing['number'] ?? '') !== ''
+                    ? ($existing['number'] ?? '')
+                    : ($project[$kind . '_number'] ?? '')
+            )));
+
+            if ($existingNumber === '' || $incomingNumber === '' || $incomingNumber === $existingNumber) {
+                $wasEmpty = $existingNumber === '' || $existing === null;
+                $parsed[$kind] = self::mergeParsedSection(
+                    is_array($existing) ? $existing : [],
+                    $incoming
+                );
+                $sources[$kind] = true;
+                $label = kindLabel($kind) . ($incomingNumber !== '' ? ' (' . $incomingNumber . ')' : '');
+                if ($wasEmpty) {
+                    $added[] = $label;
+                } else {
+                    $updated[] = $label;
+                }
+            } else {
+                $result = self::upsertRelatedTicket($parsed, $incoming);
+                $label = kindLabel($kind) . ($incomingNumber !== '' ? ' (' . $incomingNumber . ')' : '');
+                if ($result === 'updated') {
+                    $updated[] = $label . ' in Related';
+                } else {
+                    $added[] = $label . ' to Related';
+                }
+                $warnings[] = 'Primary ' . kindLabel($kind) . ' is already '
+                    . $existingNumber . '; imported ' . ($incomingNumber !== '' ? $incomingNumber : 'ticket')
+                    . ' into Related tickets instead.';
+            }
+        }
+
+        $relatedIn = is_array($mapped['related_tickets'] ?? null) ? $mapped['related_tickets'] : [];
+        foreach ($relatedIn as $relatedTicket) {
+            if (!is_array($relatedTicket)) {
+                continue;
+            }
+            $number = strtoupper(trim((string) ($relatedTicket['number'] ?? '')));
+            // Skip if this ticket already became a primary section above.
+            $skip = false;
+            foreach (['demand', 'story', 'task', 'ddr'] as $kind) {
+                $primaryNumber = strtoupper(trim((string) ($parsed[$kind]['number'] ?? '')));
+                if ($number !== '' && $primaryNumber !== '' && $number === $primaryNumber) {
+                    $skip = true;
+                    break;
+                }
+            }
+            if ($skip) {
+                continue;
+            }
+            $result = self::upsertRelatedTicket($parsed, $relatedTicket);
+            $label = $number !== '' ? $number : 'related ticket';
+            if ($result === 'updated') {
+                $updated[] = $label;
+            } else {
+                $added[] = $label;
+            }
+        }
+
+        $incomingRels = is_array($mapped['relationships'] ?? null) ? $mapped['relationships'] : [];
+        if ($incomingRels !== []) {
+            $parsed['relationships'] = self::mergeRelationships(
+                is_array($parsed['relationships'] ?? null) ? $parsed['relationships'] : [],
+                $incomingRels
+            );
+        }
+
+        if (!empty($mapped['packet_meta']) && is_array($mapped['packet_meta'])) {
+            $existingMeta = is_array($parsed['packet_meta'] ?? null) ? $parsed['packet_meta'] : [];
+            $parsed['packet_meta'] = array_merge($existingMeta, $mapped['packet_meta']);
+        }
+        if (trim((string) ($mapped['instance'] ?? '')) !== '') {
+            $parsed['instance'] = (string) $mapped['instance'];
+            $meta = is_array($parsed['packet_meta'] ?? null) ? $parsed['packet_meta'] : [];
+            $meta['instance'] = (string) $mapped['instance'];
+            $parsed['packet_meta'] = $meta;
+        }
+        $sources['packet'] = true;
+
+        $meta = self::deriveProjectMeta($parsed, (string) $project['title']);
+        $keepTitle = trim((string) $project['title']);
+        if ($keepTitle !== '' && $keepTitle !== 'Untitled Project') {
+            $meta['title'] = $keepTitle;
+        }
+        $existingOverview = is_array($parsed['overview'] ?? null) ? $parsed['overview'] : [];
+        $parsed['overview'] = [
+            'title' => $meta['title'],
+            'vendor' => $meta['vendor'] !== ''
+                ? $meta['vendor']
+                : (string) ($existingOverview['vendor'] ?? $project['vendor'] ?? ''),
+            'description' => $meta['_overview_description'] !== ''
+                ? $meta['_overview_description']
+                : (string) ($existingOverview['description'] ?? ''),
+            'business_case' => $meta['_overview_business_case'] !== ''
+                ? $meta['_overview_business_case']
+                : (string) ($existingOverview['business_case'] ?? ''),
+        ];
+        if ($meta['vendor'] === '' && !empty($project['vendor'])) {
+            $meta['vendor'] = (string) $project['vendor'];
+            $parsed['overview']['vendor'] = $meta['vendor'];
+        }
+
+        $storageDir = TD_STORAGE_DIR . '/' . $projectId;
+        if (!is_dir($storageDir) && !mkdir($storageDir, 0755, true) && !is_dir($storageDir)) {
+            throw new RuntimeException('Could not create storage directory.');
+        }
+
+        $jsonBody = json_encode(
+            [
+                'format' => ServicenowTaskPacketParser::FORMAT,
+                'instance' => (string) ($mapped['instance'] ?? ''),
+                'exported_at' => (string) ($mapped['exported_at'] ?? gmdate('c')),
+                'root_number' => (string) ($mapped['root_number'] ?? ''),
+                'root_sys_id' => (string) ($mapped['root_sys_id'] ?? ''),
+                'relationships' => is_array($mapped['relationships'] ?? null) ? $mapped['relationships'] : [],
+                'tickets' => is_array($mapped['tickets'] ?? null) ? $mapped['tickets'] : [],
+            ],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+
+        $packetName = (string) (
+            ($mapped['root_number'] ?? '') !== ''
+                ? $mapped['root_number']
+                : 'packet'
+        ) . '.json';
+        $storedName = 'packet_' . bin2hex(random_bytes(8)) . '.json';
+        $dest = $storageDir . '/' . $storedName;
+        $size = strlen($jsonBody);
+        $originalName = $packetName;
+
+        if ($packetFile !== null && is_readable((string) $packetFile['tmp_name'])) {
+            if (!empty($packetFile['is_local'])) {
+                if (!copy((string) $packetFile['tmp_name'], $dest)) {
+                    throw new RuntimeException('Could not copy packet JSON.');
+                }
+            } elseif (!@copy((string) $packetFile['tmp_name'], $dest)
+                && !move_uploaded_file((string) $packetFile['tmp_name'], $dest)
+            ) {
+                if (@file_put_contents($dest, $jsonBody) === false) {
+                    throw new RuntimeException('Could not store packet JSON.');
+                }
+            }
+            $size = (int) ($packetFile['size'] ?? filesize($dest) ?: strlen($jsonBody));
+            $originalName = safeBasename((string) ($packetFile['name'] ?? $packetName));
+        } elseif (@file_put_contents($dest, $jsonBody) === false) {
+            throw new RuntimeException('Could not store packet JSON.');
+        }
+
+        ProjectRepository::replaceFileOfKind($projectId, [
+            'kind' => 'packet',
+            'original_name' => $originalName,
+            'stored_name' => $storedName,
+            'size_bytes' => $size,
+        ]);
+
+        ProjectRepository::updateParsed($projectId, [
+            'title' => $meta['title'],
+            'vendor' => $meta['vendor'],
+            'demand_number' => $meta['demand_number'],
+            'story_number' => $meta['story_number'],
+            'task_number' => $meta['task_number'],
+            'ddr_number' => $meta['ddr_number'],
+            'demand_state' => $meta['demand_state'],
+            'story_state' => $meta['story_state'],
+            'task_state' => $meta['task_state'],
+            'ddr_state' => $meta['ddr_state'],
+            'sources' => $sources,
+            'parsed' => $parsed,
+        ]);
+
+        if ($updated === [] && $added === []) {
+            $warnings[] = 'Packet imported but no ticket sections changed.';
+        }
+
+        return [
+            'project_id' => $projectId,
+            'warnings' => $warnings,
+            'updated' => array_values(array_unique($updated)),
+            'added' => array_values(array_unique($added)),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $existing
+     * @param array<string, mixed> $fresh
+     * @return array<string, mixed>
+     */
+    private static function mergeParsedSection(array $existing, array $fresh): array
+    {
+        $merged = $existing;
+        foreach ($fresh as $key => $value) {
+            if ($key === 'fields' && is_array($value)) {
+                $oldFields = is_array($merged['fields'] ?? null) ? $merged['fields'] : [];
+                $merged['fields'] = array_merge($oldFields, array_filter(
+                    $value,
+                    static fn (mixed $fieldValue): bool => trim(normalizeDisplayValue($fieldValue)) !== ''
+                ));
+                continue;
+            }
+            if (is_array($value)) {
+                if ($value !== []) {
+                    $merged[$key] = $value;
+                }
+                continue;
+            }
+            if (trim((string) $value) !== '') {
+                $merged[$key] = $value;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param array<string, mixed> $parsed
+     * @param array<string, mixed> $section
+     * @return 'updated'|'added'
+     */
+    private static function upsertRelatedTicket(array &$parsed, array $section): string
+    {
+        $number = strtoupper(trim((string) ($section['number'] ?? '')));
+        $related = is_array($parsed['related_tickets'] ?? null) ? $parsed['related_tickets'] : [];
+
+        if ($number !== '') {
+            foreach ($related as $index => $existing) {
+                if (!is_array($existing)) {
+                    continue;
+                }
+                if (strcasecmp((string) ($existing['number'] ?? ''), $number) === 0) {
+                    $related[$index] = self::mergeParsedSection($existing, $section);
+                    $parsed['related_tickets'] = $related;
+
+                    return 'updated';
+                }
+            }
+        }
+
+        $related[] = $section;
+        $parsed['related_tickets'] = $related;
+
+        return 'added';
+    }
+
+    /**
+     * @param list<array<string, mixed>> $existing
+     * @param list<array<string, mixed>> $incoming
+     * @return list<array<string, mixed>>
+     */
+    private static function mergeRelationships(array $existing, array $incoming): array
+    {
+        $seen = [];
+        $out = [];
+        foreach (array_merge($existing, $incoming) as $rel) {
+            if (!is_array($rel)) {
+                continue;
+            }
+            $parent = strtoupper(trim((string) ($rel['parent'] ?? '')));
+            $child = strtoupper(trim((string) ($rel['child'] ?? '')));
+            $type = trim((string) ($rel['type'] ?? ''));
+            if ($parent === '' || $child === '') {
+                continue;
+            }
+            $key = $parent . '|' . $child . '|' . strtolower($type);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $rel;
+        }
+
+        return $out;
+    }
+
+    /**
      * @param array<string, mixed> $parsed
      * @return array{
      *   title: string, vendor: string,
@@ -717,8 +1063,28 @@ final class ProjectImporter
         }
 
         $rootProjectTitle = '';
+        $projectSection = is_array($parsed['project'] ?? null) ? $parsed['project'] : [];
+        if ($projectSection !== []) {
+            $projectFields = is_array($projectSection['fields'] ?? null) ? $projectSection['fields'] : [];
+            $rootProjectTitle = firstNonEmpty(
+                (string) ($projectSection['title'] ?? ''),
+                (string) ($projectSection['short_description'] ?? ''),
+                (string) ($projectFields['Project Name'] ?? ''),
+                (string) ($projectFields['Name'] ?? ''),
+                (string) ($projectFields['Project name'] ?? '')
+            );
+            if ($rootKind === '') {
+                $rootKind = 'project';
+            }
+            if ($rootNumber === '') {
+                $rootNumber = strtoupper(trim((string) ($projectSection['number'] ?? '')));
+            }
+        }
         if ($rootKind === 'project') {
-            $rootProjectTitle = trim((string) ($overview['title'] ?? ''));
+            $rootProjectTitle = firstNonEmpty(
+                $rootProjectTitle,
+                trim((string) ($overview['title'] ?? ''))
+            );
             $relatedTickets = is_array($parsed['related_tickets'] ?? null)
                 ? $parsed['related_tickets']
                 : [];
@@ -734,12 +1100,12 @@ final class ProjectImporter
                     ? $relatedTicket['fields']
                     : [];
                 $rootProjectTitle = firstNonEmpty(
+                    $rootProjectTitle,
                     (string) ($relatedTicket['title'] ?? ''),
                     (string) ($relatedTicket['short_description'] ?? ''),
                     (string) ($fields['Name'] ?? ''),
-                    (string) ($fields['Project name'] ?? ''),
                     (string) ($fields['Project Name'] ?? ''),
-                    $rootProjectTitle
+                    (string) ($fields['Project name'] ?? '')
                 );
                 break;
             }
@@ -813,12 +1179,16 @@ final class ProjectImporter
 
         // Fill overview helpers into parsed structure for the UI.
         $description = firstNonEmpty(
+            (string) ($projectSection['description'] ?? ''),
             (string) ($demand['description'] ?? ''),
             (string) ($story['description'] ?? ''),
             (string) ($ddr['description'] ?? ''),
             (string) ($task['description'] ?? '')
         );
-        $businessCase = (string) ($demand['business_case'] ?? '');
+        $businessCase = firstNonEmpty(
+            (string) ($projectSection['business_case'] ?? ''),
+            (string) ($demand['business_case'] ?? '')
+        );
 
         return [
             'title' => $title,

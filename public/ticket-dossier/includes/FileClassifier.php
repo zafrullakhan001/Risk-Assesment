@@ -6,7 +6,7 @@ final class FileClassifier
     /**
      * Prefer content detection; fall back to filename hints.
      *
-     * @return 'ddr'|'demand'|'story'|'task'|'packet'|null
+     * @return 'ddr'|'demand'|'story'|'task'|'project'|'packet'|null
      */
     public static function classify(string $path, string $originalName): ?string
     {
@@ -19,7 +19,7 @@ final class FileClassifier
     }
 
     /**
-     * @return 'ddr'|'demand'|'story'|'task'|'packet'|null
+     * @return 'ddr'|'demand'|'story'|'task'|'project'|'packet'|null
      */
     public static function classifyByContent(string $path, string $originalName = ''): ?string
     {
@@ -53,7 +53,7 @@ final class FileClassifier
     }
 
     /**
-     * @return 'ddr'|'demand'|'story'|'task'|'packet'|null
+     * @return 'ddr'|'demand'|'story'|'task'|'project'|'packet'|null
      */
     public static function classifyByFilename(string $originalName): ?string
     {
@@ -77,6 +77,9 @@ final class FileClassifier
         }
         if (str_contains($base, 'rm_story') || (preg_match('/\bstory\b/', $base) && str_ends_with($base, '.pdf'))) {
             return 'story';
+        }
+        if (str_contains($base, 'pm_project') || preg_match('/\bprj\d+/', $base) || (preg_match('/\bproject\b/', $base) && str_ends_with($base, '.pdf'))) {
+            return 'project';
         }
         if (str_contains($base, 'sc_task') || (preg_match('/\btask\b/', $base) && str_ends_with($base, '.pdf'))) {
             return 'task';
@@ -120,7 +123,7 @@ final class FileClassifier
     }
 
     /**
-     * @return 'demand'|'story'|'task'|null
+     * @return 'demand'|'story'|'task'|'project'|null
      */
     public static function classifyPdfByContent(string $path): ?string
     {
@@ -141,6 +144,9 @@ final class FileClassifier
         if (str_contains($lower, 'table name:') && str_contains($lower, 'sc_task')) {
             return 'task';
         }
+        if (str_contains($lower, 'table name:') && str_contains($lower, 'pm_project')) {
+            return 'project';
+        }
 
         if (str_contains($lower, 'demand details') || preg_match('/\bnumber:\s*dmnd\d+/i', $head)) {
             return 'demand';
@@ -150,6 +156,13 @@ final class FileClassifier
         }
         if (str_contains($lower, 'request task details') || preg_match('/\bnumber:\s*task\d+/i', $head)) {
             return 'task';
+        }
+        if (
+            str_contains($lower, 'project details')
+            || preg_match('/\bnumber:\s*prj\d+/i', $head)
+            || preg_match('/\bproject name\s*:/i', $head)
+        ) {
+            return 'project';
         }
 
         return null;

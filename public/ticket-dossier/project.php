@@ -346,10 +346,10 @@ $ribbon = [
                     <?php foreach ($missingKinds as $i => $kind): ?>
                         <span class="source-pill off"><?= kindEmoji($kind) ?> <?= e(kindLabel($kind)) ?></span><?= $i < count($missingKinds) - 1 ? ' ' : '' ?>
                     <?php endforeach; ?>
-                    — upload the file(s) below to fill the gaps. Replacing an existing source is also supported.
+                    — upload files below, or fetch a ticket from ServiceNow into this dossier.
                 </p>
             <?php else: ?>
-                <p class="context-note">All four sources are present. Upload again to replace Demand, Story, Task, or DDR with a newer export.</p>
+                <p class="context-note">All four sources are present. Upload again to replace a source, or fetch a ServiceNow ticket URL to refresh or add related tickets.</p>
             <?php endif; ?>
             <form class="upload-form" id="upload-form" action="update.php" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" id="csrf-token" value="<?= e($token) ?>">
@@ -369,6 +369,59 @@ $ribbon = [
 
                 <button type="submit" class="button button-primary" id="submit-upload" disabled>✨ Update dossier</button>
             </form>
+
+            <div class="complete-dossier-divider" role="separator" aria-hidden="true"></div>
+
+            <div
+                id="servicenow-console-sync"
+                class="servicenow-console-sync servicenow-console-sync--inline"
+                data-csrf="<?= e($token) ?>"
+                data-project-id="<?= (int) $id ?>"
+            >
+                <h3 class="complete-dossier-sn-title">🔐 Fetch from ServiceNow into this dossier</h3>
+                <p class="context-note">
+                    Paste a ticket number or a ServiceNow record URL. Matching Demand / Story / Task / DDR tickets refresh in place;
+                    new tickets (for example a Project) are added to this dossier’s Related list.
+                    Uses your signed-in ServiceNow browser session — no password is stored here.
+                </p>
+                <div class="details-form-grid">
+                    <label class="field">
+                        <span>ServiceNow instance URL</span>
+                        <input
+                            type="url"
+                            id="servicenow-console-instance"
+                            name="instance_url"
+                            value="<?= e($snInstance) ?>"
+                            placeholder="https://yourcompany.service-now.com"
+                            autocomplete="url"
+                        >
+                    </label>
+                    <label class="field">
+                        <span>Ticket number or ServiceNow URL</span>
+                        <input
+                            type="text"
+                            id="servicenow-console-task"
+                            name="task_number"
+                            placeholder="TASK0123456 or https://…service-now.com/…number=…"
+                            autocomplete="off"
+                        >
+                    </label>
+                    <div class="field field-span-2">
+                        <span>Package folder</span>
+                        <label class="check">
+                            <input type="checkbox" id="servicenow-console-remember-folder" checked>
+                            Remember and reuse the selected folder
+                        </label>
+                    </div>
+                </div>
+                <div class="servicenow-console-actions">
+                    <button type="button" class="button button-primary" id="servicenow-console-prepare">🔐 Prepare + fetch into this dossier</button>
+                    <a class="button ghost-light" id="servicenow-console-open" href="#" target="_blank" rel="noopener noreferrer" hidden>📂 Open ServiceNow</a>
+                    <button type="button" class="button ghost" id="servicenow-console-copy" disabled>📋 Copy script again</button>
+                </div>
+                <p class="panel-help" id="servicenow-console-status" aria-live="polite">Not prepared yet.</p>
+                <textarea id="servicenow-console-script" class="servicenow-console-script" readonly hidden rows="6" aria-label="ServiceNow console sync script"></textarea>
+            </div>
         </details>
 
         <nav class="section-nav" aria-label="Sections" id="section-nav">
@@ -413,14 +466,14 @@ $ribbon = [
             </div>
         </section>
 
-        <?php foreach (['demand', 'story', 'task'] as $kind): ?>
+        <?php foreach (['project', 'demand', 'story', 'task'] as $kind): ?>
             <?php if (empty($parsed[$kind]) || !is_array($parsed[$kind])) {
                 continue;
             }
             $section = $parsed[$kind];
             $fields = is_array($section['fields'] ?? null) ? $section['fields'] : [];
             ?>
-            <section class="panel panel-tone-<?= e($kind) ?>" id="section-<?= e($kind) ?>">
+            <section class="panel panel-tone-<?= e($kind === 'project' ? 'overview' : $kind) ?>" id="section-<?= e($kind) ?>">
                 <div class="section-head">
                     <h2><?= kindEmoji($kind) ?> <?= e(kindLabel($kind)) ?>
                         <?php if (!empty($section['number'])): ?>
@@ -447,10 +500,10 @@ $ribbon = [
                         <p><?php renderEditableValue((string) $section['description'], [$kind, 'description'], kindLabel($kind) . ' description', true); ?></p>
                     </div>
                 <?php endif; ?>
-                <?php if ($kind === 'demand' && !empty($section['business_case'])): ?>
+                <?php if (in_array($kind, ['demand', 'project'], true) && !empty($section['business_case'])): ?>
                     <div class="prose-block">
                         <h3>💡 Business case</h3>
-                        <p><?php renderEditableValue((string) $section['business_case'], [$kind, 'business_case'], 'Demand business case', true); ?></p>
+                        <p><?php renderEditableValue((string) $section['business_case'], [$kind, 'business_case'], kindLabel($kind) . ' business case', true); ?></p>
                     </div>
                 <?php endif; ?>
                 <?php if (!empty($section['related']) && is_array($section['related'])): ?>
@@ -927,6 +980,8 @@ $ribbon = [
 <script src="assets/js/floating-search.js?v=<?= e($floatingJsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/servicenow-record-links.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/servicenow-console-sync.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/servicenow-console-ui.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/field-editor.js?v=<?= e($jsV) ?>"></script>
 <script>
 (() => {

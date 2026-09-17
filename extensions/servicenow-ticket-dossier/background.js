@@ -7,7 +7,7 @@
 
 const STORAGE_KEY = 'riskregisterServiceNowPendingV1';
 const SHAREPOINT_STORAGE_KEY = 'riskregisterSharePointPendingV1';
-const MAX_SCRIPT_BYTES = 250000;
+const MAX_SCRIPT_BYTES = 400000;
 const MAX_TTL_SECONDS = 35 * 60;
 const DEBUGGER_VERSION = '1.3';
 

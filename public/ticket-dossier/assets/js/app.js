@@ -314,7 +314,7 @@
         }
 
         var groups = {};
-        document.querySelectorAll('#section-demand, #section-story, #section-task, #section-related, #section-ddr').forEach(function (section) {
+        document.querySelectorAll('#section-project, #section-demand, #section-story, #section-task, #section-related, #section-ddr').forEach(function (section) {
             var sectionId = section.id || '';
             var order = SOURCE_SECTION_ORDER[sectionId];
             if (!order) return;

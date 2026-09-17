@@ -173,7 +173,8 @@ final class ServicenowTaskPacketParser
         foreach ($relatedTickets as $ticket) {
             $kind = self::kindFromNumber((string) $ticket['number'], (string) ($ticket['sys_class_name'] ?? ''));
             $sectionKind = match ($kind) {
-                'demand', 'story', 'task', 'ddr', 'project' => $kind,
+                'demand', 'story', 'task', 'ddr', 'project',
+                'project_task', 'risk', 'issue', 'decision', 'change' => $kind,
                 default => 'task',
             };
             $relatedSections[] = self::toSection($ticket, $sectionKind, $relationships);
@@ -435,8 +436,24 @@ final class ServicenowTaskPacketParser
         if (str_starts_with($number, 'DDR')) {
             return 'ddr';
         }
-        if (str_starts_with($number, 'PRJ')) {
-            return 'project';
+        // Longer PRJ* prefixes before bare PRJ (project root).
+    if (str_starts_with($number, 'PRJTASK')) {
+        return 'project_task';
+    }
+    if (preg_match('/^PRJ\d+$/', $number)) {
+        return 'project';
+    }
+        if (str_starts_with($number, 'CHG')) {
+            return 'change';
+        }
+        if (str_starts_with($number, 'RSK')) {
+            return 'risk';
+        }
+        if (str_starts_with($number, 'ISU')) {
+            return 'issue';
+        }
+        if (str_starts_with($number, 'DCSN')) {
+            return 'decision';
         }
 
         $class = strtolower($sysClass);
@@ -446,11 +463,26 @@ final class ServicenowTaskPacketParser
         if (str_contains($class, 'story') || str_contains($class, 'rm_story')) {
             return 'story';
         }
-        if (str_contains($class, 'pm_project')) {
+        if (str_contains($class, 'project_task') || $class === 'pm_project_task') {
+            return 'project_task';
+        }
+        if ($class === 'pm_project' || (str_contains($class, 'pm_project') && !str_contains($class, 'task'))) {
             return 'project';
         }
         if (str_contains($class, 'diligence') || str_contains($class, 'tprm_dd')) {
             return 'ddr';
+        }
+        if (str_contains($class, 'change')) {
+            return 'change';
+        }
+        if ($class === 'risk' || str_contains($class, 'risk')) {
+            return 'risk';
+        }
+        if ($class === 'issue' || str_contains($class, 'issue')) {
+            return 'issue';
+        }
+        if (str_contains($class, 'decision')) {
+            return 'decision';
         }
 
         return 'other';
