@@ -14066,6 +14066,10 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-card-colors="1"
     outline: none;
     border-color: color-mix(in srgb, var(--accent, #0f766e) 45%, var(--border, #e2e8f0));
 }
+select.sharepoint-col-filter {
+    cursor: pointer;
+    appearance: auto;
+}
 .sharepoint-filter-actions {
     text-align: right;
     white-space: nowrap;

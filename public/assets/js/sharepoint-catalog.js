@@ -7388,7 +7388,9 @@
         .trim()
         .toLowerCase();
       if (!needle) return true;
-      return rowFilterHaystack(row, key).toLowerCase().includes(needle);
+      const hay = rowFilterHaystack(row, key).toLowerCase();
+      if (key === 'modified_by' || key === 'created_by') return hay === needle;
+      return hay.includes(needle);
     });
 
   const compareProjectRows = (a, b) => {
@@ -8345,24 +8347,75 @@
         .join(' '),
   });
 
+  const uniqueSortedNames = (values) => {
+    const people = new Map();
+    values.forEach((value) => {
+      const display = String(value || '').trim();
+      if (!display) return;
+      const key = display.toLowerCase();
+      if (!people.has(key)) people.set(key, display);
+    });
+    return [...people.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  };
+
+  const uniquePeople = (fields) => {
+    const values = [];
+    state.projects.forEach((project) => {
+      fields.forEach((field) => values.push(project[field]));
+    });
+    return uniqueSortedNames(values);
+  };
+
+  const optionHtml = (value, label) =>
+    `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+
+  const fillNamedSelect = (select, names, current, emptyLabel) => {
+    if (!select) return;
+    const cur = String(current || '').trim();
+    const seen = new Set(names.map((name) => name.toLowerCase()));
+    const extra = cur && !seen.has(cur.toLowerCase()) ? optionHtml(cur, cur) : '';
+    select.innerHTML = optionHtml('', emptyLabel) + extra + names.map((name) => optionHtml(name, name)).join('');
+    select.value = cur;
+  };
+
+  const fillDatalist = (listEl, names) => {
+    if (!listEl) return;
+    listEl.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}"></option>`).join('');
+  };
+
+  const populateColumnFilterOptions = () => {
+    fillDatalist(
+      document.getElementById('sharepoint-filter-name-list'),
+      uniqueSortedNames(state.projects.map((project) => project.project_name))
+    );
+    fillDatalist(
+      document.getElementById('sharepoint-filter-match-list'),
+      uniqueSortedNames(state.projects.flatMap((project) => [projectTypeLabel(project), project.source_title]))
+    );
+    fillNamedSelect(
+      listFilterRow?.querySelector('[data-filter="modified_by"]'),
+      uniquePeople(['modified_by']),
+      state.filters.modified_by,
+      'All'
+    );
+    fillNamedSelect(
+      listFilterRow?.querySelector('[data-filter="created_by"]'),
+      uniquePeople(['person']),
+      state.filters.created_by,
+      'All'
+    );
+  };
+
   const populatePersonFilter = () => {
+    populateColumnFilterOptions();
     if (!personFilterEl) return;
     const current = state.who || personFilterEl.value || '';
-    const people = new Map();
-    state.projects.forEach((project) => {
-      [project.modified_by, project.person].forEach((name) => {
-        const display = String(name || '').trim();
-        if (!display) return;
-        const key = display.toLowerCase();
-        if (!people.has(key)) people.set(key, display);
-      });
-    });
-    const sorted = [...people.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const sorted = uniquePeople(['modified_by', 'person']);
     const hasMe = !!(currentUser.display || currentUser.name);
     personFilterEl.innerHTML =
       `<option value="">Anyone</option>` +
       (hasMe ? `<option value="me">Me (${escapeHtml(searchRoot.getAttribute('data-user-display') || searchRoot.getAttribute('data-user-name') || 'me')})</option>` : '') +
-      sorted.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+      sorted.map((name) => optionHtml(name, name)).join('');
     if (current && [...personFilterEl.options].some((opt) => opt.value === current)) {
       personFilterEl.value = current;
     } else {
@@ -8890,7 +8943,7 @@
     replayListAnimation: settleProjectResults,
   });
 
-  const render = () => {
+  const render = ({ animate = true } = {}) => {
     updateControlsVisibility();
     updateHeading();
     syncScopeChips();
@@ -9028,7 +9081,7 @@
       })
       .join('');
 
-    settleProjectResults();
+    if (animate) settleProjectResults();
     applyListColumnOrder();
     bindRowEvents();
     bindQrButtons(tbody);
@@ -9183,14 +9236,14 @@
     window.history.replaceState(null, '', next);
   };
 
-  const applySearch = ({ resetPage = true, syncInputs = false } = {}) => {
+  const applySearch = ({ resetPage = true, syncInputs = false, animate = true } = {}) => {
     markSearchCycleStart();
     if (resetPage) state.page = 1;
     if (syncInputs) {
       if (input && input.value !== state.query) input.value = state.query;
       if (refineInput && refineInput.value !== state.refine) refineInput.value = state.refine;
     }
-    render();
+    render({ animate });
     scheduleUrlSync();
   };
 
@@ -9369,18 +9422,44 @@
     setListSort(btn.getAttribute('data-sort') || 'name');
   });
 
-  const scheduleColumnFilter = debouncePaint(() => {
-    applySearch({ resetPage: true, syncInputs: false });
-  }, 70);
-
-  listFilterRow?.addEventListener('input', (event) => {
-    const filterInput = event.target.closest('[data-filter]');
-    if (!filterInput) return;
+  const applyColumnFilterFromInput = (filterInput) => {
     const key = filterInput.getAttribute('data-filter') || '';
     if (!Object.prototype.hasOwnProperty.call(state.filters, key)) return;
-    state.filters[key] = filterInput.value;
-    scheduleColumnFilter();
+    const next = filterInput.value;
+    if (state.filters[key] === next) return;
+    state.filters[key] = next;
+    applySearch({ resetPage: true, syncInputs: false, animate: false });
+  };
+
+  listFilterRow?.addEventListener('change', (event) => {
+    const filterInput = event.target.closest('[data-filter]');
+    if (!filterInput) return;
+    applyColumnFilterFromInput(filterInput);
   });
+
+  listFilterRow?.addEventListener('search', (event) => {
+    const filterInput = event.target.closest('[data-filter]');
+    if (!filterInput) return;
+    applyColumnFilterFromInput(filterInput);
+  });
+
+  listFilterRow?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const filterInput = event.target.closest('[data-filter]');
+    if (!filterInput || String(filterInput.tagName || '').toLowerCase() === 'select') return;
+    event.preventDefault();
+    applyColumnFilterFromInput(filterInput);
+  });
+
+  listFilterRow?.addEventListener(
+    'blur',
+    (event) => {
+      const filterInput = event.target.closest('[data-filter]');
+      if (!filterInput || String(filterInput.tagName || '').toLowerCase() === 'select') return;
+      applyColumnFilterFromInput(filterInput);
+    },
+    true
+  );
 
   listFilterToggle?.addEventListener('click', () => {
     state.filtersOpen = !state.filtersOpen;

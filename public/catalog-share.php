@@ -612,12 +612,12 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                                     </tr>
                                     <tr class="sharepoint-table-filters" id="sharepoint-table-filters">
                                         <th scope="col" class="sharepoint-select-col" data-col="select"></th>
-                                        <th scope="col" data-col="name"><input type="search" class="sharepoint-col-filter" data-filter="name" placeholder="Filter project…" autocomplete="off" aria-label="Filter by project name"></th>
-                                        <th scope="col" data-col="match"><input type="search" class="sharepoint-col-filter" data-filter="match" placeholder="Type / catalog…" autocomplete="off" aria-label="Filter by match, type, or catalog"></th>
+                                        <th scope="col" data-col="name"><input type="search" class="sharepoint-col-filter" data-filter="name" list="sharepoint-filter-name-list" placeholder="Filter project…" autocomplete="off" aria-label="Filter by project name"><datalist id="sharepoint-filter-name-list"></datalist></th>
+                                        <th scope="col" data-col="match"><input type="search" class="sharepoint-col-filter" data-filter="match" list="sharepoint-filter-match-list" placeholder="Type / catalog…" autocomplete="off" aria-label="Filter by match, type, or catalog"><datalist id="sharepoint-filter-match-list"></datalist></th>
                                         <th scope="col" data-col="items"><input type="search" class="sharepoint-col-filter" data-filter="items" placeholder="Count…" autocomplete="off" aria-label="Filter by item counts"></th>
                                         <th scope="col" data-col="modified"><input type="search" class="sharepoint-col-filter" data-filter="modified" placeholder="Date…" autocomplete="off" aria-label="Filter by modified date"></th>
-                                        <th scope="col" data-col="modified_by"><input type="search" class="sharepoint-col-filter" data-filter="modified_by" placeholder="Name…" autocomplete="off" aria-label="Filter by modified by"></th>
-                                        <th scope="col" data-col="created_by"><input type="search" class="sharepoint-col-filter" data-filter="created_by" placeholder="Name…" autocomplete="off" aria-label="Filter by created by"></th>
+                                        <th scope="col" data-col="modified_by"><select class="sharepoint-col-filter" data-filter="modified_by" aria-label="Filter by modified by" title="Choose who last modified"><option value="">All</option></select></th>
+                                        <th scope="col" data-col="created_by"><select class="sharepoint-col-filter" data-filter="created_by" aria-label="Filter by created by" title="Choose who created"><option value="">All</option></select></th>
                                         <th scope="col" class="sharepoint-filter-actions" data-col="actions">
                                             <button type="button" class="button ghost sharepoint-filters-clear is-hidden" id="sharepoint-filters-clear" title="Clear column filters">Clear</button>
                                         </th>
