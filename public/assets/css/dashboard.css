@@ -22143,6 +22143,25 @@ html.is-compact .help-reader-toolbar {
     width: min(32rem, calc(100vw - 2rem));
     max-width: 100%;
 }
+.sp-portfolio-map-dialog .sp-dialog-drag-handle {
+    cursor: move;
+    user-select: none;
+    touch-action: none;
+}
+.sp-portfolio-map-dialog.is-placed {
+    margin: 0;
+    position: fixed;
+    inset: unset;
+    transform: none;
+}
+.sp-portfolio-map-dialog.is-dragging {
+    user-select: none;
+    transition: none;
+}
+.sp-portfolio-map-dialog.is-dragging,
+.sp-portfolio-map-dialog.is-dragging * {
+    cursor: grabbing !important;
+}
 .sp-portfolio-map-fields {
     display: grid;
     gap: 0.85rem;

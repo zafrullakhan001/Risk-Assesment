@@ -1705,6 +1705,86 @@
   const NEW_PORTFOLIO_VALUE = '__new_portfolio__';
   const NEW_SUB_VALUE = '__new_sub__';
 
+  const bindMovablePortfolioDialog = (dialog) => {
+    if (!dialog || dialog.dataset.movableBound === '1') return;
+    dialog.dataset.movableBound = '1';
+    const head = dialog.querySelector('.sp-dialog-drag-handle');
+    if (!head) return;
+
+    let drag = null;
+
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+    const applyPosition = (left, top) => {
+      const maxLeft = Math.max(0, window.innerWidth - 120);
+      const maxTop = Math.max(0, window.innerHeight - 80);
+      dialog.classList.add('is-placed');
+      dialog.style.margin = '0';
+      dialog.style.transform = 'none';
+      dialog.style.right = 'auto';
+      dialog.style.bottom = 'auto';
+      dialog.style.left = `${Math.round(clamp(left, -40, maxLeft))}px`;
+      dialog.style.top = `${Math.round(clamp(top, 0, maxTop))}px`;
+    };
+
+    const resetPosition = () => {
+      drag = null;
+      dialog.classList.remove('is-dragging', 'is-placed');
+      dialog.style.left = '';
+      dialog.style.top = '';
+      dialog.style.right = '';
+      dialog.style.bottom = '';
+      dialog.style.margin = '';
+      dialog.style.transform = '';
+    };
+
+    head.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      if (event.target.closest('button, a, input, select, textarea, label')) return;
+      const rect = dialog.getBoundingClientRect();
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originLeft: rect.left,
+        originTop: rect.top,
+      };
+      dialog.classList.add('is-dragging', 'is-placed');
+      applyPosition(rect.left, rect.top);
+      try {
+        head.setPointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
+      event.preventDefault();
+    });
+
+    head.addEventListener('pointermove', (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      applyPosition(
+        drag.originLeft + (event.clientX - drag.startX),
+        drag.originTop + (event.clientY - drag.startY)
+      );
+    });
+
+    const endDrag = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      drag = null;
+      dialog.classList.remove('is-dragging');
+      try {
+        head.releasePointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    head.addEventListener('pointerup', endDrag);
+    head.addEventListener('pointercancel', endDrag);
+    dialog.addEventListener('close', resetPosition);
+  };
+
+  bindMovablePortfolioDialog(mapDialog);
+
   const setMapError = (message) => {
     if (!mapError) return;
     if (!message) {
@@ -2390,6 +2470,8 @@
   const importError = document.getElementById('sp-portfolio-import-error');
   const importResult = document.getElementById('sp-portfolio-import-result');
   const importSave = document.getElementById('sp-portfolio-import-save');
+
+  bindMovablePortfolioDialog(importDialog);
 
   const setImportError = (message) => {
     if (!importError) return;

@@ -752,7 +752,7 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
 
             <dialog class="response-dialog sp-portfolio-map-dialog" id="sp-portfolio-map-dialog" aria-labelledby="sp-portfolio-map-dialog-title">
                 <form class="response-dialog-form sp-portfolio-map-form" id="sp-portfolio-map-form" action="#" method="dialog">
-                    <div class="response-dialog-head">
+                    <div class="response-dialog-head sp-dialog-drag-handle">
                         <div>
                             <div class="eyebrow">Portfolio mapping</div>
                             <h3 id="sp-portfolio-map-dialog-title">Reassign portfolio</h3>
@@ -804,7 +804,7 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
 
             <dialog class="response-dialog sp-portfolio-map-dialog" id="sp-portfolio-import-dialog" aria-labelledby="sp-portfolio-import-dialog-title">
                 <form class="response-dialog-form sp-portfolio-import-form" id="sp-portfolio-import-form" action="#" method="dialog" enctype="multipart/form-data">
-                    <div class="response-dialog-head">
+                    <div class="response-dialog-head sp-dialog-drag-handle">
                         <div>
                             <div class="eyebrow">Portfolio mapping</div>
                             <h3 id="sp-portfolio-import-dialog-title">Import CSV</h3>
