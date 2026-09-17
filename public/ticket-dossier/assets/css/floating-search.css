@@ -204,6 +204,19 @@ body.dossier-search-resizing {
         flex: 0 0 auto;
     }
 
+    .global-search[data-mode="docked"] .search-scope-filters {
+        flex: 0 0 auto;
+        margin-top: 8px;
+        gap: 4px;
+        max-height: 72px;
+        overflow: auto;
+    }
+
+    .global-search[data-mode="docked"] .search-scope-chip {
+        padding: 3px 9px;
+        font-size: 10px;
+    }
+
     .global-search[data-mode="docked"] .search-jumps {
         position: relative;
         z-index: 2;
@@ -221,7 +234,7 @@ body.dossier-search-resizing {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
-        gap: 4px;
+        gap: 2px 3px;
     }
 
     .global-search[data-mode="docked"] .search-jump-chip {
@@ -278,7 +291,10 @@ body.dossier-search-resizing {
     .global-search[data-mode="docked"] .search-match-list {
         max-height: none;
         flex: 1 1 auto;
-        overflow: auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        gap: 4px;
     }
 
     .global-search[data-mode="docked"] .search-resize-handle {
@@ -370,7 +386,7 @@ body.dossier-search-resizing {
     .global-search[data-mode="docked"] .search-jumps-list {
         display: flex;
         flex-wrap: wrap;
-        gap: 5px;
+        gap: 2px 3px;
     }
 
     .global-search[data-mode="docked"] .search-jump {
@@ -380,6 +396,9 @@ body.dossier-search-resizing {
 
     .global-search[data-mode="docked"] .search-match-list {
         max-height: min(36vh, 280px);
+        min-height: 0;
+        overflow-y: auto;
+        gap: 4px;
     }
 
     .global-search[data-mode="docked"] .search-resize-handle {

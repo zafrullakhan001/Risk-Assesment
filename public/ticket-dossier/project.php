@@ -102,6 +102,8 @@ $ribbon = [
     <link rel="stylesheet" href="<?= e($auth->publicPrefix()) ?>assets/css/dashboard.css?v=<?= e(dashboardCssVersion()) ?>">
     <link rel="stylesheet" href="assets/css/app.css?v=<?= e($cssV) ?>">
     <link rel="stylesheet" href="assets/css/floating-search.css?v=<?= e($floatingCssV) ?>">
+    <link rel="stylesheet" href="assets/css/search-tile-animations.css?v=<?= e($cssV) ?>">
+    <link rel="stylesheet" href="assets/css/search-animation-picker.css?v=<?= e($cssV) ?>">
 </head>
 <body>
 <div class="shell dossier-page">
@@ -277,6 +279,21 @@ $ribbon = [
                         aria-pressed="true"
                         title="When on, includes close spellings and sounds-like matches"
                     >Fuzzy</button>
+                    <button
+                        type="button"
+                        class="search-anim-toggle"
+                        id="search-anim-toggle"
+                        aria-expanded="false"
+                        aria-haspopup="dialog"
+                        title="Choose entrance animation for search matches"
+                    >✨ Anim</button>
+                </div>
+                <div class="search-scope-filters" id="search-scope-filters" role="group" aria-label="Search scope">
+                    <button type="button" class="search-scope-chip is-active" data-scope="all" aria-pressed="true">All</button>
+                    <button type="button" class="search-scope-chip" data-scope="demand" aria-pressed="false" hidden>Demand</button>
+                    <button type="button" class="search-scope-chip" data-scope="story" aria-pressed="false" hidden>Story</button>
+                    <button type="button" class="search-scope-chip" data-scope="task" aria-pressed="false" hidden>Task</button>
+                    <button type="button" class="search-scope-chip" data-scope="ddr" aria-pressed="false" hidden>Due Diligence</button>
                 </div>
                 <div class="search-jumps" id="search-jumps" aria-label="Jump to people, vendor, and custom presets">
                     <div class="search-jumps-head">
@@ -1012,6 +1029,8 @@ $ribbon = [
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/theme.js?v=<?= e(themeJsVersion()) ?>"></script>
 <script src="<?= e($auth->publicPrefix()) ?>assets/js/fuzzy-search.js?v=<?= e(fuzzySearchJsVersion()) ?>"></script>
 <script src="assets/js/floating-search.js?v=<?= e($floatingJsV) ?>"></script>
+<script src="assets/js/search-animations-catalog.js?v=<?= e($jsV) ?>"></script>
+<script src="assets/js/search-animation-picker.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/app.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/servicenow-record-links.js?v=<?= e($jsV) ?>"></script>
 <script src="assets/js/servicenow-console-sync.js?v=<?= e($jsV) ?>"></script>

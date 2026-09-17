@@ -39,11 +39,13 @@
         const topbar = document.querySelector('.topbar');
         const tabs = document.querySelector('.dash-tabs');
         const actionTabs = document.querySelector('.action-tabs');
+        const sectionNav = document.querySelector('.section-nav');
         if (topbar) {
             root.style.setProperty('--topbar-sticky-height', `${Math.ceil(topbar.getBoundingClientRect().height)}px`);
         }
         root.style.setProperty('--dash-tabs-sticky-height', stickyHeight(tabs));
         root.style.setProperty('--action-tabs-sticky-height', stickyHeight(actionTabs));
+        root.style.setProperty('--section-nav-sticky-height', stickyHeight(sectionNav));
     };
 
     const watchStickyOffsets = () => {
@@ -54,7 +56,7 @@
         const observer = new ResizeObserver(() => {
             syncStickyOffsets();
         });
-        ['.topbar', '.dash-tabs', '.action-tabs'].forEach((selector) => {
+        ['.topbar', '.dash-tabs', '.action-tabs', '.section-nav'].forEach((selector) => {
             const element = document.querySelector(selector);
             if (element) {
                 observer.observe(element);

@@ -49,6 +49,7 @@
     --topbar-sticky-height: calc(var(--brand-mark-size, 56px) + 42px);
     --dash-tabs-sticky-height: 0px;
     --action-tabs-sticky-height: 0px;
+    --section-nav-sticky-height: 0px;
 }
 
 [data-theme="indigo"] {
@@ -100,7 +101,7 @@
 html {
     --sp-col-resize-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 16h10'/%3E%3Cpath d='M12 11L6 16l6 5'/%3E%3Cpath d='M20 11l6 5-6 5'/%3E%3C/g%3E%3Cg fill='none' stroke='%230f172a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 16h10'/%3E%3Cpath d='M12 11L6 16l6 5'/%3E%3Cpath d='M20 11l6 5-6 5'/%3E%3C/g%3E%3C/svg%3E") 16 16, ew-resize;
     scroll-behavior: smooth;
-    scroll-padding-top: calc(var(--topbar-sticky-height) + var(--dash-tabs-sticky-height) + var(--action-tabs-sticky-height) + 12px);
+    scroll-padding-top: calc(var(--topbar-sticky-height) + var(--dash-tabs-sticky-height) + var(--action-tabs-sticky-height) + var(--section-nav-sticky-height, 0px) + 12px);
 }
 
 body {

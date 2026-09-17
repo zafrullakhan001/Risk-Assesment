@@ -22,9 +22,19 @@ function dashboardCssVersion(): string
 
 function cssVersion(): string
 {
-    $path = TD_ROOT . '/assets/css/app.css';
+    $paths = [
+        TD_ROOT . '/assets/css/app.css',
+        TD_ROOT . '/assets/css/search-animation-picker.css',
+        TD_ROOT . '/assets/css/search-tile-animations.css',
+    ];
+    $mtime = 0;
+    foreach ($paths as $path) {
+        if (is_file($path)) {
+            $mtime = max($mtime, (int) filemtime($path));
+        }
+    }
 
-    return is_file($path) ? (string) filemtime($path) : '1';
+    return $mtime > 0 ? (string) $mtime : '1';
 }
 
 function floatingSearchCssVersion(): string
@@ -65,6 +75,8 @@ function jsVersion(): string
         TD_ROOT . '/assets/js/servicenow-console-sync.js',
         TD_ROOT . '/assets/js/servicenow-console-ui.js',
         TD_ROOT . '/assets/js/servicenow-record-links.js',
+        TD_ROOT . '/assets/js/search-animations-catalog.js',
+        TD_ROOT . '/assets/js/search-animation-picker.js',
     ];
     $mtime = 0;
     foreach ($paths as $path) {

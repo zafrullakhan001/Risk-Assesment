@@ -495,6 +495,7 @@
     var activeMatchIndex = -1;
     var HIDE_DUPS_KEY = 'ticket_dossier_search_hide_dups';
     var FUZZY_KEY = 'ticket_dossier_search_fuzzy';
+    var SCOPE_KEY = 'ticket_dossier_search_scope_v1';
     var hideDuplicateMatches = readHideDupsPref();
     var fuzzyEnabled = readFuzzyPref();
     var pulseTimer = 0;
@@ -511,38 +512,70 @@
         'section-assessments': 8,
         'section-files': 9
     };
+    var SEARCH_SCOPES = {
+        all: { id: 'all', label: 'All', sectionIds: null },
+        demand: { id: 'demand', label: 'Demand', sectionIds: ['section-demand'] },
+        story: { id: 'story', label: 'Story', sectionIds: ['section-story'] },
+        task: { id: 'task', label: 'Task', sectionIds: ['section-task'] },
+        ddr: { id: 'ddr', label: 'Due Diligence', sectionIds: ['section-ddr', 'section-vendor', 'section-assessments'] }
+    };
+    var SCOPE_SECTION_PROBE = {
+        demand: ['section-demand'],
+        story: ['section-story'],
+        task: ['section-task'],
+        ddr: ['section-ddr', 'section-vendor']
+    };
+    var PEOPLE_LABEL_ALIASES = [
+        'vendor', 'third party vendor', 'business owner', 'ait executive sponsor', 'executive sponsor',
+        'ait product owner', 'product owner', 'ait product manager', 'product manager',
+        'ait demand manager', 'demand manager', 'requested by', 'requester', 'requestor',
+        'assignee', 'assigned to', 'owner', 'funding cfo', 'submitted by', 'opened by',
+        'watch list', 'affected user', 'first name', 'last name', 'requesting vp',
+        'additional assignee list', 'portfolio manager', 'support owner', 'peer reviewer', 'qa assignee'
+    ];
     var ROLE_SHORTCUTS = [
-        { id: 'vendor', label: 'Vendor', emoji: '🏢', aliases: ['vendor', 'third party vendor'] },
-        { id: 'business-owner', label: 'Biz Owner', emoji: '👔', aliases: ['business owner'] },
-        { id: 'sponsor', label: 'Sponsor', emoji: '⭐', aliases: ['ait executive sponsor', 'executive sponsor'] },
-        { id: 'product-owner', label: 'Prod Owner', emoji: '🧩', aliases: ['ait product owner', 'product owner'] },
-        { id: 'product-manager', label: 'Prod Mgr', emoji: '🧭', aliases: ['ait product manager', 'product manager'] },
-        { id: 'demand-manager', label: 'Demand Mgr', emoji: '📋', aliases: ['ait demand manager', 'demand manager'] },
-        { id: 'requested-by', label: 'Requester', emoji: '🙋', aliases: ['requested by', 'requester'] },
-        { id: 'assignee', label: 'Assignee', emoji: '✅', aliases: ['assignee', 'assigned to'] },
-        { id: 'owner', label: 'Owner', emoji: '👤', aliases: ['owner'] }
+        { id: 'vendor', label: 'Vendor', emoji: '🏢', aliases: ['vendor', 'third party vendor'], scopes: ['all', 'demand', 'task', 'ddr'] },
+        { id: 'business-owner', label: 'Biz Owner', emoji: '👔', aliases: ['business owner'], scopes: ['all', 'demand'] },
+        { id: 'sponsor', label: 'Sponsor', emoji: '⭐', aliases: ['ait executive sponsor', 'executive sponsor'], scopes: ['all', 'demand', 'ddr'] },
+        { id: 'product-owner', label: 'Prod Owner', emoji: '🧩', aliases: ['ait product owner', 'product owner'], scopes: ['all', 'demand'] },
+        { id: 'product-manager', label: 'Prod Mgr', emoji: '🧭', aliases: ['ait product manager', 'product manager'], scopes: ['all', 'demand'] },
+        { id: 'demand-manager', label: 'Demand Mgr', emoji: '📋', aliases: ['ait demand manager', 'demand manager'], scopes: ['all', 'demand'] },
+        { id: 'requested-by', label: 'Requester', emoji: '🙋', aliases: ['requested by', 'requester'], scopes: ['all', 'story', 'task'] },
+        { id: 'requestor', label: 'Requestor', emoji: '🙋', aliases: ['requestor'], scopes: ['ddr'] },
+        { id: 'assignee', label: 'Assignee', emoji: '✅', aliases: ['assignee', 'assigned to'], scopes: ['all', 'story', 'task'] },
+        { id: 'owner', label: 'Owner', emoji: '👤', aliases: ['owner'], scopes: ['all', 'story', 'ddr'] },
+        { id: 'funding-cfo-role', label: 'Funding CFO', emoji: '💰', aliases: ['funding cfo'], scopes: ['demand'] },
+        { id: 'contacts', label: 'Contacts', emoji: '👥', match: 'people', scopes: ['all', 'demand', 'story', 'task', 'ddr'] },
+        { id: 'emails', label: 'Emails', emoji: '✉️', match: 'email', scopes: ['all', 'demand', 'story', 'task', 'ddr'] },
+        { id: 'phone', label: 'Phone', emoji: '📞', match: 'phone', scopes: ['all', 'task', 'ddr'] }
     ];
     var TOPIC_SHORTCUTS = [
-        { id: 'assessments', label: 'Assessments', emoji: '📝', query: 'assessment', sectionId: 'section-assessments' },
-        { id: 'business-case', label: 'Biz case', emoji: '💡', aliases: ['business case'], query: 'business case' },
-        { id: 'funding-cfo', label: 'Funding CFO', emoji: '💰', aliases: ['funding cfo'] },
-        { id: 'funding-status', label: 'Funding', emoji: '💵', aliases: ['funding status', 'funding'] },
-        { id: 'priority', label: 'Priority', emoji: '⚡', aliases: ['priority', 'priority alignment'] },
-        { id: 'portfolio', label: 'Portfolio', emoji: '📁', aliases: ['portfolio'] },
-        { id: 'classification', label: 'Class', emoji: '🏷️', aliases: ['classification', 'extract classification'] },
-        { id: 'state', label: 'State', emoji: '📌', aliases: ['state'] },
-        { id: 'go-live', label: 'Go-Live', emoji: '🚀', aliases: ['qp-go-live', 'qp go live', 'go live', 'planned go live'] },
-        { id: 'tprm', label: 'TPRM', emoji: '🛡️', query: 'TPRM', aliases: ['tprm recommendation'] },
-        { id: 'risk', label: 'Risk', emoji: '⚠️', query: 'risk' },
-        { id: 'description', label: 'Desc', emoji: '📄', aliases: ['description'] },
-        { id: 'related', label: 'Related', emoji: '🔗', query: 'related', sectionId: 'section-related' },
-        { id: 'ddr', label: 'DDR', emoji: '🛡️', query: 'DDR', sectionId: 'section-ddr' },
-        { id: 'exceptions', label: 'Exceptions', emoji: '⛔', query: 'exception', aliases: ['exception', 'exceptions', 'exception status'] }
+        { id: 'assessments', label: 'Assessments', emoji: '📝', query: 'assessment', sectionId: 'section-assessments', scopes: ['all', 'ddr'] },
+        { id: 'business-case', label: 'Biz case', emoji: '💡', aliases: ['business case'], query: 'business case', scopes: ['all', 'demand'] },
+        { id: 'funding-cfo', label: 'Funding CFO', emoji: '💰', aliases: ['funding cfo'], scopes: ['all'] },
+        { id: 'funding-status', label: 'Funding', emoji: '💵', aliases: ['funding status', 'funding'], scopes: ['all', 'demand'] },
+        { id: 'priority', label: 'Priority', emoji: '⚡', aliases: ['priority', 'priority alignment'], scopes: ['all', 'demand', 'story', 'task'] },
+        { id: 'portfolio', label: 'Portfolio', emoji: '📁', aliases: ['portfolio'], scopes: ['all', 'demand'] },
+        { id: 'classification', label: 'Class', emoji: '🏷️', aliases: ['classification', 'extract classification'], scopes: ['all', 'demand'] },
+        { id: 'state', label: 'State', emoji: '📌', aliases: ['state'], scopes: ['all', 'story', 'task'] },
+        { id: 'go-live', label: 'Go-Live', emoji: '🚀', aliases: ['qp-go-live', 'qp go live', 'go live', 'planned go live'], scopes: ['all', 'demand'] },
+        { id: 'tprm', label: 'TPRM', emoji: '🛡️', query: 'TPRM', aliases: ['tprm recommendation'], scopes: ['all', 'ddr'] },
+        { id: 'risk', label: 'Risk', emoji: '⚠️', query: 'risk', scopes: ['all', 'ddr'] },
+        { id: 'description', label: 'Desc', emoji: '📄', aliases: ['description'], scopes: ['all', 'demand', 'story', 'task'] },
+        { id: 'related', label: 'Related', emoji: '🔗', query: 'related', sectionId: 'section-related', scopes: ['all', 'story'] },
+        { id: 'ddr', label: 'DDR', emoji: '🛡️', query: 'DDR', sectionId: 'section-ddr', scopes: ['all'] },
+        { id: 'exceptions', label: 'Exceptions', emoji: '⛔', query: 'exception', aliases: ['exception', 'exceptions', 'exception status'], scopes: ['all', 'demand', 'ddr'] },
+        { id: 'assignment-group', label: 'Assignment grp', emoji: '🗂️', aliases: ['assignment group'], scopes: ['all', 'story', 'task'] },
+        { id: 'submitted-by', label: 'Submitted By', emoji: '📨', aliases: ['submitted by'], scopes: ['all'] },
+        { id: 'watch-list', label: 'Watch list', emoji: '👀', aliases: ['watch list'], scopes: ['story'] },
+        { id: 'third-party', label: 'Third party', emoji: '🏢', aliases: ['third party', 'third-party name', 'third party vendor'], query: 'third party', scopes: ['ddr'] }
     ];
     var EMPTYISH = ['', '—', '-', 'n/a', 'na', 'none', 'null', 'unknown', 'unknown owner', 'no answer', 'false'];
     var PRESET_STORAGE_KEY = 'ticket_dossier_search_presets_v1';
     var MAX_CUSTOM_PRESETS = 24;
     var searchJumpsListEl = document.getElementById('search-jumps-list');
+    var searchScopeFiltersEl = document.getElementById('search-scope-filters');
+    var activeSearchScope = readSearchScope();
     var presetManageBtn = document.getElementById('search-preset-manage');
     var presetForm = document.getElementById('search-preset-form');
     var presetNameInput = document.getElementById('preset-name');
@@ -799,6 +832,7 @@
 
         searchableElements = bag.items;
         invalidatePresetCountCache();
+        updateScopeChips();
         renderRoleShortcuts();
     }
 
@@ -832,6 +866,192 @@
             return SECTION_PREF[sectionId];
         }
         return 20;
+    }
+
+    function readSearchScope() {
+        try {
+            var raw = window.localStorage.getItem(SCOPE_KEY);
+            if (raw && SEARCH_SCOPES[raw]) return raw;
+        } catch (err) {
+            // Ignore storage failures.
+        }
+        return 'all';
+    }
+
+    function writeSearchScope(scopeId) {
+        try {
+            window.localStorage.setItem(SCOPE_KEY, scopeId);
+        } catch (err) {
+            // Ignore storage failures.
+        }
+    }
+
+    function scopeSectionIds(scopeId) {
+        var scope = SEARCH_SCOPES[scopeId || activeSearchScope] || SEARCH_SCOPES.all;
+        return scope.sectionIds;
+    }
+
+    function itemInScope(item, scopeId) {
+        var ids = scopeSectionIds(scopeId);
+        if (!ids) return true;
+        return ids.indexOf(item && item.sectionId) !== -1;
+    }
+
+    function scopedItems(scopeId) {
+        var ids = scopeSectionIds(scopeId);
+        if (!ids) return searchableElements;
+        return searchableElements.filter(function (item) {
+            return ids.indexOf(item.sectionId) !== -1;
+        });
+    }
+
+    function shortcutInScope(shortcut, scopeId) {
+        var scope = scopeId || activeSearchScope;
+        var scopes = shortcut.scopes;
+        if (!scopes || !scopes.length) {
+            return scope === 'all';
+        }
+        return scopes.indexOf(scope) !== -1;
+    }
+
+    function looksLikeEmail(value) {
+        return /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(String(value || ''));
+    }
+
+    function labelLooksLikeEmail(label) {
+        var lab = normalizeLabel(label);
+        return lab.indexOf('email') !== -1;
+    }
+
+    function labelLooksLikePhone(label) {
+        var lab = normalizeLabel(label);
+        return lab.indexOf('phone') !== -1 || lab.indexOf('contact number') !== -1;
+    }
+
+    function labelLooksLikePeople(label) {
+        var lab = normalizeLabel(label);
+        if (!lab) return false;
+        if (PEOPLE_LABEL_ALIASES.indexOf(lab) !== -1) return true;
+        if (lab.indexOf('contact') !== -1 && lab.indexOf('email') === -1 && lab.indexOf('number') === -1 && lab.indexOf('type') === -1) {
+            return true;
+        }
+        return false;
+    }
+
+    function itemMatchesSpecial(item, matchType) {
+        if (!item || isPlaceholderValue(item.originalText)) return false;
+        if (matchType === 'email') {
+            return labelLooksLikeEmail(item.label) || looksLikeEmail(item.originalText);
+        }
+        if (matchType === 'phone') {
+            return labelLooksLikePhone(item.label);
+        }
+        if (matchType === 'people') {
+            return labelLooksLikePeople(item.label);
+        }
+        return false;
+    }
+
+    function collectSpecialMatches(matchType, scopeId) {
+        var out = [];
+        scopedItems(scopeId).forEach(function (item) {
+            if (itemMatchesSpecial(item, matchType)) out.push(item);
+        });
+        out.sort(function (a, b) {
+            return sectionRank(a.sectionId) - sectionRank(b.sectionId);
+        });
+        return out;
+    }
+
+    function countSpecialMatches(matchType, scopeId) {
+        return collectSpecialMatches(matchType, scopeId).length;
+    }
+
+    function runSpecialMatcher(shortcut) {
+        openFloatingSearch({ focus: false, collapsed: false });
+        var items = collectSpecialMatches(shortcut.match, activeSearchScope);
+        if (items.length === 0) {
+            syncFloatingSearch({ open: true });
+            return;
+        }
+        var displayQuery = shortcut.label;
+        if (globalSearchInput) {
+            globalSearchInput.value = displayQuery;
+            if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+        }
+        clearHighlights();
+        lastSearchQuery = displayQuery;
+        lastParsedQuery = parseSearchQuery(displayQuery);
+        lastMatches = items.map(function (item) {
+            return {
+                item: item,
+                score: 100,
+                kind: 'exact',
+                token: '',
+                snippet: item.originalText || item.label
+            };
+        });
+        activeMatchIndex = -1;
+        var highlightLimit = Math.min(items.length, 40);
+        var i;
+        for (i = 0; i < highlightLimit; i++) {
+            highlightNeedles(items[i].element, [items[i].label, items[i].originalText]);
+        }
+        renderSearchResults();
+        jumpToMatch(items[0]);
+        syncFloatingSearch({ open: true });
+    }
+
+    function scopeIsAvailable(scopeId) {
+        if (scopeId === 'all') return true;
+        var probes = SCOPE_SECTION_PROBE[scopeId] || [];
+        return probes.some(function (id) {
+            return !!document.getElementById(id);
+        });
+    }
+
+    function setActiveSearchScope(scopeId, options) {
+        options = options || {};
+        if (!SEARCH_SCOPES[scopeId]) scopeId = 'all';
+        if (scopeId !== 'all' && !scopeIsAvailable(scopeId)) scopeId = 'all';
+        activeSearchScope = scopeId;
+        writeSearchScope(scopeId);
+        updateScopeChips();
+        invalidatePresetCountCache();
+        renderRoleShortcuts();
+        if (globalSearchInput && globalSearchInput.value.trim().length >= 2) {
+            var wasDocked = !!(window.TicketDossierFloatingSearch && window.TicketDossierFloatingSearch.isOpen && window.TicketDossierFloatingSearch.isOpen());
+            performSearch(globalSearchInput.value.trim(), wasDocked || options.openDock ? { openDock: true, focus: false } : {});
+        }
+    }
+
+    function updateScopeChips() {
+        if (!searchScopeFiltersEl) return;
+        if (activeSearchScope !== 'all' && !scopeIsAvailable(activeSearchScope)) {
+            activeSearchScope = 'all';
+            writeSearchScope('all');
+        }
+        searchScopeFiltersEl.querySelectorAll('.search-scope-chip').forEach(function (btn) {
+            var scopeId = btn.getAttribute('data-scope') || 'all';
+            var available = scopeIsAvailable(scopeId);
+            btn.hidden = scopeId !== 'all' && !available;
+            var isActive = scopeId === activeSearchScope;
+            btn.classList.toggle('is-active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    }
+
+    function bindScopeChips() {
+        if (!searchScopeFiltersEl) return;
+        searchScopeFiltersEl.addEventListener('click', function (e) {
+            var btn = e.target.closest('.search-scope-chip');
+            if (!btn || !searchScopeFiltersEl.contains(btn)) return;
+            e.preventDefault();
+            var scopeId = btn.getAttribute('data-scope') || 'all';
+            if (scopeId === activeSearchScope) return;
+            setActiveSearchScope(scopeId, { openDock: true });
+        });
+        updateScopeChips();
     }
 
     function isPlaceholderValue(value) {
@@ -905,7 +1125,7 @@
         var normalized = aliases.map(normalizeLabel).filter(Boolean);
         if (!normalized.length) return 0;
         var count = 0;
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var lab = normalizeLabel(item.label);
             if (normalized.indexOf(lab) === -1) return;
             if (isPlaceholderValue(item.originalText)) return;
@@ -918,7 +1138,7 @@
         var needle = normalizeLabel(fieldLabel);
         if (!needle) return 0;
         var count = 0;
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var lab = normalizeLabel(item.label);
             if (!lab) return;
             if (lab === needle || lab.indexOf(needle) !== -1 || (needle.indexOf(lab) !== -1 && lab.length >= 4)) {
@@ -931,13 +1151,13 @@
     function countQueryMatches(query) {
         var q = collapseText(query);
         if (!q || q.length < 2) return 0;
-        var cacheKey = (fuzzyEnabled ? '1' : '0') + '\0' + q.toLowerCase();
+        var cacheKey = activeSearchScope + '\0' + (fuzzyEnabled ? '1' : '0') + '\0' + q.toLowerCase();
         if (Object.prototype.hasOwnProperty.call(presetCountCache, cacheKey)) {
             return presetCountCache[cacheKey];
         }
         var parsed = parseSearchQuery(q);
         var count = 0;
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var scored = scoreItem(item, parsed);
             if (scored && scored.matched) count += 1;
         });
@@ -946,6 +1166,7 @@
     }
 
     function countRoleMatches(role) {
+        if (role.match) return countSpecialMatches(role.match);
         return countAliasMatches(role.aliases || []);
     }
 
@@ -953,7 +1174,7 @@
         var aliasCount = countAliasMatches(topic.aliases || []);
         if (aliasCount > 0) return aliasCount;
         if (topic.query) return countQueryMatches(topic.query);
-        if (topic.sectionId && document.getElementById(topic.sectionId)) return 1;
+        if (topic.sectionId && activeSearchScope === 'all' && document.getElementById(topic.sectionId)) return 1;
         return 0;
     }
 
@@ -1000,7 +1221,7 @@
     function refreshFieldSuggestions() {
         if (!presetFieldSuggestions) return;
         var labels = {};
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var label = collapseText(item.label);
             if (label && !isEmptyish(label)) labels[label] = true;
         });
@@ -1020,7 +1241,7 @@
         if (!needle) return null;
         var best = null;
         var bestScore = -1;
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var lab = normalizeLabel(item.label);
             if (!lab) return;
             if (requireValue && isPlaceholderValue(item.originalText)) return;
@@ -1040,10 +1261,14 @@
     }
 
     function findRoleItem(role) {
-        var aliases = role.aliases.map(normalizeLabel);
+        if (role.match) {
+            var special = collectSpecialMatches(role.match);
+            return special.length ? special[0] : null;
+        }
+        var aliases = (role.aliases || []).map(normalizeLabel);
         var best = null;
         var bestRank = 99;
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var lab = normalizeLabel(item.label);
             if (aliases.indexOf(lab) === -1) return;
             if (isPlaceholderValue(item.originalText)) return;
@@ -1255,8 +1480,10 @@
             searchJumpsListEl = list;
         }
         list.innerHTML = '';
+        list.classList.remove('is-fresh');
 
         ROLE_SHORTCUTS.forEach(function (role) {
+            if (!shortcutInScope(role)) return;
             var count = countRoleMatches(role);
             if (count < 1) return;
             var item = findRoleItem(role);
@@ -1265,8 +1492,14 @@
                 label: role.label,
                 emoji: role.emoji,
                 count: count,
-                title: 'Jump to ' + (role.aliases && role.aliases[0] ? role.aliases[0] : role.label),
+                title: role.match
+                    ? ('Show ' + role.label.toLowerCase() + ' in ' + (SEARCH_SCOPES[activeSearchScope] || SEARCH_SCOPES.all).label)
+                    : ('Jump to ' + (role.aliases && role.aliases[0] ? role.aliases[0] : role.label)),
                 onClick: function () {
+                    if (role.match) {
+                        runSpecialMatcher(role);
+                        return;
+                    }
                     openFloatingSearch({ focus: false, collapsed: false });
                     var roleQuery = (role.aliases && role.aliases[0]) || role.label;
                     if (globalSearchInput) {
@@ -1281,9 +1514,10 @@
         });
 
         TOPIC_SHORTCUTS.forEach(function (topic) {
+            if (!shortcutInScope(topic)) return;
             var count = countTopicMatches(topic);
             var present = count > 0;
-            if (!present && topic.sectionId) {
+            if (!present && topic.sectionId && activeSearchScope === 'all') {
                 present = !!document.getElementById(topic.sectionId);
             }
             appendJumpChip(list, {
@@ -1325,6 +1559,14 @@
         });
 
         searchJumpsEl.classList.toggle('is-empty', list.children.length === 0);
+        if (list.children.length > 0) {
+            // Restart chip appear animation on scope/preset refresh.
+            void list.offsetWidth;
+            list.classList.add('is-fresh');
+            window.setTimeout(function () {
+                list.classList.remove('is-fresh');
+            }, 320);
+        }
     }
 
     function showPresetError(message) {
@@ -1781,7 +2023,19 @@
         list += '</ul>';
 
         searchResultsEl.classList.remove('hidden', 'no-results');
+        searchResultsEl.classList.remove('is-fresh');
         searchResultsEl.innerHTML = head + list;
+        void searchResultsEl.offsetWidth;
+        searchResultsEl.classList.add('is-fresh');
+        if (window.TicketDossierSearchAnimPicker && typeof window.TicketDossierSearchAnimPicker.applyToMatchItems === 'function') {
+            searchResultsEl.classList.add('has-tile-anim');
+            window.TicketDossierSearchAnimPicker.applyToMatchItems(searchResultsEl);
+        } else {
+            searchResultsEl.classList.remove('has-tile-anim');
+        }
+        window.setTimeout(function () {
+            searchResultsEl.classList.remove('is-fresh');
+        }, 900);
 
         var hideBtn = document.getElementById('search-hide-dups');
         if (hideBtn) {
@@ -1829,7 +2083,7 @@
         var parsed = parseSearchQuery(lastSearchQuery);
         lastParsedQuery = parsed;
         var matches = [];
-        searchableElements.forEach(function (item) {
+        scopedItems().forEach(function (item) {
             var scored = scoreItem(item, parsed);
             if (!scored || !scored.matched) return;
             matches.push({
@@ -1875,6 +2129,15 @@
     if (globalSearchInput) {
         initSearchIndex();
         updateFuzzyToggle();
+        bindScopeChips();
+
+        if (window.TicketDossierSearchAnimPicker && typeof window.TicketDossierSearchAnimPicker.onChange === 'function') {
+            window.TicketDossierSearchAnimPicker.onChange(function () {
+                if (lastSearchQuery && lastSearchQuery.length >= 2) {
+                    renderSearchResults();
+                }
+            });
+        }
 
         if (searchFuzzyToggle) {
             searchFuzzyToggle.addEventListener('click', function () {
