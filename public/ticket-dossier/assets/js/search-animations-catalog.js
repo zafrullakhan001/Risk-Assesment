@@ -1836,7 +1836,7 @@
             "icon": "☀️"
         }
     ],
-    "DEFAULT_SEARCH_ANIMATION": "fade-in"
+    "DEFAULT_SEARCH_ANIMATION": "slide-down"
 };
   function getAnimationClass(id) {
     if (!id || id === 'none' || id === 'inherit') return '';

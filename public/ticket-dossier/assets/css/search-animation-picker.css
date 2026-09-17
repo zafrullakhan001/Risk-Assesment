@@ -342,16 +342,28 @@
 }
 
 /* Keep match cards fully sized while LinkNest entrance runs */
-.search-match-item.linknest-tile-animated {
+.search-match-item.linknest-tile-animated,
+.search-jump-chip.linknest-tile-animated {
     will-change: transform, opacity;
 }
 .search-match-list > li {
     overflow: hidden;
 }
+/* Never leave chips/cards stuck invisible if animation is missing or interrupted */
+.search-match-item:not(.linknest-tile-animated),
+.search-jump-chip:not(.linknest-tile-animated) {
+    opacity: 1;
+    transform: none;
+}
+.search-jump-chip.linknest-tile-animated {
+    overflow: visible;
+}
 
 @media (prefers-reduced-motion: reduce) {
     .search-match-item.linknest-tile-animated,
     .search-match-item[class*="tile-anim-"],
+    .search-jump-chip.linknest-tile-animated,
+    .search-jump-chip[class*="tile-anim-"],
     .search-anim-preview-card[class*="tile-anim-"] {
         animation: none !important;
         opacity: 1 !important;

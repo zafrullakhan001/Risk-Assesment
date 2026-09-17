@@ -1963,16 +1963,16 @@ body.field-editor-open {
     align-items: center;
     gap: 3px 4px;
 }
-.search-jumps-list.is-fresh .search-jump-chip {
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip {
     animation: search-chip-appear 0.18s ease-out both;
 }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(1) { animation-delay: 0ms; }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(2) { animation-delay: 12ms; }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(3) { animation-delay: 24ms; }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(4) { animation-delay: 36ms; }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(5) { animation-delay: 48ms; }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(6) { animation-delay: 60ms; }
-.search-jumps-list.is-fresh .search-jump-chip:nth-child(n+7) { animation-delay: 72ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(1) { animation-delay: 0ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(2) { animation-delay: 12ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(3) { animation-delay: 24ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(4) { animation-delay: 36ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(5) { animation-delay: 48ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(6) { animation-delay: 60ms; }
+.search-jumps-list.is-fresh:not(.has-tile-anim) .search-jump-chip:nth-child(n+7) { animation-delay: 72ms; }
 @keyframes search-chip-appear {
     from {
         opacity: 0;

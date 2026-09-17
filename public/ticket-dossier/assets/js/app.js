@@ -1563,9 +1563,15 @@
             // Restart chip appear animation on scope/preset refresh.
             void list.offsetWidth;
             list.classList.add('is-fresh');
+            if (window.TicketDossierSearchAnimPicker && typeof window.TicketDossierSearchAnimPicker.applyToJumpChips === 'function') {
+                list.classList.add('has-tile-anim');
+                window.TicketDossierSearchAnimPicker.applyToJumpChips(list);
+            } else {
+                list.classList.remove('has-tile-anim');
+            }
             window.setTimeout(function () {
                 list.classList.remove('is-fresh');
-            }, 320);
+            }, 900);
         }
     }
 
@@ -2133,6 +2139,7 @@
 
         if (window.TicketDossierSearchAnimPicker && typeof window.TicketDossierSearchAnimPicker.onChange === 'function') {
             window.TicketDossierSearchAnimPicker.onChange(function () {
+                renderRoleShortcuts();
                 if (lastSearchQuery && lastSearchQuery.length >= 2) {
                     renderSearchResults();
                 }

@@ -6,8 +6,9 @@
 
     var STORAGE_KEY = 'ticket_dossier_search_animation_v1';
     var DECOR_KEY = 'ticket_dossier_search_decoration_v1';
+    var FALLBACK_ANIMATION = 'slide-down';
     var catalog = null;
-    var selectedAnimation = 'fade-in';
+    var selectedAnimation = FALLBACK_ANIMATION;
     var selectedDecoration = 'none';
     var activeTab = 'animations';
     var searchQuery = '';
@@ -45,9 +46,13 @@
 
     function normalizeAnimation(id) {
         var cat = api();
-        if (!cat) return 'fade-in';
+        var fallback = (cat && cat.DEFAULT_SEARCH_ANIMATION) || FALLBACK_ANIMATION;
+        if (!id || id === 'inherit') return fallback;
+        // "none" is allowed only when the user explicitly picks it — still valid.
+        if (!cat) return id === 'none' ? 'none' : fallback;
         var found = cat.findAnimation(id);
-        return found && found.id ? found.id : cat.DEFAULT_SEARCH_ANIMATION;
+        if (found && found.id) return found.id;
+        return fallback;
     }
 
     function normalizeDecoration(id) {
@@ -426,29 +431,66 @@
     function applyToMatchItems(root) {
         var host = root || document.getElementById('search-results');
         if (!host) return;
-        var animClass = preferReducedMotion() ? '' : getAnimationClass(selectedAnimation);
-        var decorClass = preferReducedMotion() ? '' : getDecorationClass(selectedDecoration);
-        var items = host.querySelectorAll('.search-match-item');
-        items.forEach(function (el, index) {
-            // Strip previous tile-anim / tile-decor classes.
-            el.className = el.className
-                .split(/\s+/)
-                .filter(function (c) {
-                    return c && c.indexOf('tile-anim-') !== 0 && c.indexOf('tile-decor-') !== 0 && c !== 'linknest-tile-animated';
-                })
-                .join(' ');
-            if (animClass || decorClass) {
-                el.classList.add('linknest-tile-animated');
+        applyEntranceAnimation(host.querySelectorAll('.search-match-item'));
+    }
+
+    function applyToJumpChips(root) {
+        var host = root || document.getElementById('search-jumps-list');
+        if (!host) return;
+        applyEntranceAnimation(host.querySelectorAll('.search-jump-chip'));
+    }
+
+    function stripAnimClasses(el) {
+        el.className = String(el.className || '')
+            .split(/\s+/)
+            .filter(function (c) {
+                return c && c.indexOf('tile-anim-') !== 0 && c.indexOf('tile-decor-') !== 0 && c !== 'linknest-tile-animated';
+            })
+            .join(' ');
+        el.style.animation = '';
+        el.style.animationDelay = '';
+        el.style.opacity = '';
+        el.style.transform = '';
+    }
+
+    function applyEntranceAnimation(nodeList) {
+        var items = nodeList || [];
+        var useMotion = !preferReducedMotion();
+        var animId = selectedAnimation;
+        var animClass = useMotion ? getAnimationClass(animId) : '';
+        var decorClass = useMotion ? getDecorationClass(selectedDecoration) : '';
+        // Always keep chips/cards visible when there is no entrance animation.
+        var shouldAnimate = !!(useMotion && animClass);
+
+        Array.prototype.forEach.call(items, function (el, index) {
+            stripAnimClasses(el);
+            if (!shouldAnimate) {
+                el.style.opacity = '1';
+                el.style.transform = 'none';
+                if (decorClass) el.classList.add(decorClass);
+                return;
             }
-            if (animClass) el.classList.add(animClass);
+            el.classList.add('linknest-tile-animated');
+            el.classList.add(animClass);
             if (decorClass) el.classList.add(decorClass);
-            el.style.animationDelay = preferReducedMotion() ? '0ms' : (Math.min(index, 24) * 35) + 'ms';
+            el.style.animationDelay = (Math.min(index, 24) * 35) + 'ms';
         });
     }
 
     function init() {
         catalog = api();
-        selectedAnimation = normalizeAnimation(readStored(STORAGE_KEY, catalog ? catalog.DEFAULT_SEARCH_ANIMATION : 'fade-in'));
+        var stored = readStored(STORAGE_KEY, '');
+        // First visit (or cleared storage): default to slide-down and persist it.
+        if (!stored) {
+            selectedAnimation = FALLBACK_ANIMATION;
+            writeStored(STORAGE_KEY, selectedAnimation);
+        } else {
+            selectedAnimation = normalizeAnimation(stored);
+            // Keep persistence in sync if an old/invalid id was stored.
+            if (selectedAnimation !== stored) {
+                writeStored(STORAGE_KEY, selectedAnimation);
+            }
+        }
         selectedDecoration = normalizeDecoration(readStored(DECOR_KEY, 'none'));
 
         var btn = document.getElementById('search-anim-toggle');
@@ -473,6 +515,7 @@
         getAnimationClass: function () { return getAnimationClass(selectedAnimation); },
         getDecorationClass: function () { return getDecorationClass(selectedDecoration); },
         applyToMatchItems: applyToMatchItems,
+        applyToJumpChips: applyToJumpChips,
         onChange: function (fn) {
             if (typeof fn === 'function') changeListeners.push(fn);
         },
