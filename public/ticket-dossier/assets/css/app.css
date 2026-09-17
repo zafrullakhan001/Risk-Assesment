@@ -2234,6 +2234,70 @@ body.field-editor-open {
     gap: 8px;
     margin-top: 10px;
 }
+.search-preset-advanced {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed color-mix(in srgb, var(--line) 85%, transparent);
+}
+.search-preset-advanced > summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    user-select: none;
+}
+.search-preset-advanced > summary::-webkit-details-marker {
+    display: none;
+}
+.search-preset-advanced > summary::before {
+    content: '▸ ';
+    color: var(--primary);
+}
+.search-preset-advanced[open] > summary::before {
+    content: '▾ ';
+}
+.search-preset-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    cursor: pointer;
+}
+.search-preset-toggle input {
+    margin-top: 2px;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+.search-preset-toggle span {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.search-preset-toggle strong {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+}
+.search-preset-toggle em {
+    font-style: normal;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--muted);
+}
+.search-jumps.pin-controls-off .search-jump-tabs {
+    display: none;
+}
 .search-preset-error {
     margin: 8px 0 0;
     color: var(--danger);

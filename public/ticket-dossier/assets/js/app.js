@@ -575,6 +575,7 @@
     var RECENT_JUMPS_KEY = 'ticket_dossier_search_recent_jumps_v1';
     var JUMP_TAB_KEY = 'ticket_dossier_search_jump_tab_v1';
     var PINNED_JUMPS_KEY = 'ticket_dossier_search_pinned_jumps_v1';
+    var PIN_CONTROLS_KEY = 'ticket_dossier_search_pin_controls_v1';
     var MAX_RECENT_JUMPS = 8;
     var MAX_CUSTOM_PRESETS = 24;
     // Default Pinned tab set — users can unpin/pin and the choice is saved.
@@ -599,6 +600,7 @@
     var activeJumpTab = readJumpTab();
     var recentJumpIds = loadRecentJumps();
     var pinnedJumpIds = loadPinnedJumps();
+    var pinControlsEnabled = loadPinControlsEnabled();
     var presetManageBtn = document.getElementById('search-preset-manage');
     var presetForm = document.getElementById('search-preset-form');
     var presetNameInput = document.getElementById('preset-name');
@@ -606,6 +608,7 @@
     var presetFieldInput = document.getElementById('preset-field');
     var presetQueryInput = document.getElementById('preset-query');
     var presetExcludeInput = document.getElementById('preset-exclude');
+    var presetPinControlsInput = document.getElementById('preset-pin-controls');
     var presetCancelBtn = document.getElementById('preset-cancel');
     var presetErrorEl = document.getElementById('preset-error');
     var presetFieldSuggestions = document.getElementById('preset-field-suggestions');
@@ -1455,7 +1458,7 @@
         });
         wrap.appendChild(btn);
 
-        if (options.presetId) {
+        if (options.presetId && pinControlsEnabled) {
             var pinToggle = document.createElement('button');
             pinToggle.type = 'button';
             pinToggle.className = 'search-jump-pin-toggle' + (options.pinned ? ' is-pinned' : '');
@@ -1532,6 +1535,65 @@
     function recentJumpRank(presetId) {
         var idx = recentJumpIds.indexOf(presetId);
         return idx === -1 ? 999 : idx;
+    }
+
+    function loadPinControlsEnabled() {
+        try {
+            var raw = window.localStorage.getItem(PIN_CONTROLS_KEY);
+            if (raw === null || raw === undefined || raw === '') {
+                // Classic chip list by default; users opt into pin controls.
+                return false;
+            }
+            return raw === '1' || raw === 'true';
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function savePinControlsEnabled() {
+        try {
+            window.localStorage.setItem(PIN_CONTROLS_KEY, pinControlsEnabled ? '1' : '0');
+        } catch (err) {
+            // Ignore.
+        }
+    }
+
+    function setPinControlsEnabled(enabled) {
+        pinControlsEnabled = !!enabled;
+        savePinControlsEnabled();
+        if (!pinControlsEnabled && activeJumpTab === 'pinned') {
+            activeJumpTab = 'all';
+            writeJumpTab(activeJumpTab);
+        }
+        if (presetPinControlsInput) {
+            presetPinControlsInput.checked = pinControlsEnabled;
+        }
+        if (searchJumpsEl) {
+            searchJumpsEl.classList.toggle('pin-controls-off', !pinControlsEnabled);
+        }
+        if (searchJumpTabsEl) {
+            searchJumpTabsEl.hidden = !pinControlsEnabled;
+            searchJumpTabsEl.setAttribute('aria-hidden', pinControlsEnabled ? 'false' : 'true');
+        }
+        updateJumpTabs();
+        renderRoleShortcuts();
+    }
+
+    function syncPinControlsUi() {
+        if (presetPinControlsInput) {
+            presetPinControlsInput.checked = pinControlsEnabled;
+        }
+        if (searchJumpsEl) {
+            searchJumpsEl.classList.toggle('pin-controls-off', !pinControlsEnabled);
+        }
+        if (searchJumpTabsEl) {
+            searchJumpTabsEl.hidden = !pinControlsEnabled;
+            searchJumpTabsEl.setAttribute('aria-hidden', pinControlsEnabled ? 'false' : 'true');
+        }
+        if (!pinControlsEnabled && activeJumpTab === 'pinned') {
+            activeJumpTab = 'all';
+            writeJumpTab(activeJumpTab);
+        }
     }
 
     function loadPinnedJumps() {
@@ -1625,6 +1687,7 @@
     }
 
     function chipMatchesJumpTab(chip) {
+        if (!pinControlsEnabled) return true;
         if (activeJumpTab === 'pinned') {
             return isUserPinned(chip.presetId);
         }
@@ -1784,34 +1847,38 @@
         chips = chips.filter(chipMatchesJumpTab);
 
         chips.sort(function (a, b) {
-            if (activeJumpTab === 'pinned') {
+            if (pinControlsEnabled && activeJumpTab === 'pinned') {
                 return pinnedJumpRank(a.presetId) - pinnedJumpRank(b.presetId);
             }
-            if (activeJumpTab === 'recent') {
+            if (pinControlsEnabled && activeJumpTab === 'recent') {
                 return recentJumpRank(a.presetId) - recentJumpRank(b.presetId);
             }
             var rankA = recentJumpRank(a.presetId);
             var rankB = recentJumpRank(b.presetId);
-            var pinA = isUserPinned(a.presetId) ? 0 : 1;
-            var pinB = isUserPinned(b.presetId) ? 0 : 1;
-            // All tab: permanent pins first, then recent, then the rest.
-            if (pinA !== pinB) return pinA - pinB;
+            if (pinControlsEnabled) {
+                var pinA = isUserPinned(a.presetId) ? 0 : 1;
+                var pinB = isUserPinned(b.presetId) ? 0 : 1;
+                // All tab: permanent pins first, then recent, then the rest.
+                if (pinA !== pinB) return pinA - pinB;
+            }
             if (rankA !== rankB) return rankA - rankB;
             return a.sortBase - b.sortBase;
         });
 
         chips.forEach(function (chip) {
-            chip.options.pinned = isUserPinned(chip.presetId);
-            chip.options.recent = !chip.options.pinned && recentJumpRank(chip.presetId) < 999;
+            chip.options.pinned = pinControlsEnabled && isUserPinned(chip.presetId);
+            chip.options.recent = pinControlsEnabled
+                && !chip.options.pinned
+                && recentJumpRank(chip.presetId) < 999;
             appendJumpChip(list, chip.options);
         });
 
         if (chips.length === 0) {
             var empty = document.createElement('p');
             empty.className = 'search-jumps-empty';
-            empty.textContent = activeJumpTab === 'pinned'
-                ? 'No pinned presets — tap 📍 on any chip in All to pin it here.'
-                : (activeJumpTab === 'recent'
+            empty.textContent = (pinControlsEnabled && activeJumpTab === 'pinned')
+                ? 'No pinned presets — use Pin on any chip in All to pin it here.'
+                : ((pinControlsEnabled && activeJumpTab === 'recent')
                     ? 'No recent jumps yet — use a preset to pin it here.'
                     : 'No jump presets for this scope.');
             list.appendChild(empty);
@@ -1869,6 +1936,7 @@
         invalidatePresetCountCache();
         renderRoleShortcuts();
         if (presetForm) presetForm.reset();
+        syncPinControlsUi();
         setPresetFormOpen(false);
     }
 
@@ -2395,7 +2463,14 @@
         initSearchIndex();
         updateFuzzyToggle();
         bindScopeChips();
+        syncPinControlsUi();
         bindJumpTabs();
+
+        if (presetPinControlsInput) {
+            presetPinControlsInput.addEventListener('change', function () {
+                setPinControlsEnabled(!!presetPinControlsInput.checked);
+            });
+        }
 
         if (window.TicketDossierSearchAnimPicker && typeof window.TicketDossierSearchAnimPicker.onChange === 'function') {
             window.TicketDossierSearchAnimPicker.onChange(function () {
@@ -2492,6 +2567,7 @@
         if (presetCancelBtn) {
             presetCancelBtn.addEventListener('click', function () {
                 if (presetForm) presetForm.reset();
+                syncPinControlsUi();
                 setPresetFormOpen(false);
             });
         }
@@ -2526,6 +2602,7 @@
             }
         };
     } else if (searchJumpsEl) {
+        syncPinControlsUi();
         renderRoleShortcuts();
     }
 

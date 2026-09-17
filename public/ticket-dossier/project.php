@@ -336,6 +336,16 @@ $ribbon = [
                             <button type="submit" class="button button-primary button-small">Save preset</button>
                             <button type="button" class="button ghost button-small" id="preset-cancel">Cancel</button>
                         </div>
+                        <details class="search-preset-advanced">
+                            <summary>Advanced preset controls</summary>
+                            <label class="search-preset-toggle">
+                                <input type="checkbox" id="preset-pin-controls">
+                                <span>
+                                    <strong>Pin / unpin presets</strong>
+                                    <em>Show All / Pinned / Recent tabs and per-chip Pin controls. Turn off for the classic chip list.</em>
+                                </span>
+                            </label>
+                        </details>
                         <p class="search-preset-error hidden" id="preset-error" role="alert"></p>
                     </form>
                 </div>
