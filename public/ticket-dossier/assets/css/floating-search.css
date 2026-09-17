@@ -222,11 +222,11 @@ body.dossier-search-resizing {
         z-index: 2;
         flex: 0 0 auto;
         flex-shrink: 0;
-        max-height: 150px;
+        max-height: 180px;
         overflow: auto;
         margin-top: 8px;
         pointer-events: auto;
-        padding-bottom: 2px;
+        padding-bottom: 4px;
     }
 
     .global-search[data-mode="docked"] .search-jumps-list {
@@ -234,7 +234,7 @@ body.dossier-search-resizing {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
-        gap: 2px 3px;
+        gap: 6px 8px;
     }
 
     .global-search[data-mode="docked"] .search-jump-chip {
@@ -247,11 +247,11 @@ body.dossier-search-resizing {
 
     .global-search[data-mode="docked"] .search-jump {
         width: auto !important;
-        text-align: center;
-        border-radius: 999px;
-        padding: 2px 8px;
+        text-align: left;
+        border-radius: 0;
+        padding: 4px 10px;
         font-size: 11px;
-        line-height: 1.2;
+        line-height: 1.3;
         pointer-events: auto;
         cursor: pointer;
         white-space: nowrap;
@@ -262,14 +262,11 @@ body.dossier-search-resizing {
         padding: 0 4px;
     }
 
-    .global-search[data-mode="docked"] .search-jump-chip.is-custom .search-jump {
-        border-radius: 999px 0 0 999px;
-        width: auto;
-        flex: 0 1 auto;
+    .global-search[data-mode="docked"] .search-jump-pin-toggle {
+        pointer-events: auto;
     }
 
     .global-search[data-mode="docked"] .search-jump-remove {
-        border-radius: 0 999px 999px 0;
         pointer-events: auto;
     }
 
@@ -386,11 +383,11 @@ body.dossier-search-resizing {
     .global-search[data-mode="docked"] .search-jumps-list {
         display: flex;
         flex-wrap: wrap;
-        gap: 2px 3px;
+        gap: 6px 8px;
     }
 
     .global-search[data-mode="docked"] .search-jump {
-        padding: 3px 9px;
+        padding: 4px 10px;
         font-size: 11px;
     }
 

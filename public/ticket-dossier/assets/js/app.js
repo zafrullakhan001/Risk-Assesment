@@ -572,10 +572,33 @@
     ];
     var EMPTYISH = ['', '—', '-', 'n/a', 'na', 'none', 'null', 'unknown', 'unknown owner', 'no answer', 'false'];
     var PRESET_STORAGE_KEY = 'ticket_dossier_search_presets_v1';
+    var RECENT_JUMPS_KEY = 'ticket_dossier_search_recent_jumps_v1';
+    var JUMP_TAB_KEY = 'ticket_dossier_search_jump_tab_v1';
+    var PINNED_JUMPS_KEY = 'ticket_dossier_search_pinned_jumps_v1';
+    var MAX_RECENT_JUMPS = 8;
     var MAX_CUSTOM_PRESETS = 24;
+    // Default Pinned tab set — users can unpin/pin and the choice is saved.
+    var DEFAULT_PINNED_JUMP_IDS = [
+        'role:contacts',
+        'role:emails',
+        'role:phone',
+        'role:vendor',
+        'role:business-owner',
+        'role:assignee',
+        'role:demand-manager',
+        'topic:assessments',
+        'topic:risk',
+        'topic:description',
+        'topic:state',
+        'topic:related'
+    ];
     var searchJumpsListEl = document.getElementById('search-jumps-list');
+    var searchJumpTabsEl = document.getElementById('search-jump-tabs');
     var searchScopeFiltersEl = document.getElementById('search-scope-filters');
     var activeSearchScope = readSearchScope();
+    var activeJumpTab = readJumpTab();
+    var recentJumpIds = loadRecentJumps();
+    var pinnedJumpIds = loadPinnedJumps();
     var presetManageBtn = document.getElementById('search-preset-manage');
     var presetForm = document.getElementById('search-preset-form');
     var presetNameInput = document.getElementById('preset-name');
@@ -1352,18 +1375,38 @@
 
     function appendJumpChip(list, options) {
         var wrap = document.createElement('div');
-        wrap.className = 'search-jump-chip' + (options.custom ? ' is-custom' : '');
+        wrap.className = 'search-jump-chip'
+            + (options.custom ? ' is-custom' : '')
+            + (options.pinned ? ' is-pinned' : '')
+            + (options.recent ? ' is-recent' : '');
         wrap.setAttribute('role', 'listitem');
+        if (options.presetId) {
+            wrap.setAttribute('data-preset-id', options.presetId);
+        }
 
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'search-jump';
         var count = typeof options.count === 'number' ? options.count : null;
         var title = options.title || options.label;
+        if (options.pinned) {
+            title = 'Pinned · ' + title;
+        } else if (options.recent) {
+            title = 'Recent · ' + title;
+        }
         if (count !== null && count > 0) {
             title += ' — ' + count + ' on this dossier';
         }
         btn.title = title;
+
+        if (options.recent && !options.pinned) {
+            var recentSpan = document.createElement('span');
+            recentSpan.className = 'search-jump-pin';
+            recentSpan.setAttribute('aria-hidden', 'true');
+            recentSpan.textContent = '⏱';
+            btn.appendChild(recentSpan);
+            btn.appendChild(document.createTextNode(' '));
+        }
 
         if (options.emoji) {
             var emojiSpan = document.createElement('span');
@@ -1399,11 +1442,37 @@
         btn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
+            if (options.presetId) {
+                rememberRecentJump(options.presetId);
+            }
             if (typeof options.onClick === 'function') {
                 options.onClick(e);
             }
+            // Reorder after the jump action so recent chips pin to the top.
+            window.setTimeout(function () {
+                renderRoleShortcuts();
+            }, 0);
         });
         wrap.appendChild(btn);
+
+        if (options.presetId) {
+            var pinToggle = document.createElement('button');
+            pinToggle.type = 'button';
+            pinToggle.className = 'search-jump-pin-toggle' + (options.pinned ? ' is-pinned' : '');
+            pinToggle.setAttribute(
+                'aria-label',
+                options.pinned ? ('Unpin ' + options.label) : ('Pin ' + options.label)
+            );
+            pinToggle.title = options.pinned ? 'Unpin from Pinned tab' : 'Pin to Pinned tab';
+            pinToggle.textContent = options.pinned ? 'Pinned' : 'Pin';
+            pinToggle.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                togglePinnedJump(options.presetId);
+                renderRoleShortcuts();
+            });
+            wrap.appendChild(pinToggle);
+        }
 
         if (options.custom && options.onDelete) {
             var remove = document.createElement('button');
@@ -1426,6 +1495,143 @@
         }
 
         list.appendChild(wrap);
+    }
+
+    function loadRecentJumps() {
+        try {
+            var raw = window.localStorage.getItem(RECENT_JUMPS_KEY);
+            if (!raw) return [];
+            var parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed
+                .map(function (id) { return String(id || '').trim(); })
+                .filter(Boolean)
+                .slice(0, MAX_RECENT_JUMPS);
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function saveRecentJumps() {
+        try {
+            window.localStorage.setItem(RECENT_JUMPS_KEY, JSON.stringify(recentJumpIds.slice(0, MAX_RECENT_JUMPS)));
+        } catch (err) {
+            // Ignore quota / private-mode failures.
+        }
+    }
+
+    function rememberRecentJump(presetId) {
+        var id = String(presetId || '').trim();
+        if (!id) return;
+        recentJumpIds = [id].concat(recentJumpIds.filter(function (existing) {
+            return existing !== id;
+        })).slice(0, MAX_RECENT_JUMPS);
+        saveRecentJumps();
+    }
+
+    function recentJumpRank(presetId) {
+        var idx = recentJumpIds.indexOf(presetId);
+        return idx === -1 ? 999 : idx;
+    }
+
+    function loadPinnedJumps() {
+        try {
+            var raw = window.localStorage.getItem(PINNED_JUMPS_KEY);
+            if (raw === null || raw === undefined || raw === '') {
+                return DEFAULT_PINNED_JUMP_IDS.slice();
+            }
+            var parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return DEFAULT_PINNED_JUMP_IDS.slice();
+            return parsed
+                .map(function (id) { return String(id || '').trim(); })
+                .filter(Boolean);
+        } catch (err) {
+            return DEFAULT_PINNED_JUMP_IDS.slice();
+        }
+    }
+
+    function savePinnedJumps() {
+        try {
+            window.localStorage.setItem(PINNED_JUMPS_KEY, JSON.stringify(pinnedJumpIds));
+        } catch (err) {
+            // Ignore.
+        }
+    }
+
+    function isUserPinned(presetId) {
+        return pinnedJumpIds.indexOf(presetId) !== -1;
+    }
+
+    function pinnedJumpRank(presetId) {
+        var idx = pinnedJumpIds.indexOf(presetId);
+        return idx === -1 ? 999 : idx;
+    }
+
+    function togglePinnedJump(presetId) {
+        var id = String(presetId || '').trim();
+        if (!id) return;
+        if (isUserPinned(id)) {
+            pinnedJumpIds = pinnedJumpIds.filter(function (existing) {
+                return existing !== id;
+            });
+        } else {
+            pinnedJumpIds = pinnedJumpIds.concat([id]);
+        }
+        savePinnedJumps();
+    }
+
+    function readJumpTab() {
+        try {
+            var raw = window.localStorage.getItem(JUMP_TAB_KEY);
+            if (raw === 'pinned' || raw === 'recent' || raw === 'all') return raw;
+        } catch (err) {
+            // Ignore.
+        }
+        return 'all';
+    }
+
+    function writeJumpTab(tabId) {
+        try {
+            window.localStorage.setItem(JUMP_TAB_KEY, tabId);
+        } catch (err) {
+            // Ignore.
+        }
+    }
+
+    function updateJumpTabs() {
+        if (!searchJumpTabsEl) return;
+        searchJumpTabsEl.querySelectorAll('.search-jump-tab').forEach(function (btn) {
+            var tabId = btn.getAttribute('data-jump-tab') || 'all';
+            var isActive = tabId === activeJumpTab;
+            btn.classList.toggle('is-active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+    }
+
+    function bindJumpTabs() {
+        if (!searchJumpTabsEl) return;
+        searchJumpTabsEl.addEventListener('click', function (e) {
+            var btn = e.target.closest('.search-jump-tab');
+            if (!btn || !searchJumpTabsEl.contains(btn)) return;
+            e.preventDefault();
+            var tabId = btn.getAttribute('data-jump-tab') || 'all';
+            if (tabId === activeJumpTab) return;
+            activeJumpTab = tabId;
+            writeJumpTab(tabId);
+            updateJumpTabs();
+            renderRoleShortcuts();
+        });
+        updateJumpTabs();
+    }
+
+    function chipMatchesJumpTab(chip) {
+        if (activeJumpTab === 'pinned') {
+            return isUserPinned(chip.presetId);
+        }
+        if (activeJumpTab === 'recent') {
+            return recentJumpRank(chip.presetId) < 999;
+        }
+        return true;
     }
 
     function runTopicShortcut(topic) {
@@ -1482,57 +1688,69 @@
         list.innerHTML = '';
         list.classList.remove('is-fresh');
 
-        ROLE_SHORTCUTS.forEach(function (role) {
+        var chips = [];
+
+        ROLE_SHORTCUTS.forEach(function (role, roleIndex) {
             if (!shortcutInScope(role)) return;
             var count = countRoleMatches(role);
             if (count < 1) return;
             var item = findRoleItem(role);
             if (!item) return;
-            appendJumpChip(list, {
-                label: role.label,
-                emoji: role.emoji,
-                count: count,
-                title: role.match
-                    ? ('Show ' + role.label.toLowerCase() + ' in ' + (SEARCH_SCOPES[activeSearchScope] || SEARCH_SCOPES.all).label)
-                    : ('Jump to ' + (role.aliases && role.aliases[0] ? role.aliases[0] : role.label)),
-                onClick: function () {
-                    if (role.match) {
-                        runSpecialMatcher(role);
-                        return;
+            chips.push({
+                presetId: 'role:' + role.id,
+                sortBase: roleIndex,
+                options: {
+                    presetId: 'role:' + role.id,
+                    label: role.label,
+                    emoji: role.emoji,
+                    count: count,
+                    title: role.match
+                        ? ('Show ' + role.label.toLowerCase() + ' in ' + (SEARCH_SCOPES[activeSearchScope] || SEARCH_SCOPES.all).label)
+                        : ('Jump to ' + (role.aliases && role.aliases[0] ? role.aliases[0] : role.label)),
+                    onClick: function () {
+                        if (role.match) {
+                            runSpecialMatcher(role);
+                            return;
+                        }
+                        openFloatingSearch({ focus: false, collapsed: false });
+                        var roleQuery = (role.aliases && role.aliases[0]) || role.label;
+                        if (globalSearchInput) {
+                            globalSearchInput.value = roleQuery;
+                            performSearch(roleQuery, { openDock: true, focus: false });
+                            if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+                        }
+                        jumpToMatch(item);
+                        syncFloatingSearch({ open: true });
                     }
-                    openFloatingSearch({ focus: false, collapsed: false });
-                    var roleQuery = (role.aliases && role.aliases[0]) || role.label;
-                    if (globalSearchInput) {
-                        globalSearchInput.value = roleQuery;
-                        performSearch(roleQuery, { openDock: true, focus: false });
-                        if (searchClearBtn) searchClearBtn.classList.remove('hidden');
-                    }
-                    jumpToMatch(item);
-                    syncFloatingSearch({ open: true });
                 }
             });
         });
 
-        TOPIC_SHORTCUTS.forEach(function (topic) {
+        TOPIC_SHORTCUTS.forEach(function (topic, topicIndex) {
             if (!shortcutInScope(topic)) return;
             var count = countTopicMatches(topic);
             var present = count > 0;
             if (!present && topic.sectionId && activeSearchScope === 'all') {
                 present = !!document.getElementById(topic.sectionId);
             }
-            appendJumpChip(list, {
-                label: topic.label,
-                emoji: topic.emoji,
-                count: count,
-                missing: !present,
-                title: topic.query ? ('Search “' + topic.query + '”') : ('Jump to ' + topic.label),
-                onClick: function () {
-                    runTopicShortcut(topic);
+            chips.push({
+                presetId: 'topic:' + topic.id,
+                sortBase: 1000 + topicIndex,
+                options: {
+                    presetId: 'topic:' + topic.id,
+                    label: topic.label,
+                    emoji: topic.emoji,
+                    count: count,
+                    missing: !present,
+                    title: topic.query ? ('Search “' + topic.query + '”') : ('Jump to ' + topic.label),
+                    onClick: function () {
+                        runTopicShortcut(topic);
+                    }
                 }
             });
         });
 
-        customPresets.forEach(function (preset) {
+        customPresets.forEach(function (preset, presetIndex) {
             var count = countCustomPresetMatches(preset);
             var present = count > 0 || (!preset.field && !!(preset.query || preset.exclude));
             if (preset.field && count < 1) {
@@ -1542,23 +1760,64 @@
             if (preset.field) titleParts.push('Jump to “' + preset.field + '”');
             if (preset.query) titleParts.push('Search “' + preset.query + '”');
             if (preset.exclude) titleParts.push('Exclude “' + preset.exclude + '”');
-            appendJumpChip(list, {
-                label: preset.label,
-                emoji: preset.emoji,
-                custom: true,
-                count: count,
-                missing: !present,
-                title: titleParts.join(' · ') || preset.label,
-                onClick: function () {
-                    runCustomPreset(preset);
-                },
-                onDelete: function () {
-                    deleteCustomPreset(preset.id);
+            chips.push({
+                presetId: 'custom:' + preset.id,
+                sortBase: 2000 + presetIndex,
+                options: {
+                    presetId: 'custom:' + preset.id,
+                    label: preset.label,
+                    emoji: preset.emoji,
+                    custom: true,
+                    count: count,
+                    missing: !present,
+                    title: titleParts.join(' · ') || preset.label,
+                    onClick: function () {
+                        runCustomPreset(preset);
+                    },
+                    onDelete: function () {
+                        deleteCustomPreset(preset.id);
+                    }
                 }
             });
         });
 
-        searchJumpsEl.classList.toggle('is-empty', list.children.length === 0);
+        chips = chips.filter(chipMatchesJumpTab);
+
+        chips.sort(function (a, b) {
+            if (activeJumpTab === 'pinned') {
+                return pinnedJumpRank(a.presetId) - pinnedJumpRank(b.presetId);
+            }
+            if (activeJumpTab === 'recent') {
+                return recentJumpRank(a.presetId) - recentJumpRank(b.presetId);
+            }
+            var rankA = recentJumpRank(a.presetId);
+            var rankB = recentJumpRank(b.presetId);
+            var pinA = isUserPinned(a.presetId) ? 0 : 1;
+            var pinB = isUserPinned(b.presetId) ? 0 : 1;
+            // All tab: permanent pins first, then recent, then the rest.
+            if (pinA !== pinB) return pinA - pinB;
+            if (rankA !== rankB) return rankA - rankB;
+            return a.sortBase - b.sortBase;
+        });
+
+        chips.forEach(function (chip) {
+            chip.options.pinned = isUserPinned(chip.presetId);
+            chip.options.recent = !chip.options.pinned && recentJumpRank(chip.presetId) < 999;
+            appendJumpChip(list, chip.options);
+        });
+
+        if (chips.length === 0) {
+            var empty = document.createElement('p');
+            empty.className = 'search-jumps-empty';
+            empty.textContent = activeJumpTab === 'pinned'
+                ? 'No pinned presets — tap 📍 on any chip in All to pin it here.'
+                : (activeJumpTab === 'recent'
+                    ? 'No recent jumps yet — use a preset to pin it here.'
+                    : 'No jump presets for this scope.');
+            list.appendChild(empty);
+        }
+
+        searchJumpsEl.classList.remove('is-empty');
         if (list.children.length > 0) {
             // Restart chip appear animation on scope/preset refresh.
             void list.offsetWidth;
@@ -2136,6 +2395,7 @@
         initSearchIndex();
         updateFuzzyToggle();
         bindScopeChips();
+        bindJumpTabs();
 
         if (window.TicketDossierSearchAnimPicker && typeof window.TicketDossierSearchAnimPicker.onChange === 'function') {
             window.TicketDossierSearchAnimPicker.onChange(function () {

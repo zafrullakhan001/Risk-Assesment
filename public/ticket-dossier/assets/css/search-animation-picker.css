@@ -355,8 +355,9 @@
     opacity: 1;
     transform: none;
 }
+/* Keep jump chips clipped so pin/remove fills stay inside the pill */
 .search-jump-chip.linknest-tile-animated {
-    overflow: visible;
+    overflow: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {

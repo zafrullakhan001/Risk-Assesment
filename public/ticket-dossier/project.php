@@ -300,6 +300,11 @@ $ribbon = [
                         <p class="search-jumps-label">Jump to</p>
                         <button type="button" class="search-preset-manage" id="search-preset-manage" aria-expanded="false" aria-controls="search-preset-form">+ Custom preset</button>
                     </div>
+                    <div class="search-jump-tabs" id="search-jump-tabs" role="tablist" aria-label="Jump preset groups">
+                        <button type="button" class="search-jump-tab is-active" role="tab" data-jump-tab="all" aria-selected="true">All</button>
+                        <button type="button" class="search-jump-tab" role="tab" data-jump-tab="pinned" aria-selected="false">Pinned</button>
+                        <button type="button" class="search-jump-tab" role="tab" data-jump-tab="recent" aria-selected="false">Recent</button>
+                    </div>
                     <div class="search-jumps-list" id="search-jumps-list" role="list"></div>
                     <form class="search-preset-form hidden" id="search-preset-form" autocomplete="off">
                         <p class="search-preset-form-title">Save a custom jump / search preset</p>
