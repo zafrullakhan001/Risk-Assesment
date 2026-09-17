@@ -767,7 +767,7 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                         </label>
                         <label class="sp-portfolio-map-field">
                             <span>Portfolio</span>
-                            <select id="sp-portfolio-map-portfolio" required></select>
+                            <select id="sp-portfolio-map-portfolio" class="sp-portfolio-map-select-scroll" required></select>
                         </label>
                         <label class="sp-portfolio-map-field" id="sp-portfolio-map-portfolio-new-wrap" hidden>
                             <span>New portfolio name</span>
@@ -775,7 +775,7 @@ $qrFaviconUrl = $qrBranding->hasCustomFavicon()
                         </label>
                         <label class="sp-portfolio-map-field">
                             <span>Sub-portfolio</span>
-                            <select id="sp-portfolio-map-sub" required></select>
+                            <select id="sp-portfolio-map-sub" class="sp-portfolio-map-select-scroll" required></select>
                         </label>
                         <label class="sp-portfolio-map-field" id="sp-portfolio-map-sub-new-wrap" hidden>
                             <span>New sub-portfolio name</span>

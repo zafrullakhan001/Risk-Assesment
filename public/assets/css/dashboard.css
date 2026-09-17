@@ -22142,6 +22142,10 @@ html.is-compact .help-reader-toolbar {
 .sp-portfolio-map-dialog {
     width: min(32rem, calc(100vw - 2rem));
     max-width: 100%;
+    max-height: min(92vh, 900px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 .sp-portfolio-map-dialog .sp-dialog-drag-handle {
     cursor: move;
@@ -22162,10 +22166,42 @@ html.is-compact .help-reader-toolbar {
 .sp-portfolio-map-dialog.is-dragging * {
     cursor: grabbing !important;
 }
+html.sp-portfolio-scroll-lock,
+html.sp-portfolio-scroll-lock body {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+}
+html.sp-portfolio-scroll-lock body {
+    position: fixed;
+    left: 0;
+    right: 0;
+    width: 100%;
+}
+.sp-portfolio-map-form,
+.sp-portfolio-import-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.sp-portfolio-map-form .response-dialog-head,
+.sp-portfolio-map-form .response-dialog-actions,
+.sp-portfolio-import-form .response-dialog-head,
+.sp-portfolio-import-form .response-dialog-actions {
+    flex: 0 0 auto;
+}
 .sp-portfolio-map-fields {
     display: grid;
     gap: 0.85rem;
     padding: 0.25rem 0 0.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    min-height: 0;
+    flex: 1 1 auto;
+    padding-right: 0.15rem;
 }
 .sp-portfolio-map-field {
     display: grid;
@@ -22189,6 +22225,20 @@ html.is-compact .help-reader-toolbar {
     padding: 0.55rem 0.7rem;
     font: inherit;
     background: #fff;
+}
+.sp-portfolio-map-field select.sp-portfolio-map-select-scroll {
+    max-height: 11.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.25rem;
+}
+.sp-portfolio-map-field select.sp-portfolio-map-select-scroll[size] {
+    /* Listbox mode: keep option rows readable while scrolling long lists. */
+    line-height: 1.35;
+}
+.sp-portfolio-map-field select.sp-portfolio-map-select-scroll option {
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.35rem;
 }
 .sp-portfolio-map-field input[readonly] {
     background: #f8fafc;

@@ -1705,6 +1705,92 @@
   const NEW_PORTFOLIO_VALUE = '__new_portfolio__';
   const NEW_SUB_VALUE = '__new_sub__';
 
+  const openPortfolioDialogs = new Set();
+  let portfolioSavedScrollY = 0;
+
+  const isPortfolioScrollableBox = (el) => {
+    if (!(el instanceof Element)) return false;
+    const style = window.getComputedStyle(el);
+    const y = style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay';
+    const x = style.overflowX === 'auto' || style.overflowX === 'scroll' || style.overflowX === 'overlay';
+    if (y && el.scrollHeight > el.clientHeight + 1) return true;
+    if (x && el.scrollWidth > el.clientWidth + 1) return true;
+    return false;
+  };
+
+  const canPortfolioScrollInDirection = (el, deltaX, deltaY) => {
+    if (!(el instanceof Element)) return false;
+    const style = window.getComputedStyle(el);
+    const y = style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay';
+    const x = style.overflowX === 'auto' || style.overflowX === 'scroll' || style.overflowX === 'overlay';
+    const absY = Math.abs(deltaY);
+    const absX = Math.abs(deltaX);
+    if (absY >= absX) {
+      if (!y || el.scrollHeight <= el.clientHeight + 1) return false;
+      if (deltaY < 0) return el.scrollTop > 0;
+      return el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    }
+    if (!x || el.scrollWidth <= el.clientWidth + 1) return false;
+    if (deltaX < 0) return el.scrollLeft > 0;
+    return el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+  };
+
+  const portfolioScrollerFromEvent = (event, root) => {
+    const path =
+      typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : (() => {
+            const list = [];
+            let node = event.target;
+            while (node) {
+              list.push(node);
+              node = node.parentNode || node.host;
+            }
+            return list;
+          })();
+    for (const node of path) {
+      if (!(node instanceof Element)) continue;
+      if (node === root || root.contains(node)) {
+        if (isPortfolioScrollableBox(node)) return node;
+      }
+      if (node === root) break;
+    }
+    return null;
+  };
+
+  const syncPortfolioPageScroll = () => {
+    const anyOpen = openPortfolioDialogs.size > 0;
+    const html = document.documentElement;
+    const locked = html.classList.contains('sp-portfolio-scroll-lock');
+    if (anyOpen && !locked) {
+      portfolioSavedScrollY = window.scrollY;
+      html.classList.add('sp-portfolio-scroll-lock');
+      document.body.classList.add('sp-portfolio-scroll-lock');
+      document.body.style.top = `-${portfolioSavedScrollY}px`;
+      return;
+    }
+    if (!anyOpen && locked) {
+      const previousScrollBehavior = html.style.getPropertyValue('scroll-behavior');
+      const previousScrollBehaviorPriority = html.style.getPropertyPriority('scroll-behavior');
+      html.style.setProperty('scroll-behavior', 'auto', 'important');
+      html.classList.remove('sp-portfolio-scroll-lock');
+      document.body.classList.remove('sp-portfolio-scroll-lock');
+      document.body.style.top = '';
+      window.scrollTo(0, portfolioSavedScrollY);
+      window.requestAnimationFrame(() => {
+        if (previousScrollBehavior) {
+          html.style.setProperty(
+            'scroll-behavior',
+            previousScrollBehavior,
+            previousScrollBehaviorPriority
+          );
+        } else {
+          html.style.removeProperty('scroll-behavior');
+        }
+      });
+    }
+  };
+
   const bindMovablePortfolioDialog = (dialog) => {
     if (!dialog || dialog.dataset.movableBound === '1') return;
     dialog.dataset.movableBound = '1';
@@ -1736,6 +1822,30 @@
       dialog.style.bottom = '';
       dialog.style.margin = '';
       dialog.style.transform = '';
+    };
+
+    const syncPageScrollLock = () => {
+      if (dialog.open) openPortfolioDialogs.add(dialog);
+      else openPortfolioDialogs.delete(dialog);
+      syncPortfolioPageScroll();
+    };
+
+    const trapBackgroundScroll = (event) => {
+      if (!dialog.open) return;
+      const scroller = portfolioScrollerFromEvent(event, dialog);
+      if (event.type === 'wheel') {
+        // Always block horizontal wheel (browser back/forward swipe).
+        if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+          event.preventDefault();
+          return;
+        }
+        if (scroller && canPortfolioScrollInDirection(scroller, event.deltaX || 0, event.deltaY || 0)) {
+          return;
+        }
+      } else if (scroller) {
+        return;
+      }
+      event.preventDefault();
     };
 
     head.addEventListener('pointerdown', (event) => {
@@ -1780,7 +1890,19 @@
 
     head.addEventListener('pointerup', endDrag);
     head.addEventListener('pointercancel', endDrag);
-    dialog.addEventListener('close', resetPosition);
+
+    document.addEventListener('wheel', trapBackgroundScroll, { passive: false, capture: true });
+    document.addEventListener('touchmove', trapBackgroundScroll, { passive: false, capture: true });
+    dialog.addEventListener('toggle', syncPageScrollLock);
+    dialog.addEventListener('close', () => {
+      resetPosition();
+      syncPageScrollLock();
+    });
+
+    dialog.__spLockPortfolioScroll = () => {
+      openPortfolioDialogs.add(dialog);
+      syncPortfolioPageScroll();
+    };
   };
 
   bindMovablePortfolioDialog(mapDialog);
@@ -1807,6 +1929,19 @@
     }
   };
 
+  const LISTBOX_SCROLL_THRESHOLD = 6;
+  const LISTBOX_VISIBLE_ROWS = 8;
+
+  const syncSelectScrollSize = (select) => {
+    if (!select || !select.classList.contains('sp-portfolio-map-select-scroll')) return;
+    const count = select.options.length;
+    if (count > LISTBOX_SCROLL_THRESHOLD) {
+      select.size = Math.min(LISTBOX_VISIBLE_ROWS, count);
+    } else {
+      select.removeAttribute('size');
+    }
+  };
+
   const fillPortfolioSelect = (selected = '') => {
     if (!mapPortfolio) return;
     const options = state.mappingOptions || [];
@@ -1823,6 +1958,7 @@
     } else if (mapPortfolio.options.length) {
       mapPortfolio.selectedIndex = 0;
     }
+    syncSelectScrollSize(mapPortfolio);
   };
 
   const fillSubSelect = (portfolio, selected = '') => {
@@ -1832,6 +1968,7 @@
       mapSub.innerHTML = `<option value="${NEW_SUB_VALUE}">＋ Add new sub-portfolio…</option>`;
       mapSub.value = NEW_SUB_VALUE;
       mapSub.disabled = true;
+      syncSelectScrollSize(mapSub);
       return;
     }
     mapSub.disabled = false;
@@ -1851,6 +1988,7 @@
     } else if (mapSub.options.length) {
       mapSub.selectedIndex = 0;
     }
+    syncSelectScrollSize(mapSub);
   };
 
   const syncNewFieldsUi = () => {
@@ -1930,6 +2068,7 @@
       if (mapSubCustom) mapSubCustom.value = '';
       syncNewFieldsUi();
       mapDialog.showModal();
+      mapDialog.__spLockPortfolioScroll?.();
       window.setTimeout(() => {
         if (mapPortfolio?.value === NEW_PORTFOLIO_VALUE) mapPortfolioCustom?.focus();
         else mapPortfolio?.focus();
@@ -2515,6 +2654,7 @@
     const keepUnique = document.getElementById('sp-portfolio-import-keep-unique');
     if (keepUnique) keepUnique.checked = true;
     importDialog.showModal();
+    importDialog.__spLockPortfolioScroll?.();
   };
 
   const importMappingCsv = async () => {
