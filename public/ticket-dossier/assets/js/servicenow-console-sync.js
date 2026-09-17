@@ -1461,6 +1461,16 @@
         if (byId[r.parent_sys_id]) r.parent = byId[r.parent_sys_id];
         if (byId[r.child_sys_id]) r.child = byId[r.child_sys_id];
       });
+      const seenRel = Object.create(null);
+      const uniqueRels = [];
+      relationships.forEach((r) => {
+        const key = String(r.parent || "").toUpperCase() + "|" + String(r.child || "").toUpperCase() + "|" + String(r.type || "").toLowerCase();
+        if (seenRel[key]) return;
+        seenRel[key] = true;
+        uniqueRels.push(r);
+      });
+      relationships.length = 0;
+      uniqueRels.forEach((r) => relationships.push(r));
 
       setStatus(statusEl, "Downloading attachments…");
       const { files, skipped } = await downloadAttachments(tickets, (done, total, name) => {

@@ -21,6 +21,14 @@ if (!is_array($sources)) {
     $sources = [];
 }
 $files = ProjectRepository::filesFor($id);
+$fileDupIds = DossierFileManager::duplicateFileIds($files);
+$fileDupIdSet = array_fill_keys($fileDupIds, true);
+$fileDupBytes = 0;
+foreach ($files as $file) {
+    if (isset($fileDupIdSet[(int) ($file['id'] ?? 0)])) {
+        $fileDupBytes += (int) ($file['size_bytes'] ?? 0);
+    }
+}
 $sections = availableSections($parsed);
 $overview = is_array($parsed['overview'] ?? null) ? $parsed['overview'] : [];
 $ownerName = projectOwnerName($project);
@@ -510,7 +518,7 @@ $ribbon = [
                     <div class="related-list">
                         <h3>🔗 Related records</h3>
                         <ul>
-                            <?php foreach ($section['related'] as $relIdx => $rel): ?>
+                            <?php foreach (uniqueRelatedRecords($section['related']) as $relIdx => $rel): ?>
                                 <?php
                                 $parentNumber = (string) ($rel['parent'] ?? '');
                                 $childNumber = (string) ($rel['child'] ?? '');
@@ -609,7 +617,7 @@ $ribbon = [
                             <div class="related-list">
                                 <h4>🔗 Relationships</h4>
                                 <ul>
-                                    <?php foreach ($relTicket['related'] as $ticketRelIdx => $rel): ?>
+                                    <?php foreach (uniqueRelatedRecords($relTicket['related']) as $ticketRelIdx => $rel): ?>
                                         <?php
                                         $parentNumber = (string) ($rel['parent'] ?? '');
                                         $childNumber = (string) ($rel['child'] ?? '');
@@ -916,21 +924,44 @@ $ribbon = [
                             value="delete"
                             onclick="return confirm('Delete the selected files from this dossier? Parsed information already in the dossier will be retained.');"
                         >🗑️ Delete selected</button>
+                        <?php if ($fileDupIds !== []): ?>
+                            <button
+                                type="button"
+                                class="button ghost button-small"
+                                id="toggle-file-dups"
+                                data-hide-dups="0"
+                                aria-pressed="false"
+                                title="Hide extra copies with the same file name and size. Use Remove dups to drop them from ZIP exports."
+                            >🧹 Hide dups (<?= count($fileDupIds) ?>)</button>
+                            <button
+                                type="submit"
+                                class="button ghost button-small"
+                                name="file_action"
+                                value="delete_duplicates"
+                                title="Delete extra copies with the same file name and size. One copy of each is kept so ZIP exports are smaller."
+                                onclick="return confirm('Remove <?= count($fileDupIds) ?> duplicate file<?= count($fileDupIds) === 1 ? '' : 's' ?> (<?= e(formatBytes($fileDupBytes)) ?>)? One copy of each name and size is kept. Parsed dossier information is retained.');"
+                            >🧹 Remove dups (<?= e(formatBytes($fileDupBytes)) ?>)</button>
+                        <?php endif; ?>
                     </div>
                     <p class="context-note">
                         Reparse ticket PDFs, the task packet JSON, or DDR JSON/text attachments to refresh dossier fields.
                         Deleting a file removes only the stored file; information already parsed into the dossier is retained.
+                        <?php if ($fileDupIds !== []): ?>
+                            <?= count($fileDupIds) ?> extra cop<?= count($fileDupIds) === 1 ? 'y' : 'ies' ?> with the same name and size
+                            (<?= e(formatBytes($fileDupBytes)) ?>) can be hidden in this list or removed to shrink ZIP exports.
+                        <?php endif; ?>
                     </p>
                     <ul class="file-list file-list-manage">
                         <?php foreach ($files as $file): ?>
                             <?php
                             $fileName = (string) $file['original_name'];
                             $lowerFileName = strtolower($fileName);
+                            $isDup = isset($fileDupIdSet[(int) $file['id']]);
                             $isReparsable = (string) $file['kind'] === 'packet'
                                 || str_ends_with($lowerFileName, '.pdf')
                                 || str_contains($lowerFileName, 'ddr');
                             ?>
-                            <li>
+                            <li<?= $isDup ? ' data-file-dup="1"' : '' ?>>
                                 <label class="dossier-file-select" title="Select <?= e($fileName) ?>">
                                     <input type="checkbox" name="file_ids[]" value="<?= (int) $file['id'] ?>">
                                     <span class="visually-hidden">Select</span>
@@ -940,6 +971,9 @@ $ribbon = [
                                     ⬇️ <?= e($fileName) ?>
                                 </a>
                                 <span class="muted"><?= number_format((int) $file['size_bytes'] / 1024, 1) ?> KB</span>
+                                <?php if ($isDup): ?>
+                                    <span class="file-dup-badge" title="Same file name and size as an earlier copy">Duplicate</span>
+                                <?php endif; ?>
                                 <?php if ($isReparsable): ?>
                                     <span class="file-reparse-ready" title="This file can refresh dossier data">Reparsable</span>
                                 <?php endif; ?>
@@ -985,15 +1019,49 @@ $ribbon = [
 <script src="assets/js/field-editor.js?v=<?= e($jsV) ?>"></script>
 <script>
 (() => {
-    const all = document.getElementById('dossier-files-select-all');
     const form = document.getElementById('dossier-file-manager');
-    if (!all || !form) return;
-    const boxes = Array.from(form.querySelectorAll('input[name="file_ids[]"]'));
-    all.addEventListener('change', () => boxes.forEach((box) => { box.checked = all.checked; }));
-    boxes.forEach((box) => box.addEventListener('change', () => {
-        all.checked = boxes.length > 0 && boxes.every((item) => item.checked);
-        all.indeterminate = !all.checked && boxes.some((item) => item.checked);
-    }));
+    if (!form) return;
+    const all = document.getElementById('dossier-files-select-all');
+    const hideBtn = document.getElementById('toggle-file-dups');
+    const storageKey = 'ticket_dossier_hide_file_dups';
+    const boxes = () => Array.from(form.querySelectorAll('input[name="file_ids[]"]'));
+    const visibleBoxes = () => boxes().filter((box) => !box.closest('[data-file-dup="1"]') || !form.classList.contains('is-hiding-file-dups'));
+    const syncSelectAll = () => {
+        if (!all) return;
+        const visible = visibleBoxes();
+        all.checked = visible.length > 0 && visible.every((item) => item.checked);
+        all.indeterminate = !all.checked && visible.some((item) => item.checked);
+    };
+    const applyHide = (hide) => {
+        form.classList.toggle('is-hiding-file-dups', hide);
+        if (hide) {
+            form.querySelectorAll('[data-file-dup="1"] input[name="file_ids[]"]').forEach((box) => { box.checked = false; });
+        }
+        if (hideBtn) {
+            const count = form.querySelectorAll('[data-file-dup="1"]').length;
+            hideBtn.setAttribute('data-hide-dups', hide ? '1' : '0');
+            hideBtn.setAttribute('aria-pressed', hide ? 'true' : 'false');
+            hideBtn.classList.toggle('is-active', hide);
+            hideBtn.textContent = hide ? '🧹 Show dups (' + count + ')' : '🧹 Hide dups (' + count + ')';
+            hideBtn.title = hide
+                ? 'Show extra copies with the same file name and size'
+                : 'Hide extra copies with the same file name and size. Use Remove dups to drop them from ZIP exports.';
+        }
+        try { window.localStorage.setItem(storageKey, hide ? '1' : '0'); } catch (err) {}
+        syncSelectAll();
+    };
+    if (all) {
+        all.addEventListener('change', () => {
+            visibleBoxes().forEach((box) => { box.checked = all.checked; });
+        });
+        boxes().forEach((box) => box.addEventListener('change', syncSelectAll));
+    }
+    if (hideBtn) {
+        let hide = false;
+        try { hide = window.localStorage.getItem(storageKey) === '1'; } catch (err) {}
+        hideBtn.addEventListener('click', () => applyHide(!form.classList.contains('is-hiding-file-dups')));
+        applyHide(hide);
+    }
 })();
 </script>
 </body>

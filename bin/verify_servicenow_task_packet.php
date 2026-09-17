@@ -50,6 +50,17 @@ $assert(is_array($parsed['demand'] ?? null) && ($parsed['demand']['number'] ?? '
 $assert(is_array($parsed['related_tickets'] ?? null) && count($parsed['related_tickets']) === 1, 'remaining related tickets');
 $assert(($parsed['related_tickets'][0]['number'] ?? '') === 'TASK0002222', 'related TASK0002222 kept');
 $assert(count($parsed['relationships'] ?? []) === 3, 'three relationships');
+$dedupedRelated = uniqueRelatedRecords([
+    ['parent' => 'TASK7409837', 'child' => 'STRY0058970', 'type' => 'Contains::Task of'],
+    ['parent' => 'TASK7409837', 'child' => 'STRY0058970', 'type' => 'Contains::Task of'],
+    ['parent' => 'DMND0006626', 'child' => 'STRY0058970', 'type' => 'Contains::Task of'],
+    ['parent' => 'DDR0005151', 'child' => 'STRY0058970', 'type' => 'Contains::Task of'],
+    ['parent' => 'STRY0058970', 'child' => 'SPNT0011184', 'type' => 'Reference:parent'],
+    ['parent' => 'DMND0006626', 'child' => 'STRY0058970', 'type' => 'Contains::Task of'],
+    ['parent' => 'DDR0005151', 'child' => 'STRY0058970', 'type' => 'Contains::Task of'],
+]);
+$assert(count($dedupedRelated) === 4, 'related records drop exact duplicates');
+$assert(array_keys($dedupedRelated) === [0, 2, 3, 4], 'related records keep the first index of each pair');
 $assert(($parsed['packet_meta']['attachment_count'] ?? 0) === 2, 'attachment_count meta');
 $assert(($parsed['instance'] ?? '') === 'https://example.service-now.com', 'packet instance origin');
 $assert(($parsed['task']['table'] ?? '') === 'sc_task', 'task section keeps table');

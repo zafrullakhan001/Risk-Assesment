@@ -86,6 +86,7 @@ final class ServicenowTaskPacketParser
                 'child_sys_id' => trim((string) ($rel['child_sys_id'] ?? '')),
             ];
         }
+        $relationships = array_values(uniqueRelatedRecords($relationships));
 
         $tickets = [];
         foreach ($ticketsIn as $ticket) {
@@ -414,7 +415,9 @@ final class ServicenowTaskPacketParser
             'fields' => is_array($ticket['fields'] ?? null) ? $ticket['fields'] : [],
             'journal' => is_array($ticket['journal'] ?? null) ? $ticket['journal'] : [],
             'attachments' => is_array($ticket['attachments'] ?? null) ? $ticket['attachments'] : [],
-            'related' => $related !== [] ? $related : (is_array($ticket['related'] ?? null) ? $ticket['related'] : []),
+            'related' => array_values(uniqueRelatedRecords(
+                $related !== [] ? $related : (is_array($ticket['related'] ?? null) ? $ticket['related'] : [])
+            )),
             'related_numbers' => is_array($ticket['related_numbers'] ?? null)
                 ? $ticket['related_numbers']
                 : ['demand' => '', 'story' => '', 'task' => '', 'ddr' => '', 'project' => ''],

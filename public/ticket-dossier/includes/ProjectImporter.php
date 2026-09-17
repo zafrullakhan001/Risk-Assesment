@@ -1015,27 +1015,7 @@ final class ProjectImporter
      */
     private static function mergeRelationships(array $existing, array $incoming): array
     {
-        $seen = [];
-        $out = [];
-        foreach (array_merge($existing, $incoming) as $rel) {
-            if (!is_array($rel)) {
-                continue;
-            }
-            $parent = strtoupper(trim((string) ($rel['parent'] ?? '')));
-            $child = strtoupper(trim((string) ($rel['child'] ?? '')));
-            $type = trim((string) ($rel['type'] ?? ''));
-            if ($parent === '' || $child === '') {
-                continue;
-            }
-            $key = $parent . '|' . $child . '|' . strtolower($type);
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $out[] = $rel;
-        }
-
-        return $out;
+        return array_values(uniqueRelatedRecords(array_merge($existing, $incoming)));
     }
 
     /**

@@ -22143,9 +22143,11 @@ html.is-compact .help-reader-toolbar {
     width: min(32rem, calc(100vw - 2rem));
     max-width: 100%;
     max-height: min(92vh, 900px);
+    overflow: hidden;
+}
+.sp-portfolio-map-dialog[open] {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
 }
 .sp-portfolio-map-dialog .sp-dialog-drag-handle {
     cursor: move;

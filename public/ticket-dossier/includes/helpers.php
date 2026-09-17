@@ -113,6 +113,37 @@ function firstNonEmpty(string ...$values): string
 }
 
 /**
+ * First parent → child + type wins. Keeps original keys so field-edit paths stay valid.
+ *
+ * @param list<mixed>|array<int|string, mixed> $related
+ * @return array<int, array<string, mixed>>
+ */
+function uniqueRelatedRecords(array $related): array
+{
+    $seen = [];
+    $out = [];
+    foreach ($related as $idx => $rel) {
+        if (!is_array($rel)) {
+            continue;
+        }
+        $parent = strtoupper(trim((string) ($rel['parent'] ?? '')));
+        $child = strtoupper(trim((string) ($rel['child'] ?? '')));
+        $type = strtolower(trim((string) ($rel['type'] ?? '')));
+        if ($parent === '' || $child === '') {
+            continue;
+        }
+        $key = $parent . "\0" . $child . "\0" . $type;
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $out[(int) $idx] = $rel;
+    }
+
+    return $out;
+}
+
+/**
  * Extract ServiceNow record numbers from free text.
  *
  * @return array{demand: string, story: string, task: string, ddr: string, project: string}

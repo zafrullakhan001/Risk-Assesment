@@ -1405,16 +1405,36 @@ body.dossier-hide-section-dups .field-item[data-cross-dup="1"] {
     height: 17px;
     accent-color: var(--primary);
 }
-.file-reparse-ready {
+.file-reparse-ready,
+.file-dup-badge {
     margin-left: auto;
     padding: 2px 7px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--primary-soft) 72%, var(--card));
-    color: var(--primary);
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .04em;
+}
+.file-reparse-ready {
+    background: color-mix(in srgb, var(--primary-soft) 72%, var(--card));
+    color: var(--primary);
+}
+.file-dup-badge {
+    margin-left: 0;
+    background: var(--tbd-soft);
+    border: 1px solid var(--line);
+    color: var(--muted);
+}
+.file-list-manage li[data-file-dup="1"] {
+    opacity: .72;
+}
+.dossier-file-manager.is-hiding-file-dups li[data-file-dup="1"] {
+    display: none;
+}
+#toggle-file-dups.is-active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary-dark);
 }
 
 .field-grid {

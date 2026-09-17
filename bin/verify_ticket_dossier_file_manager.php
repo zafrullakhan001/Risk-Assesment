@@ -76,6 +76,47 @@ try {
     $deleted = DossierFileManager::deleteFiles($projectId, [$fileId]);
     $assert($deleted['deleted'] === 1, 'selected stored file deleted');
     $assert(ProjectRepository::findFile($fileId, $projectId) === null, 'file row removed');
+
+    $size = (int) filesize($pdfFixture);
+    $insertCopy = static function (string $original, string $storedPrefix) use ($db, $projectId, $pdfFixture, $storageDir, $size): int {
+        $storedName = $storedPrefix . '_' . bin2hex(random_bytes(4)) . '.pdf';
+        if (!copy($pdfFixture, $storageDir . '/' . $storedName)) {
+            throw new RuntimeException('Could not copy duplicate fixture.');
+        }
+        $stmt = $db->prepare(
+            'INSERT INTO project_files (project_id, kind, original_name, stored_name, size_bytes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$projectId, 'task', $original, $storedName, $size, nowUtc()]);
+
+        return (int) $db->lastInsertId();
+    };
+
+    $keepId = $insertCopy('TASK0001/spec.pdf', 'keep');
+    $dupExactId = $insertCopy('TASK0001/spec.pdf', 'dup_exact');
+    $dupPrefixId = $insertCopy('STRY0002/spec.pdf', 'dup_prefix');
+    $uniqueId = $insertCopy('notes.pdf', 'unique');
+
+    $dupIds = DossierFileManager::duplicateFileIds(ProjectRepository::filesFor($projectId));
+    $assert(in_array($dupExactId, $dupIds, true), 'exact name copy marked duplicate');
+    $assert(in_array($dupPrefixId, $dupIds, true), 'same basename other ticket marked duplicate');
+    $assert(!in_array($keepId, $dupIds, true), 'earliest copy kept');
+    $assert(!in_array($uniqueId, $dupIds, true), 'different name not a duplicate');
+
+    $removed = DossierFileManager::deleteDuplicateFiles($projectId);
+    $assert($removed['deleted'] >= 2, 'duplicate files removed from dossier');
+    $assert(ProjectRepository::findFile($keepId, $projectId) !== null, 'kept copy still present');
+    $assert(ProjectRepository::findFile($dupExactId, $projectId) === null, 'exact duplicate deleted');
+    $assert(ProjectRepository::findFile($dupPrefixId, $projectId) === null, 'prefix duplicate deleted');
+    $assert(ProjectRepository::findFile($uniqueId, $projectId) !== null, 'unique file retained');
+
+    $none = false;
+    try {
+        DossierFileManager::deleteDuplicateFiles($projectId);
+    } catch (InvalidArgumentException) {
+        $none = true;
+    }
+    $assert($none, 'removing dups with none left is rejected');
 } catch (Throwable $e) {
     $failures++;
     fwrite(STDERR, 'FAIL ' . $e->getMessage() . PHP_EOL);

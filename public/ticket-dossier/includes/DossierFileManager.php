@@ -55,6 +55,67 @@ final class DossierFileManager
     }
 
     /**
+     * Extra copies after the first file in each basename + size group.
+     * Ticket prefixes such as TASK123/ are ignored so the same attachment
+     * stored on related tickets is treated as a duplicate.
+     *
+     * @param list<array<string, mixed>> $files
+     * @return list<int>
+     */
+    public static function duplicateFileIds(array $files): array
+    {
+        $groups = [];
+        foreach ($files as $file) {
+            $id = (int) ($file['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $groups[self::fileDupKey($file)][] = $id;
+        }
+
+        $dups = [];
+        foreach ($groups as $ids) {
+            if (count($ids) < 2) {
+                continue;
+            }
+            sort($ids);
+            array_shift($ids);
+            foreach ($ids as $id) {
+                $dups[] = $id;
+            }
+        }
+
+        return $dups;
+    }
+
+    /**
+     * @return array{deleted: int, names: list<string>}
+     */
+    public static function deleteDuplicateFiles(int $projectId): array
+    {
+        $ids = self::duplicateFileIds(ProjectRepository::filesFor($projectId));
+        if ($ids === []) {
+            throw new InvalidArgumentException('No duplicate files to remove.');
+        }
+
+        return self::deleteFiles($projectId, $ids);
+    }
+
+    /**
+     * @param array<string, mixed> $file
+     */
+    private static function fileDupKey(array $file): string
+    {
+        $name = str_replace('\\', '/', (string) ($file['original_name'] ?? ''));
+        $base = strtolower(basename($name));
+        if ($base === '' || $base === '.' || $base === '..') {
+            $base = strtolower($name);
+        }
+
+        return $base . "\0" . (int) ($file['size_bytes'] ?? 0);
+    }
+
+    /**
      * @param list<int> $fileIds
      * @return array{parsed: int, skipped: int, messages: list<string>}
      */

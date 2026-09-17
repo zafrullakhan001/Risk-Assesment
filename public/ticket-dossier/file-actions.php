@@ -29,6 +29,20 @@ $fileIds = array_map('intval', $fileIds);
 $action = trim((string) ($_POST['file_action'] ?? ''));
 
 try {
+    if ($action === 'delete_duplicates') {
+        $result = DossierFileManager::deleteDuplicateFiles($projectId);
+        if ($result['deleted'] < 1) {
+            throw new RuntimeException('No duplicate files were removed.');
+        }
+        flashSet(
+            'success',
+            'Removed ' . $result['deleted'] . ' duplicate file'
+            . ($result['deleted'] === 1 ? '' : 's')
+            . '. One copy of each name and size was kept. Parsed dossier information was retained.'
+        );
+        redirect($redirectTo);
+    }
+
     if ($action === 'delete') {
         $result = DossierFileManager::deleteFiles($projectId, $fileIds);
         if ($result['deleted'] < 1) {
