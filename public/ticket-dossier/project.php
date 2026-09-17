@@ -305,7 +305,10 @@ $ribbon = [
                         <button type="button" class="search-jump-tab" role="tab" data-jump-tab="pinned" aria-selected="false">Pinned</button>
                         <button type="button" class="search-jump-tab" role="tab" data-jump-tab="recent" aria-selected="false">Recent</button>
                     </div>
-                    <div class="search-jumps-list" id="search-jumps-list" role="list"></div>
+                    <div class="search-jumps-scroll" id="search-jumps-scroll">
+                        <div class="search-jumps-list" id="search-jumps-list" role="list"></div>
+                    </div>
+                    <button type="button" class="search-jumps-resize" id="search-jumps-resize" aria-label="Resize jump presets" title="Drag to resize presets"></button>
                     <form class="search-preset-form hidden" id="search-preset-form" autocomplete="off">
                         <p class="search-preset-form-title">Save a custom jump / search preset</p>
                         <div class="search-preset-grid">

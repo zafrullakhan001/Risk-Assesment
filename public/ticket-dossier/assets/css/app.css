@@ -1924,6 +1924,9 @@ body.field-editor-open {
 .search-jumps.is-empty .search-jumps-list {
     display: none;
 }
+.search-jumps.is-empty .search-jumps-resize {
+    display: none;
+}
 .search-jumps-head {
     display: flex;
     align-items: center;
@@ -1988,6 +1991,51 @@ body.field-editor-open {
 .search-preset-manage:focus-visible {
     background: var(--primary-soft);
     outline: none;
+}
+.search-jumps-scroll {
+    --search-jumps-height: 140px;
+    height: var(--search-jumps-height);
+    min-height: 72px;
+    max-height: min(60vh, 420px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.search-jumps-resize {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 12px;
+    margin: 2px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: ns-resize;
+    touch-action: none;
+    user-select: none;
+}
+.search-jumps-resize::before {
+    content: '';
+    width: 36px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 55%, transparent);
+    transition: background 0.12s ease, width 0.12s ease;
+}
+.search-jumps-resize:hover::before,
+.search-jumps-resize:focus-visible::before,
+.search-jumps.is-resizing .search-jumps-resize::before {
+    width: 48px;
+    background: var(--primary);
+}
+.search-jumps-resize:focus-visible {
+    outline: none;
+}
+.search-jumps.is-resizing {
+    user-select: none;
 }
 .search-jumps-list {
     display: flex;

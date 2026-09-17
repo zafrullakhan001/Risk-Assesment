@@ -1,5 +1,6 @@
 /* Hide noisy jump chips while browsing results — keep header for custom presets */
-.global-search[data-has-results="1"] .search-jumps-list {
+.global-search[data-has-results="1"] .search-jumps-scroll,
+.global-search[data-has-results="1"] .search-jumps-resize {
     display: none;
 }
 
@@ -20,6 +21,14 @@
 
 .global-search[data-has-results="1"] .search-jumps.is-expanded .search-jumps-label::after {
     content: ' · hide';
+}
+
+.global-search[data-has-results="1"] .search-jumps.is-expanded .search-jumps-scroll {
+    display: block;
+}
+
+.global-search[data-has-results="1"] .search-jumps.is-expanded .search-jumps-resize {
+    display: flex;
 }
 
 .global-search[data-has-results="1"] .search-jumps.is-expanded .search-jumps-list {

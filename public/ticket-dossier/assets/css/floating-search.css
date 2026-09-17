@@ -222,11 +222,20 @@ body.dossier-search-resizing {
         z-index: 2;
         flex: 0 0 auto;
         flex-shrink: 0;
-        max-height: 180px;
-        overflow: auto;
+        max-height: none;
+        overflow: visible;
         margin-top: 8px;
         pointer-events: auto;
-        padding-bottom: 4px;
+        padding-bottom: 0;
+    }
+
+    .global-search[data-mode="docked"] .search-jumps-scroll {
+        --search-jumps-height: 140px;
+        height: var(--search-jumps-height);
+        min-height: 72px;
+        max-height: min(55vh, 420px);
+        overflow-x: hidden;
+        overflow-y: auto;
     }
 
     .global-search[data-mode="docked"] .search-jumps-list {
