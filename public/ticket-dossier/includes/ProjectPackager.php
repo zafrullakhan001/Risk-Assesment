@@ -15,6 +15,11 @@ final class ProjectPackager
     ];
     private const MAX_ARCHIVE_FILE_BYTES = 25 * 1024 * 1024;
     private const ARCHIVE_FILE_KINDS = ['ddr', 'demand', 'story', 'task', 'packet', 'attachment'];
+    /** Zip entries keep the dossier file names, so bound the readable parts. */
+    private const MAX_ARCHIVE_NAME_LENGTH = 160;
+    private const MAX_ARCHIVE_SEGMENT_LENGTH = 120;
+    private const MAX_ARCHIVE_PATH_SEGMENTS = 4;
+    private const MAX_ARCHIVE_ENTRY_LENGTH = 200;
 
     /**
      * Stream a ZIP of one project (id > 0) or every project (id = 0).
@@ -194,7 +199,8 @@ final class ProjectPackager
     {
         $id = (int) ($project['id'] ?? 0);
         $files = $id > 0 ? ProjectRepository::filesFor($id) : [];
-        $payload = self::payload($project, $files);
+        $archiveNames = self::archiveNames($files);
+        $payload = self::payload($project, $files, $archiveNames);
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         if (!is_string($json)) {
             throw new RuntimeException('Could not encode project ' . $id . ' for ZIP export.');
@@ -203,24 +209,132 @@ final class ProjectPackager
 
         $dir = TD_STORAGE_DIR . '/' . $id;
         foreach ($files as $file) {
+            $fileId = (int) ($file['id'] ?? 0);
             $stored = safeBasename((string) ($file['stored_name'] ?? ''));
-            if ($stored === '' || $stored === 'file') {
+            if ($stored === '' || $stored === 'file' || !isset($archiveNames[$fileId])) {
                 continue;
             }
             $path = $dir . '/' . $stored;
             if (!is_file($path)) {
                 continue;
             }
-            $zip->addFile($path, $folder . '/files/' . $stored);
+            // Store the file under the name shown in the dossier file list
+            // instead of its internal stored_* name.
+            $zip->addFile($path, $folder . '/files/' . $archiveNames[$fileId]);
         }
     }
 
     /**
+     * Zip entry path (relative to the project's files folder) for each file,
+     * keyed by file id. Uses the dossier file name, kept verbatim except where
+     * a character is unsafe for ZIP extraction, and de-duplicates repeats as
+     * "name (2).ext", "name (3).ext", ...
+     *
+     * @param list<array<string, mixed>> $files
+     * @return array<int, string>
+     */
+    private static function archiveNames(array $files): array
+    {
+        $names = [];
+        $used = [];
+        foreach ($files as $file) {
+            $fileId = (int) ($file['id'] ?? 0);
+            if ($fileId <= 0) {
+                continue;
+            }
+            $stored = safeBasename((string) ($file['stored_name'] ?? ''));
+            if ($stored === '' || $stored === 'file') {
+                continue;
+            }
+            $name = self::safeArchiveName((string) ($file['original_name'] ?? ''), $stored);
+            $name = self::uniqueArchiveName($name, $used);
+            $used[strtolower($name)] = true;
+            $names[$fileId] = $name;
+        }
+
+        return $names;
+    }
+
+    /**
+     * Keep the dossier file name readable in the ZIP while removing path
+     * traversal, control characters, and characters that are invalid on
+     * Windows. Embedded "/" stays as a folder separator, which mirrors the
+     * ticket-prefixed names shown in the dossier file list.
+     */
+    private static function safeArchiveName(string $original, string $fallback): string
+    {
+        $name = str_replace('\\', '/', $original);
+        $name = preg_replace('/[\x00-\x1F\x7F]/u', '', $name) ?? '';
+        $segments = [];
+        foreach (explode('/', $name) as $segment) {
+            $segment = trim(str_replace([':', '*', '?', '"', '<', '>', '|'], '_', $segment));
+            $segment = trim($segment, ' .');
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                continue;
+            }
+            if (strlen($segment) > self::MAX_ARCHIVE_SEGMENT_LENGTH) {
+                $segment = substr($segment, 0, self::MAX_ARCHIVE_SEGMENT_LENGTH);
+            }
+            $segments[] = $segment;
+        }
+        if ($segments === []) {
+            return $fallback;
+        }
+        if (count($segments) > self::MAX_ARCHIVE_PATH_SEGMENTS) {
+            $segments = array_slice($segments, -self::MAX_ARCHIVE_PATH_SEGMENTS);
+        }
+
+        return self::shortArchiveName(implode('/', $segments), $fallback);
+    }
+
+    private static function shortArchiveName(string $name, string $fallback): string
+    {
+        if (strlen($name) <= self::MAX_ARCHIVE_NAME_LENGTH) {
+            return $name;
+        }
+
+        $ext = extensionOf($name);
+        $suffix = $ext !== '' ? '.' . $ext : '';
+        $base = $suffix !== '' ? substr($name, 0, -strlen($suffix)) : $name;
+        $room = self::MAX_ARCHIVE_NAME_LENGTH - strlen($suffix);
+        $base = rtrim(substr($base, 0, max(1, $room)), " ./");
+        if ($base === '') {
+            return $fallback;
+        }
+
+        return $base . $suffix;
+    }
+
+    /**
+     * @param array<string, bool> $used lower-cased entry names already taken
+     */
+    private static function uniqueArchiveName(string $name, array $used): string
+    {
+        if (!isset($used[strtolower($name)])) {
+            return $name;
+        }
+
+        $ext = extensionOf($name);
+        $suffix = $ext !== '' ? '.' . $ext : '';
+        $base = $suffix !== '' ? substr($name, 0, -strlen($suffix)) : $name;
+        $copy = 2;
+        while (true) {
+            $candidate = $base . ' (' . $copy . ')' . $suffix;
+            if (!isset($used[strtolower($candidate)])) {
+                return $candidate;
+            }
+            $copy++;
+        }
+    }
+
+
+    /**
      * @param array<string, mixed> $project
      * @param list<array<string, mixed>> $files
+     * @param array<int, string> $archiveNames zip entry name per file id
      * @return array<string, mixed>
      */
-    private static function payload(array $project, array $files): array
+    private static function payload(array $project, array $files, array $archiveNames = []): array
     {
         $parsed = json_decode((string) ($project['parsed_json'] ?? ''), true);
         if (!is_array($parsed)) {
@@ -233,10 +347,16 @@ final class ProjectPackager
 
         $manifest = [];
         foreach ($files as $file) {
+            $stored = safeBasename((string) ($file['stored_name'] ?? ''));
+            $archive = (string) (
+                $archiveNames[(int) ($file['id'] ?? 0)]
+                ?? ($stored !== '' ? $stored : '')
+            );
             $manifest[] = [
                 'kind' => (string) ($file['kind'] ?? ''),
                 'original_name' => (string) ($file['original_name'] ?? ''),
-                'stored_name' => safeBasename((string) ($file['stored_name'] ?? '')),
+                'archive_name' => $archive,
+                'stored_name' => $stored,
                 'size_bytes' => (int) ($file['size_bytes'] ?? 0),
             ];
         }
@@ -335,22 +455,34 @@ final class ProjectPackager
                 $warnings[] = 'Skipped a file with an unknown type in ' . $title . '.';
                 continue;
             }
-            $fromName = safeBasename((string) ($file['stored_name'] ?? ''));
-            $original = safeBasename((string) ($file['original_name'] ?? $fromName));
-            $src = $filesDir . '/' . $fromName;
-            if ($fromName === '' || $fromName === 'file' || !is_file($src)) {
+            $stored = safeBasename((string) ($file['stored_name'] ?? ''));
+            // Keep the dossier name (including a ticket prefix such as
+            // TASK123/name.pdf) so an export/import round trip is lossless.
+            $original = self::safeArchiveName((string) ($file['original_name'] ?? ''), $stored);
+            $archived = self::safeArchiveName(
+                (string) ($file['archive_name'] ?? ''),
+                $stored
+            );
+            $resolved = self::resolveImportSource($filesDir, [$archived, $stored]);
+            if ($resolved === null) {
                 $warnings[] = 'Missing file for ' . $title . ' (' . $kind . ').';
                 continue;
             }
-            $archiveExt = extensionOf($fromName);
+            $src = $resolved['path'];
+            $archiveExt = extensionOf($resolved['name']);
             $originalExt = extensionOf($original);
-            if (!in_array($archiveExt, self::ARCHIVE_FILE_EXTENSIONS, true)) {
+            $storedExt = extensionOf($stored);
+            $ext = '';
+            foreach ([$archiveExt, $originalExt, $storedExt] as $candidateExt) {
+                if (in_array($candidateExt, self::ARCHIVE_FILE_EXTENSIONS, true)) {
+                    $ext = $candidateExt;
+                    break;
+                }
+            }
+            if ($ext === '') {
                 $warnings[] = 'Skipped disallowed file type in ' . $title . '.';
                 continue;
             }
-            $ext = in_array($originalExt, self::ARCHIVE_FILE_EXTENSIONS, true)
-                ? $originalExt
-                : $archiveExt;
             $size = (int) filesize($src);
             if ($size <= 0 || $size > self::MAX_ARCHIVE_FILE_BYTES) {
                 $warnings[] = 'Skipped oversized file in ' . $title . '.';
@@ -451,24 +583,120 @@ final class ProjectPackager
         }
     }
 
+    /**
+     * Entry names keep the dossier file names, so characters such as spaces,
+     * parentheses, and commas are allowed. Path traversal, control characters,
+     * Windows-invalid characters, and unknown file types are rejected.
+     */
     private static function isSafeZipPath(string $name): bool
     {
-        if (str_contains($name, "\0") || str_starts_with($name, '/') || str_contains($name, '..')) {
+        if ($name === '' || strlen($name) > self::MAX_ARCHIVE_ENTRY_LENGTH) {
             return false;
         }
-        if ($name === 'manifest.json') {
-            return true;
+        if (str_contains($name, "\0") || str_starts_with($name, '/')) {
+            return false;
         }
-        if (preg_match('#^projects/[0-9A-Za-z._-]{1,80}/project\.json$#', $name) === 1) {
-            return true;
-        }
-        if (preg_match('#^projects/[0-9A-Za-z._-]{1,80}/files/[0-9A-Za-z._-]{1,160}$#', $name) === 1) {
-            $ext = extensionOf($name);
-
-            return in_array($ext, self::ARCHIVE_FILE_EXTENSIONS, true);
+        if (preg_match('/[\x00-\x1F\x7F]/', $name) === 1) {
+            return false;
         }
 
-        return false;
+        $segments = explode('/', $name);
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                return false;
+            }
+            if (strpbrk($segment, '<>:"|?*\\') !== false) {
+                return false;
+            }
+            // Windows drops a trailing dot or space, which would silently
+            // rename the extracted file.
+            if (rtrim($segment, ' .') !== $segment) {
+                return false;
+            }
+        }
+
+        $count = count($segments);
+        if ($count === 1) {
+            return $segments[0] === 'manifest.json';
+        }
+        if ($segments[0] !== 'projects' || !self::isSafeArchiveFolder($segments[1])) {
+            return false;
+        }
+        if ($count === 3 && $segments[2] === 'project.json') {
+            return true;
+        }
+        if ($count < 4 || $segments[2] !== 'files') {
+            return false;
+        }
+
+        $fileSegments = array_slice($segments, 3);
+        if (count($fileSegments) > self::MAX_ARCHIVE_PATH_SEGMENTS) {
+            return false;
+        }
+        foreach ($fileSegments as $segment) {
+            if (strlen($segment) > self::MAX_ARCHIVE_SEGMENT_LENGTH) {
+                return false;
+            }
+        }
+
+        return in_array(extensionOf($segments[$count - 1]), self::ARCHIVE_FILE_EXTENSIONS, true);
+    }
+
+    private static function isSafeArchiveFolder(string $folder): bool
+    {
+        if ($folder === '' || $folder === '.' || $folder === '..') {
+            return false;
+        }
+
+        return preg_match('/^[0-9A-Za-z._-]{1,80}$/', $folder) === 1;
+    }
+
+    /**
+     * Find the extracted file for one manifest entry, preferring the archive
+     * name stored in project.json and falling back to the legacy stored_* name.
+     * The resolved path must stay inside the project's files folder.
+     *
+     * @param list<string> $candidates
+     * @return array{path: string, name: string}|null
+     */
+    private static function resolveImportSource(string $filesDir, array $candidates): ?array
+    {
+        $base = realpath($filesDir);
+        if ($base === false) {
+            return null;
+        }
+
+        foreach ($candidates as $candidate) {
+            $candidate = str_replace('\\', '/', trim($candidate));
+            if ($candidate === '' || $candidate === 'file' || str_starts_with($candidate, '/')) {
+                continue;
+            }
+            if (!in_array(extensionOf($candidate), self::ARCHIVE_FILE_EXTENSIONS, true)) {
+                continue;
+            }
+
+            $segments = explode('/', $candidate);
+            $safe = true;
+            foreach ($segments as $segment) {
+                if ($segment === '' || $segment === '.' || $segment === '..') {
+                    $safe = false;
+                    break;
+                }
+            }
+            if (!$safe) {
+                continue;
+            }
+
+            $path = $filesDir . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $candidate);
+            $real = realpath($path);
+            if ($real === false || !is_file($real) || !str_starts_with($real, $base . DIRECTORY_SEPARATOR)) {
+                continue;
+            }
+
+            return ['path' => $real, 'name' => $candidate];
+        }
+
+        return null;
     }
 
     private static function streamDownload(string $path, string $filename): never
