@@ -198,6 +198,8 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_by_user_id INTEGER,
     created_by_username TEXT NOT NULL DEFAULT '',
+    allowed_catalog_source_keys TEXT NOT NULL DEFAULT '',
+    allowed_menu_dests TEXT NOT NULL DEFAULT '',
     UNIQUE (username),
     UNIQUE (email)
 );

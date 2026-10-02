@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
+use RiskAssessment\UserAccess;
 
 /**
  * Ticket Dossier topbar shortcut (relative URL — host/path independent).
@@ -11,7 +11,7 @@ use RiskAssessment\Auth;
  * Optional: set $ticketDossierNavPrefix (e.g. '' from public/, unused on dossier pages that link to index).
  */
 $ticketNavUser = $currentUser ?? Auth::instance()->currentUser();
-if (!AppModules::instance()->canAccess(is_array($ticketNavUser) ? $ticketNavUser : null, AppModules::TICKET)) {
+if (!UserAccess::canShowMenuDest(is_array($ticketNavUser) ? $ticketNavUser : null, 'ticket')) {
     return;
 }
 $ticketDossierSolo = $ticketDossierSolo ?? false;

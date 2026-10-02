@@ -16,7 +16,8 @@ final class UserRepository
 
     private const USER_SELECT = 'id, username, email, password_hash, is_admin, is_superadmin, is_approved, is_disabled,
                     auth_source, display_name, notes, last_login, created_at,
-                    created_by_user_id, created_by_username';
+                    created_by_user_id, created_by_username,
+                    allowed_catalog_source_keys, allowed_menu_dests';
 
     /** @return array<string, mixed>|null */
     public function findById(int $id): ?array
@@ -418,6 +419,24 @@ final class UserRepository
         ]);
     }
 
+    /**
+     * Empty lists mean "no restriction" for that dimension.
+     *
+     * @param list<string> $catalogKeys
+     * @param list<string> $menuDests
+     */
+    public function updateAccessProfile(int $id, array $catalogKeys, array $menuDests): void
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE users SET allowed_catalog_source_keys = :catalogs, allowed_menu_dests = :menus WHERE id = :id'
+        );
+        $statement->execute([
+            ':catalogs' => $catalogKeys === [] ? '' : (string) json_encode(array_values($catalogKeys), JSON_UNESCAPED_UNICODE),
+            ':menus' => $menuDests === [] ? '' : (string) json_encode(array_values($menuDests), JSON_UNESCAPED_UNICODE),
+            ':id' => $id,
+        ]);
+    }
+
     public function delete(int $id): void
     {
         $statement = $this->pdo->prepare('DELETE FROM users WHERE id = :id');
@@ -559,8 +578,21 @@ final class UserRepository
             ? (int) $row['created_by_user_id']
             : null;
         $row['created_by_username'] = (string) ($row['created_by_username'] ?? '');
+        $row['allowed_catalog_source_keys'] = $this->decodeStringList($row['allowed_catalog_source_keys'] ?? '');
+        $row['allowed_menu_dests'] = $this->decodeStringList($row['allowed_menu_dests'] ?? '');
 
         return $row;
+    }
+
+    /** @return list<string> */
+    private function decodeStringList(mixed $raw): array
+    {
+        $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('strval', $decoded), static fn (string $v): bool => $v !== ''));
     }
 
     private function clientIp(): string

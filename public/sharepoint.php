@@ -25,6 +25,7 @@ use RiskAssessment\SharePoint\SharePointPortfolioDashboard;
 use RiskAssessment\SharePoint\SharePointPortfolioMapping;
 use RiskAssessment\SharePoint\SharePointSizeDashboard;
 use RiskAssessment\SqliteMaintenance;
+use RiskAssessment\UserAccess;
 
 $catalog = new SharePointCatalogRepository($pdo);
 $sourcesRepo = new SharePointSourceRepository($pdo);
@@ -157,6 +158,14 @@ $requestedApp = $actionParam === 'size_stats' || $actionParam === 'duplicate_sta
     ? \RiskAssessment\AppModules::STORAGE
     : \RiskAssessment\AppModules::SHAREPOINT;
 \RiskAssessment\AppModules::instance()->require($requestedApp, $currentUser);
+$isPostRequest = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+if ($requestedApp === \RiskAssessment\AppModules::STORAGE) {
+    UserAccess::requireDest($currentUser, 'storage');
+} elseif ($actionParam === '' && !$isPostRequest) {
+    UserAccess::requireDest($currentUser, ...UserAccess::destsForPath('sharepoint.php?' . http_build_query($_GET)));
+} else {
+    UserAccess::requireDest($currentUser, 'sharepoint', 'catalogs', 'owners', 'storage');
+}
 $isAdmin = !empty($currentUser['is_admin']);
 
 $error = '';
@@ -171,8 +180,17 @@ $freshOwnersShareUrl = null;
 $freshCatalogShareLabel = '';
 $freshOwnersShareLabel = '';
 
-$allSources = $sourcesRepo->listAll();
+$allSources = UserAccess::filterSources($sourcesRepo->listAll(), $currentUser);
+if ($allSources === [] && UserAccess::catalogKeysForUser($currentUser) !== null) {
+    \RiskAssessment\AppModules::instance()->deny('No SharePoint catalogs are available for your account.', $currentUser);
+}
 $requestedSourceKey = trim((string) ($_GET['source'] ?? $_POST['source'] ?? $_POST['source_key'] ?? ''));
+if ($requestedSourceKey !== '' && !UserAccess::canUseCatalog($currentUser, $requestedSourceKey)) {
+    if ($actionParam !== '' || $isPostRequest) {
+        UserAccess::assertCatalogSource($currentUser, $requestedSourceKey);
+    }
+    $requestedSourceKey = '';
+}
 $activeSource = $requestedSourceKey !== ''
     ? $sourcesRepo->findByKey($requestedSourceKey)
     : null;
@@ -977,6 +995,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $items = [];
             }
+            $items = array_values(array_filter(
+                $items,
+                static fn ($item): bool => is_array($item)
+                    && UserAccess::canUseCatalog($currentUser, trim((string) ($item['source_key'] ?? '')))
+            ));
             if ($items === []) {
                 throw new RuntimeException('Select at least one project to favorite.');
             }
@@ -2281,24 +2304,24 @@ $soloPageClass = $ownerSolo
             </a>
             <div class="topbar-actions">
                 <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
-                <?php
-                $menuApps = \RiskAssessment\AppModules::instance();
-                $menuCanRisk = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::RISK);
-                $menuCanSharePoint = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::SHAREPOINT);
-                ?>
-                <?php if ($menuCanRisk): ?>
+                <?php $navOk = static fn (string $dest): bool => \RiskAssessment\UserAccess::canShowMenuDest($currentUser, $dest); ?>
+                <?php if ($navOk('find')): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" data-nav-dest="find" href="index.php#find-projects" title="Search and open saved risk assessments by name, vendor, owner, and more"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+                <?php endif; ?>
+                <?php if ($navOk('upload')): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="mint" data-nav-dest="upload" href="index.php#upload" title="Upload an Architecture Risk Assessment workbook (.xlsx) to generate a dashboard"><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
+                <?php endif; ?>
+                <?php if ($navOk('templates')): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" data-nav-dest="templates" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
                 <?php endif; ?>
-                <?php if ($menuCanSharePoint): ?>
+                <?php if ($navOk('sharepoint')): ?>
                 <a class="button ghost home-link<?= !$panelSolo ? ' is-active' : '' ?>" data-menu-group="sharepoint" data-menu-tone="peach" data-nav-dest="sharepoint" href="sharepoint.php?source=<?= e($activeSourceKey) ?>"<?= !$panelSolo ? ' aria-current="page"' : '' ?> title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
+                <?php endif; ?>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
                 <?php
                 $ownersNavUrl = $ownerDashUrl;
                 require __DIR__ . '/includes/owners-nav-link.php';
                 ?>
-                <?php endif; ?>
                 <?php
                 $heatmapNavUrl = $heatmapDashUrl;
                 require __DIR__ . '/includes/heatmap-nav-link.php';

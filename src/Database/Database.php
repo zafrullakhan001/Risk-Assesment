@@ -238,6 +238,8 @@ final class Database
         self::ensureColumn($pdo, 'users', 'created_by_user_id', 'INTEGER');
         self::ensureColumn($pdo, 'users', 'created_by_username', "TEXT NOT NULL DEFAULT ''");
         self::ensureColumn($pdo, 'users', 'is_superadmin', 'INTEGER NOT NULL DEFAULT 0');
+        self::ensureColumn($pdo, 'users', 'allowed_catalog_source_keys', "TEXT NOT NULL DEFAULT ''");
+        self::ensureColumn($pdo, 'users', 'allowed_menu_dests', "TEXT NOT NULL DEFAULT ''");
         self::backfillUserCreatedBy($pdo);
         self::backfillSuperAdmin($pdo);
         $pdo->exec(

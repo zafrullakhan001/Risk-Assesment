@@ -89,10 +89,18 @@ final class AppModules
             return;
         }
 
+        $this->deny(self::label($app) . ' is disabled by the administrator.', $user);
+    }
+
+    /**
+     * Send a 403 (JSON or small HTML page linking to the user's home) and exit.
+     *
+     * @param array<string, mixed>|null $user
+     */
+    public function deny(string $message, ?array $user = null): void
+    {
         $auth = Auth::instance();
-        $label = self::label($app);
         $home = $this->homeUrl($user);
-        $message = $label . ' is disabled by the administrator.';
 
         if ($this->wantsJson()) {
             http_response_code(403);
@@ -125,17 +133,10 @@ final class AppModules
     public function homeUrl(?array $user = null): string
     {
         $user ??= Auth::instance()->currentUser();
-        if ($this->canAccess($user, self::RISK)) {
-            return 'index.php';
-        }
-        if ($this->canAccess($user, self::SHAREPOINT)) {
-            return 'sharepoint.php';
-        }
-        if ($this->canAccess($user, self::STORAGE)) {
-            return 'sharepoint.php?view=heatmap';
-        }
-        if ($this->canAccess($user, self::TICKET)) {
-            return 'ticket-dossier/';
+        foreach (UserAccess::MENU_DESTS as $dest => $meta) {
+            if (UserAccess::canShowMenuDest($user, $dest)) {
+                return $meta['url'];
+            }
         }
 
         return 'help.php';
@@ -181,6 +182,10 @@ final class AppModules
         $safe = Auth::instance()->safeNext($next, $user);
         $app = $this->appForPath($safe);
         if ($app !== null && !$this->canAccess($user, $app)) {
+            return $this->homeUrl($user);
+        }
+        $dests = UserAccess::destsForPath($safe);
+        if ($dests !== [] && !array_filter($dests, static fn (string $d): bool => UserAccess::canShowMenuDest($user, $d))) {
             return $this->homeUrl($user);
         }
 

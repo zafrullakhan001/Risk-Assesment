@@ -376,6 +376,7 @@ if (in_array($action, ['browser_sync_import', 'browser_sync_attachment', 'browse
 // --- Authenticated prepare ---
 $currentUser = $auth->requireAuth();
 \RiskAssessment\AppModules::instance()->require(\RiskAssessment\AppModules::TICKET, $currentUser);
+\RiskAssessment\UserAccess::requireDest($currentUser, 'ticket');
 
 if ($action === 'prepare_browser_sync' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     try {

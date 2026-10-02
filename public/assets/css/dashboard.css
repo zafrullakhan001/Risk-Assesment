@@ -7219,6 +7219,24 @@ body.is-presentation .print-only-block { display: block; }
     color: #fff;
 }
 
+.user-action-btn.is-access {
+    border-color: color-mix(in srgb, #2563eb 30%, var(--line));
+    background: color-mix(in srgb, #93c5fd 14%, var(--card));
+    color: #1d4ed8;
+}
+
+.user-action-btn.is-access.is-limited {
+    border-color: #2563eb;
+    box-shadow: inset 0 0 0 1px #2563eb;
+}
+
+.user-action-btn.is-access:hover,
+.user-action-btn.is-access:focus-visible {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}
+
 .user-actions {
     display: flex;
     flex-wrap: wrap;

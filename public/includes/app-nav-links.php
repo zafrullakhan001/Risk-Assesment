@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
+use RiskAssessment\UserAccess;
 
 /**
  * Standard topbar destination links shared across signed-in pages.
@@ -11,15 +11,13 @@ use RiskAssessment\Auth;
  */
 $appNavPrefix = Auth::instance()->publicPrefix();
 $appNavUser = $currentUser ?? Auth::instance()->currentUser();
-$appNavModules = AppModules::instance();
-$canNavRisk = $appNavModules->canAccess(is_array($appNavUser) ? $appNavUser : null, AppModules::RISK);
-$canNavSharePoint = $appNavModules->canAccess(is_array($appNavUser) ? $appNavUser : null, AppModules::SHAREPOINT);
+$appNavUser = is_array($appNavUser) ? $appNavUser : null;
 $catalogNavUrl = $appNavPrefix . 'sharepoint.php?view=catalog&source=default&mode=or&per=100';
 $ownersNavUrl = $appNavPrefix . 'sharepoint.php?view=owners';
 $heatmapNavUrl = $appNavPrefix . 'sharepoint.php?view=heatmap';
 $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
 ?>
-<?php if ($canNavRisk): ?>
+<?php if (UserAccess::canShowMenuDest($appNavUser, 'find')): ?>
 <a
     class="button ghost home-link"
     data-menu-group="risk"
@@ -28,6 +26,8 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     href="<?= e($appNavPrefix) ?>index.php#find-projects"
     title="Search and open saved risk assessments by name, vendor, owner, and more"
 ><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find projects</a>
+<?php endif; ?>
+<?php if (UserAccess::canShowMenuDest($appNavUser, 'upload')): ?>
 <a
     class="button ghost home-link"
     data-menu-group="risk"
@@ -36,6 +36,8 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     href="<?= e($appNavPrefix) ?>index.php#upload"
     title="Upload an Architecture Risk Assessment workbook (.xlsx) to generate a dashboard"
 ><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
+<?php endif; ?>
+<?php if (UserAccess::canShowMenuDest($appNavUser, 'templates')): ?>
 <a
     class="button ghost home-link"
     data-menu-group="risk"
@@ -45,7 +47,7 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     title="Browse and manage assessment workbook templates"
 ><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
 <?php endif; ?>
-<?php if ($canNavSharePoint): ?>
+<?php if (UserAccess::canShowMenuDest($appNavUser, 'sharepoint')): ?>
 <a
     class="button ghost home-link"
     data-menu-group="sharepoint"
@@ -54,8 +56,8 @@ $ticketDossierNavUrl = $appNavPrefix . 'ticket-dossier/';
     href="<?= e($appNavPrefix) ?>sharepoint.php"
     title="Browse SharePoint folders, sync projects, and search architecture work"
 ><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
+<?php endif; ?>
 <?php require __DIR__ . '/catalog-nav-link.php'; ?>
 <?php require __DIR__ . '/owners-nav-link.php'; ?>
-<?php endif; ?>
 <?php require __DIR__ . '/heatmap-nav-link.php'; ?>
 <?php require __DIR__ . '/ticket-dossier-nav-link.php'; ?>

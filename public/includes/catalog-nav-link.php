@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
+use RiskAssessment\UserAccess;
 
 /**
  * Dedicated Catalog topbar shortcut (relative URL — host/path independent).
@@ -11,7 +11,7 @@ use RiskAssessment\Auth;
  * Optional: set $catalogNavUrl before include (e.g. with publicPrefix from ticket-dossier).
  */
 $catalogNavUser = $currentUser ?? Auth::instance()->currentUser();
-if (!AppModules::instance()->canAccess(is_array($catalogNavUser) ? $catalogNavUser : null, AppModules::SHAREPOINT)) {
+if (!UserAccess::canShowMenuDest(is_array($catalogNavUser) ? $catalogNavUser : null, 'catalogs')) {
     return;
 }
 $catalogSolo = $catalogSolo ?? false;

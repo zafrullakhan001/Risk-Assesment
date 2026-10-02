@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
+use RiskAssessment\UserAccess;
 
 /**
  * SharePoint Project owners topbar shortcut.
@@ -11,7 +11,7 @@ use RiskAssessment\Auth;
  * Optional: set $ownersNavUrl before include (e.g. with publicPrefix from admin/ticket-dossier).
  */
 $ownersNavUser = $currentUser ?? Auth::instance()->currentUser();
-if (!AppModules::instance()->canAccess(is_array($ownersNavUser) ? $ownersNavUser : null, AppModules::SHAREPOINT)) {
+if (!UserAccess::canShowMenuDest(is_array($ownersNavUser) ? $ownersNavUser : null, 'owners')) {
     return;
 }
 $ownerSolo = $ownerSolo ?? false;

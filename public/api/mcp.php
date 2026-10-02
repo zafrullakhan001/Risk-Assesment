@@ -16,6 +16,7 @@ require __DIR__ . '/../bootstrap.php';
 use RiskAssessment\Repositories\SharePointCatalogRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\Repositories\SharePointSearchTagRepository;
+use RiskAssessment\UserAccess;
 
 // MCP is Bearer-token auth only — release the PHP session lock so Cursor
 // can run concurrent initialize/tools/list calls without hanging.
@@ -281,12 +282,15 @@ function getMcpUser(): ?array
     }
     
     $scopes = array_filter(array_map('trim', explode(',', (string) $row['scopes'])));
+    $fullUser = \RiskAssessment\Auth::instance()->users()->findById((int) $row['user_id']);
     
     return [
         'id' => (int) $row['user_id'],
         'username' => $row['username'],
         'display_name' => $row['display_name'] ?? $row['username'],
         'is_admin' => !empty($row['is_admin']),
+        'is_superadmin' => !empty($fullUser['is_superadmin']),
+        'allowed_catalog_source_keys' => $fullUser['allowed_catalog_source_keys'] ?? [],
         '_mcp_scopes' => $scopes,
         '_mcp_token_id' => (int) $row['id'],
     ];
@@ -521,7 +525,7 @@ function callTool($id, string $name, array $args, array $user): array
                 
                 if ($sourceKey === '') {
                     // Search all sources (cap per-source and total to avoid timeouts)
-                    $sources = $sourcesRepo->listAll();
+                    $sources = UserAccess::filterSources($sourcesRepo->listAll(), $user);
                     $results = [];
                     $perSourceLimit = max(1, min($limit, 10));
                     
@@ -557,7 +561,7 @@ function callTool($id, string $name, array $args, array $user): array
                 }
                 
                 // Search specific source
-                $source = $sourcesRepo->findByKey($sourceKey);
+                $source = UserAccess::canUseCatalog($user, $sourceKey) ? $sourcesRepo->findByKey($sourceKey) : null;
                 if ($source === null) {
                     return mcpTextResult($id, ['error' => "Source not found: {$sourceKey}"], true);
                 }
@@ -579,7 +583,7 @@ function callTool($id, string $name, array $args, array $user): array
                 $page = max(1, (int) ($args['page'] ?? 1));
                 $perPage = max(1, min(100, (int) ($args['per_page'] ?? 25)));
                 
-                $source = $sourcesRepo->findByKey($sourceKey);
+                $source = UserAccess::canUseCatalog($user, $sourceKey) ? $sourcesRepo->findByKey($sourceKey) : null;
                 if ($source === null) {
                     return mcpTextResult($id, ['error' => "Source not found: {$sourceKey}"], true);
                 }
@@ -608,7 +612,7 @@ function callTool($id, string $name, array $args, array $user): array
                 
                 $sourceKey = trim((string) ($args['source'] ?? 'default'));
                 
-                $source = $sourcesRepo->findByKey($sourceKey);
+                $source = UserAccess::canUseCatalog($user, $sourceKey) ? $sourcesRepo->findByKey($sourceKey) : null;
                 if ($source === null) {
                     return mcpTextResult($id, ['error' => "Source not found: {$sourceKey}"], true);
                 }
@@ -626,7 +630,7 @@ function callTool($id, string $name, array $args, array $user): array
                 ]);
             
             case 'list_sharepoint_sources':
-                $sources = $sourcesRepo->listAll();
+                $sources = UserAccess::filterSources($sourcesRepo->listAll(), $user);
                 
                 $formatted = array_map(function (array $source): array {
                     return [
@@ -651,7 +655,7 @@ function callTool($id, string $name, array $args, array $user): array
                     return mcpTextResult($id, ['error' => 'source is required'], true);
                 }
                 
-                $source = $sourcesRepo->findByKey($sourceKey);
+                $source = UserAccess::canUseCatalog($user, $sourceKey) ? $sourcesRepo->findByKey($sourceKey) : null;
                 if ($source === null) {
                     return mcpTextResult($id, ['error' => "Source not found: {$sourceKey}"], true);
                 }
@@ -698,7 +702,7 @@ function callTool($id, string $name, array $args, array $user): array
                 ]);
             
             case 'get_sharepoint_catalog_stats':
-                $sources = $sourcesRepo->listAll();
+                $sources = UserAccess::filterSources($sourcesRepo->listAll(), $user);
                 $stats = [];
                 
                 foreach ($sources as $source) {

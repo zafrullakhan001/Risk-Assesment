@@ -37,6 +37,8 @@ use RiskAssessment\Mail\SmtpSettings;
 $currentUser = $auth->requireAuth();
 $appModules = \RiskAssessment\AppModules::instance();
 $appModules->require(\RiskAssessment\AppModules::RISK, $currentUser);
+\RiskAssessment\UserAccess::requireDest($currentUser, 'find', 'upload');
+$navOk = static fn (string $dest): bool => \RiskAssessment\UserAccess::canShowMenuDest($currentUser, $dest);
 $actor = Actor::fromUser($currentUser);
 $repository = new AssessmentRepository($pdo);
 $accessRepository = new AssessmentAccessRepository($pdo);
@@ -1735,6 +1737,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if (!$navOk('upload')) {
+            throw new RuntimeException('Uploading assessments is not available for your account.');
+        }
         if (!isset($_FILES['assessment_file']) || !is_array($_FILES['assessment_file'])) {
             throw new RuntimeException('Please choose an Excel file to upload.');
         }
@@ -2235,21 +2240,20 @@ $renderProjectLockBadge = static function (array $project): void {
             </a>
             <div class="topbar-actions">
                 <?php require __DIR__ . '/includes/topbar-menu-start.php'; ?>
-                <?php
-                $menuApps = \RiskAssessment\AppModules::instance();
-                $menuCanRisk = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::RISK);
-                $menuCanSharePoint = $menuApps->canAccess($currentUser, \RiskAssessment\AppModules::SHAREPOINT);
-                ?>
-                <?php if ($menuCanRisk): ?>
+                <?php if ($navOk('find')): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="sky" data-nav-dest="find" href="#find-projects" title="Search and open saved risk assessments by name, vendor, owner, and more"><span class="topbar-menu-emoji" aria-hidden="true">🔎</span>Find by name</a>
+                <?php endif; ?>
+                <?php if ($navOk('upload')): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="mint" data-nav-dest="upload" href="#upload" title="Upload an Architecture Risk Assessment workbook (.xlsx) to generate a dashboard"><span class="topbar-menu-emoji" aria-hidden="true">📤</span>Upload</a>
+                <?php endif; ?>
+                <?php if ($navOk('templates')): ?>
                 <a class="button ghost home-link" data-menu-group="risk" data-menu-tone="lavender" data-nav-dest="templates" href="templates.php" title="Browse and manage assessment workbook templates"><span class="topbar-menu-emoji" aria-hidden="true">📚</span>Templates</a>
                 <?php endif; ?>
-                <?php if ($menuCanSharePoint): ?>
+                <?php if ($navOk('sharepoint')): ?>
                 <a class="button ghost home-link" data-menu-group="sharepoint" data-menu-tone="peach" data-nav-dest="sharepoint" href="sharepoint.php" title="Browse SharePoint folders, sync projects, and search architecture work"><span class="topbar-menu-emoji" aria-hidden="true">📁</span>SharePoint</a>
+                <?php endif; ?>
                 <?php require __DIR__ . '/includes/catalog-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/owners-nav-link.php'; ?>
-                <?php endif; ?>
                 <?php require __DIR__ . '/includes/heatmap-nav-link.php'; ?>
                 <?php require __DIR__ . '/includes/ticket-dossier-nav-link.php'; ?>
 
@@ -2286,6 +2290,7 @@ $renderProjectLockBadge = static function (array $project): void {
 
             <?php $homeTab = 'find'; require __DIR__ . '/includes/home-section-tabs.php'; ?>
 
+            <?php if ($navOk('find')): ?>
             <section class="upload-card search-card" id="find-projects">
                 <h2><?= e($branding->heroHeadingPlain()) ?></h2>
                 <p>Search any project field: name, vendor, owner, scope, reviewer, architecture, filename, evaluator, executive summary, dates, template format (try “adaptive” or “matured”), or go-live status (try “ready”, “not ready”, “no final”). Leave blank to browse all saved versions.</p>
@@ -2563,7 +2568,9 @@ $renderProjectLockBadge = static function (array $project): void {
                     <?php endif; ?>
                 <?php endif; ?>
             </section>
+            <?php endif; ?>
 
+            <?php if ($navOk('upload')): ?>
             <section class="upload-card" id="upload">
                 <h2>Upload assessment</h2>
                 <p>Drop one or more Architecture Risk Assessment workbooks (.xlsx). Supports the classic table-based Risk Register format and the Adaptive Architecture template (classify → route → material findings). Include Due Diligence, Governance/Exception, and Scoring tabs as needed.</p>
@@ -2599,6 +2606,7 @@ $renderProjectLockBadge = static function (array $project): void {
                     <button type="submit" class="button button-primary">Generate dashboard</button>
                 </form>
             </section>
+            <?php endif; ?>
         </main>
         <?php require __DIR__ . '/includes/site-footer.php'; ?>
     </div>

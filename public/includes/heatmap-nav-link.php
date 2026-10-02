@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use RiskAssessment\AppModules;
 use RiskAssessment\Auth;
+use RiskAssessment\UserAccess;
 
 /**
  * SharePoint storage heatmap topbar shortcut.
@@ -11,7 +11,7 @@ use RiskAssessment\Auth;
  * Optional: set $heatmapNavUrl before include (e.g. with publicPrefix from admin/ticket-dossier).
  */
 $heatmapNavUser = $currentUser ?? Auth::instance()->currentUser();
-if (!AppModules::instance()->canAccess(is_array($heatmapNavUser) ? $heatmapNavUser : null, AppModules::STORAGE)) {
+if (!UserAccess::canShowMenuDest(is_array($heatmapNavUser) ? $heatmapNavUser : null, 'storage')) {
     return;
 }
 $heatmapSolo = $heatmapSolo ?? false;

@@ -376,7 +376,7 @@ final class CatalogShareRepository
      * @param list<string> $allowedKeys Empty means all catalogs.
      * @return list<array<string, mixed>>
      */
-    public function filterSources(array $allSources, array $allowedKeys): array
+    public static function filterSources(array $allSources, array $allowedKeys): array
     {
         if ($allowedKeys === []) {
             return array_values($allSources);
@@ -480,7 +480,7 @@ final class CatalogShareRepository
      * @param list<mixed> $sourceKeys
      * @return list<string>
      */
-    private function normalizeSourceKeys(array $sourceKeys): array
+    public static function normalizeSourceKeys(array $sourceKeys): array
     {
         $out = [];
         foreach ($sourceKeys as $key) {

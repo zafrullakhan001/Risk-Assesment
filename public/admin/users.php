@@ -35,6 +35,9 @@ $ldapUserDetails = null;
 /** @var array{dn: string, name: string, members: list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}>}|null $ldapGroupPreview */
 $ldapGroupPreview = null;
 $ldapGroupQuery = '';
+/** @var array<string, mixed>|null $accessTarget */
+$accessTarget = null;
+$catalogSources = (new \RiskAssessment\Repositories\SharePointSourceRepository($pdo))->listAll();
 
 /**
  * @param list<array{username: string, email: string, display_name: string, dn: string, groups: list<string>}> $members
@@ -535,6 +538,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $usersRepo->setPassword($targetId, $hash);
             $usersRepo->logAudit('user.password_reset', (int) $currentUser['id'], (string) $currentUser['username'], $targetId, (string) $target['username']);
             $flash = 'Password reset.';
+        } elseif ($action === 'view_user_access') {
+            $accessTarget = $target;
+        } elseif ($action === 'save_user_access') {
+            if (\RiskAssessment\Auth::isSuperAdmin($target)) {
+                throw new RuntimeException('The superadmin always has full access.');
+            }
+            $accessTarget = $target;
+            $catalogKeys = [];
+            if (!empty($_POST['limit_catalogs'])) {
+                $registeredKeys = array_map(static fn (array $src): string => (string) ($src['source_key'] ?? ''), $catalogSources);
+                $catalogKeys = array_values(array_intersect(
+                    \RiskAssessment\Repositories\CatalogShareRepository::normalizeSourceKeys((array) ($_POST['catalog_keys'] ?? [])),
+                    $registeredKeys
+                ));
+                if ($catalogKeys === []) {
+                    throw new RuntimeException('Select at least one catalog, or turn off the catalog limit.');
+                }
+            }
+            $menuDests = [];
+            if (!empty($_POST['limit_menus'])) {
+                $menuDests = \RiskAssessment\UserAccess::normalizeMenuDests((array) ($_POST['menu_dests'] ?? []));
+                if ($menuDests === []) {
+                    throw new RuntimeException('Select at least one menu item, or turn off the menu limit.');
+                }
+            }
+            $usersRepo->updateAccessProfile($targetId, $catalogKeys, $menuDests);
+            $usersRepo->logAudit(
+                'user.access_profile',
+                (int) $currentUser['id'],
+                (string) $currentUser['username'],
+                $targetId,
+                (string) $target['username'],
+                ['catalogs' => $catalogKeys, 'menus' => $menuDests]
+            );
+            $accessTarget = $usersRepo->findById($targetId);
+            $flash = 'Access saved for “' . $target['username'] . '”.';
         } elseif ($action === 'delete') {
             if ((int) $target['id'] === (int) $currentUser['id']) {
                 throw new RuntimeException('You cannot delete your own account.');
@@ -1172,6 +1211,71 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                 <?php endif; ?>
             </section>
 
+            <?php if ($accessTarget !== null): ?>
+                <?php
+                $accessCatalogKeys = $accessTarget['allowed_catalog_source_keys'];
+                $accessMenuDests = $accessTarget['allowed_menu_dests'];
+                ?>
+                <section class="upload-card settings-card" id="user-access">
+                    <h2><span class="settings-emoji" aria-hidden="true">🎯</span> Access for “<?= e((string) $accessTarget['username']) ?>”</h2>
+                    <p>Limit which SharePoint catalogs and menu items this person can use. Leave a limit off for full access. Limits are enforced on pages and data requests, not just hidden from the menu.</p>
+                    <?php if (!empty($accessTarget['is_admin'])): ?>
+                        <p class="updater-warning">This account is an administrator. Saved limits only take effect if the admin role is removed.</p>
+                    <?php endif; ?>
+                    <form method="post" class="settings-form" action="<?= e($usersPageUrl([], '#user-access')) ?>">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="save_user_access">
+                        <input type="hidden" name="user_id" value="<?= (int) $accessTarget['id'] ?>">
+                        <fieldset class="settings-fieldset settings-tone-teal">
+                            <legend><span class="settings-emoji" aria-hidden="true">📚</span> Catalog access</legend>
+                            <label class="remember-row">
+                                <input type="checkbox" name="limit_catalogs" value="1" <?= $accessCatalogKeys !== [] ? 'checked' : '' ?>>
+                                <span><strong>Limit to selected catalogs</strong></span>
+                            </label>
+                            <?php if ($catalogSources === []): ?>
+                                <p class="settings-hint">No SharePoint catalogs are registered yet.</p>
+                            <?php else: ?>
+                                <div class="settings-grid">
+                                    <?php foreach ($catalogSources as $src): ?>
+                                        <?php $srcKey = (string) ($src['source_key'] ?? ''); ?>
+                                        <label class="remember-row">
+                                            <input type="checkbox" name="catalog_keys[]" value="<?= e($srcKey) ?>" <?= in_array($srcKey, $accessCatalogKeys, true) ? 'checked' : '' ?>>
+                                            <span><?= e((string) (($src['title'] ?? '') !== '' ? $src['title'] : $srcKey)) ?> <span class="table-sub"><?= e($srcKey) ?></span></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </fieldset>
+                        <fieldset class="settings-fieldset settings-tone-violet">
+                            <legend><span class="settings-emoji" aria-hidden="true">🧭</span> Menu access</legend>
+                            <label class="remember-row">
+                                <input type="checkbox" name="limit_menus" value="1" <?= $accessMenuDests !== [] ? 'checked' : '' ?>>
+                                <span><strong>Limit menu items</strong></span>
+                            </label>
+                            <p class="settings-hint">Apps disabled under Apps stay hidden regardless of these choices.</p>
+                            <div class="settings-grid">
+                                <?php foreach (\RiskAssessment\AppModules::all() as $app): ?>
+                                    <div class="settings-field">
+                                        <span><strong><?= e(\RiskAssessment\AppModules::label($app)) ?></strong></span>
+                                        <?php foreach (\RiskAssessment\UserAccess::MENU_DESTS as $dest => $meta): ?>
+                                            <?php if ($meta['app'] !== $app) { continue; } ?>
+                                            <label class="remember-row">
+                                                <input type="checkbox" name="menu_dests[]" value="<?= e($dest) ?>" <?= in_array($dest, $accessMenuDests, true) ? 'checked' : '' ?>>
+                                                <span><?= e($meta['label']) ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </fieldset>
+                        <div class="settings-actions">
+                            <button type="submit" class="button button-primary">💾 Save access</button>
+                            <a class="button ghost" href="<?= e($usersPageUrl([], '#all-users')) ?>">Close</a>
+                        </div>
+                    </form>
+                </section>
+            <?php endif; ?>
+
             <section class="upload-card" id="all-users">
                 <h2>All users</h2>
                 <form method="get" class="settings-form" action="users.php#all-users" style="margin-bottom: 1rem;">
@@ -1380,6 +1484,27 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                                                             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
                                                                 <circle cx="11" cy="11" r="8"></circle>
                                                                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
+                                                <?php if (!\RiskAssessment\Auth::isSuperAdmin($user)): ?>
+                                                    <?php $hasAccessLimits = $user['allowed_catalog_source_keys'] !== [] || $user['allowed_menu_dests'] !== []; ?>
+                                                    <form method="post" action="<?= e($usersPageUrl([], '#user-access')) ?>">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                        <input type="hidden" name="action" value="view_user_access">
+                                                        <button type="submit" class="user-action-btn is-access<?= $hasAccessLimits ? ' is-limited' : '' ?>" title="<?= $hasAccessLimits ? 'Access (limited)' : 'Access' ?>" aria-label="Catalog and menu access">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                                                <line x1="4" y1="21" x2="4" y2="14"></line>
+                                                                <line x1="4" y1="10" x2="4" y2="3"></line>
+                                                                <line x1="12" y1="21" x2="12" y2="12"></line>
+                                                                <line x1="12" y1="8" x2="12" y2="3"></line>
+                                                                <line x1="20" y1="21" x2="20" y2="16"></line>
+                                                                <line x1="20" y1="12" x2="20" y2="3"></line>
+                                                                <line x1="1" y1="14" x2="7" y2="14"></line>
+                                                                <line x1="9" y1="8" x2="15" y2="8"></line>
+                                                                <line x1="17" y1="16" x2="23" y2="16"></line>
                                                             </svg>
                                                         </button>
                                                     </form>
