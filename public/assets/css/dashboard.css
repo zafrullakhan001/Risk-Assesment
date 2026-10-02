@@ -7237,6 +7237,35 @@ body.is-presentation .print-only-block { display: block; }
     color: #fff;
 }
 
+.access-limit-toggle {
+    margin: 2px 0 10px;
+    color: var(--ink);
+}
+
+.access-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.access-menu-group {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+}
+
+.access-menu-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
 .user-actions {
     display: flex;
     flex-wrap: wrap;

@@ -1228,7 +1228,7 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         <input type="hidden" name="user_id" value="<?= (int) $accessTarget['id'] ?>">
                         <fieldset class="settings-fieldset settings-tone-teal">
                             <legend><span class="settings-emoji" aria-hidden="true">📚</span> Catalog access</legend>
-                            <label class="remember-row">
+                            <label class="remember-row access-limit-toggle">
                                 <input type="checkbox" name="limit_catalogs" value="1" <?= $accessCatalogKeys !== [] ? 'checked' : '' ?>>
                                 <span><strong>Limit to selected catalogs</strong></span>
                             </label>
@@ -1248,15 +1248,15 @@ require dirname(__DIR__) . '/includes/admin-header.php';
                         </fieldset>
                         <fieldset class="settings-fieldset settings-tone-violet">
                             <legend><span class="settings-emoji" aria-hidden="true">🧭</span> Menu access</legend>
-                            <label class="remember-row">
+                            <label class="remember-row access-limit-toggle">
                                 <input type="checkbox" name="limit_menus" value="1" <?= $accessMenuDests !== [] ? 'checked' : '' ?>>
                                 <span><strong>Limit menu items</strong></span>
                             </label>
                             <p class="settings-hint">Apps disabled under Apps stay hidden regardless of these choices.</p>
-                            <div class="settings-grid">
+                            <div class="access-menu-grid">
                                 <?php foreach (\RiskAssessment\AppModules::all() as $app): ?>
-                                    <div class="settings-field">
-                                        <span><strong><?= e(\RiskAssessment\AppModules::label($app)) ?></strong></span>
+                                    <div class="access-menu-group">
+                                        <span class="access-menu-group-title"><?= e(\RiskAssessment\AppModules::label($app)) ?></span>
                                         <?php foreach (\RiskAssessment\UserAccess::MENU_DESTS as $dest => $meta): ?>
                                             <?php if ($meta['app'] !== $app) { continue; } ?>
                                             <label class="remember-row">
