@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace RiskAssessment\SharePoint;
 
 use PDO;
-use RiskAssessment\Repositories\SharePointArchiveRepository;
 
 /**
  * Aggregates SharePoint catalog storage by approximate portfolio hierarchy
@@ -22,6 +21,7 @@ final class SharePointPortfolioDashboard
 
     public function __construct(
         private readonly PDO $pdo,
+        private readonly ?SharePointProjectDateScope $dateScope = null,
     ) {
     }
 
@@ -449,7 +449,7 @@ final class SharePointPortfolioDashboard
             return [];
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
         $statement = $this->pdo->prepare(
             "SELECT source_key, project_name,
@@ -503,7 +503,7 @@ final class SharePointPortfolioDashboard
      */
     private function resolveProjectOwners(array $sourceKeys): array
     {
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
 
         $rootStmt = $this->pdo->prepare(
@@ -666,7 +666,7 @@ final class SharePointPortfolioDashboard
         }
 
         $map = SharePointPortfolioMapping::load();
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
         $params = $sourceKeys;
         $extra = '';

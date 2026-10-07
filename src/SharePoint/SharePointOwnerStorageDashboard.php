@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace RiskAssessment\SharePoint;
 
 use PDO;
-use RiskAssessment\Repositories\SharePointArchiveRepository;
 
 /**
  * Aggregates SharePoint catalog storage by project-folder owner (Created By)
@@ -21,6 +20,7 @@ final class SharePointOwnerStorageDashboard
 
     public function __construct(
         private readonly PDO $pdo,
+        private readonly ?SharePointProjectDateScope $dateScope = null,
     ) {
     }
 
@@ -279,7 +279,7 @@ final class SharePointOwnerStorageDashboard
      */
     private function collectProjectStorage(array $sourceKeys, array $sourceTitles): array
     {
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
 
         $statsStmt = $this->pdo->prepare(
@@ -408,7 +408,7 @@ final class SharePointOwnerStorageDashboard
             ];
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
         $statement = $this->pdo->prepare(
             "SELECT source_key, project_name, name, relative_path, size_bytes,

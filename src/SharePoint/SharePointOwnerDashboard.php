@@ -19,6 +19,7 @@ final class SharePointOwnerDashboard
 
     public function __construct(
         private readonly PDO $pdo,
+        private readonly ?SharePointProjectDateScope $dateScope = null,
     ) {
     }
 
@@ -340,7 +341,7 @@ final class SharePointOwnerDashboard
                     OR relative_path = project_name
                     OR relative_path = name
                )
-               AND " . \RiskAssessment\Repositories\SharePointArchiveRepository::visibleProjectSql('sharepoint_items') . "
+               AND " . SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items') . "
              ORDER BY source_key ASC, LOWER(project_name) ASC, id ASC"
         );
         $statement->execute($sourceKeys);
@@ -355,6 +356,7 @@ final class SharePointOwnerDashboard
                     MAX(last_modified) AS last_modified
              FROM sharepoint_items
              WHERE source_key IN ($placeholders)
+               " . ($this->dateScope !== null ? 'AND ' . $this->dateScope->inRangeSql('sharepoint_items') : '') . "
              GROUP BY source_key, project_name"
         );
         $statsStmt->execute($sourceKeys);

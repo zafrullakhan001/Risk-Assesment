@@ -23,6 +23,7 @@ use RiskAssessment\SharePoint\SharePointOwnerDashboard;
 use RiskAssessment\SharePoint\SharePointOwnerStorageDashboard;
 use RiskAssessment\SharePoint\SharePointPortfolioDashboard;
 use RiskAssessment\SharePoint\SharePointPortfolioMapping;
+use RiskAssessment\SharePoint\SharePointProjectDateScope;
 use RiskAssessment\SharePoint\SharePointSizeDashboard;
 use RiskAssessment\SqliteMaintenance;
 use RiskAssessment\UserAccess;
@@ -454,6 +455,12 @@ if ($actionParam === 'catalog_compare') {
     exit;
 }
 
+$projectDateScope = in_array(
+    $actionParam,
+    ['owner_stats', 'owner_storage_stats', 'size_stats', 'portfolio_stats', 'duplicate_stats', 'file_type_stats'],
+    true
+) ? SharePointProjectDateScope::fromQuery($pdo, $_GET) : null;
+
 if ($actionParam === 'owner_stats') {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: private, max-age=30');
@@ -490,7 +497,7 @@ if ($actionParam === 'owner_stats') {
         $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
     }
 
-    $dashboard = new SharePointOwnerDashboard($pdo);
+    $dashboard = new SharePointOwnerDashboard($pdo, $projectDateScope);
     $payload = $dashboard->build($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -532,7 +539,7 @@ if ($actionParam === 'owner_storage_stats') {
         $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
     }
 
-    $ownerStorageDash = new SharePointOwnerStorageDashboard($pdo);
+    $ownerStorageDash = new SharePointOwnerStorageDashboard($pdo, $projectDateScope);
     $ownerKeyParam = trim((string) ($_GET['owner'] ?? ''));
     $payload = $ownerKeyParam !== ''
         ? $ownerStorageDash->buildOwnerProjects($selectedKeys, $sourceTitles, $ownerKeyParam)
@@ -550,7 +557,7 @@ if ($actionParam === 'size_stats') {
     $projectName = trim((string) ($_GET['project'] ?? ''));
     $folderPath = trim((string) ($_GET['path'] ?? ''));
 
-    $sizeDashboard = new SharePointSizeDashboard($pdo);
+    $sizeDashboard = new SharePointSizeDashboard($pdo, $projectDateScope);
 
     if ($level === 'folder') {
         if ($sizeSourceKey === '' || $projectName === '') {
@@ -634,7 +641,7 @@ if ($actionParam === 'portfolio_stats') {
     $subPortfolioName = trim((string) ($_GET['sub_portfolio'] ?? ''));
     $ownerKeyParam = trim((string) ($_GET['owner'] ?? ''));
 
-    $portfolioDash = new SharePointPortfolioDashboard($pdo);
+    $portfolioDash = new SharePointPortfolioDashboard($pdo, $projectDateScope);
 
     $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
     $wantedKeys = [];
@@ -832,7 +839,7 @@ if ($actionParam === 'duplicate_stats') {
         $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
     }
 
-    $sizeDashboard = new SharePointSizeDashboard($pdo);
+    $sizeDashboard = new SharePointSizeDashboard($pdo, $projectDateScope);
     $payload = $sizeDashboard->buildDuplicateStats($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -851,7 +858,7 @@ if ($actionParam === 'file_type_stats') {
         ? []
         : array_values(array_filter(array_map('trim', explode(',', $extensionsParam))));
 
-    $sizeDashboard = new SharePointSizeDashboard($pdo);
+    $sizeDashboard = new SharePointSizeDashboard($pdo, $projectDateScope);
     $extensions = $sizeDashboard->normalizeExtensions($rawExtensions);
 
     $sourcesParam = trim((string) ($_GET['sources'] ?? ''));
@@ -2815,6 +2822,14 @@ $soloPageClass = $ownerSolo
                                     <option value="all">All years</option>
                                 </select>
                             </label>
+                            <label class="sp-od-year-label" title="Only projects last modified on or after this day">
+                                <span>From</span>
+                                <input type="date" id="sp-owner-date-from" aria-label="Projects modified from">
+                            </label>
+                            <label class="sp-od-year-label" title="Only projects last modified on or before this day">
+                                <span>To</span>
+                                <input type="date" id="sp-owner-date-to" aria-label="Projects modified to">
+                            </label>
                             <label class="sp-od-search sp-od-search-toolbar">
                                 <span class="visually-hidden">Filter people or project names</span>
                                 <span class="sp-od-search-ico" aria-hidden="true">🔍</span>
@@ -2997,6 +3012,22 @@ $soloPageClass = $ownerSolo
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-owners" data-tab="owners" aria-selected="false" aria-controls="sp-size-tab-panel-owners">By Owner</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-file-types" data-tab="file-types" aria-selected="false" aria-controls="sp-size-tab-panel-file-types">By File Type</button>
                             <button type="button" class="sp-size-tab" role="tab" id="sp-size-tab-duplicates" data-tab="duplicates" aria-selected="false" aria-controls="sp-size-tab-panel-duplicates">Duplicate Files</button>
+                        </div>
+                        <?php
+                        $heatmapDateFrom = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_GET['hfrom'] ?? '')) === 1 ? (string) $_GET['hfrom'] : '';
+                        $heatmapDateTo = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_GET['hto'] ?? '')) === 1 ? (string) $_GET['hto'] : '';
+                        ?>
+                        <div class="sp-size-date-range" role="group" aria-label="Project last modified range for every tab">
+                            <span class="sp-size-date-range-label">🕒 Projects modified</span>
+                            <label class="sp-od-year-label" title="Only projects last modified on or after this day">
+                                <span>From</span>
+                                <input type="date" id="sp-heatmap-date-from" value="<?= e($heatmapDateFrom) ?>" aria-label="Projects modified from">
+                            </label>
+                            <label class="sp-od-year-label" title="Only projects last modified on or before this day">
+                                <span>To</span>
+                                <input type="date" id="sp-heatmap-date-to" value="<?= e($heatmapDateTo) ?>" aria-label="Projects modified to">
+                            </label>
+                            <button type="button" class="button ghost" id="sp-heatmap-date-clear"<?= $heatmapDateFrom === '' && $heatmapDateTo === '' ? ' hidden' : '' ?>>Clear dates</button>
                         </div>
 
                         <div class="sp-size-tab-panel is-active" role="tabpanel" id="sp-size-tab-panel-treemap" data-tab-panel="treemap" aria-labelledby="sp-size-tab-treemap">

@@ -81,6 +81,10 @@
     const base = 'sharepoint.php';
     const qs = new URLSearchParams();
     qs.set('action', 'size_stats');
+    ['from', 'to'].forEach((key) => {
+      const value = document.getElementById(`sp-heatmap-date-${key}`)?.value;
+      if (value) qs.set(key, value);
+    });
     Object.entries(params).forEach(([key, value]) => {
       if (value === undefined || value === null || String(value) === '') return;
       qs.set(key, String(value));
@@ -900,6 +904,10 @@
   const duplicateApiUrl = (params = {}) => {
     const qs = new URLSearchParams();
     qs.set('action', 'duplicate_stats');
+    ['from', 'to'].forEach((key) => {
+      const value = document.getElementById(`sp-heatmap-date-${key}`)?.value;
+      if (value) qs.set(key, value);
+    });
     Object.entries(params).forEach(([key, value]) => {
       if (value === undefined || value === null || String(value) === '') return;
       qs.set(key, String(value));
@@ -1309,6 +1317,43 @@
       else state.duplicates.expanded.add(key);
       renderDuplicateView();
     }
+  });
+
+  const dateFromInput = document.getElementById('sp-heatmap-date-from');
+  const dateToInput = document.getElementById('sp-heatmap-date-to');
+  const dateClearBtn = document.getElementById('sp-heatmap-date-clear');
+
+  const applyDateRange = () => {
+    const from = dateFromInput?.value || '';
+    const to = dateToInput?.value || '';
+    if (dateClearBtn) dateClearBtn.hidden = !from && !to;
+
+    const params = new URLSearchParams(window.location.search);
+    if (isSolo || params.get('view') === 'heatmap') {
+      const url = new URL(window.location.href);
+      if (from) url.searchParams.set('hfrom', from);
+      else url.searchParams.delete('hfrom');
+      if (to) url.searchParams.set('hto', to);
+      else url.searchParams.delete('hto');
+      history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    window.RiskRegisterOwnerStorage?.invalidate?.();
+    window.RiskRegisterFileTypeStorage?.invalidate?.();
+    window.RiskRegisterPortfolioStorage?.invalidate?.();
+    state.duplicates.loaded = false;
+    state.loaded = false;
+    if (!isSolo && !shell.open) return;
+    loadOverview();
+    if (state.activeTab !== 'treemap') setActiveTab(state.activeTab);
+  };
+
+  dateFromInput?.addEventListener('change', applyDateRange);
+  dateToInput?.addEventListener('change', applyDateRange);
+  dateClearBtn?.addEventListener('click', () => {
+    if (dateFromInput) dateFromInput.value = '';
+    if (dateToInput) dateToInput.value = '';
+    applyDateRange();
   });
 
   if (isSolo) {

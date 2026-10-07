@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace RiskAssessment\SharePoint;
 
 use PDO;
-use RiskAssessment\Repositories\SharePointArchiveRepository;
 
 /**
  * Aggregates SharePoint catalog storage by source, project folder, and path
@@ -17,6 +16,7 @@ final class SharePointSizeDashboard
 
     public function __construct(
         private readonly PDO $pdo,
+        private readonly ?SharePointProjectDateScope $dateScope = null,
     ) {
     }
 
@@ -34,7 +34,7 @@ final class SharePointSizeDashboard
             return $this->emptyOverview([]);
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
         $params = $sourceKeys;
         $extFilter = '';
@@ -155,7 +155,7 @@ final class SharePointSizeDashboard
             return $this->emptyFileTypes([]);
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
 
         $statement = $this->pdo->prepare(
@@ -280,7 +280,7 @@ final class SharePointSizeDashboard
             return $this->emptyProjects('', '');
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $params = [$sourceKey];
         $extFilter = '';
         if ($extensions !== []) {
@@ -383,7 +383,7 @@ final class SharePointSizeDashboard
             $folderPath = $projectName;
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $statement = $this->pdo->prepare(
             "SELECT name, item_type, relative_path, web_url, size_bytes, last_modified, mime_type
              FROM sharepoint_items
@@ -585,7 +585,7 @@ final class SharePointSizeDashboard
             return $this->emptyDuplicates([]);
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
 
         $statement = $this->pdo->prepare(
@@ -603,7 +603,7 @@ final class SharePointSizeDashboard
              ) d ON LOWER(i.name) = d.name_key AND COALESCE(i.size_bytes, 0) = COALESCE(d.size_bytes, 0)
              WHERE i.source_key IN ($placeholders)
                AND lower(i.item_type) = 'file'
-               AND " . SharePointArchiveRepository::visibleProjectSql('i') . '
+               AND " . SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'i') . '
              ORDER BY i.size_bytes DESC, LOWER(i.name) ASC, i.source_key ASC, LOWER(i.relative_path) ASC'
         );
         // Bind source keys twice: once for the subquery, once for the outer filter.
@@ -748,7 +748,7 @@ final class SharePointSizeDashboard
             return [];
         }
 
-        $visible = SharePointArchiveRepository::visibleProjectSql('sharepoint_items');
+        $visible = SharePointProjectDateScope::visibleProjectSql($this->dateScope, 'sharepoint_items');
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
         $params = $sourceKeys;
         $extra = '';

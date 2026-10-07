@@ -276,7 +276,12 @@
     chip: '',
     heatAll: false,
     compareKeys: [],
+    dateFrom: '',
+    dateTo: '',
   };
+  const dateFromInput = document.getElementById('sp-owner-date-from');
+  const dateToInput = document.getElementById('sp-owner-date-to');
+  const isIsoDay = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 
   const urlSyncEnabled = () =>
     root.getAttribute('data-solo') === '1' ||
@@ -303,6 +308,8 @@
     const chip = params.get('ochip');
     if (chip) state.chip = chip;
     if (params.get('oheat') === '1') state.heatAll = true;
+    if (isIsoDay(params.get('ofrom'))) state.dateFrom = params.get('ofrom');
+    if (isIsoDay(params.get('oto'))) state.dateTo = params.get('oto');
     const sources = params.get('osources');
     if (sources === 'all') {
       const all = availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
@@ -334,6 +341,8 @@
     setOrDel('osort', state.sort, 'projects');
     setOrDel('ochip', state.chip);
     setOrDel('oheat', state.heatAll ? '1' : '');
+    setOrDel('ofrom', state.dateFrom);
+    setOrDel('oto', state.dateTo);
     const allKeys = availableSources.map((src) => String(src.source_key || '')).filter(Boolean);
     const sameSources =
       state.sourceKeys.length === allKeys.length && allKeys.every((key) => state.sourceKeys.includes(key));
@@ -1584,6 +1593,8 @@
     const extra = {
       source: keys[0] || '',
       sources: keys.join(','),
+      from: state.dateFrom,
+      to: state.dateTo,
     };
     fetch(ownerApiUrl('owner_stats', extra), {
       credentials: 'same-origin',
@@ -1623,6 +1634,17 @@
     state.year = yearSelect.value || 'all';
     render();
   });
+
+  if (dateFromInput) dateFromInput.value = state.dateFrom;
+  if (dateToInput) dateToInput.value = state.dateTo;
+  const applyDateRange = () => {
+    state.dateFrom = isIsoDay(dateFromInput?.value) ? dateFromInput.value : '';
+    state.dateTo = isIsoDay(dateToInput?.value) ? dateToInput.value : '';
+    writeUrlState();
+    load();
+  };
+  dateFromInput?.addEventListener('change', applyDateRange);
+  dateToInput?.addEventListener('change', applyDateRange);
 
   document.getElementById('sp-owner-query')?.addEventListener('input', (event) => {
     state.ownerQuery = event.target.value || '';

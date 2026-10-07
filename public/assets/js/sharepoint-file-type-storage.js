@@ -121,6 +121,10 @@
   const apiUrl = (params = {}) => {
     const qs = new URLSearchParams();
     qs.set('action', 'file_type_stats');
+    ['from', 'to'].forEach((key) => {
+      const value = document.getElementById(`sp-heatmap-date-${key}`)?.value;
+      if (value) qs.set(key, value);
+    });
     Object.entries(params).forEach(([key, value]) => {
       if (value === undefined || value === null || String(value) === '') return;
       qs.set(key, String(value));

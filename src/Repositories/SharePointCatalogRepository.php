@@ -788,7 +788,9 @@ final class SharePointCatalogRepository
                     '_file_set' => [],
                     '_folder_set' => [],
                     '_max_modified' => '',
+                    '_max_modified_ts' => 0,
                     '_min_created' => '',
+                    '_min_created_ts' => PHP_INT_MAX,
                     '_root_created' => '',
                 ];
             }
@@ -818,16 +820,19 @@ final class SharePointCatalogRepository
                 $projects[$projectName]['paths'][] = $path;
             }
 
+            // Dates are "m/d/Y g:i A" or ISO text, so compare parsed timestamps, not strings.
             if ($lastModified !== '') {
-                $prevMax = (string) ($projects[$projectName]['_max_modified'] ?? '');
-                if ($prevMax === '' || strcmp($lastModified, $prevMax) > 0) {
+                $modifiedTs = strtotime($lastModified) ?: 0;
+                if ($projects[$projectName]['_max_modified'] === '' || $modifiedTs > $projects[$projectName]['_max_modified_ts']) {
                     $projects[$projectName]['_max_modified'] = $lastModified;
+                    $projects[$projectName]['_max_modified_ts'] = $modifiedTs;
                 }
             }
             if ($dateCreated !== '') {
-                $prevMin = (string) ($projects[$projectName]['_min_created'] ?? '');
-                if ($prevMin === '' || strcmp($dateCreated, $prevMin) < 0) {
+                $createdTs = strtotime($dateCreated) ?: PHP_INT_MAX;
+                if ($projects[$projectName]['_min_created'] === '' || $createdTs < $projects[$projectName]['_min_created_ts']) {
                     $projects[$projectName]['_min_created'] = $dateCreated;
+                    $projects[$projectName]['_min_created_ts'] = $createdTs;
                 }
             }
 
@@ -881,7 +886,9 @@ final class SharePointCatalogRepository
                 $project['_file_set'],
                 $project['_folder_set'],
                 $project['_max_modified'],
+                $project['_max_modified_ts'],
                 $project['_min_created'],
+                $project['_min_created_ts'],
                 $project['_root_created']
             );
             $out[] = $project;

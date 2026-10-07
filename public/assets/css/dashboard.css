@@ -18341,6 +18341,7 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
     color: var(--muted, #5b6b7c);
 }
 .sp-od-year-label select,
+.sp-od-year-label input[type="date"],
 .sp-od-search-toolbar input {
     font: inherit;
     font-weight: 600;
@@ -18353,6 +18354,7 @@ html[data-catalog-colors="distinct"] .sharepoint-source-row[data-catalog-tone="s
     min-height: 2.35rem;
 }
 .sp-od-year-label select:focus,
+.sp-od-year-label input[type="date"]:focus,
 .sp-od-search-toolbar input:focus {
     outline: 2px solid color-mix(in srgb, var(--primary, #0e7490) 45%, transparent);
     outline-offset: 1px;
@@ -21058,6 +21060,24 @@ html.is-compact .help-reader-toolbar {
     gap: 4px;
     border-bottom: 1px solid rgba(15, 23, 42, 0.1);
     margin-bottom: 4px;
+}
+.sp-size-date-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 0.9rem;
+    padding: 0.5rem 0 0.35rem;
+}
+.sp-size-date-range-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--ink, #0c1524);
+}
+.sp-size-date-range .sp-od-year-label input[type="date"] {
+    min-width: 0;
+}
+.sp-size-date-range .button[hidden] {
+    display: none;
 }
 .sp-size-tab {
     appearance: none;

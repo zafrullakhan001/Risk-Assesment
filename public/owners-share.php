@@ -7,6 +7,7 @@ require __DIR__ . '/bootstrap.php';
 use RiskAssessment\Repositories\CatalogShareRepository;
 use RiskAssessment\Repositories\SharePointSourceRepository;
 use RiskAssessment\SharePoint\SharePointOwnerDashboard;
+use RiskAssessment\SharePoint\SharePointProjectDateScope;
 
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
@@ -87,7 +88,7 @@ if ($actionParam === 'owner_stats') {
         $sourceTitles[$activeSourceKey] = (string) ($activeSource['title'] ?? $activeSourceKey);
     }
 
-    $dashboard = new SharePointOwnerDashboard($pdo);
+    $dashboard = new SharePointOwnerDashboard($pdo, SharePointProjectDateScope::fromQuery($pdo, $_GET));
     $payload = $dashboard->build($selectedKeys, $sourceTitles);
     echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -222,6 +223,14 @@ $sourcesJson = json_encode(array_map(static function (array $src) use ($catalogT
                                 <select id="sp-owner-year" aria-label="Filter by year">
                                     <option value="all">All years</option>
                                 </select>
+                            </label>
+                            <label class="sp-od-year-label" title="Only projects last modified on or after this day">
+                                <span>From</span>
+                                <input type="date" id="sp-owner-date-from" aria-label="Projects modified from">
+                            </label>
+                            <label class="sp-od-year-label" title="Only projects last modified on or before this day">
+                                <span>To</span>
+                                <input type="date" id="sp-owner-date-to" aria-label="Projects modified to">
                             </label>
                             <label class="sp-od-search sp-od-search-toolbar">
                                 <span class="visually-hidden">Filter people or project names</span>
