@@ -5787,7 +5787,6 @@
     name: '',
     match: '',
     items: '',
-    modified: '',
     modified_by: '',
     created_by: '',
   });
@@ -5814,6 +5813,8 @@
   const dateToEl = document.getElementById('sharepoint-date-to');
   const dateCustomWrap = document.getElementById('sharepoint-date-custom-wrap');
   const dateCustomToWrap = document.getElementById('sharepoint-date-custom-to-wrap');
+  const colDateFromEl = document.getElementById('sharepoint-col-date-from');
+  const colDateToEl = document.getElementById('sharepoint-col-date-to');
   const personFilterEl = document.getElementById('sharepoint-person-filter');
   const presenceFilterEl = document.getElementById('sharepoint-presence-filter');
   const presenceWrap = document.getElementById('sharepoint-presence-wrap');
@@ -7371,8 +7372,6 @@
       }
       case 'items':
         return `${folders} folders ${files} files ${folders + files}`;
-      case 'modified':
-        return `${project.last_modified || ''} ${formatModified(project.last_modified)}`;
       case 'modified_by':
         return String(project.modified_by || '');
       case 'created_by':
@@ -7462,6 +7461,8 @@
     });
   };
 
+  const columnDateRangeActive = () => state.datePreset === 'custom' && !!(state.dateFrom || state.dateTo);
+
   const syncListFilterUi = () => {
     const open = state.filtersOpen;
     if (listFilterRow) listFilterRow.hidden = !open;
@@ -7470,12 +7471,17 @@
       listFilterToggle.setAttribute('aria-pressed', open ? 'true' : 'false');
       listFilterToggle.textContent = open ? 'Hide filters' : 'Filters';
     }
-    listFilterClear?.classList.toggle('is-hidden', !listFiltersActive());
+    listFilterClear?.classList.toggle('is-hidden', !listFiltersActive() && !columnDateRangeActive());
     listFilterRow?.querySelectorAll('.sharepoint-col-filter[data-filter]').forEach((input) => {
       const key = input.getAttribute('data-filter') || '';
       const next = state.filters[key] || '';
       if (input.value !== next) input.value = next;
     });
+    const isCustom = state.datePreset === 'custom';
+    const nextFrom = isCustom ? state.dateFrom || '' : '';
+    const nextTo = isCustom ? state.dateTo || '' : '';
+    if (colDateFromEl && colDateFromEl.value !== nextFrom) colDateFromEl.value = nextFrom;
+    if (colDateToEl && colDateToEl.value !== nextTo) colDateToEl.value = nextTo;
   };
 
   const rememberDefaultSort = (searching) => {
@@ -9471,8 +9477,26 @@
     syncListFilterUi();
   });
 
+  const applyColumnDateRange = () => {
+    state.dateFrom = colDateFromEl?.value || '';
+    state.dateTo = colDateToEl?.value || '';
+    if (state.dateFrom || state.dateTo) {
+      state.datePreset = 'custom';
+    } else if (state.datePreset === 'custom') {
+      state.datePreset = '';
+    }
+    applySearch({ resetPage: true, animate: false });
+  };
+  colDateFromEl?.addEventListener('change', applyColumnDateRange);
+  colDateToEl?.addEventListener('change', applyColumnDateRange);
+
   listFilterClear?.addEventListener('click', () => {
     state.filters = emptyListFilters();
+    if (state.datePreset === 'custom') {
+      state.datePreset = '';
+      state.dateFrom = '';
+      state.dateTo = '';
+    }
     applySearch({ resetPage: true });
   });
 

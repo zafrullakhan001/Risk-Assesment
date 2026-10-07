@@ -14117,6 +14117,16 @@ select.sharepoint-col-filter {
     cursor: pointer;
     appearance: auto;
 }
+.sharepoint-col-date-range {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.sharepoint-col-date-range .sharepoint-col-date {
+    min-width: 7.5rem;
+    padding: 0.2rem 0.35rem;
+    font-variant-numeric: tabular-nums;
+}
 .sharepoint-filter-actions {
     text-align: right;
     white-space: nowrap;

@@ -3630,7 +3630,10 @@ $soloPageClass = $ownerSolo
                                     <input type="search" class="sharepoint-col-filter" data-filter="items" placeholder="Count…" autocomplete="off" aria-label="Filter by item counts">
                                 </th>
                                 <th scope="col" data-col="modified">
-                                    <input type="search" class="sharepoint-col-filter" data-filter="modified" placeholder="Date…" autocomplete="off" aria-label="Filter by modified date">
+                                    <div class="sharepoint-col-date-range">
+                                        <input type="date" class="sharepoint-col-filter sharepoint-col-date" id="sharepoint-col-date-from" aria-label="Modified from date" title="Modified from (inclusive)">
+                                        <input type="date" class="sharepoint-col-filter sharepoint-col-date" id="sharepoint-col-date-to" aria-label="Modified to date" title="Modified to (inclusive)">
+                                    </div>
                                 </th>
                                 <th scope="col" data-col="modified_by">
                                     <select class="sharepoint-col-filter" data-filter="modified_by" aria-label="Filter by modified by" title="Choose who last modified">
